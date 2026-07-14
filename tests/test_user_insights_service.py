@@ -14,11 +14,14 @@ from web_dashboard.user_insights_service import (
     add_llm_reply,
     archive_thesis,
     classify_due_status,
+    compute_thesis_eval_digest,
+    count_trailing_insufficient_llm_replies,
     create_thesis,
     get_thesis_row,
     is_weak_thesis,
     list_theses,
     list_theses_due,
+    should_skip_thesis_eval,
     thesis_reviewed_at,
 )
 
@@ -298,7 +301,7 @@ def test_add_entry_rejects_llm_reply():
         )
 
 
-def test_format_human_theses_for_meta_bundle_labels_weak():
+def test_format_human_theses_skips_unreviewed_weak():
     from web_dashboard.user_insights_service import format_human_theses_for_meta_bundle
 
     pg = MagicMock()
@@ -333,6 +336,50 @@ def test_format_human_theses_for_meta_bundle_labels_weak():
         return [thesis_row]
 
     pg.execute_query.side_effect = query_side_effect
+    assert format_human_theses_for_meta_bundle(pg, "COST") is None
+
+
+def test_format_human_theses_for_meta_bundle_labels_weak_after_review():
+    from web_dashboard.user_insights_service import format_human_theses_for_meta_bundle
+
+    pg = MagicMock()
+    thesis_id = uuid4()
+    thesis_row = {
+        "id": thesis_id,
+        "ticker": "COST",
+        "title": "[LLM draft][WEAK CONTEXT] Thin Costco draft",
+        "disposition": "neutral",
+        "intent": "monitor",
+        "status": "active",
+        "entry_count": 2,
+        "evidence_count": 0,
+    }
+    opening = {
+        "id": uuid4(),
+        "entry_kind": "opening",
+        "body": "[WEAK CONTEXT] No direct Costco evidence.",
+        "metadata": {"tags": ["llm_draft", "moat", "weak_context"]},
+    }
+    review = {
+        "id": uuid4(),
+        "entry_kind": "review",
+        "body": "Keeping as watch after skim.",
+        "metadata": {},
+    }
+
+    def query_side_effect(*_args, **_kwargs):
+        sql = (_args[0] if _args else "") or ""
+        if "FROM ticker_theses t" in sql and "WHERE" in sql:
+            return [thesis_row]
+        if "FROM thesis_entries" in sql:
+            return [opening, review]
+        if "FROM thesis_evidence" in sql:
+            return []
+        if "SELECT t.*" in sql:
+            return [thesis_row]
+        return [thesis_row]
+
+    pg.execute_query.side_effect = query_side_effect
     block = format_human_theses_for_meta_bundle(pg, "COST")
     assert block is not None
     assert "Human ticker thesis threads" in block
@@ -347,6 +394,94 @@ def test_format_human_theses_for_meta_bundle_none_when_empty():
     pg = MagicMock()
     pg.execute_query.return_value = []
     assert format_human_theses_for_meta_bundle(pg, "ZZZZ") is None
+
+
+def test_should_skip_thesis_eval_when_digest_matches():
+    detail = {
+        "disposition": "bullish",
+        "intent": "monitor",
+        "last_reviewed_at": "2026-01-01T00:00:00+00:00",
+        "title": "Cloud",
+        "entries": [
+            {
+                "id": "e1",
+                "entry_kind": "opening",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "body": "x",
+            },
+            {
+                "id": "e2",
+                "entry_kind": "llm_reply",
+                "metadata": {"verdict": "HOLDS", "research_digest": "WILL_REPLACE"},
+            },
+        ],
+    }
+    refs = {
+        "ticker_analysis_id": "ta1",
+        "ticker_analysis_updated_at": "2026-07-01T00:00:00+00:00",
+        "ticker_meta_analysis_id": "m1",
+        "ticker_meta_updated_at": "2026-07-02T00:00:00+00:00",
+    }
+    digest = compute_thesis_eval_digest(detail, refs)
+    detail["entries"][1]["metadata"]["research_digest"] = digest
+    skip, got, reason = should_skip_thesis_eval(detail, refs)
+    assert skip is True
+    assert got == digest
+    assert reason == "research_digest_unchanged"
+
+    refs2 = dict(refs)
+    refs2["ticker_meta_updated_at"] = "2026-07-10T00:00:00+00:00"
+    skip2, _, _ = should_skip_thesis_eval(detail, refs2)
+    assert skip2 is False
+
+
+def test_count_trailing_insufficient_llm_replies():
+    detail = {
+        "entries": [
+            {"entry_kind": "opening", "metadata": {}},
+            {"entry_kind": "llm_reply", "metadata": {"verdict": "HOLDS"}},
+            {"entry_kind": "llm_reply", "metadata": {"verdict": "INSUFFICIENT_DATA"}},
+            {"entry_kind": "llm_reply", "metadata": {"verdict": "INSUFFICIENT_DATA"}},
+        ]
+    }
+    assert count_trailing_insufficient_llm_replies(detail) == 2
+    detail["entries"].append(
+        {"entry_kind": "llm_reply", "metadata": {"verdict": "INSUFFICIENT_DATA"}}
+    )
+    assert count_trailing_insufficient_llm_replies(detail) == 3
+
+
+def test_archive_thesis_system_bypasses_author_check():
+    pg = MagicMock()
+    thesis_id = str(uuid4())
+    thesis_row = {
+        "id": thesis_id,
+        "ticker": "GLO.TO",
+        "status": "active",
+        "created_by": "someone@else.com",
+        "entry_count": 1,
+        "evidence_count": 0,
+    }
+
+    def query_side_effect(*_args, **_kwargs):
+        sql = (_args[0] if _args else "") or ""
+        if "WHERE t.id = %s::uuid" in sql:
+            return [thesis_row]
+        if "FROM thesis_entries" in sql and "WHERE e.thesis_id" in sql:
+            return []
+        if "FROM thesis_evidence" in sql:
+            return []
+        return [thesis_row]
+
+    pg.execute_query.side_effect = query_side_effect
+    archive_thesis(
+        pg,
+        thesis_id=thesis_id,
+        actor="insights_thesis_evaluation",
+        is_admin=False,
+        system=True,
+    )
+    assert "archived" in pg.execute_update.call_args[0][0]
 
 
 def test_list_theses_attention_merges_tension_verdicts():

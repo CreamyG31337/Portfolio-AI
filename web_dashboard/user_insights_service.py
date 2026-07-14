@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from datetime import datetime, UTC
@@ -30,6 +31,8 @@ META_THESIS_OPENING_MAX = 500
 META_THESIS_ENTRY_MAX = 400
 META_THESIS_MAX_PER_TICKER = 3
 META_THESIS_RECENT_DAYS = 14
+# Auto soft-archive weak/bootstrap drafts after this many consecutive INSUFFICIENT_DATA llm_replies.
+WEAK_INSUFFICIENT_ARCHIVE_THRESHOLD = 3
 
 
 def _normalize_ticker(ticker: str) -> str:
@@ -97,6 +100,95 @@ def classify_due_status(
     if age_days >= soft_days:
         return "due_for_review"
     return None
+
+
+def _entry_metadata(entry: dict[str, Any] | None) -> dict[str, Any]:
+    if not entry:
+        return {}
+    meta = entry.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def compute_thesis_eval_digest(
+    detail: dict[str, Any],
+    research_refs: dict[str, Any],
+) -> str:
+    """Fingerprint thesis claim + saved research timestamps for eval skip gating.
+
+    Same digest ⇒ no human claim change and no newer ticker_analysis / meta rows.
+    """
+    entries = detail.get("entries") or []
+    human_entries = [
+        e
+        for e in entries
+        if e.get("entry_kind") in ("opening", "comment", "review")
+    ]
+    latest_human = human_entries[-1] if human_entries else None
+    payload = {
+        "disposition": detail.get("disposition"),
+        "intent": detail.get("intent"),
+        "last_reviewed_at": detail.get("last_reviewed_at"),
+        "title": detail.get("title"),
+        "human_entry_id": (latest_human or {}).get("id"),
+        "human_entry_at": (latest_human or {}).get("created_at"),
+        "human_entry_kind": (latest_human or {}).get("entry_kind"),
+        "ta_id": research_refs.get("ticker_analysis_id") or "",
+        "ta_updated_at": research_refs.get("ticker_analysis_updated_at") or "",
+        "meta_id": research_refs.get("ticker_meta_analysis_id") or "",
+        "meta_updated_at": research_refs.get("ticker_meta_updated_at") or "",
+    }
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def latest_llm_reply_entry(detail: dict[str, Any]) -> dict[str, Any] | None:
+    entries = detail.get("entries") or []
+    for e in reversed(entries):
+        if e.get("entry_kind") == "llm_reply":
+            return e
+    return None
+
+
+def should_skip_thesis_eval(
+    detail: dict[str, Any],
+    research_refs: dict[str, Any],
+) -> tuple[bool, str, str]:
+    """Return (skip, digest, reason). Skip when prior llm_reply used the same digest."""
+    digest = compute_thesis_eval_digest(detail, research_refs)
+    latest = latest_llm_reply_entry(detail)
+    if not latest:
+        return False, digest, ""
+    prior = _entry_metadata(latest).get("research_digest")
+    if prior and str(prior) == digest:
+        return True, digest, "research_digest_unchanged"
+    return False, digest, ""
+
+
+def count_trailing_insufficient_llm_replies(detail: dict[str, Any]) -> int:
+    """Count consecutive trailing llm_reply entries with verdict INSUFFICIENT_DATA."""
+    entries = detail.get("entries") or []
+    n = 0
+    for e in reversed(entries):
+        if e.get("entry_kind") != "llm_reply":
+            # Human activity after the trailing insufficient streak breaks it.
+            if e.get("entry_kind") in ("opening", "comment", "review"):
+                break
+            continue
+        verdict = str(_entry_metadata(e).get("verdict") or "").upper()
+        if verdict == "INSUFFICIENT_DATA":
+            n += 1
+        else:
+            break
+    return n
+
+
+def thesis_has_human_review(detail: dict[str, Any]) -> bool:
+    return any(e.get("entry_kind") == "review" for e in (detail.get("entries") or []))
 
 
 def _serialize_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -669,9 +761,11 @@ def archive_thesis(
     thesis_id: str,
     actor: str,
     is_admin: bool,
+    system: bool = False,
 ) -> dict[str, Any]:
+    """Soft-archive a thesis. ``system=True`` bypasses author/admin checks (jobs)."""
     thesis = get_thesis_row(pg, thesis_id)
-    if thesis.get("created_by") != actor and not is_admin:
+    if not system and thesis.get("created_by") != actor and not is_admin:
         raise ThesisPermissionError("only author or admin may archive thesis")
     now = datetime.now(UTC)
     pg.execute_update(
@@ -764,13 +858,14 @@ def format_human_theses_for_meta_bundle(
     """Compact Insights thesis text for ticker-meta artifact bundles, or None if none.
 
     Labels weak/bootstrap drafts explicitly so meta does not treat them as ground truth.
+    Skips weak drafts that have never had a human ``review`` (cuts meta↔eval chatter).
     Distinct from fund-level ``fund_thesis`` philosophy.
     """
     rows = list_theses(
         pg,
         ticker=_normalize_ticker(ticker),
         include_archived=False,
-        limit=max(1, min(max_theses, 10)),
+        limit=max(1, min(max_theses * 3, 15)),
     )
     if not rows:
         return None
@@ -780,7 +875,10 @@ def format_human_theses_for_meta_bundle(
         "Treat as human / bootstrap claims to reconcile. "
         "WEAK / bootstrap drafts are noisy — do not elevate them over stronger artifacts.",
     ]
+    included = 0
     for row in rows:
+        if included >= max(1, min(max_theses, 10)):
+            break
         thesis_id = str(row.get("id") or "")
         detail = get_thesis_detail(pg, thesis_id) if thesis_id else row
         entries = detail.get("entries") or []
@@ -800,6 +898,10 @@ def format_human_theses_for_meta_bundle(
             opening_body=opening_body,
             opening_metadata=opening_meta if isinstance(opening_meta, dict) else {},
         )
+        # Unreviewed weak/bootstrap drafts are noise for meta until a human review exists
+        # (or the thesis is non-weak). Eval may still archive them after repeated INSUFFICIENT_DATA.
+        if weak and not thesis_has_human_review(detail):
+            continue
         tags = opening_meta.get("tags") if isinstance(opening_meta, dict) else None
         bootstrap = isinstance(tags, list) and any(
             str(t).lower() in ("llm_draft", "moat", "weak_context") for t in tags
@@ -830,19 +932,17 @@ def format_human_theses_for_meta_bundle(
                 f"  latest_review: {_clip_meta(str(latest_review.get('body') or ''), META_THESIS_ENTRY_MAX)}"
             )
         if latest_llm:
-            meta = latest_llm.get("metadata") or {}
-            if isinstance(meta, str):
-                try:
-                    meta = json.loads(meta)
-                except (TypeError, ValueError, json.JSONDecodeError):
-                    meta = {}
-            verdict = meta.get("verdict") if isinstance(meta, dict) else None
+            meta = _entry_metadata(latest_llm)
+            verdict = meta.get("verdict")
             vbit = f" verdict={verdict}" if verdict else ""
             parts.append(
                 f"  latest_llm_reply{vbit}: "
                 f"{_clip_meta(str(latest_llm.get('body') or ''), META_THESIS_ENTRY_MAX)}"
             )
+        included += 1
 
+    if included == 0:
+        return None
     return "\n".join(parts)
 
 

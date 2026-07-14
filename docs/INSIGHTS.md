@@ -52,9 +52,15 @@ Only a human `review` clears due/stale — an `llm_reply` is advisory context.
 
 - **Job id:** `insights_thesis_evaluation` (not `thesis_update_job` — that updates fund philosophy)
 - **Schedule:** Tue/Thu 18:30 America/New_York (respects global AI lock via `AI_JOB_NAMES`)
-- **Pick:** active theses due/stale (and weak drafts), up to 8 per run
+- **Pick:** active theses due/stale (and weak drafts); over-fetch then fill up to **8 LLM
+  calls** per run (digest skips do not count against the 8)
 - **Context:** thesis header + recent entries + stored `ticker_meta_analysis` narrative/stance +
   latest `ticker_analysis` summary (read-only; does not re-run meta)
+- **Digest gate:** each `llm_reply` stores `metadata.research_digest` (thesis claim fingerprint +
+  saved research ids/`updated_at`). Same digest as prior reply → **skip LLM**
+  (`skipped_digest` in job message)
+- **Weak auto-archive:** after **3** consecutive `INSUFFICIENT_DATA` replies on a weak draft,
+  soft-archive via `archive_thesis(..., system=True)` (`archived_weak` in job message)
 - **Write:** `add_llm_reply` with verdict `HOLDS` | `TENSION` | `STALE_THESIS` |
   `INSUFFICIENT_DATA`, optional suggested disposition/intent (advisory), optional evidence
   link to meta row
@@ -68,7 +74,7 @@ Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 |----------|--------|
 | Insights UI / due queue / eval job | Shipped |
 | Ticker evidence timeline | Shipped (`fetch_thesis_timeline_events`) |
-| **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE` |
+| **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE`. **Skips unreviewed weak/bootstrap** drafts (no human `review` yet) |
 | **Today / Ideas surfacing** | **Shipped (R2)** — Today `theses_attention`; Ideas `thesis_attention` badges; `/insights?thesis=` deep links |
 | `stance_history` | Not written (R3 optional) |
 
@@ -167,10 +173,13 @@ Meta can ingest theses (R1); eval can read meta. That is deliberate tension, not
 
 | Guard | Why |
 |-------|-----|
-| Eval does **not** bump `last_reviewed_at` or flip disposition | AI cannot “clear” due; humans must |
+| Eval does **not** bump `last_reviewed_at` or flip disposition | AI cannot “clear” due as a human review |
 | Eval does **not** re-run meta | Cheap second opinion on *stored* research |
+| Digest-gated eval | Unchanged research → skip LLM (GPU slots) |
+| Weak × 3× `INSUFFICIENT_DATA` → soft-archive | Stops re-evaluating hopeless bootstrap drafts |
+| Meta skips unreviewed weak drafts | Cuts meta↔eval chatter on noise theses |
 | `META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings` default | Limits meta refresh blast radius + loop chatter |
-| Weak / bootstrap drafts labeled in the meta bundle | Stops SearXNG noise from laundering into stance |
+| Weak still labeled when a human `review` exists | Inspectable, not ground truth |
 | Today / Ideas only **surface** due + TENSION | No extra LLM cost for attention |
 | Do not expand to more synthesis jobs lightly | Same ticker can already see moat draft → meta → eval |
 

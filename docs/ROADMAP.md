@@ -240,7 +240,9 @@ the input for deciding which collection jobs to keep (the Learn→Collect dashed
 `insights_thesis_evaluation` job posting advisory `llm_reply` only (no disposition flip,
 no `stance_history` writes). Pattern donor: `action_queue_ai_review_job` — separate
 prompt/table. Do **not** confuse with fund `thesis_update_job`. Schedule: Tue/Thu 18:30 ET
-(global AI lock). Details: [`INSIGHTS.md`](INSIGHTS.md).
+(global AI lock). **Automation quick wins (2026-07):** digest-gated skip when saved research
+unchanged; soft-archive weak drafts after 3× `INSUFFICIENT_DATA`; meta inject skips
+unreviewed weak/bootstrap. Details: [`INSIGHTS.md`](INSIGHTS.md).
 
 #### Backlog R1 — Inject active theses into `ticker_meta` artifact bundle — **shipped 2026-07**
 
