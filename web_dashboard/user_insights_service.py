@@ -26,6 +26,10 @@ VALID_RELATIONS = frozenset({"supports", "contradicts", "context"})
 DEFAULT_SOFT_DUE_DAYS = 14
 DEFAULT_HARD_STALE_DAYS = 30
 WEAK_CONTEXT_MARKER = "[WEAK CONTEXT]"
+META_THESIS_OPENING_MAX = 500
+META_THESIS_ENTRY_MAX = 400
+META_THESIS_MAX_PER_TICKER = 3
+META_THESIS_RECENT_DAYS = 14
 
 
 def _normalize_ticker(ticker: str) -> str:
@@ -740,3 +744,125 @@ def fetch_thesis_timeline_events(pg: Any, ticker: str, limit: int = 30) -> list[
         (_normalize_ticker(ticker), max(1, min(limit, 50))),
     )
     return [_serialize_row(dict(r)) for r in rows]
+
+
+def _clip_meta(text: str | None, max_len: int) -> str:
+    if not text:
+        return ""
+    t = " ".join(str(text).split())
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 3].rsplit(" ", 1)[0] + "..."
+
+
+def format_human_theses_for_meta_bundle(
+    pg: Any,
+    ticker: str,
+    *,
+    max_theses: int = META_THESIS_MAX_PER_TICKER,
+) -> str | None:
+    """Compact Insights thesis text for ticker-meta artifact bundles, or None if none.
+
+    Labels weak/bootstrap drafts explicitly so meta does not treat them as ground truth.
+    Distinct from fund-level ``fund_thesis`` philosophy.
+    """
+    rows = list_theses(
+        pg,
+        ticker=_normalize_ticker(ticker),
+        include_archived=False,
+        limit=max(1, min(max_theses, 10)),
+    )
+    if not rows:
+        return None
+
+    parts: list[str] = [
+        "### Human ticker thesis threads (Insights — not fund_thesis)",
+        "Treat as human / bootstrap claims to reconcile. "
+        "WEAK / bootstrap drafts are noisy — do not elevate them over stronger artifacts.",
+    ]
+    for row in rows:
+        thesis_id = str(row.get("id") or "")
+        detail = get_thesis_detail(pg, thesis_id) if thesis_id else row
+        entries = detail.get("entries") or []
+        opening = next(
+            (e for e in entries if e.get("entry_kind") == "opening"),
+            entries[0] if entries else None,
+        )
+        opening_body = str((opening or {}).get("body") or "")
+        opening_meta = (opening or {}).get("metadata") or {}
+        if isinstance(opening_meta, str):
+            try:
+                opening_meta = json.loads(opening_meta)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                opening_meta = {}
+        weak = is_weak_thesis(
+            title=str(row.get("title") or ""),
+            opening_body=opening_body,
+            opening_metadata=opening_meta if isinstance(opening_meta, dict) else {},
+        )
+        tags = opening_meta.get("tags") if isinstance(opening_meta, dict) else None
+        bootstrap = isinstance(tags, list) and any(
+            str(t).lower() in ("llm_draft", "moat", "weak_context") for t in tags
+        )
+        label_bits = []
+        if weak:
+            label_bits.append("WEAK CONTEXT")
+        if bootstrap or weak:
+            label_bits.append("bootstrap/llm_draft")
+        flag = f" [{', '.join(label_bits)}]" if label_bits else ""
+
+        parts.append(
+            f"- {row.get('ticker')} | {row.get('disposition')}/{row.get('intent')} | "
+            f"{_clip_meta(str(row.get('title') or ''), 120)}{flag}"
+        )
+        parts.append(f"  opening: {_clip_meta(opening_body, META_THESIS_OPENING_MAX)}")
+
+        latest_review = next(
+            (e for e in reversed(entries) if e.get("entry_kind") == "review"),
+            None,
+        )
+        latest_llm = next(
+            (e for e in reversed(entries) if e.get("entry_kind") == "llm_reply"),
+            None,
+        )
+        if latest_review:
+            parts.append(
+                f"  latest_review: {_clip_meta(str(latest_review.get('body') or ''), META_THESIS_ENTRY_MAX)}"
+            )
+        if latest_llm:
+            meta = latest_llm.get("metadata") or {}
+            if isinstance(meta, str):
+                try:
+                    meta = json.loads(meta)
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    meta = {}
+            verdict = meta.get("verdict") if isinstance(meta, dict) else None
+            vbit = f" verdict={verdict}" if verdict else ""
+            parts.append(
+                f"  latest_llm_reply{vbit}: "
+                f"{_clip_meta(str(latest_llm.get('body') or ''), META_THESIS_ENTRY_MAX)}"
+            )
+
+    return "\n".join(parts)
+
+
+def ticker_has_recent_active_thesis(
+    pg: Any,
+    ticker: str,
+    *,
+    within_days: int = META_THESIS_RECENT_DAYS,
+    now: datetime | None = None,
+) -> bool:
+    """True if an active thesis for ticker was updated within ``within_days``."""
+    rows = list_theses(pg, ticker=ticker, include_archived=False, limit=5)
+    if not rows:
+        return False
+    now_ts = now or datetime.now(UTC)
+    cutoff_secs = max(1, within_days) * 86400.0
+    for row in rows:
+        updated = _parse_ts(row.get("updated_at")) or _parse_ts(row.get("created_at"))
+        if updated is None:
+            continue
+        if (now_ts - updated).total_seconds() <= cutoff_secs:
+            return True
+    return False

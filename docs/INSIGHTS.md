@@ -62,6 +62,23 @@ Only a human `review` clears due/stale — an `llm_reply` is advisory context.
 
 Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 
+## Consumed by other jobs
+
+| Consumer | Status |
+|----------|--------|
+| Insights UI / due queue / eval job | Shipped |
+| Ticker evidence timeline | Shipped (`fetch_thesis_timeline_events`) |
+| **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE` |
+| Today / Ideas surfacing | Backlog R2 |
+| `stance_history` | Not written (R3 optional) |
+
+Env (see `web_dashboard/env.example`):
+
+```
+# META_ANALYSIS_HUMAN_THESIS=true
+# META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings   # or holdings_or_recent | all
+```
+
 ## Bootstrap (one-off)
 
 `web_dashboard/scripts/probe_moat_theses.py` drafts positive/moat theses from Research DB + SearXNG.

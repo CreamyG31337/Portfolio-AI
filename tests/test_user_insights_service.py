@@ -296,3 +296,54 @@ def test_add_entry_rejects_llm_reply():
             body="nope",
             author_id="user@example.com",
         )
+
+
+def test_format_human_theses_for_meta_bundle_labels_weak():
+    from web_dashboard.user_insights_service import format_human_theses_for_meta_bundle
+
+    pg = MagicMock()
+    thesis_id = uuid4()
+    thesis_row = {
+        "id": thesis_id,
+        "ticker": "COST",
+        "title": "[LLM draft][WEAK CONTEXT] Thin Costco draft",
+        "disposition": "neutral",
+        "intent": "monitor",
+        "status": "active",
+        "entry_count": 1,
+        "evidence_count": 0,
+    }
+    opening = {
+        "id": uuid4(),
+        "entry_kind": "opening",
+        "body": "[WEAK CONTEXT] No direct Costco evidence.",
+        "metadata": {"tags": ["llm_draft", "moat", "weak_context"]},
+    }
+
+    def query_side_effect(*_args, **_kwargs):
+        sql = (_args[0] if _args else "") or ""
+        if "FROM ticker_theses t" in sql and "WHERE" in sql:
+            return [thesis_row]
+        if "FROM thesis_entries" in sql:
+            return [opening]
+        if "FROM thesis_evidence" in sql:
+            return []
+        if "SELECT t.*" in sql:
+            return [thesis_row]
+        return [thesis_row]
+
+    pg.execute_query.side_effect = query_side_effect
+    block = format_human_theses_for_meta_bundle(pg, "COST")
+    assert block is not None
+    assert "Human ticker thesis threads" in block
+    assert "not fund_thesis" in block
+    assert "WEAK CONTEXT" in block
+    assert "bootstrap/llm_draft" in block
+
+
+def test_format_human_theses_for_meta_bundle_none_when_empty():
+    from web_dashboard.user_insights_service import format_human_theses_for_meta_bundle
+
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    assert format_human_theses_for_meta_bundle(pg, "ZZZZ") is None

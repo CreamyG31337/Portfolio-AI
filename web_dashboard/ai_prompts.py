@@ -336,6 +336,10 @@ TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs a
    - Align stance when ticker evidence and sector prior agree; note tension in contradictions when they conflict.
    - If sector_meta is MISSING or sector_stance is INSUFFICIENT_DATA, do not infer sector rotation from the ticker alone.
    - rotation_rank is relative strength within the sector bucket only—not a buy signal by itself.
+8. When the bundle includes **Human ticker thesis threads** (Insights):
+   - Reconcile human disposition/intent with automated artifacts; surface tension in contradictions when they conflict.
+   - Drafts marked WEAK CONTEXT / bootstrap/llm_draft are low-trust bootstrap noise — do not let them dominate stance.
+   - This is not fund-level philosophy (fund_thesis); it is a per-ticker human research thread.
 
 Return JSON only:
 {{

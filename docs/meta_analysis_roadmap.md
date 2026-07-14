@@ -35,7 +35,7 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 |------------|-------|------------|
 | Market regime prior | Shipped (`market_daily_brief` → ticker meta) | Same |
 | Sector rotation view | Shipped (`sector_meta_analysis`, Sector Insights UI) | Fed into ticker meta (3c) |
-| Human ticker theses | Shipped as **Insights** (`/insights`, `ticker_theses`) — not Sector Insights; see [`INSIGHTS.md`](INSIGHTS.md) | Optional inject into ticker meta bundle (ROADMAP §2.6 R1) |
+| Human ticker theses | Shipped as **Insights** (`/insights`, `ticker_theses`) — not Sector Insights; see [`INSIGHTS.md`](INSIGHTS.md). Injected into ticker meta bundles (R1, holdings-scoped). | Today/Ideas surfacing (ROADMAP §2.6 R2) |
 | Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+) |
 | Action queue | **Rules-based** from technical `signal_analysis`; meta attached as context | Ranked ideas aligned with meta + portfolio |
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |

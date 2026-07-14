@@ -17,6 +17,7 @@ if str(web_dashboard) not in sys.path:
 def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
     """Phase 3c bundle block is tested explicitly; keep legacy tests stable."""
     monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "false")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "false")
 
 from meta_analysis_service import (  # noqa: E402
     TickerMetaAnalysisService,
@@ -400,3 +401,60 @@ def test_build_artifact_bundle_includes_sector_prior(monkeypatch: pytest.MonkeyP
     assert "sector_stance: MIXED" in bundle
     assert "rotation_rank: 2" in bundle
     assert "ETF flows mixed" in bundle
+
+
+def test_build_artifact_bundle_includes_human_thesis(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "true")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS_SCOPE", "all")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],  # standard
+        [],  # market brief (phase1)
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+
+    fake_block = (
+        "### Human ticker thesis threads (Insights — not fund_thesis)\n"
+        "- COST | bullish/monitor | Moat [WEAK CONTEXT]\n"
+        "  opening: membership fees"
+    )
+    monkeypatch.setattr(svc, "_fetch_human_thesis_block", lambda _t: fake_block)
+
+    bundle, primary, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert primary is not None
+    assert "Human ticker thesis threads" in bundle
+    assert "WEAK CONTEXT" in bundle
+    assert "human_thesis" in evidence["artifact_types"]
+
+
+def test_build_artifact_bundle_skips_human_thesis_when_not_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "true")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS_SCOPE", "holdings")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],
+        [],  # market brief
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+    svc._held_tickers_cache = {"MSFT"}  # COST not held
+    called = {"n": 0}
+
+    def _fetch(_t: str) -> str | None:
+        called["n"] += 1
+        return "### Human ticker thesis threads\n- should not appear"
+
+    monkeypatch.setattr(svc, "_fetch_human_thesis_block", _fetch)
+    bundle, _, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert called["n"] == 0
+    assert "Human ticker thesis" not in bundle
+    assert "human_thesis" not in evidence["artifact_types"]

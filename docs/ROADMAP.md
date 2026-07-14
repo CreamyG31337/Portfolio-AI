@@ -239,17 +239,22 @@ no `stance_history` writes). Pattern donor: `action_queue_ai_review_job` — sep
 prompt/table. Do **not** confuse with fund `thesis_update_job`. Schedule: Tue/Thu 18:30 ET
 (global AI lock). Details: [`INSIGHTS.md`](INSIGHTS.md).
 
-#### Backlog R1 — Inject active theses into `ticker_meta` artifact bundle
+#### Backlog R1 — Inject active theses into `ticker_meta` artifact bundle — **shipped 2026-07**
 
-**Why later:** meta digests invalidate on bundle change (`needs_refresh`). Injecting ~97
-existing theses would enqueue a large meta backlog. Roll out holdings-only or
-recently-updated theses first.
+**Shipped:** `build_artifact_bundle_with_evidence` appends `### Human ticker thesis threads`
++ artifact family `"human_thesis"`. Weak/bootstrap drafts are labeled so meta does not
+launder them. Gated by `META_ANALYSIS_HUMAN_THESIS` (default on) and
+`META_ANALYSIS_HUMAN_THESIS_SCOPE` default **`holdings`** (production positions only) to
+avoid a one-shot meta refresh backlog across every thesis ticker. Prompt rule #8 in
+`TICKER_META_ANALYSIS_PROMPT` reconciles human disposition vs automated artifacts.
 
-**Design notes:**
+Widen later with `META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings_or_recent` or `all`.
+
+**Design notes (history):**
 
 - Injection site: end of `build_artifact_bundle_with_evidence` — section
   `### Human thesis threads`, append family `"human_thesis"`.
-- Pull via `list_theses` / `get_thesis_detail` (active only; truncate opening + latest
+- Pull via `format_human_theses_for_meta_bundle` (active only; truncate opening + latest
   review/`llm_reply`).
 - Label bootstrap / `weak_context` clearly so meta does not launder weak SearXNG noise
   into stance (short-ticker false matches taught this the hard way).
@@ -484,8 +489,8 @@ flowchart TD
   daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
   and kept out of the briefing payload (panel loads async). Holdings-table column still open.
 - [x] **§2.6 Insights review loop v1** (2026-07): due-for-review UI (`GET /api/insights/due`),
-  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection + Today/Ideas
-  surfacing remain backlog (R1–R2).
+  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection shipped as R1
+  (holdings-scoped); Today/Ideas surfacing remains backlog (R2).
 
 Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
 

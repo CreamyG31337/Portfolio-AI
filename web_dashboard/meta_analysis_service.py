@@ -16,7 +16,9 @@ from market_regime_normalization import normalize_market_regime
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import (
+    get_meta_analysis_human_thesis_scope,
     get_summarizing_model,
+    is_meta_analysis_human_thesis_enabled,
     is_meta_analysis_phase1_signal_fusion_enabled,
     is_meta_analysis_phase3_sector_enabled,
 )
@@ -74,6 +76,7 @@ class TickerMetaAnalysisService:
         self.ollama = ollama
         self.supabase = supabase
         self.postgres = postgres
+        self._held_tickers_cache: set[str] | None = None
 
     def _resolve_model(self, model_override: str | None) -> str:
         if model_override:
@@ -558,8 +561,76 @@ class TickerMetaAnalysisService:
                 )
                 parts.append(f"  {_clip(t.get('reasoning'), _MAX_REASON)}")
 
+        if self._should_include_human_thesis(ticker):
+            thesis_block = self._fetch_human_thesis_block(ticker)
+            if thesis_block:
+                families.append("human_thesis")
+                parts.append("")
+                parts.append(thesis_block)
+
         evidence["artifact_types"] = families
         return "\n".join(parts).strip(), std_rows[0], evidence
+
+    def _production_held_tickers(self) -> set[str]:
+        """Cached set of tickers held across production funds (best-effort)."""
+        if self._held_tickers_cache is not None:
+            return self._held_tickers_cache
+        held: set[str] = set()
+        try:
+            funds_res = (
+                self.supabase.supabase.table("funds")
+                .select("name")
+                .eq("is_production", True)
+                .execute()
+            )
+            fund_names = [r["name"] for r in (funds_res.data or []) if r.get("name")]
+            if not fund_names:
+                funds_res = (
+                    self.supabase.supabase.table("funds").select("name").limit(5).execute()
+                )
+                fund_names = [r["name"] for r in (funds_res.data or []) if r.get("name")]
+            for fund in fund_names:
+                try:
+                    for pos in self.supabase.get_current_positions(fund) or []:
+                        t = str(pos.get("ticker") or pos.get("symbol") or "").upper().strip()
+                        if t:
+                            held.add(t)
+                except Exception as pos_exc:
+                    logger.debug("human_thesis holdings skip fund %s: %s", fund, pos_exc)
+        except Exception as exc:
+            logger.warning("human_thesis holdings lookup failed: %s", exc)
+        self._held_tickers_cache = held
+        return held
+
+    def _should_include_human_thesis(self, ticker: str) -> bool:
+        if not is_meta_analysis_human_thesis_enabled():
+            return False
+        scope = get_meta_analysis_human_thesis_scope()
+        if scope == "all":
+            return True
+        ticker_u = ticker.upper().strip()
+        held = self._production_held_tickers()
+        if ticker_u in held:
+            return True
+        if scope == "holdings_or_recent":
+            try:
+                from user_insights_service import ticker_has_recent_active_thesis
+
+                return ticker_has_recent_active_thesis(self.postgres, ticker_u)
+            except Exception as exc:
+                logger.debug("human_thesis recent check failed for %s: %s", ticker_u, exc)
+                return False
+        # default: holdings only
+        return False
+
+    def _fetch_human_thesis_block(self, ticker: str) -> str | None:
+        try:
+            from user_insights_service import format_human_theses_for_meta_bundle
+
+            return format_human_theses_for_meta_bundle(self.postgres, ticker)
+        except Exception as exc:
+            logger.warning("human_thesis bundle fetch failed for %s: %s", ticker, exc)
+            return None
 
     def run_meta_analysis(
         self,
