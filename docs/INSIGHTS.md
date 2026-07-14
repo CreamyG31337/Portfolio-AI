@@ -67,6 +67,13 @@ Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 `web_dashboard/scripts/probe_moat_theses.py` drafts positive/moat theses from Research DB + SearXNG.
 Treat drafts with `weak_context` as noise until a human reviews them.
 
+**Lessons (2026-07):** never use title/summary `ILIKE` for article lookup — `COST`→costs,
+`RAIL`→Trail, `FAST`→Faster polluted drafts. Use ticker-array matches only + company-first
+SearXNG. Moat framing is a poor fit for index/sector ETFs — `--stocks-only` skips them;
+archive weak ETF bootstrap drafts rather than rewriting.
+
+Smoke eval one ticker: `python scripts/smoke_thesis_eval.py COST`
+
 ## Overlap — do not confuse
 
 | Feature | What it is |

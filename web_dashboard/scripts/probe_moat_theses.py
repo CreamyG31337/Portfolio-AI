@@ -56,46 +56,26 @@ WEAK_CONTEXT_MARKERS = (
 )
 
 
-def _ticker_like_patterns(ticker: str) -> list[str]:
-    """Avoid substring false positives for short tickers (KO→Korea, PRE→premium)."""
-    t = ticker.upper().strip()
-    # Short / ambiguous symbols: only exact ticker-array membership, no ILIKE.
-    if len(t.split(".")[0]) <= 3:
-        return []
-    return [f"%{t}%"]
-
-
 def _ticker_articles(pg: Any, ticker: str, limit: int = 8) -> list[dict[str, Any]]:
-    patterns = _ticker_like_patterns(ticker)
-    if patterns:
-        rows = pg.execute_query(
-            """
-            SELECT id, title, article_type, source, summary,
-                   LEFT(COALESCE(content, ''), 1200) AS content_snip,
-                   published_at
-            FROM research_articles
-            WHERE %s = ANY(tickers)
-               OR title ILIKE %s
-               OR summary ILIKE %s
-            ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
-            LIMIT %s
-            """,
-            (ticker, patterns[0], patterns[0], limit),
-        )
-    else:
-        rows = pg.execute_query(
-            """
-            SELECT id, title, article_type, source, summary,
-                   LEFT(COALESCE(content, ''), 1200) AS content_snip,
-                   published_at
-            FROM research_articles
-            WHERE %s = ANY(tickers)
-            ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
-            LIMIT %s
-            """,
-            (ticker, limit),
-        )
-    return [dict(r) for r in rows]
+    """Articles tagged with this ticker only.
+
+    Never use title/summary ILIKE here — COST→\"costs\", RAIL→\"Trail\", FAST→\"Faster\"
+    polluted moat drafts even after the short-ticker (<=3) guard.
+    """
+    t = ticker.upper().strip()
+    rows = pg.execute_query(
+        """
+        SELECT id, title, article_type, source, summary, tickers,
+               LEFT(COALESCE(content, ''), 1200) AS content_snip,
+               published_at
+        FROM research_articles
+        WHERE %s = ANY(tickers)
+        ORDER BY COALESCE(published_at, fetched_at) DESC NULLS LAST
+        LIMIT %s
+        """,
+        (t, max(limit * 3, 24)),
+    )
+    return _prefer_focused_articles(t, [dict(r) for r in rows], keep=limit)
 
 
 def _semantic_moat(pg: Any, ticker: str, company: str = "", limit: int = 5) -> list[dict[str, Any]]:
@@ -123,23 +103,7 @@ def _semantic_moat(pg: Any, ticker: str, company: str = "", limit: int = 5) -> l
         """,
         (embedding_str, ticker, embedding_str, embedding_str, limit),
     )
-    if rows or not _ticker_like_patterns(ticker):
-        return [dict(r) for r in rows]
-    # Longer tickers only: optional title/summary ILIKE fallback (still risky for common words).
-    pat = f"%{ticker}%"
-    rows = pg.execute_query(
-        """
-        SELECT id, title, article_type, source, summary,
-               1 - (embedding <=> %s::vector) AS similarity
-        FROM research_articles
-        WHERE embedding IS NOT NULL
-          AND (title ILIKE %s OR summary ILIKE %s)
-          AND 1 - (embedding <=> %s::vector) >= 0.45
-        ORDER BY embedding <=> %s::vector
-        LIMIT %s
-        """,
-        (embedding_str, pat, pat, embedding_str, embedding_str, limit),
-    )
+    # No ILIKE fallback — substring collisions (RAIL/Trail, COST/costs) burn drafts.
     return [dict(r) for r in rows]
 
 
@@ -152,9 +116,13 @@ def _web_search(ticker: str, company_hint: str = "") -> list[dict[str, str]]:
         sx = get_searxng_client()
         if not sx:
             return []
-        # Company name first; quote ticker to reduce Korea/etc. collisions for KO.
+        # Prefer company name; avoid bare ticker in query when company known
+        # (COST/"cost", RAIL/"rail"/Trail collisions also hit the open web).
         if company_hint:
-            q = f'"{company_hint}" OR "{ticker}" stock competitive moat advantage brand'
+            q = (
+                f'"{company_hint}" (competitive moat OR competitive advantage OR '
+                f"economic moat OR brand OR network effect OR switching costs)"
+            )
         else:
             q = f'"{ticker}" stock competitive moat advantage'
         data = sx.search_web(q, max_results=5) or {}
@@ -173,6 +141,51 @@ def _web_search(ticker: str, company_hint: str = "") -> list[dict[str, str]]:
         print(f"  [searxng] skipped: {exc}")
         return []
 
+
+def _prefer_focused_articles(
+    ticker: str,
+    articles: list[dict[str, Any]],
+    *,
+    keep: int = 8,
+    max_other_tickers: int = 5,
+) -> list[dict[str, Any]]:
+    """Prefer articles about this name; deprioritize mega multi-ticker dumps."""
+    t = ticker.upper()
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for a in articles:
+        tickers = a.get("tickers") or []
+        if isinstance(tickers, str):
+            tickers = [tickers]
+        others = [x for x in tickers if str(x).upper() != t]
+        title = str(a.get("title") or "").upper()
+        score = 0
+        if t in title:
+            score += 5
+        if len(others) == 0:
+            score += 4
+        elif len(others) <= 2:
+            score += 2
+        elif len(others) > max_other_tickers:
+            score -= 3
+        if "HOLDINGS ANALYSIS" in title:
+            score -= 4
+        scored.append((score, a))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [a for _, a in scored[:keep]]
+
+
+def _looks_like_etf(ticker: str, company: str = "") -> bool:
+    t = ticker.upper().strip()
+    name = (company or "").upper()
+    if any(x in name for x in ("ETF", "ISHARES", "VANGUARD", "SPDR", "INDEX FUND", "INDEX ETF")):
+        return True
+    # Common ETF-style symbols in this book (heuristic; holdings sometimes lack securities.name).
+    known = {
+        "VOO", "CIBR", "ROBO", "FTXL", "URNM", "URNJ", "FXD", "CGL.TO",
+        "XEQT.TO", "XGD.TO", "XHAK.TO", "XHC.TO", "XIC.TO", "XMA.TO", "ZEA.TO",
+        "NXTG.TO", "HURA.TO",
+    }
+    return t in known
 
 def _is_weak_draft(draft: dict[str, Any]) -> bool:
     body = str(draft.get("body") or "").lower()
@@ -321,6 +334,11 @@ def main() -> int:
         action="store_true",
         help="Only process tickers whose existing opening looks like weak/insufficient context",
     )
+    parser.add_argument(
+        "--stocks-only",
+        action="store_true",
+        help="Skip ETF-like symbols (moat framing is a poor fit for index/sector ETFs)",
+    )
     parser.add_argument("--no-web", action="store_true", help="Skip SearXNG")
     parser.add_argument("--author", default="llm-moat-probe@local")
     args = parser.parse_args()
@@ -353,6 +371,16 @@ def main() -> int:
     else:
         tickers = _holdings(args.fund)[: max(1, args.limit)]
 
+    if args.stocks_only:
+        filtered: list[str] = []
+        for t in tickers:
+            company = _company_name(pg, t)
+            if _looks_like_etf(t, company):
+                print(f"stocks-only: skip ETF-like {t} ({company or 'no name'})")
+                continue
+            filtered.append(t)
+        tickers = filtered
+
     if args.skip_existing and not args.rewrite_weak:
         existing = list_theses(pg, include_archived=False, limit=500)
         have = {(r.get("ticker") or "").upper() for r in existing}
@@ -379,6 +407,11 @@ def main() -> int:
         if not args.no_web:
             web = _web_search(ticker, company)
             print(f"  web hits={len(web)}")
+        # If Research DB noise dominated prior weak drafts, prefer web+company when web is healthy.
+        if args.rewrite_weak and web and len(articles) > 5:
+            print("  rewrite-weak: trimming Research articles in favor of company web focus")
+            articles = articles[:3]
+            semantic = []
         ctx = _build_context(ticker, company, articles, semantic, web)
         try:
             draft = _draft_moat(ticker, ctx)

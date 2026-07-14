@@ -123,6 +123,49 @@ def _normalize_trade_type(raw_type: Optional[str]) -> str:
     return "Sale"
 
 
+UPSERT_BATCH_SIZE = 500
+
+
+def _trade_conflict_key(record: dict[str, Any]) -> tuple[Any, ...]:
+    """Match congress_trades unique index for in-batch dedupe."""
+    return (
+        record.get("politician_id"),
+        str(record.get("ticker") or "").upper(),
+        str(record.get("transaction_date") or ""),
+        str(record.get("amount") or ""),
+        str(record.get("type") or ""),
+        str(record.get("owner") or ""),
+    )
+
+
+def _upsert_batches(
+    supabase_client: Any,
+    *,
+    table: str,
+    rows: List[dict[str, Any]],
+    on_conflict: str,
+) -> int:
+    """Upsert ``rows`` in chunks. Returns number of rows submitted."""
+    if not rows:
+        return 0
+    submitted = 0
+    for i in range(0, len(rows), UPSERT_BATCH_SIZE):
+        batch = rows[i : i + UPSERT_BATCH_SIZE]
+        supabase_client.supabase.table(table).upsert(
+            batch, on_conflict=on_conflict
+        ).execute()
+        submitted += len(batch)
+        if i + UPSERT_BATCH_SIZE < len(rows):
+            logger.info(
+                "  Upserted %s batch of %d (total %d/%d)",
+                table,
+                len(batch),
+                submitted,
+                len(rows),
+            )
+    return submitted
+
+
 def process_executive_transactions(
     supabase_client: Any,
     transactions: List[dict[str, Any]],
@@ -133,8 +176,8 @@ def process_executive_transactions(
     use_yfinance: bool = False,
     dry_run: bool = False,
 ) -> Dict[str, int]:
-    """Resolve tickers and insert executive trades."""
-    from executive_ticker_resolver import resolve_executive_asset
+    """Resolve tickers and insert executive trades (batched upserts)."""
+    from executive_ticker_resolver import classify_oge_asset_type, resolve_executive_asset
 
     cache = load_og_asset_cache(supabase_client)
     stats = {
@@ -144,7 +187,12 @@ def process_executive_transactions(
         "unresolved": 0,
         "duplicates": 0,
         "errors": 0,
+        "cache_upserts": 0,
     }
+
+    trade_by_key: Dict[tuple[Any, ...], dict[str, Any]] = {}
+    cache_updates: Dict[str, dict[str, Any]] = {}
+    resolved = 0
 
     for txn in transactions:
         description = str(txn.get("description") or "").strip()
@@ -171,6 +219,11 @@ def process_executive_transactions(
             stats["unresolved"] += 1
             continue
 
+        # Prefer OGE product classification over stale cache labels.
+        asset_type = classify_oge_asset_type(description)
+        if asset_type == "Stock" and resolution.asset_type not in (None, "", "Stock"):
+            asset_type = resolution.asset_type
+
         amount = str(txn.get("amount") or "").strip()
         trade_type = _normalize_trade_type(txn.get("type"))
         owner = "Self"
@@ -186,55 +239,66 @@ def process_executive_transactions(
             "disclosure_date": trade_date,
             "type": trade_type,
             "amount": amount,
-            "asset_type": resolution.asset_type,
+            "asset_type": asset_type,
             "asset_description": description,
-            "notes": (
-                f"Source: Open Cabinet OGE 278-T; instrument: {resolution.asset_type}"
-            ),
+            "notes": f"Source: Open Cabinet OGE 278-T; instrument: {asset_type}",
         }
+        key = _trade_conflict_key(trade_record)
+        if key in trade_by_key:
+            stats["duplicates"] += 1
+        trade_by_key[key] = trade_record
+        resolved += 1
 
-        if dry_run:
-            stats["inserted"] += 1
-            continue
+        if resolution.source != "cache" and resolution.canonical_description:
+            cache_updates[resolution.canonical_description] = {
+                "canonical_description": resolution.canonical_description,
+                "ticker": resolution.ticker,
+                "source": resolution.source,
+                "confidence": resolution.confidence,
+                "asset_type": asset_type,
+                "resolved_at": datetime.now(timezone.utc).isoformat(),
+            }
+            cache[resolution.canonical_description] = cache_updates[
+                resolution.canonical_description
+            ]
 
-        try:
-            if resolution.source != "cache":
-                upsert_og_asset_cache_entry(
-                    supabase_client,
-                    canonical_description=resolution.canonical_description,
-                    ticker=resolution.ticker,
-                    source=resolution.source,
-                    confidence=resolution.confidence,
-                    asset_type=resolution.asset_type,
-                )
-                cache[resolution.canonical_description] = {
-                    "canonical_description": resolution.canonical_description,
-                    "ticker": resolution.ticker,
-                    "source": resolution.source,
-                    "confidence": resolution.confidence,
-                    "asset_type": resolution.asset_type,
-                }
+    if dry_run:
+        stats["inserted"] = len(trade_by_key)
+        stats["cache_upserts"] = len(cache_updates)
+        return stats
 
-            result = (
-                supabase_client.supabase.table("congress_trades")
-                .upsert(
-                    trade_record,
-                    on_conflict="politician_id,ticker,transaction_date,amount,type,owner",
-                )
-                .execute()
-            )
-            if result.data:
-                stats["inserted"] += 1
-            else:
-                stats["duplicates"] += 1
-        except Exception as exc:
-            stats["errors"] += 1
-            logger.error(
-                "Failed to insert executive trade %s / %s: %s",
-                resolution.ticker,
-                trade_date,
-                exc,
-            )
+    try:
+        stats["cache_upserts"] = _upsert_batches(
+            supabase_client,
+            table="og_asset_ticker_map",
+            rows=list(cache_updates.values()),
+            on_conflict="canonical_description",
+        )
+    except Exception as exc:
+        stats["errors"] += 1
+        logger.error("Failed batch upsert for og_asset_ticker_map: %s", exc)
+
+    trade_rows = list(trade_by_key.values())
+    try:
+        stats["inserted"] = _upsert_batches(
+            supabase_client,
+            table="congress_trades",
+            rows=trade_rows,
+            on_conflict="politician_id,ticker,transaction_date,amount,type,owner",
+        )
+        logger.info(
+            "Resolved %d executive rows into %d unique upserts "
+            "(skipped_bond=%d unresolved=%d in-batch-dupes=%d)",
+            resolved,
+            stats["inserted"],
+            stats["skipped_bond"],
+            stats["unresolved"],
+            stats["duplicates"],
+        )
+    except Exception as exc:
+        stats["errors"] += 1
+        logger.error("Failed batch upsert for congress_trades: %s", exc)
+        raise
 
     return stats
 
@@ -284,7 +348,8 @@ def fetch_executive_trades_job() -> None:
         message = (
             f"Executive trades: inserted={stats['inserted']}, "
             f"skipped_bond={stats['skipped_bond']}, unresolved={stats['unresolved']}, "
-            f"duplicates={stats['duplicates']}, errors={stats['errors']}"
+            f"duplicates={stats['duplicates']}, cache_upserts={stats.get('cache_upserts', 0)}, "
+            f"errors={stats['errors']}"
         )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
         mark_job_completed(job_id, target_date, message)

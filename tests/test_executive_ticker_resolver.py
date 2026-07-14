@@ -522,6 +522,84 @@ def test_collect_unresolved_names_dedupes_and_skips(
     assert priority == 0
 
 
+def test_process_executive_transactions_batches_upserts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "executive_ticker_resolver.resolve_from_securities",
+        lambda company_name: None,
+    )
+
+    upsert_calls: list[tuple[str, list]] = []
+
+    class _Table:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def select(self, *_args: object, **_kwargs: object) -> "_Table":
+            return self
+
+        def upsert(self, rows: list, on_conflict: str = "") -> "_Table":
+            upsert_calls.append((self.name, list(rows)))
+            return self
+
+        def execute(self) -> MagicMock:
+            result = MagicMock()
+            result.data = []
+            return result
+
+    class _Client:
+        def __init__(self) -> None:
+            self.supabase = MagicMock()
+            self.supabase.table.side_effect = lambda name: _Table(name)
+
+    client = _Client()
+    transactions = [
+        {
+            "description": "BANK OF AMERICA CORPORATION - BAC",
+            "ticker": "BAC",
+            "type": "Purchase",
+            "date": "2026-03-18",
+            "amount": "$1,001 - $15,000",
+        },
+        {
+            "description": "AAR CORP",
+            "ticker": None,
+            "type": "Purchase",
+            "date": "2026-03-18",
+            "amount": "$1,001 - $15,000",
+        },
+        {
+            # Same conflict key as first — counts as in-batch duplicate.
+            "description": "BANK OF AMERICA CORPORATION - BAC",
+            "ticker": "BAC",
+            "type": "Purchase",
+            "date": "2026-03-18",
+            "amount": "$1,001 - $15,000",
+        },
+    ]
+
+    # Pretend AAR resolves via open_cabinet once we force a ticker.
+    transactions[1]["ticker"] = "AIR"
+
+    stats = process_executive_transactions(
+        client,
+        transactions,
+        politician_id=999,
+        party="Republican",
+        state="US",
+        dry_run=False,
+    )
+
+    assert stats["inserted"] == 2  # unique conflict keys
+    assert stats["duplicates"] == 1
+    tables = [name for name, _ in upsert_calls]
+    assert "congress_trades" in tables
+    congress_batches = [rows for name, rows in upsert_calls if name == "congress_trades"]
+    assert len(congress_batches) == 1
+    assert len(congress_batches[0]) == 2
+
+
 def test_congress_trades_template_includes_executive_chamber() -> None:
     template_path = (
         Path(__file__).resolve().parents[1]
