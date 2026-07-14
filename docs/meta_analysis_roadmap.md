@@ -12,6 +12,7 @@ This document tracks the multi-layer meta-analysis program and keeps the next ph
 | Doc | Purpose |
 |-----|---------|
 | [`docs/ROADMAP.md`](ROADMAP.md) | **Master plan** — prioritized pillars, decision surfaces, sequencing |
+| [`docs/INSIGHTS.md`](INSIGHTS.md) | Human theses + **Decide-layer job map** (meta vs thesis eval vs queue review — table + mermaid) |
 | [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) | Ops cheat sheet: catch-up after outage, one-command backfill |
 | [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) | ETF group + ticker analysis jobs, prompts, storage |
 | [`docs/ETF_WATCHTOWER.md`](ETF_WATCHTOWER.md) | Holdings ingestion into Research |

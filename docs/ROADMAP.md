@@ -6,7 +6,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 | Doc | Relationship to this one |
 |-----|--------------------------|
 | [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | **The active implementation brief** (created 2026-06-11, after Phases A–F shipped): stance provenance, dilution watch (shares-outstanding + EDGAR filings), confluence scorer. Start there for current work. |
-| [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads (`/insights`, Research `ticker_theses`). Due-for-review + advisory `llm_reply` eval job. Not Sector Insights; not fund `fund_thesis`. |
+| [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads + **Decide-layer job map** (meta vs Insights eval vs Action Queue review — table + mermaid). Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
 | [`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md) | Infra status for the AI task queue. Any new LLM job in this plan should be queue-managed. |
 | [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md) | How the Action Queue / market brief / enrichment currently fit together. |
@@ -64,6 +64,9 @@ flowchart LR
 The feedback-loop confusion of early 2026 came from repeatedly enriching layer 2 (sector priors,
 regime fusion — all good work) while the loop never **terminated** anywhere: no grader (layer 4)
 and no surface a human reads daily (layer 3 is one card among ~15 on the dashboard).
+
+**Decide-layer job map** (meta vs Insights eval vs Action Queue review vs fund thesis — table +
+flow mermaid, circularity guards): [`INSIGHTS.md` → Analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for).
 
 ## Key findings from the 2026-06-09 design review
 

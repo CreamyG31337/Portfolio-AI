@@ -105,7 +105,7 @@ Run the right test suite based on what you're changing (both suites use the root
 ## Meta Analysis (market → sector → ticker)
 
 - **North star:** human-in-the-loop buy/sell *ideas* from layered evidence (not auto-trading). Phased — see `docs/meta_analysis_roadmap.md`
-- **Human theses:** Insights (`/insights`, Research `ticker_theses`) — see `docs/INSIGHTS.md`. Do not confuse with Sector Insights (`/sector_insights`) or fund `fund_thesis`.
+- **Human theses:** Insights (`/insights`, Research `ticker_theses`) — see `docs/INSIGHTS.md` (Decide-layer job map: meta vs thesis eval vs queue review). Do not confuse with Sector Insights (`/sector_insights`) or fund `fund_thesis`.
 - Pipeline: `etf_watchtower → etf_holdings_log (Research)` → `etf_group_analysis → research_articles` → `sector_meta_analysis → /sector_insights` → `ticker_meta_analysis`
 - **Do not** read Supabase `etf_holdings_log` (dropped May 2026 — holdings live in Research DB)
 - Catch-up after outage: `python web_dashboard/scripts/backfill_etf_sector_meta.py` — see `docs/ETF_SECTOR_META_OPS.md`

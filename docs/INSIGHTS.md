@@ -91,16 +91,104 @@ archive weak ETF bootstrap drafts rather than rewriting.
 
 Smoke eval one ticker: `python scripts/smoke_thesis_eval.py COST`
 
-## Overlap — do not confuse
+## Analysis layers — what each pass is for
 
-| Feature | What it is |
-|---------|------------|
-| Sector Insights `/sector_insights` | ETF/sector meta surface |
+Roadmap’s Collect → Synthesize → Decide → Learn chart is the **pipeline** mental model
+([`ROADMAP.md`](ROADMAP.md)). This section is the **Decide-layer job map**: three LLM
+comparators and two presentation surfaces that look similar but answer different questions.
+Do not add a fourth LLM pass on the same evidence without retiring one of these.
+
+### Comparison table
+
+| Layer | Object under review | Question | Writes | Reads for LLM? | Human clears? |
+|-------|---------------------|----------|--------|----------------|---------------|
+| **`ticker_meta_analysis`** | System synthesis of artifacts | “What does *automated* evidence say?” | Research `ticker_meta_analysis` (overwrite per ticker) | Yes — multi-artifact bundle (incl. human theses when gated) | No — regenerates on schedule |
+| **`insights_thesis_evaluation`** | One human thesis thread | “Does *this claim* still hold vs stored research?” | `thesis_entries.llm_reply` only | Yes — thesis + **already-saved** meta/analysis (no re-run) | Yes — human `review` bumps `last_reviewed_at` |
+| **`action_queue_ai_review`** | One mechanical queue row | “Is this *BUY/SELL/RISK/WATCH* aligned with research?” | Action-queue review rows (fund × ticker × signal date) | Yes — queue item + research context | N/A — mechanical action still from signals |
+| **Fund `thesis_update_job`** | Fund philosophy | “What’s the *book-level* thesis?” | Supabase `fund_thesis*` | Yes | Fund editors |
+| **Sector Insights** | Sector / ETF meta | “What’s rotating at the sector layer?” | `sector_meta_analysis` UI | Meta jobs | N/A |
+| **Today / Ideas (R2)** | Attention routing | “What deserves a click *today*?” | Nothing new — reads due/TENSION | **No LLM** | Human reviews via `/insights` |
+
+Presentation (Today badges, Ideas `thesis_attention`) is **not** another analysis layer.
+`stance_history` is the planned Learn ledger — Insights does **not** write it in v1 (R3 optional).
+
+### Data-flow chart
+
+```mermaid
+flowchart TB
+    subgraph Collect["Evidence / sources"]
+        SIG["signal_analysis"]
+        TA["ticker_analysis"]
+        ART["research_articles · social · etc."]
+    end
+
+    subgraph Synthesize["System view"]
+        META["ticker_meta_analysis<br/>stance · narrative · contradictions"]
+    end
+
+    subgraph HumanLedger["Human claim ledger · Insights"]
+        TH["ticker_theses + thesis_entries"]
+        LLM_R["llm_reply · HOLDS / TENSION / …"]
+    end
+
+    subgraph Queue["Mechanical alerts"]
+        AQ["Action Queue<br/>BUY / SELL / RISK / WATCH"]
+        AQR["action_queue_ai_review<br/>ALIGNED / TENSION / STALE"]
+    end
+
+    subgraph Surfaces["Attention only · no new synthesis"]
+        TODAY["Today · theses_attention"]
+        IDEAS["Ideas · thesis_attention badge"]
+        UI["/insights UI + due queue"]
+    end
+
+    Collect --> META
+    Collect --> TA
+    TH -->|"R1 inject · family human_thesis<br/>holdings scope by default"| META
+    META -->|"read-only context"| LLM_R
+    TA -->|"read-only context"| LLM_R
+    TH --> LLM_R
+    SIG --> AQ
+    AQ --> AQR
+    META -.->|"enrich / context"| AQR
+    TA -.->|"enrich / context"| AQR
+
+    LLM_R --> TODAY
+    TH --> TODAY
+    TH --> IDEAS
+    LLM_R --> IDEAS
+    TH --> UI
+    LLM_R --> UI
+```
+
+### Circularity guards (keep these)
+
+Meta can ingest theses (R1); eval can read meta. That is deliberate tension, not a second meta.
+
+| Guard | Why |
+|-------|-----|
+| Eval does **not** bump `last_reviewed_at` or flip disposition | AI cannot “clear” due; humans must |
+| Eval does **not** re-run meta | Cheap second opinion on *stored* research |
+| `META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings` default | Limits meta refresh blast radius + loop chatter |
+| Weak / bootstrap drafts labeled in the meta bundle | Stops SearXNG noise from laundering into stance |
+| Today / Ideas only **surface** due + TENSION | No extra LLM cost for attention |
+| Do not expand to more synthesis jobs lightly | Same ticker can already see moat draft → meta → eval |
+
+**Smell test:** if you are not reading the Insights thread or queue review, extra LLM passes on that ticker have zero benefit — archive weak theses or pause eval instead of adding prompts.
+
+### Naming — do not confuse
+
+| Name in UI / jobs | Actual thing |
+|-------------------|--------------|
+| Insights `/insights` | Human ticker thesis threads (this doc) |
+| Sector Insights `/sector_insights` | ETF / sector meta surface |
 | `thesis_update_job` / `fund_thesis` | Fund-level philosophy in Supabase |
-| `action_queue_ai_review` | Queue row vs research; different table/prompt |
+| `insights_thesis_evaluation` | Thesis ↔ research advisory `llm_reply` |
+| `action_queue_ai_review` | Queue row ↔ research; different table/prompt |
 | `stance_history` | Automated stance ledger — Insights does not write it in v1 |
 
 ## Related
 
-- Roadmap Decide layer + backlog (meta injection, Today/Ideas surfacing): [`docs/ROADMAP.md`](ROADMAP.md)
+- Roadmap Collect→Learn + Decide backlog: [`docs/ROADMAP.md`](ROADMAP.md)
 - Research loop screen map: [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md)
+- Meta program (market → sector → ticker): [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md)

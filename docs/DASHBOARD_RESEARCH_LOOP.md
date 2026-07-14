@@ -57,8 +57,12 @@ Insights (`/insights`) is **not** Sector Insights (`/sector_insights`). Thesis e
 (`insights_thesis_evaluation`) posts advisory `llm_reply` entries; it does not update
 Action Queue review rows. See [`docs/INSIGHTS.md`](INSIGHTS.md).
 
+For the full Decide-layer comparison (what each LLM pass is *for*, data-flow mermaid,
+circularity guards): [`INSIGHTS.md` → Analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for).
+
 ## Related docs
 
+- [Insights / analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for)
 - [ETF / ticker AI](../docs/ETF_AI_ANALYSIS_SYSTEM.md)
 - [AI research system](../web_dashboard/AI_RESEARCH_SYSTEM.md)
 - [AGENTS.md](../AGENTS.md) — testing and conventions
