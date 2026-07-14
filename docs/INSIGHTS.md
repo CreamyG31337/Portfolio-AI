@@ -69,7 +69,7 @@ Prompt: `INSIGHTS_THESIS_EVALUATION_PROMPT` in `web_dashboard/ai_prompts.py`.
 | Insights UI / due queue / eval job | Shipped |
 | Ticker evidence timeline | Shipped (`fetch_thesis_timeline_events`) |
 | **`ticker_meta_analysis` artifact bundle** | **Shipped (R1)** — family `human_thesis`; default scope **production holdings only** via `META_ANALYSIS_HUMAN_THESIS` / `META_ANALYSIS_HUMAN_THESIS_SCOPE` |
-| Today / Ideas surfacing | Backlog R2 |
+| **Today / Ideas surfacing** | **Shipped (R2)** — Today `theses_attention`; Ideas `thesis_attention` badges; `/insights?thesis=` deep links |
 | `stance_history` | Not written (R3 optional) |
 
 Env (see `web_dashboard/env.example`):

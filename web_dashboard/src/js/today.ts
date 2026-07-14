@@ -64,6 +64,19 @@ interface CongressHerd {
   watched?: boolean;
 }
 
+interface ThesisAttention {
+  id: string;
+  ticker: string;
+  title?: string;
+  disposition?: string;
+  intent?: string;
+  review_status?: string | null;
+  llm_verdict?: string | null;
+  is_weak?: boolean;
+  age_days?: number | null;
+  attention_reasons?: string[];
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
@@ -75,6 +88,7 @@ interface Briefing {
   dilution_alerts?: DilutionAlert[];
   filing_alerts?: FilingAlert[];
   confluence_events?: ConfluenceEvent[];
+  theses_attention?: ThesisAttention[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -160,6 +174,39 @@ async function loadBriefing(): Promise<void> {
       `<h2 class="text-lg font-semibold mb-2">Market regime</h2>
        <p class="text-sm">${data.market_brief_headline || "No brief yet"}</p>
        <p class="text-xs text-text-secondary mt-1">Regime: <strong>${regime}</strong></p>`
+    );
+
+    const theses = data.theses_attention || [];
+    const reasonChip = (r: string): string => {
+      const k = r.toLowerCase();
+      if (k === "tension" || k === "stale_thesis") {
+        return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400">${k}</span>`;
+      }
+      if (k === "stale" || k === "weak") {
+        return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-red-500/40 text-red-600">${k}</span>`;
+      }
+      return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-border text-text-secondary">${k}</span>`;
+    };
+    showSection(
+      "today-theses",
+      `<h2 class="text-lg font-semibold mb-2">Theses due / in tension <span class="text-xs font-normal text-text-secondary">(Insights)</span></h2>
+       ${
+         theses.length
+           ? theses
+               .slice(0, 12)
+               .map((t) => {
+                 const reasons = (t.attention_reasons || []).map(reasonChip).join("");
+                 const href = `/insights?thesis=${encodeURIComponent(t.id)}`;
+                 return `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="${href}" class="text-accent hover:underline font-semibold">${t.ticker}</a>
+            <span class="text-xs text-text-secondary ml-1">${t.disposition || ""} · ${t.intent || ""}</span>
+            ${reasons}
+            <span class="block text-xs text-text-secondary mt-0.5">${t.title || ""}</span>
+          </div>`;
+               })
+               .join("")
+           : `<p class="text-sm text-text-secondary">Nothing due or in tension. <a href="/insights" class="text-accent underline">Open Insights</a></p>`
+       }`
     );
 
     const flips = data.stance_flips || [];

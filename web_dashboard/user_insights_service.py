@@ -866,3 +866,146 @@ def ticker_has_recent_active_thesis(
         if (now_ts - updated).total_seconds() <= cutoff_secs:
             return True
     return False
+
+
+ATTENTION_LLM_VERDICTS = frozenset({"TENSION", "STALE_THESIS"})
+
+
+def list_theses_attention(
+    pg: Any,
+    *,
+    soft_days: int = DEFAULT_SOFT_DUE_DAYS,
+    hard_days: int = DEFAULT_HARD_STALE_DAYS,
+    limit: int = 40,
+    now: datetime | None = None,
+) -> list[dict[str, Any]]:
+    """Theses that need human attention: due/stale/weak and/or LLM TENSION/STALE_THESIS.
+
+    Used by Today briefing and Ideas badges (ROADMAP §2.6 R2). Deduped by thesis id.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+
+    for row in list_theses_due(
+        pg, soft_days=soft_days, hard_days=hard_days, include_weak_always=True, limit=limit, now=now
+    ):
+        tid = str(row.get("id") or "")
+        if not tid:
+            continue
+        reasons: list[str] = []
+        if row.get("is_weak"):
+            reasons.append("weak")
+        rs = row.get("review_status")
+        if rs:
+            reasons.append(str(rs))
+        row = dict(row)
+        row["attention_reasons"] = reasons or ["due_for_review"]
+        row["llm_verdict"] = row.get("llm_verdict")
+        by_id[tid] = row
+
+    try:
+        tension_rows = pg.execute_query(
+            """
+            WITH latest_llm AS (
+                SELECT DISTINCT ON (thesis_id)
+                       thesis_id, body, metadata, created_at
+                FROM thesis_entries
+                WHERE entry_kind = 'llm_reply'
+                ORDER BY thesis_id, created_at DESC
+            )
+            SELECT t.id, t.ticker, t.title, t.disposition, t.intent, t.status,
+                   t.created_by, t.created_at, t.updated_at, t.last_reviewed_at,
+                   ll.metadata AS llm_metadata,
+                   ll.body AS llm_body,
+                   UPPER(COALESCE(ll.metadata->>'verdict', '')) AS llm_verdict
+            FROM ticker_theses t
+            JOIN latest_llm ll ON ll.thesis_id = t.id
+            WHERE t.status = 'active'
+              AND UPPER(COALESCE(ll.metadata->>'verdict', '')) IN ('TENSION', 'STALE_THESIS')
+            ORDER BY ll.created_at DESC
+            LIMIT %s
+            """,
+            (max(1, min(limit, 100)),),
+        )
+    except Exception as exc:
+        logger.warning("list_theses_attention llm_reply scan failed: %s", exc)
+        tension_rows = []
+
+    for raw in tension_rows or []:
+        row = _serialize_row(dict(raw))
+        tid = str(row.get("id") or "")
+        if not tid:
+            continue
+        verdict = str(row.get("llm_verdict") or "").upper()
+        existing = by_id.get(tid)
+        if existing:
+            reasons = list(existing.get("attention_reasons") or [])
+            if verdict and verdict not in reasons:
+                reasons.append(verdict.lower())
+            existing["attention_reasons"] = reasons
+            existing["llm_verdict"] = verdict
+            if row.get("llm_body") and not existing.get("llm_body"):
+                existing["llm_body"] = row.get("llm_body")
+            continue
+        reviewed = thesis_reviewed_at(row)
+        now_ts = now or datetime.now(UTC)
+        age_days = None
+        if reviewed is not None:
+            age_days = round((now_ts - reviewed).total_seconds() / 86400.0, 1)
+        weak = is_weak_thesis(title=str(row.get("title") or ""))
+        reasons = [verdict.lower()] if verdict else ["tension"]
+        if weak:
+            reasons.insert(0, "weak")
+        row["review_status"] = classify_due_status(
+            reviewed, soft_days=soft_days, hard_days=hard_days, now=now_ts
+        )
+        row["is_weak"] = weak
+        row["age_days"] = age_days
+        row["attention_reasons"] = reasons
+        by_id[tid] = row
+
+    out = list(by_id.values())
+    # Priority: tension/stale_thesis, then weak, then stale, then due; older first
+    def _rank(r: dict[str, Any]) -> tuple[int, int, float]:
+        reasons = {str(x).lower() for x in (r.get("attention_reasons") or [])}
+        pri = 3
+        if "tension" in reasons or "stale_thesis" in reasons:
+            pri = 0
+        elif "weak" in reasons:
+            pri = 1
+        elif "stale" in reasons:
+            pri = 2
+        return (pri, 0 if r.get("is_weak") else 1, -(r.get("age_days") or 0))
+
+    out.sort(key=_rank)
+    return out[: max(1, min(limit, 100))]
+
+
+def thesis_attention_by_ticker(
+    pg: Any,
+    tickers: list[str],
+    *,
+    limit: int = 40,
+) -> dict[str, list[dict[str, Any]]]:
+    """Map UPPER ticker → attention thesis rows (for Ideas badges)."""
+    wanted = {_normalize_ticker(t) for t in tickers if t and str(t).strip()}
+    if not wanted:
+        return {}
+    rows = list_theses_attention(pg, limit=limit)
+    out: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        t = _normalize_ticker(str(row.get("ticker") or ""))
+        if t not in wanted:
+            continue
+        out.setdefault(t, []).append(
+            {
+                "thesis_id": str(row.get("id")),
+                "title": row.get("title"),
+                "disposition": row.get("disposition"),
+                "intent": row.get("intent"),
+                "review_status": row.get("review_status"),
+                "llm_verdict": row.get("llm_verdict"),
+                "is_weak": bool(row.get("is_weak")),
+                "attention_reasons": row.get("attention_reasons") or [],
+            }
+        )
+    return out

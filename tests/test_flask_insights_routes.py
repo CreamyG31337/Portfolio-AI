@@ -133,6 +133,24 @@ def test_list_insights_due_api(client, auth_ok):
 
 
 @skip_without_plotly
+def test_list_insights_attention_api(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    rows = [{
+        "id": "t1",
+        "ticker": "MSFT",
+        "llm_verdict": "TENSION",
+        "attention_reasons": ["tension"],
+    }]
+    with patch("routes.insights_routes.PostgresClient", return_value=MagicMock()), patch(
+        "user_insights_service.list_theses_attention",
+        return_value=rows,
+    ):
+        resp = client.get("/api/insights/attention")
+    assert resp.status_code == 200
+    assert resp.get_json()["data"][0]["llm_verdict"] == "TENSION"
+
+
+@skip_without_plotly
 def test_delete_insight_admin_only(client, auth_ok):
     from user_insights_service import ThesisPermissionError
 

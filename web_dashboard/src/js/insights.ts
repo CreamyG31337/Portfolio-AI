@@ -365,5 +365,18 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("insights-filter-intent")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-disposition")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-ticker")?.addEventListener("change", () => void loadTheses());
-  void loadTheses();
+
+  const params = new URLSearchParams(window.location.search);
+  const deepThesis = (params.get("thesis") || window.location.hash.replace(/^#/, "") || "").trim();
+  const deepTicker = (params.get("ticker") || "").trim().toUpperCase();
+  if (deepTicker) {
+    const input = document.getElementById("insights-filter-ticker") as HTMLInputElement | null;
+    if (input) input.value = deepTicker;
+  }
+  void (async () => {
+    await loadTheses();
+    if (deepThesis) {
+      await openDetail(deepThesis);
+    }
+  })();
 });

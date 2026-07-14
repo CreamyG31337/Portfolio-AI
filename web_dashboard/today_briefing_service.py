@@ -178,6 +178,14 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: movers/dividends failed: %s", exc)
 
+    theses_attention: list[dict[str, Any]] = []
+    try:
+        from user_insights_service import list_theses_attention
+
+        theses_attention = list_theses_attention(pg, limit=20)
+    except Exception as exc:
+        logger.warning("Today briefing: theses attention failed: %s", exc)
+
     return {
         "market_regime": regime,
         "market_brief_headline": (brief_row or {}).get("headline"),
@@ -189,6 +197,7 @@ def build_today_briefing(
         "dilution_alerts": dilution_alerts,
         "filing_alerts": filing_alerts,
         "confluence_events": confluence_events,
+        "theses_attention": theses_attention,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),

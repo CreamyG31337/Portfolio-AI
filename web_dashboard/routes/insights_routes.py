@@ -95,6 +95,26 @@ def list_insights_due_api():
         return jsonify({"error": str(exc)}), 500
 
 
+@insights_bp.route("/api/insights/attention", methods=["GET"])
+@require_auth
+def list_insights_attention_api():
+    """Due/stale/weak + LLM TENSION/STALE_THESIS (Today/Ideas shared source)."""
+    try:
+        from user_insights_service import list_theses_attention
+
+        pg = PostgresClient()
+        rows = list_theses_attention(
+            pg,
+            soft_days=request.args.get("soft_days", default=14, type=int) or 14,
+            hard_days=request.args.get("hard_days", default=30, type=int) or 30,
+            limit=request.args.get("limit", default=40, type=int) or 40,
+        )
+        return jsonify({"data": rows})
+    except Exception as exc:
+        logger.error("insights attention list failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
 @insights_bp.route("/api/insights", methods=["POST"])
 @require_auth
 def create_insight_api():

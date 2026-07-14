@@ -1,5 +1,16 @@
 export {};
 
+interface ThesisAttentionFlag {
+  thesis_id: string;
+  title?: string;
+  disposition?: string;
+  intent?: string;
+  review_status?: string | null;
+  llm_verdict?: string | null;
+  is_weak?: boolean;
+  attention_reasons?: string[];
+}
+
 interface IdeaRow {
   id: string;
   title: string;
@@ -8,6 +19,7 @@ interface IdeaRow {
   relevance_score?: number;
   tickers?: string[];
   summary?: string;
+  thesis_attention?: ThesisAttentionFlag[];
 }
 
 async function triage(articleId: string, status: "accepted" | "dismissed" | "snoozed", tickers: string[]): Promise<boolean> {
@@ -29,6 +41,22 @@ async function triage(articleId: string, status: "accepted" | "dismissed" | "sno
   return true;
 }
 
+function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {
+  if (!flags?.length) return "";
+  return flags
+    .slice(0, 3)
+    .map((f) => {
+      const reasons = (f.attention_reasons || []).join(", ") || f.llm_verdict || f.review_status || "due";
+      const href = `/insights?thesis=${encodeURIComponent(f.thesis_id)}`;
+      return `<a href="${href}" class="inline-block ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400 hover:underline" title="${escapeAttr(f.title || "")}">thesis: ${escapeAttr(String(reasons))}</a>`;
+    })
+    .join("");
+}
+
+function escapeAttr(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
 function renderIdeas(rows: IdeaRow[]): void {
   const list = document.getElementById("ideas-list");
   const loading = document.getElementById("ideas-loading");
@@ -40,10 +68,11 @@ function renderIdeas(rows: IdeaRow[]): void {
   }
   list.innerHTML = rows.map((row) => {
     const tickers = (row.tickers || []).join(", ");
+    const badges = thesisBadgeHtml(row.thesis_attention);
     return `<article class="bg-dashboard-surface border border-border rounded-lg p-4">
       <h3 class="font-medium text-text-primary">${row.title}</h3>
       <p class="text-xs text-text-secondary mt-1">${row.article_type || ""} · ${row.source || ""} · score ${row.relevance_score ?? "—"}</p>
-      ${tickers ? `<p class="text-xs mt-1">Tickers: ${tickers}</p>` : ""}
+      ${tickers ? `<p class="text-xs mt-1">Tickers: ${tickers}${badges}</p>` : badges ? `<p class="text-xs mt-1">${badges}</p>` : ""}
       ${row.summary ? `<p class="text-sm mt-2 text-text-secondary line-clamp-3">${row.summary}</p>` : ""}
       <div class="flex gap-2 mt-3">
         <button type="button" data-action="accepted" data-id="${row.id}" data-tickers='${JSON.stringify(row.tickers || [])}'

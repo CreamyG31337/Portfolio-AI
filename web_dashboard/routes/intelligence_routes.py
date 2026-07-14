@@ -91,7 +91,30 @@ def ideas_inbox_api():
         pg = PostgresClient()
         limit = request.args.get("limit", default=50, type=int)
         rows = fetch_alpha_ideas(pg, limit=max(1, min(limit, 100)))
-        return jsonify({"data": _serialize_rows(rows)})
+        serialized = _serialize_rows(rows)
+        try:
+            from user_insights_service import thesis_attention_by_ticker
+
+            all_tickers: list[str] = []
+            for row in serialized:
+                for t in row.get("tickers") or []:
+                    all_tickers.append(str(t))
+            flags = thesis_attention_by_ticker(pg, all_tickers, limit=60)
+            for row in serialized:
+                row_flags: list[dict[str, Any]] = []
+                seen: set[str] = set()
+                for t in row.get("tickers") or []:
+                    key = str(t).upper().strip()
+                    for flag in flags.get(key) or []:
+                        tid = str(flag.get("thesis_id") or "")
+                        if tid and tid not in seen:
+                            seen.add(tid)
+                            row_flags.append(flag)
+                if row_flags:
+                    row["thesis_attention"] = row_flags
+        except Exception as att_exc:
+            logger.debug("ideas thesis attention enrich skipped: %s", att_exc)
+        return jsonify({"data": serialized})
     except Exception as exc:
         logger.error("ideas/inbox failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500

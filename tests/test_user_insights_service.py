@@ -347,3 +347,56 @@ def test_format_human_theses_for_meta_bundle_none_when_empty():
     pg = MagicMock()
     pg.execute_query.return_value = []
     assert format_human_theses_for_meta_bundle(pg, "ZZZZ") is None
+
+
+def test_list_theses_attention_merges_tension_verdicts():
+    from web_dashboard.user_insights_service import list_theses_attention
+
+    pg = MagicMock()
+    now = datetime(2026, 7, 14, tzinfo=UTC)
+    due_id = uuid4()
+    tension_id = uuid4()
+
+    def query_side_effect(*_args, **_kwargs):
+        sql = (_args[0] if _args else "") or ""
+        if "FROM ticker_theses t" in sql and "latest_llm" in sql:
+            return [
+                {
+                    "id": tension_id,
+                    "ticker": "MSFT",
+                    "title": "Cloud",
+                    "disposition": "bullish",
+                    "intent": "monitor",
+                    "status": "active",
+                    "created_at": now - timedelta(days=2),
+                    "updated_at": now - timedelta(days=2),
+                    "last_reviewed_at": now - timedelta(days=2),
+                    "llm_verdict": "TENSION",
+                    "llm_body": "Research conflicts.",
+                }
+            ]
+        if "FROM ticker_theses t" in sql:
+            return [
+                {
+                    "id": due_id,
+                    "ticker": "GLO.TO",
+                    "title": "[WEAK CONTEXT] thin",
+                    "status": "active",
+                    "created_at": now - timedelta(days=2),
+                    "last_reviewed_at": now - timedelta(days=2),
+                    "opening_body": "[WEAK CONTEXT] x",
+                    "opening_metadata": {"tags": ["weak_context"]},
+                    "entry_count": 1,
+                    "evidence_count": 0,
+                }
+            ]
+        return []
+
+    pg.execute_query.side_effect = query_side_effect
+    rows = list_theses_attention(pg, now=now, limit=20)
+    tickers = {r["ticker"] for r in rows}
+    assert "GLO.TO" in tickers
+    assert "MSFT" in tickers
+    msft = next(r for r in rows if r["ticker"] == "MSFT")
+    assert "tension" in [str(x).lower() for x in (msft.get("attention_reasons") or [])]
+    assert msft.get("llm_verdict") == "TENSION"

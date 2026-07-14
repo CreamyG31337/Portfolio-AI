@@ -260,18 +260,20 @@ Widen later with `META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings_or_recent` or `all`.
   into stance (short-ticker false matches taught this the hard way).
 - Keep naming distinct from fund philosophy (`Human ticker thesis` vs `fund_thesis`).
 
-#### Backlog R2 — Ideas / Today stale + contradiction surfacing
+#### Backlog R2 — Ideas / Today stale + contradiction surfacing — **shipped 2026-07**
 
-**Why later:** needs stable `llm_reply` verdicts from the eval job and product placement
-decisions (new Today block vs badge on existing rows).
+**Shipped:** Today block `theses_attention` (“Theses due / in tension”) from
+`list_theses_attention` (due/stale/weak + latest `llm_reply` `TENSION`/`STALE_THESIS`).
+Ideas inbox badges overlapping tickers via `thesis_attention` on idea rows — not a third
+inbox. Deep links: `/insights?thesis=<id>` (and `#id`) open the thread detail.
 
-**Design notes:**
+**Design notes (history):**
 
 - Today block candidate: “Theses due / in tension” from `list_theses_due` + latest
   `llm_reply.verdict in (TENSION, STALE_THESIS)`.
 - Ideas: badge tickers that already appear as discovery/queue items — avoid a third inbox.
-- Until R1 ships, rely on eval-job verdicts only; after R1, meta contradictions vs human
-  disposition become first-class.
+- After R1, meta contradictions vs human disposition can feed future work; R2 uses eval-job
+  verdicts + due queue.
 - Click-through to `/insights?thesis=…` for human `review` (still advisory).
 
 #### Backlog R3 — Optional stance ledger for thesis advice
@@ -489,8 +491,8 @@ flowchart TD
   daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
   and kept out of the briefing payload (panel loads async). Holdings-table column still open.
 - [x] **§2.6 Insights review loop v1** (2026-07): due-for-review UI (`GET /api/insights/due`),
-  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection shipped as R1
-  (holdings-scoped); Today/Ideas surfacing remains backlog (R2).
+  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection (R1, holdings-scoped)
+  + Today/Ideas attention surfacing (R2) shipped. Stance ledger for thesis advice remains R3.
 
 Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
 

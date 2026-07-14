@@ -164,3 +164,33 @@ def test_ideas_triage_api(client, auth_ok):
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
     mock_pg.execute_update.assert_called_once()
+
+
+@skip_without_plotly
+def test_ideas_inbox_enriches_thesis_attention(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    ideas = [{
+        "id": "a1",
+        "title": "Something about Costco",
+        "tickers": ["COST"],
+        "relevance_score": 0.9,
+    }]
+    flags = {
+        "COST": [{
+            "thesis_id": "t1",
+            "title": "Moat",
+            "llm_verdict": "TENSION",
+            "attention_reasons": ["tension"],
+        }]
+    }
+    with patch("routes.intelligence_routes.PostgresClient", return_value=MagicMock()), patch(
+        "routes.intelligence_routes.fetch_alpha_ideas",
+        return_value=ideas,
+    ), patch(
+        "user_insights_service.thesis_attention_by_ticker",
+        return_value=flags,
+    ):
+        resp = client.get("/api/ideas/inbox")
+    assert resp.status_code == 200
+    row = resp.get_json()["data"][0]
+    assert row["thesis_attention"][0]["llm_verdict"] == "TENSION"
