@@ -22,8 +22,40 @@ logger = logging.getLogger(__name__)
 
 WATCHLIST_V2_TABLE = "watched_tickers_v2"
 WATCHLIST_LEGACY_TABLE = "watched_tickers"
+VALID_PRIORITY_TIERS = frozenset({"A", "B", "C"})
+MAX_BULK_TICKERS = 40
 
 _STRICT_MODE: bool | None = None
+
+
+def normalize_ticker(ticker: str) -> str:
+    return (ticker or "").upper().strip()
+
+
+def normalize_priority_tier(tier: str | None, *, default: str = "B") -> str:
+    t = (tier or default).strip().upper()
+    return t if t in VALID_PRIORITY_TIERS else default
+
+
+def parse_ticker_list(raw: str | list[str] | None) -> list[str]:
+    """Split pasted text or list into unique uppercase tickers (order preserved)."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        parts = [str(x) for x in raw]
+    else:
+        import re
+
+        parts = re.split(r"[\s,;]+", str(raw))
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        t = normalize_ticker(p)
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return out
 
 
 def _is_strict_mode() -> bool:
@@ -116,3 +148,216 @@ def get_active_watchlist_tickers(
         fallback_if_empty=fallback_if_empty,
     )
     return sorted({row["ticker"] for row in rows if row.get("ticker")})
+
+
+def list_watchlist_for_fund(
+    supabase_client: Any,
+    fund: str,
+    *,
+    include_inactive: bool = False,
+) -> list[dict[str, Any]]:
+    """List v2 watchlist rows for one fund (optionally including inactive)."""
+    fund_s = (fund or "").strip()
+    if not fund_s:
+        return []
+    try:
+        query = supabase_client.supabase.table(WATCHLIST_V2_TABLE).select(
+            "fund, ticker, priority_tier, is_active, source, created_at"
+        ).eq("fund", fund_s)
+        if not include_inactive:
+            query = query.eq("is_active", True)
+        result = query.execute()
+        rows = _normalize_watchlist_rows(result.data or [], default_fund=fund_s)
+        rows.sort(key=lambda r: (0 if r.get("is_active") else 1, str(r.get("ticker") or "")))
+        return rows
+    except Exception as exc:
+        logger.warning("list_watchlist_for_fund failed fund=%s: %s", fund_s, exc)
+        return []
+
+
+def get_watchlist_status_for_fund(
+    supabase_client: Any,
+    *,
+    fund: str | None,
+    ticker: str,
+) -> dict[str, Any]:
+    """Fund-scoped status for ticker details (always returns a dict)."""
+    ticker_u = normalize_ticker(ticker)
+    fund_s = (fund or "").strip() or None
+    base: dict[str, Any] = {
+        "fund": fund_s,
+        "ticker": ticker_u,
+        "priority_tier": "B",
+        "is_active": False,
+        "source": None,
+        "created_at": None,
+        "in_watchlist": False,
+    }
+    if not ticker_u or not fund_s or not supabase_client:
+        return base
+    try:
+        result = (
+            supabase_client.supabase.table(WATCHLIST_V2_TABLE)
+            .select("fund, ticker, priority_tier, is_active, source, created_at")
+            .eq("fund", fund_s)
+            .eq("ticker", ticker_u)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows:
+            return base
+        row = _normalize_watchlist_rows(rows, default_fund=fund_s)[0]
+        active = bool(row.get("is_active"))
+        return {
+            "fund": fund_s,
+            "ticker": ticker_u,
+            "priority_tier": row.get("priority_tier") or "B",
+            "is_active": active,
+            "source": row.get("source"),
+            "created_at": row.get("created_at"),
+            "in_watchlist": active,
+        }
+    except Exception as exc:
+        logger.warning(
+            "get_watchlist_status_for_fund failed %s/%s: %s", fund_s, ticker_u, exc
+        )
+        return base
+
+
+def upsert_watchlist_ticker(
+    supabase_client: Any,
+    *,
+    fund: str,
+    ticker: str,
+    priority_tier: str = "B",
+    source: str = "manual",
+    is_active: bool = True,
+) -> dict[str, Any]:
+    """Ensure securities row exists, then upsert watched_tickers_v2.
+
+    Caller should pass a service-role Supabase client (RLS has no user writes).
+    """
+    fund_s = (fund or "").strip()
+    ticker_u = normalize_ticker(ticker)
+    if not fund_s or not ticker_u:
+        return {"ok": False, "ticker": ticker_u or ticker, "error": "fund and ticker required"}
+    tier = normalize_priority_tier(priority_tier)
+    try:
+        try:
+            from utils.ticker_utils import get_ticker_currency
+
+            currency = get_ticker_currency(ticker_u)
+        except Exception:
+            currency = "USD"
+        ensure = getattr(supabase_client, "ensure_ticker_in_securities", None)
+        if callable(ensure):
+            ok_sec = ensure(ticker_u, currency)
+            if ok_sec is False:
+                return {
+                    "ok": False,
+                    "ticker": ticker_u,
+                    "error": "failed to register ticker in securities",
+                }
+        supabase_client.supabase.table(WATCHLIST_V2_TABLE).upsert(
+            {
+                "fund": fund_s,
+                "ticker": ticker_u,
+                "priority_tier": tier,
+                "is_active": bool(is_active),
+                "source": (source or "manual")[:50],
+            },
+            on_conflict="fund,ticker",
+        ).execute()
+        return {"ok": True, "ticker": ticker_u, "priority_tier": tier, "source": source}
+    except Exception as exc:
+        logger.warning("upsert_watchlist_ticker failed %s/%s: %s", fund_s, ticker_u, exc)
+        return {"ok": False, "ticker": ticker_u, "error": str(exc)}
+
+
+def update_watchlist_item(
+    supabase_client: Any,
+    *,
+    fund: str,
+    ticker: str,
+    is_active: bool | None = None,
+    priority_tier: str | None = None,
+) -> dict[str, Any]:
+    """Patch is_active and/or priority_tier for an existing (fund, ticker) row."""
+    fund_s = (fund or "").strip()
+    ticker_u = normalize_ticker(ticker)
+    if not fund_s or not ticker_u:
+        return {"ok": False, "ticker": ticker_u or ticker, "error": "fund and ticker required"}
+    if is_active is None and priority_tier is None:
+        return {"ok": False, "ticker": ticker_u, "error": "nothing to update"}
+    patch: dict[str, Any] = {}
+    if is_active is not None:
+        patch["is_active"] = bool(is_active)
+    if priority_tier is not None:
+        patch["priority_tier"] = normalize_priority_tier(priority_tier)
+    try:
+        result = (
+            supabase_client.supabase.table(WATCHLIST_V2_TABLE)
+            .update(patch)
+            .eq("fund", fund_s)
+            .eq("ticker", ticker_u)
+            .execute()
+        )
+        if not (result.data or []):
+            # Row missing — upsert soft state if activating
+            if is_active is True:
+                return upsert_watchlist_ticker(
+                    supabase_client,
+                    fund=fund_s,
+                    ticker=ticker_u,
+                    priority_tier=patch.get("priority_tier", "B"),
+                    source="watchlist_ui",
+                    is_active=True,
+                )
+            return {"ok": False, "ticker": ticker_u, "error": "watchlist row not found"}
+        return {"ok": True, "ticker": ticker_u, **patch}
+    except Exception as exc:
+        logger.warning("update_watchlist_item failed %s/%s: %s", fund_s, ticker_u, exc)
+        return {"ok": False, "ticker": ticker_u, "error": str(exc)}
+
+
+def set_watchlist_active(
+    supabase_client: Any,
+    *,
+    fund: str,
+    ticker: str,
+    is_active: bool,
+) -> dict[str, Any]:
+    return update_watchlist_item(
+        supabase_client, fund=fund, ticker=ticker, is_active=is_active
+    )
+
+
+def upsert_watchlist_tickers_bulk(
+    supabase_client: Any,
+    *,
+    fund: str,
+    tickers: list[str],
+    priority_tier: str = "B",
+    source: str = "bulk_paste",
+) -> dict[str, Any]:
+    """Upsert many tickers; returns results map and failed list."""
+    parsed = parse_ticker_list(tickers)[:MAX_BULK_TICKERS]
+    results: dict[str, str] = {}
+    for t in parsed:
+        outcome = upsert_watchlist_ticker(
+            supabase_client,
+            fund=fund,
+            ticker=t,
+            priority_tier=priority_tier,
+            source=source,
+            is_active=True,
+        )
+        results[t] = "added" if outcome.get("ok") else "failed"
+    failed = sorted(t for t, r in results.items() if r != "added")
+    return {
+        "ok": not failed,
+        "results": results,
+        "failed_tickers": failed,
+        "added_count": sum(1 for r in results.values() if r == "added"),
+    }

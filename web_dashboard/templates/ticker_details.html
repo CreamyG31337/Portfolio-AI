@@ -516,7 +516,34 @@
 
 <!-- Watchlist Status Section -->
 <div id="watchlist-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <h2 class="text-xl font-bold mb-4 text-text-primary">📋 Watchlist Status</h2>
+    <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div>
+            <h2 class="text-xl font-bold text-text-primary">Watchlist</h2>
+            <p class="text-xs text-text-secondary mt-1">
+                Fund-scoped. For ASAP AI research, use Analyze below — add does not auto-queue jobs.
+                <a href="/watchlist" class="text-accent hover:underline">Manage watchlist</a>
+            </p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+            <label class="text-sm text-text-secondary flex items-center gap-1">
+                Tier
+                <select id="watchlist-tier-select"
+                    class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
+                    <option value="A">A</option>
+                    <option value="B" selected>B</option>
+                    <option value="C">C</option>
+                </select>
+            </label>
+            <button type="button" id="watchlist-add-btn"
+                class="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:opacity-90">
+                Add to watchlist
+            </button>
+            <button type="button" id="watchlist-remove-btn"
+                class="hidden px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary hover:bg-dashboard-background">
+                Remove
+            </button>
+        </div>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary">Status</div>

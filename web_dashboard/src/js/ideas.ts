@@ -1,3 +1,5 @@
+import { getCsrfHeaders } from "./csrf.js";
+
 export {};
 
 interface ThesisAttentionFlag {
@@ -22,11 +24,27 @@ interface IdeaRow {
   thesis_attention?: ThesisAttentionFlag[];
 }
 
+function getSelectedFund(): string | null {
+  const fromUi = (
+    window as unknown as { ui?: { getSelectedFund?: () => string | null } }
+  ).ui?.getSelectedFund?.();
+  if (fromUi) return fromUi;
+  const sel = document.getElementById("global-fund-select") as HTMLSelectElement | null;
+  const v = (sel?.value || "").trim();
+  if (!v || v.toLowerCase() === "all") return null;
+  return v;
+}
+
 async function triage(articleId: string, status: "accepted" | "dismissed" | "snoozed", tickers: string[]): Promise<boolean> {
-  const fund = (window as unknown as { ui?: { getSelectedFund?: () => string } }).ui?.getSelectedFund?.() || "TEST";
+  const fund = getSelectedFund();
+  if (status === "accepted" && tickers.length && !fund) {
+    alert("Select a fund in the sidebar before accepting into the watchlist.");
+    return false;
+  }
   const resp = await fetch("/api/ideas/triage", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
     body: JSON.stringify({ article_id: articleId, status, fund, tickers }),
   });
   if (!resp.ok) {

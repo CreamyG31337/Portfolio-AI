@@ -1,7 +1,15 @@
 import os
+from unittest.mock import MagicMock, patch
 
 import web_dashboard.watchlist_access as wa
-from web_dashboard.watchlist_access import get_active_watchlist_rows, get_active_watchlist_tickers
+from web_dashboard.watchlist_access import (
+    get_active_watchlist_rows,
+    get_active_watchlist_tickers,
+    get_watchlist_status_for_fund,
+    parse_ticker_list,
+    set_watchlist_active,
+    upsert_watchlist_ticker,
+)
 
 
 class _Result:
@@ -173,3 +181,65 @@ def test_no_fund_filter_returns_all_funds() -> None:
     assert len(rows) == 2
     tickers = {r["ticker"] for r in rows}
     assert tickers == {"AAPL", "MSFT"}
+
+
+def test_parse_ticker_list_dedupes() -> None:
+    assert parse_ticker_list("crm\nNOW, iren;CELH crm") == ["CRM", "NOW", "IREN", "CELH"]
+
+
+@patch("web_dashboard.watchlist_access.get_ticker_currency", create=True)
+def test_upsert_watchlist_ticker_calls_ensure_and_upsert(_currency) -> None:
+    _currency.side_effect = ImportError("use fallback path")
+    client = MagicMock()
+    client.ensure_ticker_in_securities.return_value = True
+    table = MagicMock()
+    client.supabase.table.return_value = table
+    table.upsert.return_value = table
+    table.execute.return_value = MagicMock(data=[{"ticker": "CRM"}])
+
+    with patch("utils.ticker_utils.get_ticker_currency", return_value="USD"):
+        result = upsert_watchlist_ticker(
+            client,
+            fund="Project Chimera",
+            ticker="crm",
+            priority_tier="B",
+            source="bulk_paste",
+        )
+    assert result["ok"] is True
+    assert result["ticker"] == "CRM"
+    client.ensure_ticker_in_securities.assert_called_once_with("CRM", "USD")
+    table.upsert.assert_called_once()
+    payload = table.upsert.call_args[0][0]
+    assert payload["fund"] == "Project Chimera"
+    assert payload["ticker"] == "CRM"
+    assert payload["source"] == "bulk_paste"
+
+
+def test_set_watchlist_active_updates() -> None:
+    client = MagicMock()
+    table = MagicMock()
+    client.supabase.table.return_value = table
+    table.update.return_value = table
+    table.eq.return_value = table
+    table.execute.return_value = MagicMock(data=[{"ticker": "NOW"}])
+
+    result = set_watchlist_active(
+        client, fund="Project Chimera", ticker="NOW", is_active=False
+    )
+    assert result["ok"] is True
+    table.update.assert_called_once_with({"is_active": False})
+
+
+def test_get_watchlist_status_for_fund_not_watched() -> None:
+    client = MagicMock()
+    table = MagicMock()
+    client.supabase.table.return_value = table
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.limit.return_value = table
+    table.execute.return_value = MagicMock(data=[])
+
+    status = get_watchlist_status_for_fund(client, fund="TEST", ticker="CELH")
+    assert status["in_watchlist"] is False
+    assert status["ticker"] == "CELH"
+    assert status["fund"] == "TEST"

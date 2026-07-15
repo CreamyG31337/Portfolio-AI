@@ -242,6 +242,13 @@ function initSchedulerBadge(): void {
 // Global Fund Selector URL Persistence
 // ============================================================================
 
+export function getSelectedFund(): string | null {
+    const selector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
+    const v = (selector?.value || '').trim();
+    if (!v || v.toLowerCase() === 'all') return null;
+    return v;
+}
+
 function initFundSelector(): void {
     const selector = document.getElementById('global-fund-select') as HTMLSelectElement | null;
     if (!selector) return;
@@ -270,6 +277,17 @@ function initFundSelector(): void {
     // Dispatch initial event so pages can sync to the selector state
     window.dispatchEvent(new CustomEvent('fundChanged', { detail: { fund: selector.value } }));
 }
+
+// Expose for Ideas / Watchlist / Today pages that are separate modules
+declare global {
+    interface Window {
+        ui?: {
+            getSelectedFund?: () => string | null;
+            [key: string]: unknown;
+        };
+    }
+}
+window.ui = { ...(window.ui || {}), getSelectedFund };
 
 // ============================================================================
 // Password visibility toggles

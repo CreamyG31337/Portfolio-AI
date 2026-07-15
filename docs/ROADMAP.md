@@ -205,6 +205,10 @@ The missing terminus for the alpha pipeline. New `/ideas` screen showing
 Persist decisions in a small Research-DB table (e.g. `idea_triage(article_id, status, decided_at, notes)`).
 Side effect: accept/dismiss clicks become labeled data for the article relevance scorer.
 
+**Manual watchlist (shipped 2026-07):** `/watchlist` + ticker-page Add/Remove for friend tips
+and ad-hoc names (bulk paste, soft-remove, tier). Do **not** route those through Ideas —
+Ideas stays discovery triage only.
+
 ### 2.3 Ticker dossier upgrade — *evidence timeline*
 
 On ticker details, render all artifacts on one chronological axis under the price chart:

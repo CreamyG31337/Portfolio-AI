@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Watchlist - Portfolio Dashboard{% endblock %}
+{% block page_title %}Watchlist{% endblock %}
+{% block page_subtitle %}Manage fund-scoped watched tickers{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto space-y-6">
+    <p class="text-sm text-text-secondary">
+        Add friend tips or names here. After adding, open the ticker and use
+        <strong>Analyze</strong> for ASAP AI research (not enqueued automatically).
+        Ideas Accept still adds discovery tickers separately.
+    </p>
+
+    <section class="bg-dashboard-surface border border-border rounded-lg p-4">
+        <h2 class="text-lg font-semibold text-text-primary mb-2">Bulk add</h2>
+        <p class="text-xs text-text-secondary mb-3">
+            Fund: <span id="watchlist-fund-label" class="font-semibold">—</span>
+            · one ticker per line (or comma-separated)
+        </p>
+        <textarea id="watchlist-bulk-input" rows="5"
+            class="w-full rounded-lg border border-border bg-dashboard-background text-text-primary text-sm p-3 mb-3"
+            placeholder="CRM&#10;NOW&#10;IREN&#10;CELH"></textarea>
+        <div class="flex flex-wrap items-center gap-3">
+            <label class="text-sm text-text-secondary flex items-center gap-2">
+                Tier
+                <select id="watchlist-bulk-tier"
+                    class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
+                    <option value="A">A</option>
+                    <option value="B" selected>B</option>
+                    <option value="C">C</option>
+                </select>
+            </label>
+            <button id="watchlist-bulk-add" type="button"
+                class="px-3 py-1.5 rounded-lg bg-accent text-white text-sm hover:opacity-90">
+                Add tickers
+            </button>
+            <label class="text-sm text-text-secondary flex items-center gap-2">
+                <input id="watchlist-show-inactive" type="checkbox" class="rounded border-border" />
+                Show inactive
+            </label>
+        </div>
+        <p id="watchlist-bulk-msg" class="text-sm mt-2 hidden"></p>
+    </section>
+
+    <section class="bg-dashboard-surface border border-border rounded-lg p-4">
+        <h2 class="text-lg font-semibold text-text-primary mb-2">
+            Active watchlist
+            <span id="watchlist-count" class="text-sm font-normal text-text-secondary"></span>
+        </h2>
+        <div id="watchlist-loading" class="text-sm text-text-secondary">Loading…</div>
+        <div id="watchlist-error" class="hidden text-sm text-theme-error-text mb-2"></div>
+        <div id="watchlist-empty" class="hidden text-sm text-text-secondary">
+            No tickers yet. Paste above or open a ticker page to add one.
+        </div>
+        <div id="watchlist-table-wrap" class="hidden overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border text-left text-text-secondary">
+                        <th class="py-2 pr-3">Ticker</th>
+                        <th class="py-2 pr-3">Tier</th>
+                        <th class="py-2 pr-3">Source</th>
+                        <th class="py-2 pr-3">Status</th>
+                        <th class="py-2 pr-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="watchlist-tbody"></tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/watchlist.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

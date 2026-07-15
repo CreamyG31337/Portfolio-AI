@@ -162,37 +162,23 @@ def ideas_triage_api():
 
         watchlist_results: dict[str, str] = {}
         if status == "accepted" and fund and tickers:
-            supabase = get_supabase_client_flask()
-            if supabase:
-                for t in tickers:
-                    ticker = str(t).upper().strip()
-                    if not ticker:
-                        continue
-                    try:
-                        # watched_tickers_v2.ticker has an FK to securities(ticker);
-                        # newly discovered tickers must be registered there first or
-                        # the watchlist upsert fails.
-                        try:
-                            from utils.ticker_utils import get_ticker_currency
+            from supabase_client import SupabaseClient
+            from watchlist_access import upsert_watchlist_ticker
 
-                            currency = get_ticker_currency(ticker)
-                        except Exception:
-                            currency = "USD"
-                        supabase.ensure_ticker_in_securities(ticker, currency)
-                        supabase.supabase.table("watched_tickers_v2").upsert(
-                            {
-                                "fund": fund,
-                                "ticker": ticker,
-                                "priority_tier": "B",
-                                "is_active": True,
-                                "source": "ideas_inbox",
-                            },
-                            on_conflict="fund,ticker",
-                        ).execute()
-                        watchlist_results[ticker] = "added"
-                    except Exception as wl_exc:
-                        logger.warning("watchlist upsert failed %s: %s", ticker, wl_exc)
-                        watchlist_results[ticker] = "failed"
+            write_client = SupabaseClient(use_service_role=True)
+            for t in tickers:
+                ticker = str(t).upper().strip()
+                if not ticker:
+                    continue
+                outcome = upsert_watchlist_ticker(
+                    write_client,
+                    fund=str(fund),
+                    ticker=ticker,
+                    priority_tier="B",
+                    source="ideas_inbox",
+                    is_active=True,
+                )
+                watchlist_results[ticker] = "added" if outcome.get("ok") else "failed"
 
         failed = sorted(t for t, r in watchlist_results.items() if r != "added")
         return jsonify({
@@ -203,6 +189,118 @@ def ideas_triage_api():
         })
     except Exception as exc:
         logger.error("ideas/triage failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/watchlist", methods=["GET"])
+@require_auth
+def watchlist_page():
+    return _nav_render("watchlist.html", "watchlist")
+
+
+def _require_fund_access(fund: str | None) -> tuple[str | None, Any]:
+    """Return (fund, error_response). error_response is a Flask response if ACL fails."""
+    fund_s = (fund or "").strip()
+    if not fund_s:
+        return None, (jsonify({"error": "fund is required"}), 400)
+    allowed = get_available_funds_flask()
+    if fund_s not in allowed:
+        return None, (jsonify({"error": f"No access to fund {fund_s}"}), 403)
+    return fund_s, None
+
+
+@intelligence_bp.route("/api/watchlist", methods=["GET"])
+@require_auth
+def watchlist_list_api():
+    try:
+        fund, err = _require_fund_access(request.args.get("fund"))
+        if err:
+            return err
+        include_inactive = request.args.get("include_inactive", "0") in ("1", "true", "yes")
+        from supabase_client import SupabaseClient
+        from watchlist_access import list_watchlist_for_fund
+
+        client = SupabaseClient(use_service_role=True)
+        rows = list_watchlist_for_fund(
+            client, fund or "", include_inactive=include_inactive
+        )
+        return jsonify({"data": _serialize_rows(rows), "fund": fund})
+    except Exception as exc:
+        logger.error("watchlist list failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/watchlist", methods=["POST"])
+@require_auth
+def watchlist_add_api():
+    try:
+        body = request.get_json(silent=True) or {}
+        fund, err = _require_fund_access(body.get("fund"))
+        if err:
+            return err
+        from watchlist_access import (
+            MAX_BULK_TICKERS,
+            normalize_priority_tier,
+            parse_ticker_list,
+            upsert_watchlist_tickers_bulk,
+        )
+        from supabase_client import SupabaseClient
+
+        tickers = body.get("tickers")
+        if isinstance(tickers, str):
+            parsed = parse_ticker_list(tickers)
+        else:
+            parsed = parse_ticker_list(tickers or [])
+        if not parsed:
+            return jsonify({"error": "tickers required"}), 400
+        if len(parsed) > MAX_BULK_TICKERS:
+            return jsonify({"error": f"max {MAX_BULK_TICKERS} tickers per request"}), 400
+        tier = normalize_priority_tier(body.get("priority_tier"))
+        source = str(body.get("source") or "watchlist_ui").strip()[:50] or "watchlist_ui"
+        client = SupabaseClient(use_service_role=True)
+        result = upsert_watchlist_tickers_bulk(
+            client,
+            fund=fund or "",
+            tickers=parsed,
+            priority_tier=tier,
+            source=source,
+        )
+        return jsonify(result)
+    except Exception as exc:
+        logger.error("watchlist add failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/watchlist/item", methods=["PATCH"])
+@require_auth
+def watchlist_item_api():
+    try:
+        body = request.get_json(silent=True) or {}
+        fund, err = _require_fund_access(body.get("fund"))
+        if err:
+            return err
+        ticker = str(body.get("ticker") or "").upper().strip()
+        if not ticker:
+            return jsonify({"error": "ticker required"}), 400
+        from supabase_client import SupabaseClient
+        from watchlist_access import update_watchlist_item
+
+        is_active = body.get("is_active")
+        if is_active is not None and not isinstance(is_active, bool):
+            is_active = str(is_active).lower() in ("1", "true", "yes")
+        priority_tier = body.get("priority_tier")
+        client = SupabaseClient(use_service_role=True)
+        outcome = update_watchlist_item(
+            client,
+            fund=fund or "",
+            ticker=ticker,
+            is_active=is_active,
+            priority_tier=str(priority_tier) if priority_tier is not None else None,
+        )
+        status = 200 if outcome.get("ok") else 400
+        return jsonify(outcome), status
+    except Exception as exc:
+        logger.error("watchlist item patch failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 

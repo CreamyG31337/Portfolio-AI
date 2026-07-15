@@ -134,9 +134,12 @@ interface EtfHoldingTrade {
 }
 
 interface WatchlistStatus {
+    fund?: string | null;
+    ticker?: string;
     is_active?: boolean;
     priority_tier?: string;
-    source?: string;
+    source?: string | null;
+    in_watchlist?: boolean;
 }
 
 interface TickerAnalysis {
@@ -1008,9 +1011,16 @@ async function loadTickerData(ticker: string): Promise<void> {
         }
         renderCongressTickerTrades(data.congress_trades ?? []);
         renderInsiderTrades(data.insider_trades ?? []);
-        if (data.watchlist_status) {
-            renderWatchlistStatus(data.watchlist_status);
-        }
+        renderWatchlistStatus(
+            data.watchlist_status || {
+                fund: getSelectedFund(),
+                ticker,
+                is_active: false,
+                in_watchlist: false,
+                priority_tier: "B",
+                source: null,
+            }
+        );
 
         // Load signals
         await loadSignals(ticker, false, seq);
@@ -2341,24 +2351,130 @@ function renderInsiderTradesPagination(): void {
     container.appendChild(nextLi);
 }
 
-// Render watchlist status
+// Render watchlist status + wire add/remove for the selected fund
 function renderWatchlistStatus(status: WatchlistStatus): void {
-    if (!status) {
-        return;
-    }
-
     const section = document.getElementById('watchlist-section');
     if (!section) return;
 
     section.classList.remove('hidden');
 
+    const inList = !!(status.in_watchlist ?? status.is_active);
     const statusEl = document.getElementById('watchlist-status');
     const tierEl = document.getElementById('watchlist-tier');
     const sourceEl = document.getElementById('watchlist-source');
+    const tierSelect = document.getElementById('watchlist-tier-select') as HTMLSelectElement | null;
+    const addBtn = document.getElementById('watchlist-add-btn') as HTMLButtonElement | null;
+    const removeBtn = document.getElementById('watchlist-remove-btn') as HTMLButtonElement | null;
 
-    if (statusEl) statusEl.textContent = status.is_active ? '✅ In Watchlist' : '❌ Not Active';
-    if (tierEl) tierEl.textContent = status.priority_tier || 'N/A';
-    if (sourceEl) sourceEl.textContent = status.source || 'N/A';
+    const fund = getSelectedFund();
+    if (statusEl) {
+        statusEl.textContent = !fund
+            ? 'Select a fund'
+            : inList
+              ? 'In Watchlist'
+              : 'Not on watchlist';
+    }
+    if (tierEl) tierEl.textContent = status.priority_tier || 'B';
+    if (sourceEl) sourceEl.textContent = status.source || '—';
+    if (tierSelect && status.priority_tier) {
+        tierSelect.value = status.priority_tier;
+    }
+    if (addBtn) {
+        addBtn.classList.toggle('hidden', inList || !fund);
+        addBtn.disabled = !fund || !currentTicker;
+        addBtn.onclick = () => void watchlistAddCurrent();
+    }
+    if (removeBtn) {
+        removeBtn.classList.toggle('hidden', !inList || !fund);
+        removeBtn.disabled = !fund || !currentTicker;
+        removeBtn.onclick = () => void watchlistRemoveCurrent();
+    }
+    if (tierSelect) {
+        tierSelect.onchange = () => {
+            if (inList) void watchlistPatchTier(tierSelect.value);
+        };
+    }
+}
+
+async function watchlistAddCurrent(): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) {
+        showToast('Select a fund before adding to the watchlist', 'error');
+        return;
+    }
+    const tierSelect = document.getElementById('watchlist-tier-select') as HTMLSelectElement | null;
+    try {
+        const resp = await fetch('/api/watchlist', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({
+                fund,
+                tickers: [currentTicker],
+                priority_tier: tierSelect?.value || 'B',
+                source: 'ticker_ui',
+            }),
+        });
+        const body = await resp.json().catch(() => ({})) as {
+            error?: string;
+            failed_tickers?: string[];
+        };
+        if (!resp.ok) {
+            showToast(body.error || 'Failed to add to watchlist', 'error');
+            return;
+        }
+        if (body.failed_tickers?.length) {
+            showToast(`Failed: ${body.failed_tickers.join(', ')}`, 'error');
+            return;
+        }
+        showToast(`${currentTicker} added to watchlist`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to add to watchlist', 'error');
+    }
+}
+
+async function watchlistRemoveCurrent(): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) return;
+    try {
+        const resp = await fetch('/api/watchlist/item', {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ fund, ticker: currentTicker, is_active: false }),
+        });
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({})) as { error?: string };
+            showToast(body.error || 'Failed to remove', 'error');
+            return;
+        }
+        showToast(`${currentTicker} removed from watchlist`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to remove from watchlist', 'error');
+    }
+}
+
+async function watchlistPatchTier(tier: string): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) return;
+    try {
+        const resp = await fetch('/api/watchlist/item', {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ fund, ticker: currentTicker, priority_tier: tier }),
+        });
+        if (!resp.ok) {
+            showToast('Failed to update tier', 'error');
+            return;
+        }
+        showToast(`Tier set to ${tier}`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to update tier', 'error');
+    }
 }
 
 // Load signals for ticker
