@@ -185,6 +185,8 @@ def test_watchlist_page_renders_fund_options(client, auth_ok):
             "nav_links": [],
             "current_page": "watchlist",
             "is_admin": False,
+            # Present in real nav context; page also passes allow_all_funds=False
+            "allow_all_funds": True,
         },
     ), patch(
         "routes.intelligence_routes.get_effective_user_email_flask",
@@ -197,6 +199,7 @@ def test_watchlist_page_renders_fund_options(client, auth_ok):
     assert "Project Chimera" in html
     assert "TEST" in html
     assert "(No funds available)" not in html
+    assert ">All Funds</option>" not in html
 
 
 @skip_without_plotly
