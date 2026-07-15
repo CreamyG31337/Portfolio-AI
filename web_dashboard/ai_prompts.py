@@ -340,6 +340,10 @@ TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs a
    - Reconcile human disposition/intent with automated artifacts; surface tension in contradictions when they conflict.
    - Drafts marked WEAK CONTEXT / bootstrap/llm_draft are low-trust bootstrap noise — do not let them dominate stance.
    - This is not fund-level philosophy (fund_thesis); it is a per-ticker human research thread.
+9. When the bundle includes Phase H2 risk/memory sections (**Insider cluster buys**, **Dilution / shares-outstanding flags**, **SEC filing-risk alerts**, **Confluence events**, **Prior stance and track record**):
+   - Reconcile clusters / dilution / filings / confluence with bullish drivers; if they conflict with a bullish lean, cite them in risk_flags and/or contradictions.
+   - Prior stance is yesterday's opinion — do not rubber-stamp it. Note a FLIP or a weak global source hit rate in contradictions when relevant.
+   - Missing H2 sections mean absent data, not clearance or a bullish green light.
 
 Return JSON only:
 {{

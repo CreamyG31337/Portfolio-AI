@@ -163,3 +163,84 @@ def record_stance_safe(
     except Exception as exc:
         logger.warning("record_stance_safe failed: %s", exc)
         return False
+
+
+def fetch_recent_meta_stances(
+    postgres: Any,
+    ticker: str,
+    *,
+    limit: int = 2,
+) -> list[dict[str, Any]]:
+    """Latest ``ticker_meta_analysis`` ledger rows for a ticker (newest first)."""
+    ticker_u = (ticker or "").upper().strip()
+    if not ticker_u or limit < 1:
+        return []
+    try:
+        return postgres.execute_query(
+            """
+            SELECT stance, confidence, as_of, source
+            FROM stance_history
+            WHERE ticker = %s AND source = 'ticker_meta_analysis'
+            ORDER BY as_of DESC
+            LIMIT %s
+            """,
+            (ticker_u, limit),
+        ) or []
+    except Exception as exc:
+        logger.warning("fetch_recent_meta_stances failed for %s: %s", ticker_u, exc)
+        return []
+
+
+def format_prior_stance_for_meta_bundle(
+    postgres: Any,
+    ticker: str,
+    *,
+    track_summary: Mapping[str, Any] | None = None,
+) -> str | None:
+    """Markdown block: prior meta stances (+ optional global source track-record).
+
+    Returns None when there is no ledger history for the ticker.
+    ``track_summary`` should be ``build_track_record_summary`` output (caller-cached).
+    """
+    rows = fetch_recent_meta_stances(postgres, ticker, limit=2)
+    if not rows:
+        return None
+
+    lines: list[str] = ["### Prior stance and track record"]
+    latest = rows[0]
+    latest_stance = (latest.get("stance") or "").strip() or "UNKNOWN"
+    latest_conf = latest.get("confidence")
+    latest_as_of = latest.get("as_of")
+    lines.append(
+        f"- Latest ticker_meta_analysis: stance={latest_stance} "
+        f"confidence={latest_conf} as_of={latest_as_of}"
+    )
+    if len(rows) >= 2:
+        prev = rows[1]
+        prev_stance = (prev.get("stance") or "").strip() or "UNKNOWN"
+        flipped = prev_stance.upper() != latest_stance.upper()
+        flip_note = "FLIP" if flipped else "unchanged"
+        lines.append(
+            f"- Previous: stance={prev_stance} confidence={prev.get('confidence')} "
+            f"as_of={prev.get('as_of')} ({flip_note})"
+        )
+
+    summary = track_summary
+    if summary:
+        for source in ("ticker_meta_analysis", "ticker_analysis"):
+            rate = (summary.get("hit_rate_by_source") or {}).get(source)
+            counts = (summary.get("counts_by_source") or {}).get(source) or {}
+            scored = int(counts.get("scored") or 0)
+            if scored <= 0 and rate is None:
+                continue
+            avg_ex = (summary.get("avg_excess_by_source") or {}).get(source)
+            rate_s = f"{100.0 * rate:.1f}%" if rate is not None else "—"
+            ex_s = f"{avg_ex:+.2f}" if avg_ex is not None else "—"
+            horizon = summary.get("horizon_days")
+            lines.append(
+                f"- Global {source} track record ({horizon}d): "
+                f"hit_rate={rate_s} mean_excess={ex_s} scored={scored} "
+                f"(source calibration — not this ticker alone)"
+            )
+
+    return "\n".join(lines)

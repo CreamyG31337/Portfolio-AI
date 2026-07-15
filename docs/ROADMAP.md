@@ -608,9 +608,9 @@ flowchart TD
     C1 --> E1
     G1["G1 · provenance"] --> H1["H1 · Source-ROI report ✓"]
     A2 --> H1
-    H1 --> H2["H2 · Meta-bundle injection ← NEXT"]
+    H1 --> H2["H2 · Meta-bundle injection ✓"]
     H1 -.->|"gates (ROI weak)"| F56["§4.5 / §4.6 / G6 / §5.3"]
-    H3["H3 · RETRO_DIGEST_RECIPIENTS ops"]
+    H3["H3 · RETRO_DIGEST_RECIPIENTS ops ← ops"]
     H2 --> H4["H4 · Trend memory"]
     H5["H5 · congress herd → ledger"]
     H6["H6 · executive ship-or-kill"]
@@ -625,7 +625,7 @@ flowchart TD
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro code shipped, email unconfigured** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1 shipped 2026-07-15; H2 next** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1+H2 shipped 2026-07-15; H3 ops / H4 next** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
 
@@ -641,13 +641,10 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
   `web_dashboard/scripts/run_source_roi_report.py` →
   [`docs/source_roi_report_results.json`](source_roi_report_results.json). Shipped 2026-07-15;
   see [Source-ROI results](#source-roi-results-phase-h1) below.
-- [ ] **H2 · Meta-bundle injection** — feature-flagged artifact families into
-  `build_artifact_bundle` / evidence builder (mirror R1):
-  - insider clusters
-  - dilution flags + SEC `filing_events` + confluence events
-  - “your prior stance + track record for this ticker/source” from `stance_history` /
-    `stance_outcomes`
-  - Zero new collection. Prompt rules so weak/absent data → INSUFFICIENT_DATA-safe.
+- [x] **H2 · Meta-bundle injection** — feature-flagged artifact families into
+  `build_artifact_bundle_with_evidence` (mirror R1) behind `META_ANALYSIS_PHASE_H2`
+  (default on). Families: `insider_cluster`, `dilution`, `filing`, `confluence`,
+  `prior_stance`. Prompt rule #9. Shipped 2026-07-15.
 - [ ] **H3 · Ops: `RETRO_DIGEST_RECIPIENTS`** — set in prod (no code). Weekly self-review
   stops logging into the void. (G5 code already shipped 2026-06-20.)
 - [ ] **H4 · Trend memory** — `### Regime last N sessions` for market brief; `### Rotation rank

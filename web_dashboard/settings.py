@@ -44,6 +44,16 @@ def is_meta_analysis_human_thesis_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def is_meta_analysis_phase_h2_enabled() -> bool:
+    """Inject Phase H2 families into ticker-meta bundles (clusters, dilution, filings,
+    confluence, prior stance + track record).
+
+    Default on. Set ``META_ANALYSIS_PHASE_H2=false`` to disable without redeploying.
+    """
+    raw = os.getenv("META_ANALYSIS_PHASE_H2", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
 def get_meta_analysis_human_thesis_scope() -> str:
     """Who gets theses injected into meta: ``holdings`` (default), ``holdings_or_recent``, or ``all``.
 
