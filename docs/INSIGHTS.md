@@ -14,7 +14,7 @@ Org-wide, fund-agnostic thesis threads for tickers. Separate from automated sign
 | `thesis_evidence` | Links to user URLs, articles, meta, stance rows, etc. |
 
 Schema: `database/schema/research/tables/ticker_theses.sql` (+ entries/evidence).
-Migration: `database/migrations/2026-07_add_ticker_theses.sql`.
+Migration: `database/archive/2026-07_add_ticker_theses.sql`.
 
 ## Axes
 
