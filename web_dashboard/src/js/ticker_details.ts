@@ -1,8 +1,9 @@
 export { }; // Ensure file is treated as a module
 
-// ticker_autocomplete import removed -- ticker details now uses search-on-Enter via /api/v2/ticker/search
+// Ticker search via shared setupTickerSearch (/api/v2/ticker/search)
 import { getCsrfHeaders } from './csrf.js';
 import { showToast as showToastBase } from './toast.js';
+import { setupTickerSearch } from './ticker_search.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -496,7 +497,24 @@ document.addEventListener('DOMContentLoaded', function (): void {
     }
 
     // Set up ticker search (Enter to search by company name or symbol)
-    setupTickerSearch();
+    const searchInput = document.getElementById('ticker-search-input') as HTMLInputElement | null;
+    if (searchInput && tickerParam) {
+        searchInput.value = tickerParam.toUpperCase();
+    }
+    setupTickerSearch({
+        inputId: 'ticker-search-input',
+        resultsId: 'ticker-search-results',
+        spinnerId: 'ticker-search-spinner',
+        appendFundParam,
+        clearInputOnSelect: false,
+        onSelect: (symbol) => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('ticker', symbol);
+            window.history.pushState({}, '', url);
+            currentTicker = symbol;
+            loadTickerData(symbol);
+        },
+    });
 
     // Set up chart controls
     const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -566,214 +584,6 @@ document.addEventListener('DOMContentLoaded', function (): void {
         }
     });
 });
-
-// Search result interface
-interface TickerSearchResult {
-    symbol: string;
-    name: string;
-    exchange: string;
-    type: string;
-}
-
-interface TickerSearchResponse {
-    results: TickerSearchResult[];
-    exact_match: boolean;
-    error?: string;
-}
-
-// Set up ticker search with Enter-to-search (company name or symbol via yfinance)
-function setupTickerSearch(): void {
-    const input = document.getElementById('ticker-search-input') as HTMLInputElement | null;
-    const resultsPanel = document.getElementById('ticker-search-results') as HTMLDivElement | null;
-    const spinner = document.getElementById('ticker-search-spinner') as HTMLDivElement | null;
-
-    if (!input || !resultsPanel) {
-        console.error('Ticker search: could not find input or results panel');
-        return;
-    }
-
-    // Set initial value from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const tickerParam = urlParams.get('ticker');
-    if (tickerParam) {
-        input.value = tickerParam.toUpperCase();
-    }
-
-    // Select a ticker from search results
-    function selectTicker(symbol: string): void {
-        input!.value = symbol;
-        hideResults();
-
-        // Update URL without reload
-        const url = new URL(window.location.href);
-        url.searchParams.set('ticker', symbol);
-        window.history.pushState({}, '', url);
-
-        currentTicker = symbol;
-        loadTickerData(symbol);
-    }
-
-    function hideResults(): void {
-        resultsPanel!.classList.add('hidden');
-        resultsPanel!.innerHTML = '';
-    }
-
-    function showResults(results: TickerSearchResult[]): void {
-        resultsPanel!.innerHTML = '';
-
-        if (results.length === 0) {
-            const noResults = document.createElement('div');
-            noResults.className = 'px-4 py-3 text-text-secondary text-sm';
-            noResults.textContent = 'No results found. Try a different search term.';
-            resultsPanel!.appendChild(noResults);
-            resultsPanel!.classList.remove('hidden');
-            return;
-        }
-
-        results.forEach((result, idx) => {
-            const item = document.createElement('div');
-            item.className = 'px-4 py-3 cursor-pointer hover:bg-dashboard-background border-b border-border last:border-b-0 flex items-center gap-3';
-            item.dataset.symbol = result.symbol;
-
-            // Symbol badge
-            const symbolSpan = document.createElement('span');
-            symbolSpan.className = 'font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded text-sm min-w-[60px] text-center';
-            symbolSpan.textContent = result.symbol;
-            item.appendChild(symbolSpan);
-
-            // Name and exchange wrapper
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'flex flex-col min-w-0';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'text-text-primary text-sm truncate';
-            nameSpan.textContent = result.name || result.symbol;
-            infoDiv.appendChild(nameSpan);
-
-            if (result.exchange || result.type) {
-                const metaSpan = document.createElement('span');
-                metaSpan.className = 'text-text-secondary text-xs';
-                const parts: string[] = [];
-                if (result.exchange) parts.push(result.exchange);
-                if (result.type) parts.push(result.type);
-                metaSpan.textContent = parts.join(' \u00b7 ');
-                infoDiv.appendChild(metaSpan);
-            }
-
-            item.appendChild(infoDiv);
-
-            item.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                selectTicker(result.symbol);
-            });
-
-            // Keyboard highlight support
-            item.dataset.idx = String(idx);
-            resultsPanel!.appendChild(item);
-        });
-
-        resultsPanel!.classList.remove('hidden');
-    }
-
-    // Perform search via API
-    async function performSearch(query: string): Promise<void> {
-        if (!query) return;
-
-        // Show spinner
-        if (spinner) spinner.classList.remove('hidden');
-
-        try {
-            let searchUrl = `/api/v2/ticker/search?q=${encodeURIComponent(query)}`;
-            searchUrl = appendFundParam(searchUrl);
-
-            const response = await fetch(searchUrl, { credentials: 'include' });
-            if (!response.ok) {
-                throw new Error(`Search failed: ${response.status}`);
-            }
-
-            const data: TickerSearchResponse = await response.json();
-
-            // If exact match, go directly to that ticker
-            if (data.exact_match && data.results.length > 0) {
-                selectTicker(data.results[0].symbol);
-                return;
-            }
-
-            // Show results panel
-            showResults(data.results);
-        } catch (error) {
-            console.error('Ticker search error:', error);
-            resultsPanel!.innerHTML = '';
-            const errDiv = document.createElement('div');
-            errDiv.className = 'px-4 py-3 text-theme-error-text text-sm';
-            errDiv.textContent = 'Search failed. Please try again.';
-            resultsPanel!.appendChild(errDiv);
-            resultsPanel!.classList.remove('hidden');
-        } finally {
-            if (spinner) spinner.classList.add('hidden');
-        }
-    }
-
-    // Keyboard navigation state
-    let selectedIdx = -1;
-
-    // Handle Enter and keyboard nav
-    input.addEventListener('keydown', (e) => {
-        const items = resultsPanel!.querySelectorAll('[data-symbol]');
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            if (!resultsPanel!.classList.contains('hidden') && items.length > 0) {
-                selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
-                updateHighlight(items);
-            }
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (!resultsPanel!.classList.contains('hidden') && items.length > 0) {
-                selectedIdx = Math.max(selectedIdx - 1, -1);
-                updateHighlight(items);
-            }
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            // If an item is highlighted in results, select it
-            if (selectedIdx >= 0 && items[selectedIdx]) {
-                const sym = (items[selectedIdx] as HTMLElement).dataset.symbol || '';
-                selectTicker(sym);
-            } else {
-                // Perform search
-                const query = input.value.trim();
-                if (query) {
-                    selectedIdx = -1;
-                    performSearch(query);
-                }
-            }
-        } else if (e.key === 'Escape') {
-            hideResults();
-            selectedIdx = -1;
-        }
-    });
-
-    function updateHighlight(items: NodeListOf<Element>): void {
-        items.forEach((item, idx) => {
-            if (idx === selectedIdx) {
-                item.classList.add('bg-dashboard-background');
-            } else {
-                item.classList.remove('bg-dashboard-background');
-            }
-        });
-        if (selectedIdx >= 0 && items[selectedIdx]) {
-            items[selectedIdx].scrollIntoView({ block: 'nearest' });
-        }
-    }
-
-    // Hide results when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!input.contains(e.target as Node) && !resultsPanel!.contains(e.target as Node)) {
-            hideResults();
-            selectedIdx = -1;
-        }
-    });
-}
 
 function initModelSelect(): void {
     const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;

@@ -1,4 +1,5 @@
 import { getCsrfHeaders } from "./csrf.js";
+import { setupTickerSearch } from "./ticker_search.js";
 
 export {};
 
@@ -38,19 +39,6 @@ function getSelectedFund(): string | null {
   return v;
 }
 
-function parsePaste(text: string): string[] {
-  const parts = text.split(/[\s,;]+/);
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const p of parts) {
-    const t = p.trim().toUpperCase();
-    if (!t || seen.has(t)) continue;
-    seen.add(t);
-    out.push(t);
-  }
-  return out;
-}
-
 function formatShortDate(raw: string | null | undefined): string {
   if (!raw) return "";
   const d = new Date(raw);
@@ -80,8 +68,8 @@ function setMsg(id: string, text: string, ok: boolean): void {
   node.classList.add(ok ? "text-green-600" : "text-theme-error-text");
 }
 
-function setBulkMsg(text: string, ok: boolean): void {
-  setMsg("watchlist-bulk-msg", text, ok);
+function setAddMsg(text: string, ok: boolean): void {
+  setMsg("watchlist-add-msg", text, ok);
 }
 
 function analysisBadge(r: WatchlistRow): string {
@@ -150,6 +138,47 @@ async function enqueueAnalyze(fund: string, tickers: string[]): Promise<boolean>
     true
   );
   return true;
+}
+
+async function addTicker(symbol: string): Promise<void> {
+  const fund = getSelectedFund();
+  if (!fund) {
+    setAddMsg("Select a fund first.", false);
+    return;
+  }
+  const ticker = symbol.trim().toUpperCase();
+  if (!ticker) return;
+  const tierSel = el("watchlist-add-tier") as HTMLSelectElement | null;
+  try {
+    const resp = await fetch("/api/watchlist", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+      body: JSON.stringify({
+        fund,
+        tickers: [ticker],
+        priority_tier: tierSel?.value || "B",
+        source: "watchlist_search",
+      }),
+    });
+    const body = (await resp.json().catch(() => ({}))) as {
+      error?: string;
+      failed_tickers?: string[];
+    };
+    if (!resp.ok) {
+      setAddMsg(body.error || `HTTP ${resp.status}`, false);
+      return;
+    }
+    const failed = body.failed_tickers || [];
+    if (failed.length) {
+      setAddMsg(`Could not add ${failed.join(", ")}`, false);
+    } else {
+      setAddMsg(`Added ${ticker}.`, true);
+    }
+    await loadList();
+  } catch (e) {
+    setAddMsg(e instanceof Error ? e.message : String(e), false);
+  }
 }
 
 function renderRows(fund: string, rows: WatchlistRow[]): void {
@@ -275,56 +304,6 @@ async function loadList(): Promise<void> {
   }
 }
 
-async function bulkAdd(): Promise<void> {
-  const fund = getSelectedFund();
-  if (!fund) {
-    setBulkMsg("Select a fund first.", false);
-    return;
-  }
-  const input = el("watchlist-bulk-input") as HTMLTextAreaElement | null;
-  const tierSel = el("watchlist-bulk-tier") as HTMLSelectElement | null;
-  const tickers = parsePaste(input?.value || "");
-  if (!tickers.length) {
-    setBulkMsg("Enter at least one ticker.", false);
-    return;
-  }
-  const btn = el("watchlist-bulk-add") as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  try {
-    const resp = await fetch("/api/watchlist", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
-      body: JSON.stringify({
-        fund,
-        tickers,
-        priority_tier: tierSel?.value || "B",
-        source: "bulk_paste",
-      }),
-    });
-    const body = (await resp.json().catch(() => ({}))) as {
-      error?: string;
-      added_count?: number;
-      failed_tickers?: string[];
-    };
-    if (!resp.ok) {
-      setBulkMsg(body.error || `HTTP ${resp.status}`, false);
-      return;
-    }
-    const failed = body.failed_tickers || [];
-    setBulkMsg(
-      failed.length
-        ? `Added ${body.added_count ?? 0}; failed: ${failed.join(", ")}`
-        : `Added ${body.added_count ?? tickers.length} ticker(s).`,
-      failed.length === 0
-    );
-    if (input) input.value = "";
-    await loadList();
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
 async function analyzeAllActive(): Promise<void> {
   const fund = getSelectedFund();
   if (!fund) {
@@ -351,7 +330,13 @@ async function analyzeAllActive(): Promise<void> {
 }
 
 function init(): void {
-  el("watchlist-bulk-add")?.addEventListener("click", () => void bulkAdd());
+  setupTickerSearch({
+    inputId: "watchlist-search-input",
+    resultsId: "watchlist-search-results",
+    spinnerId: "watchlist-search-spinner",
+    clearInputOnSelect: true,
+    onSelect: (symbol) => void addTicker(symbol),
+  });
   el("watchlist-show-inactive")?.addEventListener("change", () => void loadList());
   el("watchlist-analyze-all")?.addEventListener("click", () => void analyzeAllActive());
   window.addEventListener("fundChanged", () => void loadList());

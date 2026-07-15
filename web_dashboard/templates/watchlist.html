@@ -14,33 +14,43 @@
     </p>
 
     <section class="bg-dashboard-surface border border-border rounded-lg p-4">
-        <h2 class="text-lg font-semibold text-text-primary mb-2">Bulk add</h2>
+        <h2 class="text-lg font-semibold text-text-primary mb-2">Add ticker</h2>
         <p class="text-xs text-text-secondary mb-3">
             Fund: <span id="watchlist-fund-label" class="font-semibold">—</span>
-            · one ticker per line (or comma-separated)
+            · search by ticker or company name, Enter to search
         </p>
-        <textarea id="watchlist-bulk-input" rows="5"
-            class="w-full rounded-lg border border-border bg-dashboard-background text-text-primary text-sm p-3 mb-3"
-            placeholder="CRM&#10;NOW&#10;IREN&#10;CELH"></textarea>
+        <div class="relative w-full md:w-1/2 mb-3">
+            <div class="relative">
+                <input type="text" id="watchlist-search-input"
+                    inputmode="text"
+                    autocomplete="off"
+                    placeholder="Search by ticker or company name..."
+                    class="w-full px-4 py-2 pr-10 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary text-sm">
+                <div id="watchlist-search-spinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                    <div class="animate-spin h-5 w-5 border-2 border-accent border-t-transparent rounded-full"></div>
+                </div>
+            </div>
+            <p class="text-xs text-text-secondary mt-1">Press Enter to search · select a row to add</p>
+            <div id="watchlist-search-results"
+                class="hidden absolute z-50 w-full mt-1 max-h-80 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+            </div>
+        </div>
         <div class="flex flex-wrap items-center gap-3">
             <label class="text-sm text-text-secondary flex items-center gap-2">
                 Tier
-                <select id="watchlist-bulk-tier"
+                <select id="watchlist-add-tier"
                     class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
                     <option value="A">A</option>
                     <option value="B" selected>B</option>
                     <option value="C">C</option>
                 </select>
             </label>
-            <button id="watchlist-bulk-add" type="button" class="btn-outline">
-                Add tickers
-            </button>
             <label class="text-sm text-text-secondary flex items-center gap-2">
                 <input id="watchlist-show-inactive" type="checkbox" class="rounded border-border" />
                 Show inactive
             </label>
         </div>
-        <p id="watchlist-bulk-msg" class="text-sm mt-2 hidden"></p>
+        <p id="watchlist-add-msg" class="text-sm mt-2 hidden"></p>
     </section>
 
     <section class="bg-dashboard-surface border border-border rounded-lg p-4">
@@ -56,7 +66,7 @@
         <div id="watchlist-loading" class="text-sm text-text-secondary">Loading…</div>
         <div id="watchlist-error" class="hidden text-sm text-theme-error-text mb-2"></div>
         <div id="watchlist-empty" class="hidden text-sm text-text-secondary">
-            No tickers yet. Paste above or open a ticker page to add one.
+            No tickers yet. Search above or open a ticker page to add one.
         </div>
         <div id="watchlist-table-wrap" class="hidden overflow-x-auto">
             <table class="min-w-full text-sm">
