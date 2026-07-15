@@ -230,5 +230,43 @@ def test_ideas_triage_accept_uses_upsert_helper(client, auth_ok):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["watchlist_results"]["CELH"] == "added"
+    assert "analysis_enqueue" not in body
     mock_upsert.assert_called_once()
     assert mock_upsert.call_args.kwargs["source"] == "ideas_inbox"
+
+
+@skip_without_plotly
+def test_ideas_triage_accept_can_queue_analysis(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch(
+        "routes.intelligence_routes.get_available_funds_flask",
+        return_value=["Project Chimera"],
+    ), patch(
+        "routes.intelligence_routes.PostgresClient",
+    ) as mock_pg, patch(
+        "supabase_client.SupabaseClient",
+        return_value=MagicMock(),
+    ), patch(
+        "watchlist_access.upsert_watchlist_ticker",
+        return_value={"ok": True, "ticker": "CELH"},
+    ), patch(
+        "watchlist_access.request_manual_ticker_analysis",
+        return_value={"ok": True, "enqueued": 1, "tickers": ["CELH"]},
+    ) as mock_analyze:
+        mock_pg.return_value.execute_update.return_value = None
+        resp = client.post(
+            "/api/ideas/triage",
+            json={
+                "article_id": "00000000-0000-0000-0000-000000000002",
+                "status": "accepted",
+                "fund": "Project Chimera",
+                "tickers": ["CELH"],
+                "queue_analysis": True,
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["analysis_enqueue"]["enqueued"] == 1
+    mock_analyze.assert_called_once()
+    assert mock_analyze.call_args.args[1] == ["CELH"]
+    assert mock_analyze.call_args.kwargs["enqueued_by"] == "ideas_accept"

@@ -35,7 +35,12 @@ function getSelectedFund(): string | null {
   return v;
 }
 
-async function triage(articleId: string, status: "accepted" | "dismissed" | "snoozed", tickers: string[]): Promise<boolean> {
+async function triage(
+  articleId: string,
+  status: "accepted" | "dismissed" | "snoozed",
+  tickers: string[],
+  queueAnalysis = false
+): Promise<boolean> {
   const fund = getSelectedFund();
   if (status === "accepted" && tickers.length && !fund) {
     alert("Select a fund in the sidebar before accepting into the watchlist.");
@@ -45,16 +50,33 @@ async function triage(articleId: string, status: "accepted" | "dismissed" | "sno
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
-    body: JSON.stringify({ article_id: articleId, status, fund, tickers }),
+    body: JSON.stringify({
+      article_id: articleId,
+      status,
+      fund,
+      tickers,
+      queue_analysis: queueAnalysis,
+    }),
   });
   if (!resp.ok) {
-    const body = await resp.json().catch(() => ({})) as { error?: string };
+    const body = (await resp.json().catch(() => ({}))) as { error?: string };
     alert(`Triage failed: ${body.error || `HTTP ${resp.status}`}`);
     return false;
   }
-  const body = await resp.json() as { failed_tickers?: string[] };
+  const body = (await resp.json()) as {
+    failed_tickers?: string[];
+    analysis_enqueue?: { enqueued?: number; ok?: boolean };
+  };
   if (body.failed_tickers?.length) {
-    alert(`Saved, but these tickers could not be added to the watchlist: ${body.failed_tickers.join(", ")}`);
+    alert(
+      `Saved, but these tickers could not be added to the watchlist: ${body.failed_tickers.join(", ")}`
+    );
+  }
+  if (queueAnalysis && body.analysis_enqueue?.ok) {
+    const n = body.analysis_enqueue.enqueued ?? tickers.length;
+    alert(
+      `Queued ASAP analysis for ${n} ticker(s). Open Watchlist or the ticker dossier when workers finish.`
+    );
   }
   return true;
 }
@@ -64,7 +86,8 @@ function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {
   return flags
     .slice(0, 3)
     .map((f) => {
-      const reasons = (f.attention_reasons || []).join(", ") || f.llm_verdict || f.review_status || "due";
+      const reasons =
+        (f.attention_reasons || []).join(", ") || f.llm_verdict || f.review_status || "due";
       const href = `/insights?thesis=${encodeURIComponent(f.thesis_id)}`;
       return `<a href="${href}" class="inline-block ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400 hover:underline" title="${escapeAttr(f.title || "")}">thesis: ${escapeAttr(String(reasons))}</a>`;
     })
@@ -84,24 +107,33 @@ function renderIdeas(rows: IdeaRow[]): void {
     list.innerHTML = `<p class="text-sm text-text-secondary">Inbox empty — check back after the next alpha run.</p>`;
     return;
   }
-  list.innerHTML = rows.map((row) => {
-    const tickers = (row.tickers || []).join(", ");
-    const badges = thesisBadgeHtml(row.thesis_attention);
-    return `<article class="bg-dashboard-surface border border-border rounded-lg p-4">
+  list.innerHTML = rows
+    .map((row) => {
+      const tickers = (row.tickers || []).join(", ");
+      const badges = thesisBadgeHtml(row.thesis_attention);
+      const hasTickers = (row.tickers || []).length > 0;
+      return `<article class="bg-dashboard-surface border border-border rounded-lg p-4">
       <h3 class="font-medium text-text-primary">${row.title}</h3>
       <p class="text-xs text-text-secondary mt-1">${row.article_type || ""} · ${row.source || ""} · score ${row.relevance_score ?? "—"}</p>
       ${tickers ? `<p class="text-xs mt-1">Tickers: ${tickers}${badges}</p>` : badges ? `<p class="text-xs mt-1">${badges}</p>` : ""}
       ${row.summary ? `<p class="text-sm mt-2 text-text-secondary line-clamp-3">${row.summary}</p>` : ""}
-      <div class="flex gap-2 mt-3">
+      <div class="flex flex-wrap gap-2 mt-3">
         <button type="button" data-action="accepted" data-id="${row.id}" data-tickers='${JSON.stringify(row.tickers || [])}'
           class="btn-outline-sm">Accept</button>
+        ${
+          hasTickers
+            ? `<button type="button" data-action="accepted" data-queue-analysis="1" data-id="${row.id}" data-tickers='${JSON.stringify(row.tickers || [])}'
+          class="btn-outline-sm">Accept &amp; analyze now</button>`
+            : ""
+        }
         <button type="button" data-action="dismissed" data-id="${row.id}"
           class="px-3 py-1 text-xs border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Dismiss</button>
         <button type="button" data-action="snoozed" data-id="${row.id}"
           class="px-3 py-1 text-xs border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Snooze</button>
       </div>
     </article>`;
-  }).join("");
+    })
+    .join("");
 
   list.querySelectorAll("button[data-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -109,7 +141,8 @@ function renderIdeas(rows: IdeaRow[]): void {
       const id = b.dataset.id || "";
       const action = b.dataset.action as "accepted" | "dismissed" | "snoozed";
       const tickers = JSON.parse(b.dataset.tickers || "[]") as string[];
-      if (await triage(id, action, tickers)) {
+      const queueAnalysis = b.dataset.queueAnalysis === "1";
+      if (await triage(id, action, tickers, queueAnalysis)) {
         b.closest("article")?.remove();
       }
     });
@@ -120,7 +153,7 @@ async function loadIdeas(): Promise<void> {
   try {
     const resp = await fetch("/api/ideas/inbox");
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const body = await resp.json() as { data: IdeaRow[] };
+    const body = (await resp.json()) as { data: IdeaRow[] };
     renderIdeas(body.data || []);
   } catch (e) {
     const err = document.getElementById("ideas-error");

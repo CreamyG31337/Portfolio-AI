@@ -168,11 +168,16 @@ def ideas_triage_api():
         )
 
         watchlist_results: dict[str, str] = {}
+        analysis_enqueue: dict[str, Any] | None = None
         if status == "accepted" and fund and tickers:
             from supabase_client import SupabaseClient
-            from watchlist_access import upsert_watchlist_ticker
+            from watchlist_access import (
+                request_manual_ticker_analysis,
+                upsert_watchlist_ticker,
+            )
 
             write_client = SupabaseClient(use_service_role=True)
+            accepted_tickers: list[str] = []
             for t in tickers:
                 ticker = str(t).upper().strip()
                 if not ticker:
@@ -186,14 +191,30 @@ def ideas_triage_api():
                     is_active=True,
                 )
                 watchlist_results[ticker] = "added" if outcome.get("ok") else "failed"
+                if outcome.get("ok"):
+                    accepted_tickers.append(ticker)
+
+            queue_analysis = body.get("queue_analysis", False)
+            if not isinstance(queue_analysis, bool):
+                queue_analysis = str(queue_analysis).lower() in ("1", "true", "yes")
+            if queue_analysis and accepted_tickers:
+                analysis_enqueue = request_manual_ticker_analysis(
+                    write_client,
+                    accepted_tickers,
+                    enqueued_by="ideas_accept",
+                    include_meta=True,
+                )
 
         failed = sorted(t for t, r in watchlist_results.items() if r != "added")
-        return jsonify({
+        payload: dict[str, Any] = {
             "ok": not failed,
             "status": status,
             "watchlist_results": watchlist_results,
             "failed_tickers": failed,
-        })
+        }
+        if analysis_enqueue is not None:
+            payload["analysis_enqueue"] = analysis_enqueue
+        return jsonify(payload)
     except Exception as exc:
         logger.error("ideas/triage failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
