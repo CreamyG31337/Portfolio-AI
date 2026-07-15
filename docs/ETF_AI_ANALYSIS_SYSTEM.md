@@ -179,7 +179,7 @@ The ticker analysis gathers data from:
 
 **Vector Dimensions**: 1024 (Ollama `bge-m3` by default; configurable via `AI_EMBED_MODEL` / `AI_EMBED_DIM`)
 
-**Storage Format**: PostgreSQL `vector(1024)` type with pgvector extension. Migrated from `vector(768)` (nomic-embed-text) in May 2026 — see `database/archive/2026-05_migrate_embeddings_to_bge_m3_1024.sql`.
+**Storage Format**: PostgreSQL `vector(1024)` type with pgvector extension. Migrated from `vector(768)` (nomic-embed-text) in May 2026 — see `database/migrations/2026-05_migrate_embeddings_to_bge_m3_1024.sql`.
 
 **Usage**: Currently generated but **not actively used** - available for:
 - Finding similar tickers by theme/sentiment
