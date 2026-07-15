@@ -63,6 +63,7 @@ Run the right test suite based on what you're changing (both suites use the root
 - **Package manager is pnpm** (not npm). Lockfiles `pnpm-lock.yaml` committed at repo root AND `web_dashboard/` (two Node projects). CI/Docker use `pnpm install --frozen-lockfile`. See `docs/frontend_dependencies.md`.
 - Build: `pnpm run build:ts` (TS), `pnpm run build:css` (Tailwind), `pnpm run build` (both), `pnpm run watch:css` (watch)
 - **Use Tailwind CSS** (v4) for all styling. **Use Flowbite** (v4) for UI components (modals, dropdowns, drawers, etc.)
+- **Buttons:** use shared classes from `web_dashboard/static/css/input.css` — `btn-outline` (default) or `btn-outline-sm` (dense). Avoid solid `bg-accent text-white` fills for page actions (harsh in both themes). Secondary/cancel: muted `border border-border`. Settings page is the reference.
 - **Use Font Awesome** (v6) for icons (`fas fa-...`)
 - Page-specific: AG Grid (complex tables), Plotly (interactive charts), Chart.js (simple charts), Marked + DOMPurify (markdown)
 - Only write custom CSS for: webkit scrollbars, complex keyframe animations, CSS variables for theming, third-party overrides (AG Grid, Plotly dark mode). Document why Tailwind can't be used.

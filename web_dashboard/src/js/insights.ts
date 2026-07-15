@@ -237,9 +237,9 @@ async function openDetail(thesisId: string): Promise<void> {
         <textarea id="detail-comment" rows="3" placeholder="Add comment or review…"
           class="w-full mt-2 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary"></textarea>
         <div class="flex flex-wrap gap-2 mt-2">
-          <button type="button" data-action="comment" class="px-3 py-1 text-xs border border-border rounded-lg text-text-primary">Add comment</button>
-          <button type="button" data-action="review" class="px-3 py-1 text-xs border border-amber-500/50 text-amber-600 rounded-lg">Add review</button>
-          <button type="button" data-action="archive" class="px-3 py-1 text-xs border border-border rounded-lg text-text-secondary">Archive</button>
+          <button type="button" data-action="comment" class="btn-outline-sm">Add comment</button>
+          <button type="button" data-action="review" class="btn-outline-sm">Add review</button>
+          <button type="button" data-action="archive" class="px-3 py-1 text-xs border border-border rounded-lg text-text-secondary hover:bg-dashboard-surface-alt">Archive</button>
         </div>
       </section>
       <section>
@@ -247,7 +247,7 @@ async function openDetail(thesisId: string): Promise<void> {
         <ul class="list-disc list-inside space-y-1 mb-2">${evidence || "<li class='text-sm text-text-secondary'>None linked.</li>"}</ul>
         <input id="detail-evidence-url" type="url" placeholder="Paste URL to attach"
           class="w-full text-sm bg-dashboard-background border border-border rounded-lg px-3 py-1 text-text-primary">
-        <button type="button" data-action="evidence" class="mt-2 px-3 py-1 text-xs border border-border rounded-lg text-text-primary">Attach URL</button>
+        <button type="button" data-action="evidence" class="mt-2 btn-outline-sm">Attach URL</button>
       </section>`;
 
     body.querySelectorAll("button[data-action]").forEach((btn) => {

@@ -94,11 +94,11 @@ function renderIdeas(rows: IdeaRow[]): void {
       ${row.summary ? `<p class="text-sm mt-2 text-text-secondary line-clamp-3">${row.summary}</p>` : ""}
       <div class="flex gap-2 mt-3">
         <button type="button" data-action="accepted" data-id="${row.id}" data-tickers='${JSON.stringify(row.tickers || [])}'
-          class="px-3 py-1 text-xs font-medium text-white bg-accent rounded">Accept</button>
+          class="btn-outline-sm">Accept</button>
         <button type="button" data-action="dismissed" data-id="${row.id}"
-          class="px-3 py-1 text-xs border border-border rounded">Dismiss</button>
+          class="px-3 py-1 text-xs border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Dismiss</button>
         <button type="button" data-action="snoozed" data-id="${row.id}"
-          class="px-3 py-1 text-xs border border-border rounded">Snooze</button>
+          class="px-3 py-1 text-xs border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Snooze</button>
       </div>
     </article>`;
   }).join("");
