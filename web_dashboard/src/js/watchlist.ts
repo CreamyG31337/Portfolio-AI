@@ -1,5 +1,6 @@
 import { getCsrfHeaders } from "./csrf.js";
 import { setupTickerSearch } from "./ticker_search.js";
+import { sentimentBadgeClasses } from "./sentiment_badges.js";
 
 export {};
 
@@ -82,8 +83,11 @@ function analysisBadge(r: WatchlistRow): string {
   if (r.analyzed) {
     const when = formatShortDate(r.analysis_date || r.analysis_updated_at);
     const stance = r.stance || r.sentiment || "";
+    const stanceHtml = stance
+      ? ` <span class="${sentimentBadgeClasses(stance)}">${escapeHtml(stance)}</span>`
+      : "";
     return `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">analyzed</span>
-      <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}${stance ? ` · ${escapeHtml(stance)}` : ""}</span>`;
+      <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>${stanceHtml}`;
   }
   return '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">not analyzed</span>';
 }

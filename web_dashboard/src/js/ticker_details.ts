@@ -4,6 +4,7 @@ export { }; // Ensure file is treated as a module
 import { getCsrfHeaders } from './csrf.js';
 import { showToast as showToastBase } from './toast.js';
 import { setupTickerSearch } from './ticker_search.js';
+import { sentimentBadgeClasses } from './sentiment_badges.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -1545,22 +1546,17 @@ async function loadPriceHistoryMetrics(
     }
 }
 
-// Helper: format a sentiment value into a colored badge HTML string
+// Helper: format a sentiment value into a colored badge HTML string (Insights palette)
 function sentimentBadge(sentiment: string | undefined): string {
     if (!sentiment) return '';
     const s = sentiment.toLowerCase();
-    if (['positive', 'bullish', 'very_bullish'].includes(s)) {
-        const label = s === 'very_bullish' ? 'Very Bullish' : 'Bullish';
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-success-bg text-theme-success-text border border-theme-success-text"><i class="fas fa-arrow-up mr-0.5 text-[9px]"></i>${label}</span>`;
-    }
-    if (['negative', 'bearish', 'very_bearish'].includes(s)) {
-        const label = s === 'very_bearish' ? 'Very Bearish' : 'Bearish';
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-error-bg text-theme-error-text border border-theme-error-text"><i class="fas fa-arrow-down mr-0.5 text-[9px]"></i>${label}</span>`;
-    }
-    if (['neutral', 'mixed'].includes(s)) {
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
-    }
-    return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-primary border border-border">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
+    let label = sentiment.charAt(0).toUpperCase() + sentiment.slice(1);
+    if (s === 'very_bullish') label = 'Very Bullish';
+    else if (s === 'bullish' || s === 'positive') label = 'Bullish';
+    else if (s === 'very_bearish') label = 'Very Bearish';
+    else if (s === 'bearish' || s === 'negative') label = 'Bearish';
+    else if (s === 'neutral' || s === 'mixed') label = s === 'mixed' ? 'Mixed' : 'Neutral';
+    return `<span class="${sentimentBadgeClasses(sentiment)}">${escapeHtml(label)}</span>`;
 }
 
 // Helper: relative time string (e.g. "2d ago", "5h ago")
@@ -2518,21 +2514,7 @@ function renderMomentumSignal(momentum: any): void {
     const biasBadge = document.getElementById('momentum-bias-badge');
     if (biasBadge) {
         const bias = momentum.bias || 'N/A';
-        let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
-        switch (bias) {
-            case 'BULLISH':
-                badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
-                break;
-            case 'BEARISH':
-                badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
-                break;
-            case 'NEUTRAL':
-                badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
-                break;
-            default:
-                badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
-        }
-        biasBadge.className = badgeClass;
+        biasBadge.className = sentimentBadgeClasses(bias);
         biasBadge.textContent = bias;
     }
 
@@ -2948,27 +2930,10 @@ function setupMetaRebuildHandler(ticker: string): void {
 
 /**
  * Tailwind chip classes for ticker meta ``stance`` enum values.
- * Mirrors the Phase 1 contract in ``ai_prompts.py::TICKER_META_ANALYSIS_PROMPT``:
- *   STRONG_BULLISH | BULLISH | NEUTRAL | BEARISH | STRONG_BEARISH | INSUFFICIENT_DATA
+ * Uses Insights sentiment palette (soft tint + border) for bullish/bearish/neutral.
  */
 function stanceChipClasses(stance: string | undefined): string {
-    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold';
-    switch ((stance || '').toUpperCase()) {
-        case 'STRONG_BULLISH':
-            return `${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300`;
-        case 'BULLISH':
-            return `${base} bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300`;
-        case 'NEUTRAL':
-            return `${base} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
-        case 'BEARISH':
-            return `${base} bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300`;
-        case 'STRONG_BEARISH':
-            return `${base} bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300`;
-        case 'INSUFFICIENT_DATA':
-            return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300`;
-        default:
-            return `${base} bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300`;
-    }
+    return sentimentBadgeClasses(stance);
 }
 
 /** Tailwind chip classes for the ``horizon`` enum (INTRADAY/SWING/POSITION/UNKNOWN). */
@@ -3334,12 +3299,9 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
     const dataStart = formatDate(analysis.data_start_date);
     const dataEnd = formatDate(analysis.data_end_date);
 
-    // Sentiment badge color
+    // Sentiment badge — Insights palette (soft tint, not solid fill)
     const sentiment = analysis.sentiment || 'NEUTRAL';
-    let sentimentColor = 'bg-gray-500';
-    if (sentiment === 'BULLISH') sentimentColor = 'bg-green-500';
-    else if (sentiment === 'BEARISH') sentimentColor = 'bg-red-500';
-    else if (sentiment === 'MIXED') sentimentColor = 'bg-yellow-500';
+    const sentimentColor = sentimentBadgeClasses(sentiment);
 
     // Themes
     const themes = analysis.themes || [];
@@ -3370,7 +3332,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
                 <div>
                     <div class="text-text-secondary">Sentiment</div>
                     <div class="flex items-center gap-2 mt-1">
-                        <span class="px-2 py-1 ${sentimentColor} text-white rounded text-xs">${sentiment}</span>
+                        <span class="${sentimentColor}">${escapeHtml(sentiment)}</span>
                         ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
             ? `<span class="text-text-primary">${(analysis.sentiment_score * 100).toFixed(0)}%</span>`
             : ''}

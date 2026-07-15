@@ -1,3 +1,5 @@
+import { sentimentToneClasses } from "./sentiment_badges.js";
+
 export {};
 
 interface ThesisRow {
@@ -43,14 +45,7 @@ interface ThesisDetail extends ThesisRow {
 }
 
 function badgeClass(disposition: string): string {
-  switch (disposition) {
-    case "bullish":
-      return "bg-green-500/10 text-green-500 border-green-500/30";
-    case "bearish":
-      return "bg-red-500/10 text-red-500 border-red-500/30";
-    default:
-      return "bg-amber-500/10 text-amber-600 border-amber-500/30";
-  }
+  return sentimentToneClasses(disposition);
 }
 
 function intentLabel(intent: string): string {
