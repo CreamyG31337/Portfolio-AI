@@ -9,6 +9,18 @@ interface WatchlistRow {
   is_active?: boolean;
   source?: string | null;
   created_at?: string | null;
+  analyzed?: boolean;
+  analysis_date?: string | null;
+  analysis_updated_at?: string | null;
+  sentiment?: string | null;
+  stance?: string | null;
+  confidence_score?: number | null;
+  summary_snippet?: string | null;
+  has_meta?: boolean;
+  meta_conviction?: string | null;
+  meta_updated_at?: string | null;
+  queue_status?: string | null;
+  dossier_url?: string | null;
 }
 
 function el(id: string): HTMLElement | null {
@@ -39,12 +51,63 @@ function parsePaste(text: string): string[] {
   return out;
 }
 
-function setBulkMsg(text: string, ok: boolean): void {
-  const node = el("watchlist-bulk-msg");
+function formatShortDate(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) {
+    return String(raw).slice(0, 10);
+  }
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function setMsg(id: string, text: string, ok: boolean): void {
+  const node = el(id);
   if (!node) return;
   node.textContent = text;
   node.classList.remove("hidden", "text-theme-error-text", "text-green-600");
   node.classList.add(ok ? "text-green-600" : "text-theme-error-text");
+}
+
+function setBulkMsg(text: string, ok: boolean): void {
+  setMsg("watchlist-bulk-msg", text, ok);
+}
+
+function analysisBadge(r: WatchlistRow): string {
+  if (r.queue_status === "leased") {
+    return '<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">running</span>';
+  }
+  if (r.queue_status === "pending") {
+    return '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100">queued</span>';
+  }
+  if (r.analyzed) {
+    const when = formatShortDate(r.analysis_date || r.analysis_updated_at);
+    const stance = r.stance || r.sentiment || "";
+    return `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">analyzed</span>
+      <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}${stance ? ` · ${escapeHtml(stance)}` : ""}</span>`;
+  }
+  return '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">not analyzed</span>';
+}
+
+function metaBadge(r: WatchlistRow): string {
+  if (!r.has_meta) {
+    return '<span class="text-xs text-text-secondary">—</span>';
+  }
+  const when = formatShortDate(r.meta_updated_at);
+  const conv = r.meta_conviction || "meta";
+  return `<span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100">${escapeHtml(conv)}</span>
+    <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>`;
 }
 
 async function patchItem(
@@ -63,6 +126,29 @@ async function patchItem(
     alert(body.error || `HTTP ${resp.status}`);
     return false;
   }
+  return true;
+}
+
+async function enqueueAnalyze(fund: string, tickers: string[]): Promise<boolean> {
+  const resp = await fetch("/api/watchlist/analyze", {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+    body: JSON.stringify({ fund, tickers, include_meta: true }),
+  });
+  const body = (await resp.json().catch(() => ({}))) as {
+    error?: string;
+    enqueued?: number;
+  };
+  if (!resp.ok) {
+    setMsg("watchlist-analyze-msg", body.error || `HTTP ${resp.status}`, false);
+    return false;
+  }
+  setMsg(
+    "watchlist-analyze-msg",
+    `Queued ${body.enqueued ?? tickers.length} ticker(s). Refresh in a few minutes; open dossier to read results.`,
+    true
+  );
   return true;
 }
 
@@ -88,9 +174,14 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
     .map((r) => {
       const tier = r.priority_tier || "B";
       const active = !!r.is_active;
-      return `<tr class="border-b border-border last:border-0" data-ticker="${r.ticker}">
+      const href = r.dossier_url || `/ticker?ticker=${encodeURIComponent(r.ticker)}`;
+      const preview = r.summary_snippet
+        ? `<span class="text-xs text-text-secondary line-clamp-2 max-w-xs inline-block" title="${escapeHtml(r.summary_snippet)}">${escapeHtml(r.summary_snippet)}</span>`
+        : '<span class="text-xs text-text-secondary">—</span>';
+      return `<tr class="border-b border-border last:border-0 align-top" data-ticker="${r.ticker}">
         <td class="py-2 pr-3">
-          <a href="/ticker?ticker=${encodeURIComponent(r.ticker)}" class="text-accent hover:underline font-semibold">${r.ticker}</a>
+          <a href="${href}" class="text-accent hover:underline font-semibold">${r.ticker}</a>
+          <div class="text-xs text-text-secondary mt-0.5">${escapeHtml(r.source || "—")}</div>
         </td>
         <td class="py-2 pr-3">
           <select data-action="tier" data-ticker="${r.ticker}"
@@ -100,15 +191,20 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
               .join("")}
           </select>
         </td>
-        <td class="py-2 pr-3 text-text-secondary">${r.source || "—"}</td>
+        <td class="py-2 pr-3">${analysisBadge(r)}</td>
+        <td class="py-2 pr-3">${metaBadge(r)}</td>
+        <td class="py-2 pr-3">${preview}</td>
         <td class="py-2 pr-3">${
           active
             ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">active</span>'
             : '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">inactive</span>'
         }</td>
-        <td class="py-2 pr-3">
+        <td class="py-2 pr-3 whitespace-nowrap">
+          <a href="${href}" class="text-xs text-accent hover:underline mr-2">Open dossier</a>
+          <button type="button" data-action="analyze" data-ticker="${r.ticker}"
+            class="text-xs text-accent hover:underline mr-2">Analyze</button>
           <button type="button" data-action="${active ? "deactivate" : "activate"}" data-ticker="${r.ticker}"
-            class="text-xs text-accent hover:underline mr-2">${active ? "Remove" : "Reactivate"}</button>
+            class="text-xs text-text-secondary hover:underline">${active ? "Remove" : "Reactivate"}</button>
         </td>
       </tr>`;
     })
@@ -131,6 +227,9 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
         if (ok) void loadList();
       } else if (action === "activate") {
         const ok = await patchItem(fund, ticker, { is_active: true });
+        if (ok) void loadList();
+      } else if (action === "analyze") {
+        const ok = await enqueueAnalyze(fund, [ticker]);
         if (ok) void loadList();
       }
     });
@@ -226,9 +325,35 @@ async function bulkAdd(): Promise<void> {
   }
 }
 
+async function analyzeAllActive(): Promise<void> {
+  const fund = getSelectedFund();
+  if (!fund) {
+    setMsg("watchlist-analyze-msg", "Select a fund first.", false);
+    return;
+  }
+  const tickers = Array.from(
+    document.querySelectorAll("#watchlist-tbody tr[data-ticker]")
+  )
+    .map((n) => n.getAttribute("data-ticker") || "")
+    .filter(Boolean);
+  if (!tickers.length) {
+    setMsg("watchlist-analyze-msg", "No tickers to analyze.", false);
+    return;
+  }
+  const btn = el("watchlist-analyze-all") as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    const ok = await enqueueAnalyze(fund, tickers);
+    if (ok) await loadList();
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 function init(): void {
   el("watchlist-bulk-add")?.addEventListener("click", () => void bulkAdd());
   el("watchlist-show-inactive")?.addEventListener("change", () => void loadList());
+  el("watchlist-analyze-all")?.addEventListener("click", () => void analyzeAllActive());
   window.addEventListener("fundChanged", () => void loadList());
   void loadList();
 }

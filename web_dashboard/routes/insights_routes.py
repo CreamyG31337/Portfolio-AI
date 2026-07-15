@@ -35,11 +35,15 @@ def _nav_render(template: str, current_page: str, **extra: Any):
     from app import get_navigation_context
 
     nav_context = get_navigation_context(current_page=current_page)
+    # Sidebar uses top-level available_funds; strip from explode then re-add
+    # so callers can override via **extra without duplicate kwargs.
+    available_funds = list(nav_context.get("available_funds") or [])
     nav_clean = {k: v for k, v in nav_context.items() if k != "available_funds"}
     return render_template(
         template,
         nav_context=nav_context,
         user_email=get_effective_user_email_flask(),
+        available_funds=extra.pop("available_funds", available_funds),
         **nav_clean,
         **extra,
     )

@@ -243,3 +243,71 @@ def test_get_watchlist_status_for_fund_not_watched() -> None:
     assert status["in_watchlist"] is False
     assert status["ticker"] == "CELH"
     assert status["fund"] == "TEST"
+
+
+def test_enrich_watchlist_rows_merges_analysis_and_queue() -> None:
+    from web_dashboard.watchlist_access import enrich_watchlist_rows
+
+    rows = [
+        {
+            "fund": "TEST",
+            "ticker": "CRM",
+            "priority_tier": "B",
+            "is_active": True,
+            "source": "bulk_paste",
+        },
+        {
+            "fund": "TEST",
+            "ticker": "NOW",
+            "priority_tier": "B",
+            "is_active": True,
+            "source": "bulk_paste",
+        },
+    ]
+    postgres = MagicMock()
+    postgres.execute_query.side_effect = [
+        [
+            {
+                "ticker": "CRM",
+                "analysis_date": "2026-07-01",
+                "updated_at": "2026-07-01T12:00:00",
+                "sentiment": "BULLISH",
+                "stance": "BUY",
+                "confidence_score": 0.7,
+                "summary": "Strong SaaS narrative",
+            }
+        ],
+        [
+            {
+                "ticker": "CRM",
+                "unified_conviction": "constructive",
+                "confidence_adjusted": 0.6,
+                "updated_at": "2026-07-02T00:00:00",
+            }
+        ],
+    ]
+    supabase = MagicMock()
+    task_q = MagicMock()
+    legacy_q = MagicMock()
+
+    def _table(name: str):
+        return task_q if name == "ai_task_queue" else legacy_q
+
+    supabase.supabase.table.side_effect = _table
+    for q in (task_q, legacy_q):
+        q.select.return_value = q
+        q.in_.return_value = q
+        q.eq.return_value = q
+        q.execute.return_value = MagicMock(data=[])
+    task_q.execute.return_value = MagicMock(
+        data=[{"target_key": "NOW", "status": "pending", "analysis_type": "ticker_analysis"}]
+    )
+
+    out = enrich_watchlist_rows(rows, supabase_client=supabase, postgres_client=postgres)
+    by_ticker = {r["ticker"]: r for r in out}
+    assert by_ticker["CRM"]["analyzed"] is True
+    assert by_ticker["CRM"]["stance"] == "BUY"
+    assert by_ticker["CRM"]["has_meta"] is True
+    assert by_ticker["CRM"]["dossier_url"] == "/ticker?ticker=CRM"
+    assert by_ticker["NOW"]["analyzed"] is False
+    assert by_ticker["NOW"]["queue_status"] == "pending"

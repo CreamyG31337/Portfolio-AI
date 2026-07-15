@@ -28,11 +28,15 @@ def _nav_render(template: str, current_page: str, **extra: Any):
     from app import get_navigation_context
 
     nav_context = get_navigation_context(current_page=current_page)
+    # Sidebar uses top-level available_funds; strip from explode then re-add
+    # so callers can override via **extra without duplicate kwargs.
+    available_funds = list(nav_context.get("available_funds") or [])
     nav_clean = {k: v for k, v in nav_context.items() if k != "available_funds"}
     return render_template(
         template,
         nav_context=nav_context,
         user_email=get_effective_user_email_flask(),
+        available_funds=extra.pop("available_funds", available_funds),
         **nav_clean,
         **extra,
     )
@@ -195,7 +199,8 @@ def ideas_triage_api():
 @intelligence_bp.route("/watchlist", methods=["GET"])
 @require_auth
 def watchlist_page():
-    return _nav_render("watchlist.html", "watchlist")
+    # Fund-scoped page: hide "All Funds" so the Data Source picker is usable.
+    return _nav_render("watchlist.html", "watchlist", allow_all_funds=False)
 
 
 def _require_fund_access(fund: str | None) -> tuple[str | None, Any]:
@@ -218,13 +223,20 @@ def watchlist_list_api():
             return err
         include_inactive = request.args.get("include_inactive", "0") in ("1", "true", "yes")
         from supabase_client import SupabaseClient
-        from watchlist_access import list_watchlist_for_fund
+        from watchlist_access import enrich_watchlist_rows, list_watchlist_for_fund
 
         client = SupabaseClient(use_service_role=True)
         rows = list_watchlist_for_fund(
             client, fund or "", include_inactive=include_inactive
         )
-        return jsonify({"data": _serialize_rows(rows), "fund": fund})
+        try:
+            postgres = PostgresClient()
+        except Exception:
+            postgres = None
+        enriched = enrich_watchlist_rows(
+            rows, supabase_client=client, postgres_client=postgres
+        )
+        return jsonify({"data": _serialize_rows(enriched), "fund": fund})
     except Exception as exc:
         logger.error("watchlist list failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
@@ -268,6 +280,43 @@ def watchlist_add_api():
         return jsonify(result)
     except Exception as exc:
         logger.error("watchlist add failed: %s", exc, exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@intelligence_bp.route("/api/watchlist/analyze", methods=["POST"])
+@require_auth
+def watchlist_analyze_api():
+    """Enqueue ASAP ticker (+ meta) analysis for watchlist symbols."""
+    try:
+        body = request.get_json(silent=True) or {}
+        fund, err = _require_fund_access(body.get("fund"))
+        if err:
+            return err
+        from supabase_client import SupabaseClient
+        from watchlist_access import parse_ticker_list, request_manual_ticker_analysis
+
+        tickers = body.get("tickers")
+        if isinstance(tickers, str):
+            parsed = parse_ticker_list(tickers)
+        else:
+            parsed = parse_ticker_list(tickers or [])
+        if not parsed:
+            return jsonify({"error": "tickers required"}), 400
+        include_meta = body.get("include_meta", True)
+        if not isinstance(include_meta, bool):
+            include_meta = str(include_meta).lower() in ("1", "true", "yes")
+        client = SupabaseClient(use_service_role=True)
+        outcome = request_manual_ticker_analysis(
+            client,
+            parsed,
+            enqueued_by="watchlist_ui",
+            include_meta=include_meta,
+        )
+        status = 200 if outcome.get("ok") else 400
+        outcome["fund"] = fund
+        return jsonify(outcome), status
+    except Exception as exc:
+        logger.error("watchlist analyze failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 

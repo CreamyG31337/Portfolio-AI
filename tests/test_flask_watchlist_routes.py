@@ -43,6 +43,15 @@ def test_watchlist_list_api(client, auth_ok):
             "source": "bulk_paste",
         }
     ]
+    enriched = [
+        {
+            **rows[0],
+            "analyzed": True,
+            "analysis_date": "2026-07-10",
+            "dossier_url": "/ticker?ticker=CRM",
+            "queue_status": None,
+        }
+    ]
     with patch(
         "routes.intelligence_routes.get_available_funds_flask",
         return_value=["Project Chimera", "TEST"],
@@ -50,12 +59,21 @@ def test_watchlist_list_api(client, auth_ok):
         "supabase_client.SupabaseClient",
         return_value=MagicMock(),
     ), patch(
+        "routes.intelligence_routes.PostgresClient",
+        return_value=MagicMock(),
+    ), patch(
         "watchlist_access.list_watchlist_for_fund",
         return_value=rows,
+    ), patch(
+        "watchlist_access.enrich_watchlist_rows",
+        return_value=enriched,
     ):
         resp = client.get("/api/watchlist?fund=Project%20Chimera")
     assert resp.status_code == 200
-    assert resp.get_json()["data"][0]["ticker"] == "CRM"
+    data = resp.get_json()["data"][0]
+    assert data["ticker"] == "CRM"
+    assert data["analyzed"] is True
+    assert data["dossier_url"] == "/ticker?ticker=CRM"
 
 
 @skip_without_plotly
@@ -120,6 +138,65 @@ def test_watchlist_item_deactivate(client, auth_ok):
         )
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
+
+
+@skip_without_plotly
+def test_watchlist_analyze_api(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch(
+        "routes.intelligence_routes.get_available_funds_flask",
+        return_value=["Project Chimera"],
+    ), patch(
+        "supabase_client.SupabaseClient",
+        return_value=MagicMock(),
+    ), patch(
+        "watchlist_access.request_manual_ticker_analysis",
+        return_value={
+            "ok": True,
+            "tickers": ["CRM", "NOW"],
+            "enqueued": 2,
+            "ticker_analysis": {"attempted": 2, "enqueued": 2, "failed": 0},
+            "ticker_meta": {"attempted": 2, "enqueued": 2, "failed": 0},
+            "legacy_queued": ["CRM", "NOW"],
+        },
+    ) as mock_req:
+        resp = client.post(
+            "/api/watchlist/analyze",
+            json={
+                "fund": "Project Chimera",
+                "tickers": ["CRM", "NOW"],
+                "include_meta": True,
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["enqueued"] == 2
+    assert mock_req.call_args.kwargs["include_meta"] is True
+
+
+@skip_without_plotly
+def test_watchlist_page_renders_fund_options(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch(
+        "app.get_navigation_context",
+        return_value={
+            "available_funds": ["Project Chimera", "TEST"],
+            "selected_fund": "Project Chimera",
+            "nav_links": [],
+            "current_page": "watchlist",
+            "is_admin": False,
+        },
+    ), patch(
+        "routes.intelligence_routes.get_effective_user_email_flask",
+        return_value="user@example.com",
+    ):
+        resp = client.get("/watchlist")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="global-fund-select"' in html
+    assert "Project Chimera" in html
+    assert "TEST" in html
+    assert "(No funds available)" not in html
 
 
 @skip_without_plotly

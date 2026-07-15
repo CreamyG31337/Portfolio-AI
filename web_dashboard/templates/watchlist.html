@@ -5,11 +5,11 @@
 {% block page_subtitle %}Manage fund-scoped watched tickers{% endblock %}
 
 {% block content %}
-<div class="max-w-5xl mx-auto space-y-6">
+<div class="max-w-6xl mx-auto space-y-6">
     <p class="text-sm text-text-secondary">
-        Add friend tips or names here. After adding, open the ticker and use
-        <strong>Analyze</strong> for ASAP AI research (not enqueued automatically).
-        Ideas Accept still adds discovery tickers separately.
+        Add friend tips or names here. Use <strong>Analyze</strong> to queue ASAP AI research
+        (GPU workers pick it up). When done, open the ticker dossier — full write-up lives on
+        <code class="text-xs">/ticker?ticker=…</code> under AI Analysis.
     </p>
 
     <section class="bg-dashboard-surface border border-border rounded-lg p-4">
@@ -44,10 +44,16 @@
     </section>
 
     <section class="bg-dashboard-surface border border-border rounded-lg p-4">
-        <h2 class="text-lg font-semibold text-text-primary mb-2">
-            Active watchlist
-            <span id="watchlist-count" class="text-sm font-normal text-text-secondary"></span>
-        </h2>
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-lg font-semibold text-text-primary">
+                Active watchlist
+                <span id="watchlist-count" class="text-sm font-normal text-text-secondary"></span>
+            </h2>
+            <button id="watchlist-analyze-all" type="button"
+                class="px-3 py-1.5 rounded-lg border border-border text-sm text-text-primary hover:bg-dashboard-background">
+                Analyze all active
+            </button>
+        </div>
         <div id="watchlist-loading" class="text-sm text-text-secondary">Loading…</div>
         <div id="watchlist-error" class="hidden text-sm text-theme-error-text mb-2"></div>
         <div id="watchlist-empty" class="hidden text-sm text-text-secondary">
@@ -59,14 +65,17 @@
                     <tr class="border-b border-border text-left text-text-secondary">
                         <th class="py-2 pr-3">Ticker</th>
                         <th class="py-2 pr-3">Tier</th>
-                        <th class="py-2 pr-3">Source</th>
-                        <th class="py-2 pr-3">Status</th>
+                        <th class="py-2 pr-3">AI analysis</th>
+                        <th class="py-2 pr-3">Meta</th>
+                        <th class="py-2 pr-3">Preview</th>
+                        <th class="py-2 pr-3">Watch</th>
                         <th class="py-2 pr-3">Actions</th>
                     </tr>
                 </thead>
                 <tbody id="watchlist-tbody"></tbody>
             </table>
         </div>
+        <p id="watchlist-analyze-msg" class="text-sm mt-2 hidden"></p>
     </section>
 </div>
 {% endblock %}
