@@ -5,9 +5,11 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
-| [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | **The active implementation brief** (created 2026-06-11, after Phases A–F shipped): stance provenance, dilution watch (shares-outstanding + EDGAR filings), confluence scorer. Start there for current work. |
+| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work (2026-07-15):** source-ROI report, meta-bundle injection of Phase G signals + prior stance, trend memory, congress herd → ledger, executive-trades consumer-or-kill. |
+| [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | Phase G brief (2026-06-11): provenance, dilution, EDGAR filings, confluence. **G1–G5 + G7 shipped; G6 optional.** No longer the primary kickoff — see Phase H. |
 | [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads + **Decide-layer job map** (meta vs Insights eval vs Action Queue review — table + mermaid). Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
+| [`docs/executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) | Unshipped consumer plan for `jobs_executive.py` data — decide ship vs disable (Phase H). |
 | [`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md) | Infra status for the AI task queue. Any new LLM job in this plan should be queue-managed. |
 | [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md) | How the Action Queue / market brief / enrichment currently fit together. |
 
@@ -15,13 +17,20 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 ## The one-paragraph thesis
 
-The system is **production-pipeline-rich and consumption-poor**. Collection and synthesis are
-built and healthy (~40 scheduler jobs, meta-analysis Phases 1–3 shipped). What's missing is
-(1) a **memory of its own opinions** — `ticker_meta_analysis` overwrites itself nightly, so the
-system can never be scored — and (2) **screens organized around decisions** instead of data
-sources. Fix those two things before adding any new collection or synthesis. The goal remains
-the meta roadmap's north star: *help a human answer what to buy/sell, with inspectable
-outputs* — never autonomous execution.
+**As of 2026-07-15:** Collect and Learn *plumbing* are ahead of the loop that joins them.
+`stance_history` + `stance_outcomes` + Today / Ideas / track-record / Phase G risk signals are
+live, but the system's center of gravity is still one layer too early: synthesis
+(`ticker_meta_analysis`) still reasons without insider clusters, dilution/filing/confluence
+events, or its own prior stance + hit rate; the **source-ROI report** (G1's reason for being)
+is still unbuilt even though ~30d outcome data matured ~2026-07-10. Hold the June guardrail —
+*no new collectors until Learn says which earn their keep* — and cash in that unlock before
+§4.5 / §4.6 / §5.3 / G6.
+
+*(Historical June thesis, for context: the system was production-pipeline-rich and
+consumption-poor — nightly meta overwrite destroyed memory, and screens were source-centric.
+Pillars 1–2 and Phases A–G largely closed those gaps; Phase H closes the Learn→Synthesize /
+Learn→Collect arrows.)* The north star is unchanged: *help a human answer what to buy/sell,
+with inspectable outputs* — never autonomous execution.
 
 ## The four-layer mental model
 
@@ -50,11 +59,13 @@ flowchart LR
         C2["Advisory rebalance"]
         C3["Insights theses + due review<br/>/insights · llm_reply advisory"]
     end
-    subgraph Learn["4 · LEARN — missing entirely (Pillar 1)"]
-        D1["stance_history ledger"]
-        D2["Outcome scoring 7/30/90d"]
-        D3["Stance-flip events"]
-        D4["Track-record screen"]
+    subgraph Learn["4 · LEARN — plumbing shipped; ROI loop open (Phase H)"]
+        D1["stance_history ledger ✓"]
+        D2["Outcome scoring 7/30/90d ✓"]
+        D3["Stance-flip events ✓"]
+        D4["Track-record screen ✓"]
+        D5["Source-ROI report ← missing"]
+        D6["Prior stance → meta bundle ← missing"]
     end
     Collect --> Synthesize --> Decide --> Learn
     Learn -.->|"down-weight noisy sources"| Synthesize
@@ -63,12 +74,70 @@ flowchart LR
 
 The feedback-loop confusion of early 2026 came from repeatedly enriching layer 2 (sector priors,
 regime fusion — all good work) while the loop never **terminated** anywhere: no grader (layer 4)
-and no surface a human reads daily (layer 3 is one card among ~15 on the dashboard).
+and no surface a human reads daily (layer 3 is one card among ~15 on the dashboard). By mid-2026
+those surfaces and the ledger shipped; the **2026-07-15** failure mode is different — collectors
+and score plumbing without reading outcomes (or Phase G risk signals) back into synthesis.
 
 **Decide-layer job map** (meta vs Insights eval vs Action Queue review vs fund thesis — table +
 flow mermaid, circularity guards): [`INSIGHTS.md` → Analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for).
 
+## Key findings from the 2026-07-15 design review
+
+Cross-checked roadmap + Phase G + meta docs against scheduler jobs, `build_artifact_bundle` in
+`meta_analysis_service.py`, and consumers of each data table. **Verdict: on track, not lost** —
+architecture and discipline are sound; center of gravity is still one layer too early (Collect /
+Learn plumbing ahead of Learn→Synthesize / Learn→Collect wiring).
+
+### Three diagnostic questions
+
+1. **Collecting as much as possible?** **Yes — arguably enough.** ~55 scheduler jobs (prices,
+   benchmarks, SearXNG/RSS/email/scrape news, social, congress, US + Canadian insiders, ETF
+   holdings, SEC filings, dilution, dividends). Known gaps (G6 short volume, §4.5 short interest,
+   §4.6 13F, §5.3 FEC) stay **gated** behind Learn proving existing collectors earn their keep.
+   **Do not add collectors now.**
+2. **All available to the LLM for reasoning?** **No — biggest real gap.** Ticker meta bundle has
+   analysis rows, signals, market regime, sector prior, social, articles, congress, human theses.
+   It does **not** include:
+   - **Insider clusters** — 130k rows + cluster detection shipped; **zero** insider consumption in
+     the meta service (Today-only for humans).
+   - **Dilution / SEC filing / confluence events** — Phase G risk work is Today/dossier-facing;
+     invisible to `ticker_meta_analysis`.
+   - **Own stance history + hit rate** — ledger writes nightly; nothing reads prior stance or
+     outcomes back into the prompt (nightly amnesia). Confluence counts some signals mechanically
+     but there is no LLM reasoning over “cluster + dilution + I was BULLISH at 0.8 last week.”
+3. **Outputs feed back as inputs for more complex reasoning?** **Partially.** Confluence (G4) and
+   Advise recombine mechanically. Contradiction drill-down exists but stays gated (~1.7/day vs
+   ~10/day bar — correct). Missing: **source-ROI report** (G1 provenance’s payoff; 30d outcomes
+   matured ~2026-07-10 — **highest-leverage unbuilt item**); **temporal memory** in synthesis
+   (`market_brief` never reads prior briefs; sector `rotation_rank` has no delta — cannot say
+   “risk-off five sessions” or “energy rank climbed three weeks”). History rows already accumulate;
+   nothing reads them back.
+
+### Data collected into a void (confirmed)
+
+| Dead / half-wired end | Reality |
+|----------------------|---------|
+| **Executive trades** | `jobs_executive.py` upserts; only readers are the job + backfill. No route/template/analysis. [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) never shipped. **Ship the consumer or disable the job.** |
+| **Weekly retro** | Computes flips + hit rates Sundays; Mailgun code shipped 2026-06-20; **`RETRO_DIGEST_RECIPIENTS` never set in prod** — self-review logs into the abyss. Five-minute env fix. |
+| **Congress Learn exemption** | `congress_trade_returns` + conflict scores exist; **5.1b / 5.1c** and herd → `stance_history` never landed — congress pipeline largely **ungradeable**. |
+| **Ideas inbox labels** | `idea_triage` empty at June verify; if Accept/Dismiss unused, alpha terminus produces no labeled relevance data — honest product signal if still unused. |
+
+### Failure mode to watch
+
+Not detail-obsession — **collectors are more fun than loops.** Phase G shipped four valuable
+collectors while source-ROI, retro email hookup, and bundle injection of the new signals sat
+unbuilt. Hold the roadmap’s own sequencing: close Learn→Synthesize / Learn→Collect before any
+new feed.
+
+### Ordered next work → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)
+
+---
+
 ## Key findings from the 2026-06-09 design review
+
+> Status note (2026-07-15): items 1–4 and most of 5–6 were addressed by Phases A–G + Insights /
+> Advise. Remaining spirit of item 5 (short interest, etc.) and the Learn→Collect dashed arrow
+> are now Phase H / gated §4.5–4.6. Do not re-open Pillar 1 ledger work.
 
 1. **Stance history is destroyed nightly.** `ticker_meta_analysis` has `UNIQUE (ticker)`
    (`database/schema/research/tables/ticker_meta_analysis.sql`) and the save path does
@@ -441,11 +510,11 @@ whether it warrants a §5.2-style read-only benchmark before anything else.
 ### Pillar 5 checklist
 
 - [x] **5.1a** congress herd-buy service + `GET /api/congress/herd-buys` + Today-screen block (mirror `insider_clusters_service`) — shipped 2026-06-20
-- [ ] **5.1b** politician greediness leaderboard (conflict × volume, with realized-return column) on the congress page
-- [ ] **5.1c** late-filer flag (disclosure − transaction > 45d) on congress page + dossier
-- [ ] **5.1** record congress herd reading as `stance_history` source for outcome scoring
+- [ ] **5.1b** politician greediness leaderboard (conflict × volume, with realized-return column) on the congress page — after H5
+- [ ] **5.1c** late-filer flag (disclosure − transaction > 45d) on congress page + dossier — after H5
+- [ ] **5.1** record congress herd reading as `stance_history` source for outcome scoring — **Phase H5**
 - [ ] **5.2** `validate_against_govgreed.py` read-only audit + results table in this doc
-- [ ] **5.3** FEC "Triple Signal" — **deferred** until Learn layer clears the new-collection guardrail
+- [ ] **5.3** FEC "Triple Signal" — **deferred** until Learn layer clears the new-collection guardrail (and after H1 + H5)
 
 ---
 
@@ -482,21 +551,72 @@ flowchart TD
     B0["B0 · run the six cheap-learn audits"] --> E1["E · Shape C contradiction drill-down"]
     A3 --> B1["B1 · Today screen (+ card migration)"]
     B1 --> B2["B2 · Ideas inbox"]
-    A2 --> C1["C · Track-record screen (needs ~30d of ledger)"]
+    A2 --> C1["C · Track-record screen"]
     B1 --> D1["D · dossier evidence timeline"]
     C1 --> E1
-    Q1["Quick wins, anytime:<br/>4.2 insider clusters · 4.3 liquidity panel · 2.5 freshness badges"]
+    G1["G1 · provenance"] --> H1["H1 · Source-ROI report ← NOW"]
+    A2 --> H1
+    H1 --> H2["H2 · Meta-bundle injection"]
+    H1 -.->|"gates"| F56["§4.5 / §4.6 / G6 / §5.3"]
+    H3["H3 · RETRO_DIGEST_RECIPIENTS ops"]
+    H2 --> H4["H4 · Trend memory"]
+    H5["H5 · congress herd → ledger"]
+    H6["H6 · executive ship-or-kill"]
 ```
 
 | Phase | Scope | Size |
 |-------|-------|------|
 | **A** (now — time-sensitive) | 1.1 ledger + 1.2 scoring + 1.3 flips; B0 cheap learns | days — **shipped 2026-06-10** |
 | **B** | 2.1 Today screen, then 2.2 Ideas inbox | ~1–2 wk — **shipped 2026-06-10 (V1)** |
-| **C** | 2.4 Track record (after ledger matures) | days — **shipped 2026-06-10 (V1; needs ~30d data)** |
+| **C** | 2.4 Track record (after ledger matures) | days — **shipped 2026-06-10 (V1; 30d mature ~2026-07-10)** |
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
-| **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro pending** |
-| **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1 advisory V1 shipped** |
-| **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G7 shipped; G6 optional remains** |
+| **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro code shipped, email unconfigured** |
+| **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
+| **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **start here** |
+
+### Phase H — Close the Learn ↔ Synthesize loop (**active**)
+
+**Created 2026-07-15** from the [2026-07-15 design review](#key-findings-from-the-2026-07-15-design-review).
+Do **not** start §4.5 / §4.6 / §5.3 / G6 until H1 produces a readable source-ROI answer.
+Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + feature flags).
+
+#### H checklist (recommended order)
+
+- [ ] **H1 · Source-ROI report** (P0) — hit rate + excess return sliced by `stance_history.source`
+  and by evidence article domain (G1 `metadata` / evidence manifest). Screen **or** script +
+  table in this doc. Unblocks the “which of ~55 jobs matter?” guardrail. Days of work; 30d
+  outcome data ready since ~2026-07-10.
+- [ ] **H2 · Meta-bundle injection** — feature-flagged artifact families into
+  `build_artifact_bundle` / evidence builder (mirror R1):
+  - insider clusters
+  - dilution flags + SEC `filing_events` + confluence events
+  - “your prior stance + track record for this ticker/source” from `stance_history` /
+    `stance_outcomes`
+  - Zero new collection. Prompt rules so weak/absent data → INSUFFICIENT_DATA-safe.
+- [ ] **H3 · Ops: `RETRO_DIGEST_RECIPIENTS`** — set in prod (no code). Weekly self-review
+  stops logging into the void. (G5 code already shipped 2026-06-20.)
+- [ ] **H4 · Trend memory** — `### Regime last N sessions` for market brief; `### Rotation rank
+  deltas` for sector meta, built from existing DB rows. Cheap; enables multi-session /
+  multi-week condition language the LLM cannot invent from a single row.
+- [ ] **H5 · Congress herd → `stance_history`** — one `record_stance_safe(..., source=
+  'congress_herd')` so the pipeline enters the Learn layer; then 5.1b/5.1c as follow-ons.
+- [ ] **H6 · Executive trades: ship or kill** — implement
+  [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) **or** disable
+  `jobs_executive` (collector-into-void violates guardrails).
+- [ ] **H7 · Ideas usage check** — confirm whether `idea_triage` has any Accept/Dismiss in prod;
+  if unused after months, treat as product signal (retire pressure or fix UX) before building
+  relevance-scorer training on empty labels.
+
+#### Still gated (do not start in Phase H)
+
+| Item | Why gated |
+|------|-----------|
+| **G6** FINRA daily short volume | Optional; new feed |
+| **§4.5** Short interest / days-to-cover | New collection; after source-ROI |
+| **§4.6** 13F ownership deltas | New collection; after source-ROI |
+| **§5.3** FEC Triple Signal | Explicitly deferred until congress Learn edge proven |
+| **Shape A/B** LLM research selection | After ROI + (for B) domain-health / theme coverage |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -509,17 +629,18 @@ flowchart TD
 - [x] **E · Shape C** `contradiction_drilldown_job` (audit #4 gate; AI task queue)
 - [x] **E · weekly retro** `weekly_stance_retro_job` (log summary; Mailgun digest hookup next)
 - [x] **F · §4.1** `dilution_watch_job` advisory V1 (ticker scope scan; EDGAR hookup next)
-- [ ] **F · §4.5/4.6** short interest / 13F (not started)
+- [ ] **F · §4.5/4.6** short interest / 13F — **gated by Phase H1** (source-ROI); not started
 - [x] **Quick win · §4.2** insider cluster buys (2026-06-11): `insider_clusters_service.py`,
   `GET /api/insiders/cluster-buys`, Today-screen block. 3+ distinct insiders buying within
   30d, held/watchlist tickers ranked first. Live check found 15 clusters on day one.
+  **Note (2026-07-15):** Today-only — not yet in ticker meta bundle (Phase H2).
 - [x] **Quick win · §4.3** liquidity/exit-risk panel (2026-06-11): `liquidity_service.py`,
   `GET /api/liquidity/panel`, Today-screen block. Days-to-exit = shares / (10% × 1-mo avg
   daily volume), share-based so currency never enters the math; yfinance volumes cached 6h
   and kept out of the briefing payload (panel loads async). Holdings-table column still open.
-- [x] **§2.6 Insights review loop v1** (2026-07): due-for-review UI (`GET /api/insights/due`),
-  `insights_thesis_evaluation` advisory `llm_reply` job. Meta injection (R1, holdings-scoped)
-  + Today/Ideas attention surfacing (R2) shipped. Stance ledger for thesis advice remains R3.
+- [x] **§2.6 Insights review loop** (2026-07): due queue + `insights_thesis_evaluation`; R1
+  meta injection + R2 Today/Ideas attention + R3 thesis advice → `stance_history` **all shipped**.
+  Pattern for Phase H2 bundle injection.
 
 Quick wins remaining: 2.5 badges rollout slots into any phase as a palate cleanser.
 
@@ -543,9 +664,9 @@ Full specs, research tasks, and acceptance criteria live in
   True in prod). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
 - [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
 - [x] **G5** weekly retro → Mailgun digest — **code shipped 2026-06-20** (`retro_digest_service.py`);
-  **email not configured in prod** (no `RETRO_DIGEST_RECIPIENTS`; job logs only until set up)
+  **email not configured in prod** → track as **Phase H3** (`RETRO_DIGEST_RECIPIENTS`)
 - [x] **G7** Canadian insider coverage via yfinance (`source` on `insider_trades`, weekly job) — shipped 2026-06-20
-- [ ] **G6** FINRA daily short volume (optional)
+- [ ] **G6** FINRA daily short volume (optional) — **gated by Phase H1**; do not start in H
 
 ## Post-ship verification (2026-06-20)
 
@@ -555,15 +676,15 @@ Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun
   100% for those sources (action_queue stores `verdict` in metadata by design — not
   the `evidence` article-ID manifest).
 - **`stance_outcomes` scoring live.** First 7d scores landed **2026-06-19** (~127 rows
-  by 2026-06-20). Track-record `/track-record` uses 7d data now; 30d horizon matures
-  **~2026-07-10**. Fixed 2026-06-20: NaN yfinance returns no longer crash
-  `build_track_record_summary` (purged + skipped on insert).
+  by 2026-06-20). Track-record `/track-record` uses 7d data now; **30d horizon matured
+  ~2026-07-10** — Phase H1 (source-ROI) is unblocked. Fixed 2026-06-20: NaN yfinance returns
+  no longer crash `build_track_record_summary` (purged + skipped on insert).
 - **`sec_filings` enabled in prod** — `filing_events` populated; job runs weekdays 18:30 ET.
-- **`confluence` live** — events + Today block shipping.
+  **Note (2026-07-15):** Today/dossier only — not in meta bundle until H2.
+- **`confluence` live** — events + Today block shipping. **Same gap:** not in meta bundle (H2).
 - **G5 retro Mailgun** — code shipped (`retro_digest_service.py`); **not configured in prod**
-  (no `RETRO_DIGEST_RECIPIENTS` / Mailgun recipients). Weekly job still runs and logs summary;
-  enable later with `RETRO_DIGEST_RECIPIENTS=you@example.com` + existing Mailgun outbound env.
-- **`idea_triage` empty — expected** (no inbox decisions made yet).
+  (no `RETRO_DIGEST_RECIPIENTS`). → **Phase H3**. Weekly job still runs and logs summary.
+- **`idea_triage` empty** at June verify — re-check under **Phase H7**.
 
 Two real findings from the June 2026 ledger rollout (still relevant):
 
@@ -587,7 +708,12 @@ TEST_* residue — production jobs must filter by `is_production`.
 
 - **No autonomous trading.** Outputs are suggestions a human approves. Ever.
 - **No new collection jobs until the Learn layer says which existing ones earn their keep.**
+  As of 2026-07-15 that means: **finish Phase H1 (source-ROI) before G6 / §4.5 / §4.6 / §5.3.**
+- **No collector-into-a-void.** If a job writes data with no route, analysis, or ledger consumer,
+  either ship the consumer or disable the job (see Phase H6 executive trades).
 - New value must be a **new artifact type, a queue decision, or a screen** — not "more articles."
+  Prefer **reading existing scored/structured outputs back into synthesis** (Phase H2/H4) over
+  new collectors.
 - New LLM call sites go through `collect_with_summary_model_chain` and the **AI task queue**
   (queue-managed; don't add new global-mutex jobs).
 - Additive schema only: new tables/columns with fallbacks; never repurpose
@@ -603,18 +729,38 @@ TEST_* residue — production jobs must filter by `is_production`.
 Ready-to-paste prompts for a coding agent (Cursor plan mode, etc.) live here so they're never
 lost. Paste as-is; each instructs the agent to read the relevant doc first.
 
-### Phase G kickoff (current — use this one)
+### Phase H kickoff (current — use this one)
 
 > You are working in the Portfolio-AI repo (Windows + PowerShell, venv at `.\venv`). Read
-> `docs/PHASE_G_PLAN.md` in full — it is the active implementation brief — plus the Guardrails
+> `docs/ROADMAP.md` in full — especially **Key findings from the 2026-07-15 design review** and
+> **Phase H** — plus Guardrails and `.claude/CLAUDE.md` / `AGENTS.md` for conventions (Flask is
+> production; edit TypeScript in `web_dashboard/src/js/` never `static/js/`; Decimal for money;
+> TEST fund for local data; run the right pytest suite).
+>
+> Implement Phase H **in checklist order (H1 → H2 → H3 ops → H4 → H5 → H6 → H7), one item per
+> PR-sized change set**. H1 (source-ROI) is P0 and gates new collectors. H2 mirrors Insights R1
+> meta-bundle injection (feature-flagged artifact families: insider clusters, dilution/filing/
+> confluence, prior stance + track record). H3 is ops-only (`RETRO_DIGEST_RECIPIENTS`). Do **not**
+> start G6, §4.5, §4.6, or §5.3 in this phase.
+>
+> Hard rules: no autonomous trade execution; no new collection jobs; additive schema only;
+> holdings-scoped work filters `funds.is_production = true`; don't touch `verification/`;
+> check off Phase H items in `docs/ROADMAP.md` as they land; run relevant tests before declaring
+> done. Where the review contradicts the codebase, trust the codebase and update the roadmap.
+
+### Phase G kickoff (historical — G1–G5 + G7 shipped; G6 gated)
+
+> You are working in the Portfolio-AI repo (Windows + PowerShell, venv at `.\venv`). Read
+> `docs/PHASE_G_PLAN.md` in full — it was the Phase G implementation brief — plus the Guardrails
 > section of `docs/ROADMAP.md` and `.claude/CLAUDE.md` for conventions (Flask is production,
 > Streamlit is prototype-only; edit TypeScript in `web_dashboard/src/js/` never `static/js/`;
 > use Decimal for money; run `python -m pytest tests/ -v` and keep it green).
 >
-> Implement Phase G **in the plan's work order (G1 ✓ done → G3 → G2 → G4 → G5 → G6), one
-> item per PR-sized change set**. Several items contain explicit RESEARCH tasks: do the
-> research first, write your findings into the plan doc, and adjust the approach before coding.
-> Where this plan contradicts the codebase, trust the codebase and update the plan.
+> **Note:** Active work moved to **Phase H** in `docs/ROADMAP.md` (2026-07-15). Only pick up
+> remaining G6 if Phase H1 source-ROI has cleared the new-collection guardrail.
+>
+> Implement any remaining Phase G item **one PR-sized change set**. Where this plan contradicts
+> the codebase, trust the codebase and update the plan.
 >
 > Hard rules (the plan repeats them with detail): no autonomous trade execution; additive
 > schema only; holdings-scoped jobs must filter `funds.is_production = true`; paginate

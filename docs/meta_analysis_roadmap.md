@@ -2,10 +2,11 @@
 
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
-> **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan** (2026-06-09)
-> covering presentation redesign, the stance ledger / outcome feedback (Phase 4 made concrete),
-> and new trackables. This doc remains the deep reference for the meta-analysis layers
-> (Phases 1–3, all shipped); its "Later phases" section is superseded by `ROADMAP.md`.
+> **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan**. As of
+> **2026-07-15**, active work is **Phase H** (source-ROI, meta-bundle injection, trend memory) —
+> see ROADMAP “Key findings from the 2026-07-15 design review.” This doc remains the deep
+> reference for the meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section
+> is superseded by `ROADMAP.md`.
 
 **Related docs (keep in sync when the pipeline changes):**
 
@@ -36,11 +37,11 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 |------------|-------|------------|
 | Market regime prior | Shipped (`market_daily_brief` → ticker meta) | Same |
 | Sector rotation view | Shipped (`sector_meta_analysis`, Sector Insights UI) | Fed into ticker meta (3c) |
-| Human ticker theses | Shipped as **Insights** (`/insights`, `ticker_theses`) — not Sector Insights; see [`INSIGHTS.md`](INSIGHTS.md). Injected into ticker meta (R1) and Today/Ideas attention (R2). | Optional stance ledger for thesis advice (ROADMAP §2.6 R3) |
-| Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+) |
+| Human ticker theses | Shipped as **Insights** (`/insights`, `ticker_theses`) — not Sector Insights; see [`INSIGHTS.md`](INSIGHTS.md). Injected into ticker meta (R1) and Today/Ideas attention (R2); thesis advice → ledger (R3). | Widen scope / trust calibration via Phase H source-ROI |
+| Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+); **Phase H2** adds clusters / dilution / filings / confluence / prior stance (Today-only as of 2026-07-15) |
 | Action queue | **Rules-based** from technical `signal_analysis`; meta attached as context | Ranked ideas aligned with meta + portfolio |
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
-| Outcome feedback | Planned (Phase 4) | Calibrate which inputs predict good trades |
+| Outcome feedback | Ledger + scoring + track-record **shipped**; **source-ROI report still missing** (Phase H1) | Calibrate which inputs predict good trades; down-weight noisy collectors |
 
 ## Phase status (2026-05-23)
 

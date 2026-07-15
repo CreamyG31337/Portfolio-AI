@@ -253,8 +253,8 @@ python simple_repository_switch.py csv
 *   [North American Trading Guide](NORTH_AMERICAN_TRADING_GUIDE.md)
 
 **Technical Documentation (in `docs/`)**
-*   [⭐ Roadmap — Intelligence & UX (master plan)](docs/ROADMAP.md)
-*   [Phase G Plan — active implementation brief](docs/PHASE_G_PLAN.md)
+*   [⭐ Roadmap — Intelligence & UX (master plan; Phase H active)](docs/ROADMAP.md)
+*   [Phase G Plan — mostly shipped; G6 gated](docs/PHASE_G_PLAN.md)
 *   [Cache Management](docs/CACHE_MANAGEMENT.md)
 *   [Database Schema](docs/DATABASE_SCHEMA.md)
 *   [Portfolio Architecture](docs/PORTFOLIO_ARCHITECTURE.md)

@@ -1,11 +1,14 @@
 # Phase G Plan — Provenance, Filings, and Confluence
 
-**Audience: a coding agent (Cursor plan mode).** This is the detailed implementation brief for
-Phase G of [`docs/ROADMAP.md`](ROADMAP.md) (the master plan — read it first, especially its
-Guardrails). Created 2026-06-11 after Phases A–F shipped. Run this through plan mode: several
-items contain explicit **RESEARCH** tasks where you must investigate and propose an approach
-before writing code. Improve this plan where the codebase contradicts it — and update this doc
-and ROADMAP.md as items land.
+**Audience: historical.** Phase G of [`docs/ROADMAP.md`](ROADMAP.md) — G1–G5 + G7 **shipped**;
+G6 optional and **gated by Phase H1** (source-ROI). **Active work is Phase H** in ROADMAP
+(2026-07-15 design review): source-ROI report, meta-bundle injection of Phase G signals + prior
+stance, trend memory, congress herd → ledger, executive ship-or-kill. Keep this doc for G specs
+and acceptance criteria; update ROADMAP checklists when anything here still lands.
+
+Created 2026-06-11 after Phases A–F shipped. Several items contain explicit **RESEARCH** tasks.
+Improve this plan where the codebase contradicts it — and update this doc and ROADMAP.md as
+items land.
 
 **Verified against codebase 2026-06-11; re-reviewed 2026-06-13** (fixed a scheduling defect —
 G2 and G4 were both pointed at "22:30 ET", which collides and ignores that G4 consumes G2's
