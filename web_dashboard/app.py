@@ -113,6 +113,10 @@ try:
     @app.before_request
     def csrf_protect_routes():
         """Apply CSRF protection to all routes (except external webhooks)"""
+        # Skip CSRF when testing if WTF_CSRF_ENABLED is False
+        if not app.config.get('WTF_CSRF_ENABLED', True):
+            return
+
         # Only check CSRF for state-changing methods
         if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
             # Skip CSRF for external webhook endpoints (they use their own signature verification)
