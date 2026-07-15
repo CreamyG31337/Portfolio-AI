@@ -83,19 +83,34 @@ def main() -> int:
             f"hits={r.get('hits', 0)} misses={r.get('misses', 0)}{nan_note}"
         )
 
-    print("== track record (7d preview) ==")
+    print("== track record / source-ROI (7d preview) ==")
     try:
         from track_record_service import build_track_record_summary
 
         s7 = build_track_record_summary(pg, horizon_days=7)
         print(f"  total_scored={s7.get('total_scored', 0)}")
+        avg_ex = s7.get("avg_excess_by_source") or {}
         for src, rate in (s7.get("hit_rate_by_source") or {}).items():
             counts = (s7.get("counts_by_source") or {}).get(src) or {}
             rate_s = f"{100 * rate:.1f}%" if rate is not None else "—"
+            ex = avg_ex.get(src)
+            ex_s = f"{ex:+.2f}" if ex is not None else "—"
             print(
-                f"  {src}: hit_rate={rate_s} "
+                f"  {src}: hit_rate={rate_s} mean_excess={ex_s} "
                 f"({counts.get('hits', 0)}/{counts.get('scored', 0)} scored)"
             )
+        domains = (s7.get("by_domain") or [])[:5]
+        if domains:
+            print("  top domains:")
+            for d in domains:
+                rate = d.get("hit_rate")
+                rate_s = f"{100 * rate:.1f}%" if rate is not None else "—"
+                print(
+                    f"    {d.get('domain')}: hit_rate={rate_s} "
+                    f"scored={d.get('scored')} mean_excess={d.get('mean_excess')}"
+                )
+        else:
+            print("  top domains: (none)")
     except Exception as exc:
         print(f"  (failed: {exc})")
 

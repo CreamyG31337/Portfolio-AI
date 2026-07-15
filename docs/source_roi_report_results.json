@@ -1,0 +1,1122 @@
+{
+  "generated_at": "2026-07-15T22:00:20.323338+00:00",
+  "min_scored_warn": 12,
+  "horizons": {
+    "7": {
+      "horizon_days": 7,
+      "total_scored": 1358,
+      "hit_rate_by_source": {
+        "action_queue_ai_review": 0.68,
+        "ticker_meta_analysis": 0.4408,
+        "ticker_analysis": 0.4776,
+        "confluence": 0.3333
+      },
+      "hit_rate_by_verdict": {
+        "TENSION": 0.6,
+        "UNKNOWN": 0.4531,
+        "ALIGNED": 1.0
+      },
+      "hit_rate_by_confidence_band": {
+        "gte_0.75": 0.4955,
+        "0.5_to_0.75": 0.4429,
+        "lt_0.5": 0.4545
+      },
+      "avg_excess_by_source": {
+        "action_queue_ai_review": -4.235104,
+        "ticker_meta_analysis": -0.576102,
+        "ticker_analysis": -0.277896,
+        "confluence": -3.510751
+      },
+      "median_excess_by_source": {
+        "action_queue_ai_review": -5.340362,
+        "ticker_meta_analysis": -0.695754,
+        "ticker_analysis": -0.099679,
+        "confluence": -5.24275
+      },
+      "best_calls": [
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.7500",
+          "metadata": {
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.65
+          },
+          "excess_return": "39.771778",
+          "ticker_return": "40.986979",
+          "benchmark_return": "1.215201",
+          "ticker": "WDC",
+          "as_of": "2026-06-12 04:11:20.473260+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.7200",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "4882d399-5b74-474d-a877-90819c708fa6",
+                "b37393dc-6107-4956-990c-143b69b936a7",
+                "4257cc7b-ec23-4830-97d9-3c57cbcbeee2",
+                "c0b83f63-ebf0-4911-9046-1e0ce8df7dfb",
+                "0c20dea5-2934-45b9-a5c3-9c84ef00f2aa",
+                "09565f55-93f7-42bc-bcb7-3097c783d911"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles",
+                "congress"
+              ]
+            },
+            "contradictions_count": 3,
+            "artifact_bundle_digest": "631e947480463173492176adcbe40e337fe7da3c5a8be445a288315ebec79914"
+          },
+          "excess_return": "31.346572",
+          "ticker_return": "32.561773",
+          "benchmark_return": "1.215201",
+          "ticker": "WDC",
+          "as_of": "2026-06-14 07:07:20.083369+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.6200",
+          "metadata": {
+            "contradictions_count": 4,
+            "artifact_bundle_digest": "6f020c6a751751627292072e323b1160ac66ae06fd6736aeb7e0103b215310fc"
+          },
+          "excess_return": "31.346572",
+          "ticker_return": "32.561773",
+          "benchmark_return": "1.215201",
+          "ticker": "WDC",
+          "as_of": "2026-06-13 07:06:41.696266+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.7800",
+          "metadata": {
+            "contradictions_count": 3,
+            "artifact_bundle_digest": "e9650ce16e09a79afad28bb89b6c77969913192dbba5e22537846bdbf18197f0"
+          },
+          "excess_return": "31.346572",
+          "ticker_return": "32.561773",
+          "benchmark_return": "1.215201",
+          "ticker": "WDC",
+          "as_of": "2026-06-12 07:09:40.023103+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.7800",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "1c15818d-5c58-4647-b02f-0f292a222479",
+                "911c0013-cacf-4ced-939f-22c755aa8500",
+                "a83451c7-9eb7-4101-821a-5b7f12b5d04e",
+                "877aebea-8247-497a-8839-321c91467231",
+                "4779dc7d-d862-444e-a175-ca1ec1fca73b",
+                "40ac0458-4c2b-4cd6-bcbd-27b49284535b"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles",
+                "congress"
+              ]
+            },
+            "contradictions_count": 3,
+            "artifact_bundle_digest": "44fcd7ae9358b89d32289a8385c8fd101d9f338b202390cc8cbfd1d45d1b416e"
+          },
+          "excess_return": "21.761107",
+          "ticker_return": "23.404109",
+          "benchmark_return": "1.643002",
+          "ticker": "AMAT",
+          "as_of": "2026-06-23 07:16:28.642577+00:00"
+        }
+      ],
+      "worst_calls": [
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.7500",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "7fed4d5e-9a30-4a13-856e-db506662fc86",
+                "d55bbdb7-c558-4bf4-bc76-2aadef2b0aad",
+                "2eb3a5f4-891e-48b2-940a-ba30406cfb1c",
+                "3b02ba72-d52b-4ee4-b2e2-37644cbb6a10",
+                "82c8b074-35ce-436f-a372-9723718b97fe",
+                "bca2950b-a7cd-443e-a084-078599540320",
+                "7a6055ad-684e-407e-b7e7-d75a0dc10bf3",
+                "5c8be705-d6a3-46c4-b9c3-345f727758b2",
+                "3b9423ce-be50-4262-97ea-4b4391394106",
+                "2aca961f-2fc8-423b-99cf-7e860c060db1"
+              ],
+              "artifact_types": [
+                "price",
+                "signals",
+                "fundamentals",
+                "etf_changes",
+                "congress",
+                "insider",
+                "articles",
+                "social"
+              ]
+            },
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.65
+          },
+          "excess_return": "-72.418198",
+          "ticker_return": "-73.803019",
+          "benchmark_return": "-1.384821",
+          "ticker": "CRWD",
+          "as_of": "2026-06-30 04:01:57.111120+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.5800",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "c1cf34b7-33ae-4af3-abfa-cd6cbaa1cafe",
+                "1984deb9-5ffd-4e60-8689-eec092b58aba",
+                "331f0e7f-811b-487f-8423-9478174bfa33",
+                "133412f9-9e6c-45ec-86f0-a76c22fc4465",
+                "7f348d2b-afeb-405c-8fd4-fb3c11548fbf",
+                "adeac50a-dbd9-414b-b59c-390729191074"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles",
+                "congress"
+              ]
+            },
+            "contradictions_count": 7,
+            "artifact_bundle_digest": "3b7300ad08f569e43760a4e18418ce4c8abcaf1da4e56b94973333ba06a8e1c3"
+          },
+          "excess_return": "-22.428969",
+          "ticker_return": "-21.411625",
+          "benchmark_return": "1.017344",
+          "ticker": "WDC",
+          "as_of": "2026-06-19 07:09:09.366418+00:00"
+        },
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.6200",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "0885889a-e4cd-466a-ab35-819578848469",
+                "5382a627-0047-42b4-801d-25608ca68027",
+                "69dddafd-c0ed-4214-a5ba-573ee72a3334",
+                "d670c6c4-258d-44ed-9f99-184aac648d3a",
+                "d4268c2f-8ee4-42ec-8b0b-7aa2b1d2ff96",
+                "c1cf34b7-33ae-4af3-abfa-cd6cbaa1cafe",
+                "1984deb9-5ffd-4e60-8689-eec092b58aba",
+                "331f0e7f-811b-487f-8423-9478174bfa33",
+                "133412f9-9e6c-45ec-86f0-a76c22fc4465",
+                "7f348d2b-afeb-405c-8fd4-fb3c11548fbf"
+              ],
+              "artifact_types": [
+                "price",
+                "signals",
+                "fundamentals",
+                "etf_changes",
+                "insider",
+                "articles",
+                "social"
+              ]
+            },
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.45
+          },
+          "excess_return": "-22.428823",
+          "ticker_return": "-21.411627",
+          "benchmark_return": "1.017196",
+          "ticker": "WDC",
+          "as_of": "2026-06-20 04:17:19.599934+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.6500",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "0885889a-e4cd-466a-ab35-819578848469",
+                "5382a627-0047-42b4-801d-25608ca68027",
+                "69dddafd-c0ed-4214-a5ba-573ee72a3334",
+                "d670c6c4-258d-44ed-9f99-184aac648d3a",
+                "d4268c2f-8ee4-42ec-8b0b-7aa2b1d2ff96",
+                "c1cf34b7-33ae-4af3-abfa-cd6cbaa1cafe"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles",
+                "congress"
+              ]
+            },
+            "contradictions_count": 3,
+            "artifact_bundle_digest": "de4c325d9b09130923aef9000a8d254baec744d941ed07c76b32d597ae0a4c89"
+          },
+          "excess_return": "-22.428821",
+          "ticker_return": "-21.411625",
+          "benchmark_return": "1.017196",
+          "ticker": "WDC",
+          "as_of": "2026-06-20 07:05:38.228717+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.5500",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "88c3ddde-f209-4bdf-8679-e39644453624",
+                "4406c7fa-a39b-490b-9e90-de55d5725150",
+                "d4361022-cdc4-43fa-9274-f96e6822e9a7",
+                "607fe90c-0524-4a27-8acc-a41529a2bb84",
+                "9e5e7874-2d88-4872-9f71-5df4ec02a2b6",
+                "72bf1850-4bac-4371-b1c2-3dfd3b02227c"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles",
+                "congress"
+              ]
+            },
+            "contradictions_count": 4,
+            "artifact_bundle_digest": "7e1a97e2812a544f1e5b6f0a936475d9f0ea4777aca6a8f24a342bf5990e16f4"
+          },
+          "excess_return": "-21.920850",
+          "ticker_return": "-23.305671",
+          "benchmark_return": "-1.384821",
+          "ticker": "AMAT",
+          "as_of": "2026-06-30 07:09:57.199997+00:00"
+        }
+      ],
+      "counts_by_source": {
+        "action_queue_ai_review": {
+          "scored": 25,
+          "hits": 17,
+          "misses": 8,
+          "unscoreable": 0
+        },
+        "ticker_meta_analysis": {
+          "scored": 862,
+          "hits": 380,
+          "misses": 482,
+          "unscoreable": 11
+        },
+        "ticker_analysis": {
+          "scored": 446,
+          "hits": 213,
+          "misses": 233,
+          "unscoreable": 11
+        },
+        "confluence": {
+          "scored": 3,
+          "hits": 1,
+          "misses": 2,
+          "unscoreable": 0
+        }
+      },
+      "counts_by_verdict": {
+        "TENSION": {
+          "scored": 20,
+          "hits": 12,
+          "misses": 8,
+          "unscoreable": 0
+        },
+        "UNKNOWN": {
+          "scored": 1311,
+          "hits": 594,
+          "misses": 717,
+          "unscoreable": 22
+        },
+        "ALIGNED": {
+          "scored": 5,
+          "hits": 5,
+          "misses": 0,
+          "unscoreable": 0
+        }
+      },
+      "counts_by_confidence_band": {
+        "gte_0.75": {
+          "scored": 337,
+          "hits": 167,
+          "misses": 170,
+          "unscoreable": 3
+        },
+        "0.5_to_0.75": {
+          "scored": 885,
+          "hits": 392,
+          "misses": 493,
+          "unscoreable": 16
+        },
+        "lt_0.5": {
+          "scored": 110,
+          "hits": 50,
+          "misses": 60,
+          "unscoreable": 3
+        }
+      },
+      "by_domain": [
+        {
+          "domain": "finance.yahoo.com",
+          "scored": 299.6738,
+          "hits": 128.2841,
+          "hit_rate": 0.4281,
+          "mean_excess": -1.332071,
+          "stance_touches": 888
+        },
+        {
+          "domain": "theglobeandmail.com",
+          "scored": 147.5262,
+          "hits": 64.4448,
+          "hit_rate": 0.4368,
+          "mean_excess": -0.711134,
+          "stance_touches": 542
+        },
+        {
+          "domain": "aol.com",
+          "scored": 56.6321,
+          "hits": 22.3369,
+          "hit_rate": 0.3944,
+          "mean_excess": -1.151542,
+          "stance_touches": 215
+        },
+        {
+          "domain": "seekingalpha.com",
+          "scored": 49.1976,
+          "hits": 25.219,
+          "hit_rate": 0.5126,
+          "mean_excess": -0.11141,
+          "stance_touches": 203
+        },
+        {
+          "domain": "ETF AI Analysis",
+          "scored": 44.0798,
+          "hits": 19.0524,
+          "hit_rate": 0.4322,
+          "mean_excess": -1.413552,
+          "stance_touches": 152
+        },
+        {
+          "domain": "ca.finance.yahoo.com",
+          "scored": 40.0738,
+          "hits": 22.6472,
+          "hit_rate": 0.5651,
+          "mean_excess": 0.354181,
+          "stance_touches": 177
+        },
+        {
+          "domain": "247wallst.com",
+          "scored": 34.0869,
+          "hits": 13.619,
+          "hit_rate": 0.3995,
+          "mean_excess": -0.746974,
+          "stance_touches": 132
+        },
+        {
+          "domain": "barrons.com",
+          "scored": 30.7595,
+          "hits": 12.5,
+          "hit_rate": 0.4064,
+          "mean_excess": -2.256468,
+          "stance_touches": 49
+        },
+        {
+          "domain": "fool.com",
+          "scored": 29.6452,
+          "hits": 13.6012,
+          "hit_rate": 0.4588,
+          "mean_excess": -0.697272,
+          "stance_touches": 123
+        },
+        {
+          "domain": "uk.finance.yahoo.com",
+          "scored": 25.7619,
+          "hits": 12.2722,
+          "hit_rate": 0.4764,
+          "mean_excess": -1.743891,
+          "stance_touches": 115
+        },
+        {
+          "domain": "insidermonkey.com",
+          "scored": 18.4655,
+          "hits": 6.294,
+          "hit_rate": 0.3409,
+          "mean_excess": -1.920185,
+          "stance_touches": 79
+        },
+        {
+          "domain": "sharewise.com",
+          "scored": 17.6393,
+          "hits": 7.369,
+          "hit_rate": 0.4178,
+          "mean_excess": -1.612327,
+          "stance_touches": 78
+        },
+        {
+          "domain": "marketwatch.com",
+          "scored": 16.6083,
+          "hits": 8.7619,
+          "hit_rate": 0.5276,
+          "mean_excess": -0.272584,
+          "stance_touches": 72
+        },
+        {
+          "domain": "benzinga.com",
+          "scored": 14.6179,
+          "hits": 7.6167,
+          "hit_rate": 0.5211,
+          "mean_excess": -1.387847,
+          "stance_touches": 64
+        },
+        {
+          "domain": "cnbc.com",
+          "scored": 13.3917,
+          "hits": 6.75,
+          "hit_rate": 0.504,
+          "mean_excess": 1.041313,
+          "stance_touches": 53
+        },
+        {
+          "domain": "lse.co.uk",
+          "scored": 11.3179,
+          "hits": 5.35,
+          "hit_rate": 0.4727,
+          "mean_excess": -2.277503,
+          "stance_touches": 51
+        },
+        {
+          "domain": "invezz.com",
+          "scored": 9.3964,
+          "hits": 3.469,
+          "hit_rate": 0.3692,
+          "mean_excess": -2.870679,
+          "stance_touches": 43
+        },
+        {
+          "domain": "sharecast.com",
+          "scored": 8.819,
+          "hits": 3.5238,
+          "hit_rate": 0.3996,
+          "mean_excess": 0.02728,
+          "stance_touches": 42
+        },
+        {
+          "domain": "newswire.ca",
+          "scored": 8.0333,
+          "hits": 4.0417,
+          "hit_rate": 0.5031,
+          "mean_excess": -0.217362,
+          "stance_touches": 34
+        },
+        {
+          "domain": "morningstar.com",
+          "scored": 7.5631,
+          "hits": 5.3952,
+          "hit_rate": 0.7134,
+          "mean_excess": 2.481265,
+          "stance_touches": 34
+        },
+        {
+          "domain": "fool.ca",
+          "scored": 7.1262,
+          "hits": 4.0151,
+          "hit_rate": 0.5634,
+          "mean_excess": -0.179954,
+          "stance_touches": 33
+        },
+        {
+          "domain": "bnnbloomberg.ca",
+          "scored": 6.919,
+          "hits": 3.2556,
+          "hit_rate": 0.4705,
+          "mean_excess": -0.599012,
+          "stance_touches": 30
+        },
+        {
+          "domain": "edition.cnn.com",
+          "scored": 5.5,
+          "hits": 3.0,
+          "hit_rate": 0.5455,
+          "mean_excess": -0.215325,
+          "stance_touches": 11
+        },
+        {
+          "domain": "thespec.com",
+          "scored": 4.4762,
+          "hits": 1.4901,
+          "hit_rate": 0.3329,
+          "mean_excess": -1.94164,
+          "stance_touches": 27
+        },
+        {
+          "domain": "blockonomi.com",
+          "scored": 4.3595,
+          "hits": 0.95,
+          "hit_rate": 0.2179,
+          "mean_excess": -5.609481,
+          "stance_touches": 19
+        }
+      ],
+      "evidence_coverage": {
+        "action_queue_ai_review": {
+          "rows": 25,
+          "with_evidence": 0,
+          "with_article_ids": 0,
+          "pct_with_evidence": 0.0,
+          "pct_with_article_ids": 0.0
+        },
+        "ticker_meta_analysis": {
+          "rows": 873,
+          "with_evidence": 762,
+          "with_article_ids": 681,
+          "pct_with_evidence": 87.3,
+          "pct_with_article_ids": 78.0
+        },
+        "ticker_analysis": {
+          "rows": 457,
+          "with_evidence": 372,
+          "with_article_ids": 327,
+          "pct_with_evidence": 81.4,
+          "pct_with_article_ids": 71.6
+        },
+        "confluence": {
+          "rows": 3,
+          "with_evidence": 0,
+          "with_article_ids": 0,
+          "pct_with_evidence": 0.0,
+          "pct_with_article_ids": 0.0
+        }
+      },
+      "domain_attribution": {
+        "stances_with_article_ids_scoreable": 1008,
+        "stances_with_resolved_domain": 1008,
+        "unresolved_article_id_lookups": 0,
+        "top_n": 25
+      }
+    },
+    "30": {
+      "horizon_days": 30,
+      "total_scored": 241,
+      "hit_rate_by_source": {
+        "ticker_meta_analysis": 0.5128,
+        "ticker_analysis": 0.5294
+      },
+      "hit_rate_by_verdict": {
+        "UNKNOWN": 0.5187
+      },
+      "hit_rate_by_confidence_band": {
+        "0.5_to_0.75": 0.4886,
+        "lt_0.5": 0.7059,
+        "gte_0.75": 0.5625
+      },
+      "avg_excess_by_source": {
+        "ticker_meta_analysis": -1.452283,
+        "ticker_analysis": -1.836371
+      },
+      "median_excess_by_source": {
+        "ticker_meta_analysis": -0.614743,
+        "ticker_analysis": -0.84558
+      },
+      "best_calls": [
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.7200",
+          "metadata": {
+            "evidence": {
+              "article_ids": [],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior"
+              ]
+            },
+            "contradictions_count": 3,
+            "artifact_bundle_digest": "031b07ad8232ebc0cf2f11c843cc5886d3e175fed94dcc870f88404a2005e7c6"
+          },
+          "excess_return": "24.057398",
+          "ticker_return": "24.763035",
+          "benchmark_return": "0.705638",
+          "ticker": "CTRN",
+          "as_of": "2026-06-14 06:47:14.391602+00:00"
+        },
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.7500",
+          "metadata": {
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.65
+          },
+          "excess_return": "24.057396",
+          "ticker_return": "24.763034",
+          "benchmark_return": "0.705638",
+          "ticker": "CTRN",
+          "as_of": "2026-06-14 04:39:00.271150+00:00"
+        },
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.6500",
+          "metadata": {
+            "sentiment": "MIXED",
+            "sentiment_score": 0.15
+          },
+          "excess_return": "19.228751",
+          "ticker_return": "20.377369",
+          "benchmark_return": "1.148618",
+          "ticker": "GEV",
+          "as_of": "2026-06-12 04:23:04.475010+00:00"
+        },
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.7500",
+          "metadata": {
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.65
+          },
+          "excess_return": "18.851381",
+          "ticker_return": "19.999999",
+          "benchmark_return": "1.148618",
+          "ticker": "DRX.TO",
+          "as_of": "2026-06-12 04:02:41.858225+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.6500",
+          "metadata": {
+            "contradictions_count": 4,
+            "artifact_bundle_digest": "0bd95829f8b3378b72fa2995b45d49b7c1e4bd57f8863f02fea804e1fd3f1de3"
+          },
+          "excess_return": "18.495207",
+          "ticker_return": "20.438877",
+          "benchmark_return": "1.943671",
+          "ticker": "GEV",
+          "as_of": "2026-06-11 07:08:44.894973+00:00"
+        }
+      ],
+      "worst_calls": [
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.7500",
+          "metadata": {
+            "sentiment": "BULLISH",
+            "sentiment_score": 0.65
+          },
+          "excess_return": "-74.081102",
+          "ticker_return": "-72.932484",
+          "benchmark_return": "1.148618",
+          "ticker": "CRWD",
+          "as_of": "2026-06-12 04:02:09.735996+00:00"
+        },
+        {
+          "source": "ticker_analysis",
+          "stance": "BUY",
+          "confidence": "0.5000",
+          "metadata": {
+            "sentiment": "MIXED",
+            "sentiment_score": 0.2
+          },
+          "excess_return": "-28.803347",
+          "ticker_return": "-28.097709",
+          "benchmark_return": "0.705638",
+          "ticker": "RMBS",
+          "as_of": "2026-06-14 04:31:49.496377+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.4200",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "f0342202-8bbe-40a2-977b-a6cafa376028",
+                "50ed5460-d766-46d9-b0c0-ea5db7b23a5e",
+                "4e834eb3-16ec-495c-b9cf-9bf8afb05be9",
+                "5155a8fe-d31a-4061-bc12-c594afa8ba6b",
+                "179812f5-e6ae-40c3-843e-bf1b6694bbff",
+                "c34c4ee1-3ed1-43df-acb3-22ac6eda3f46"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles"
+              ]
+            },
+            "contradictions_count": 5,
+            "artifact_bundle_digest": "1584cba53aad3248181ed65ac6f91decfe74a0af9314a7615605e004d8c17109"
+          },
+          "excess_return": "-28.803346",
+          "ticker_return": "-28.097708",
+          "benchmark_return": "0.705638",
+          "ticker": "RMBS",
+          "as_of": "2026-06-14 06:52:31.648285+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.5500",
+          "metadata": {
+            "contradictions_count": 5,
+            "artifact_bundle_digest": "f489a400a60ac3f820ae8da21a537ee308057f49c01119258fd545195a3a5b08"
+          },
+          "excess_return": "-20.628273",
+          "ticker_return": "-20.316577",
+          "benchmark_return": "0.311696",
+          "ticker": "OKLO",
+          "as_of": "2026-06-13 07:10:55.383805+00:00"
+        },
+        {
+          "source": "ticker_meta_analysis",
+          "stance": "BULLISH",
+          "confidence": "0.6500",
+          "metadata": {
+            "evidence": {
+              "article_ids": [
+                "3796322f-8dbb-47f3-91c5-ad985f99b34d",
+                "9a62baeb-90c5-44ce-a4f9-fdaac61f4dfd",
+                "5dbbf4f2-cd11-4379-b41d-7ba9584e6f6b",
+                "733c939f-5e56-4768-9f15-27310b384c86",
+                "79f55e43-b51b-447e-8356-30651dce7e4b",
+                "62e02114-3c9b-4327-8049-ee339e4d5694"
+              ],
+              "artifact_types": [
+                "standard_analysis",
+                "signals",
+                "market_regime",
+                "sector_prior",
+                "articles"
+              ]
+            },
+            "contradictions_count": 2,
+            "artifact_bundle_digest": "c237976967c5bc83d61a08def4ce182f9c04470217cf7c20f24d1e58b05d9d3a"
+          },
+          "excess_return": "-20.274258",
+          "ticker_return": "-19.568620",
+          "benchmark_return": "0.705638",
+          "ticker": "OKLO",
+          "as_of": "2026-06-14 07:13:45.684894+00:00"
+        }
+      ],
+      "counts_by_source": {
+        "ticker_meta_analysis": {
+          "scored": 156,
+          "hits": 80,
+          "misses": 76,
+          "unscoreable": 0
+        },
+        "ticker_analysis": {
+          "scored": 85,
+          "hits": 45,
+          "misses": 40,
+          "unscoreable": 0
+        }
+      },
+      "counts_by_verdict": {
+        "UNKNOWN": {
+          "scored": 241,
+          "hits": 125,
+          "misses": 116,
+          "unscoreable": 0
+        }
+      },
+      "counts_by_confidence_band": {
+        "0.5_to_0.75": {
+          "scored": 176,
+          "hits": 86,
+          "misses": 90,
+          "unscoreable": 0
+        },
+        "lt_0.5": {
+          "scored": 17,
+          "hits": 12,
+          "misses": 5,
+          "unscoreable": 0
+        },
+        "gte_0.75": {
+          "scored": 48,
+          "hits": 27,
+          "misses": 21,
+          "unscoreable": 0
+        }
+      },
+      "by_domain": [
+        {
+          "domain": "finance.yahoo.com",
+          "scored": 13.8167,
+          "hits": 5.4,
+          "hit_rate": 0.3908,
+          "mean_excess": -3.448442,
+          "stance_touches": 37
+        },
+        {
+          "domain": "theglobeandmail.com",
+          "scored": 6.8333,
+          "hits": 2.9167,
+          "hit_rate": 0.4268,
+          "mean_excess": -2.208738,
+          "stance_touches": 23
+        },
+        {
+          "domain": "ca.finance.yahoo.com",
+          "scored": 2.3333,
+          "hits": 0.8333,
+          "hit_rate": 0.3571,
+          "mean_excess": 1.354313,
+          "stance_touches": 8
+        },
+        {
+          "domain": "aol.com",
+          "scored": 1.9833,
+          "hits": 0.9,
+          "hit_rate": 0.4538,
+          "mean_excess": 1.110486,
+          "stance_touches": 7
+        },
+        {
+          "domain": "247wallst.com",
+          "scored": 1.5333,
+          "hits": 1.0333,
+          "hit_rate": 0.6739,
+          "mean_excess": 1.449952,
+          "stance_touches": 5
+        },
+        {
+          "domain": "seekingalpha.com",
+          "scored": 1.5,
+          "hits": 0.25,
+          "hit_rate": 0.1667,
+          "mean_excess": -7.079428,
+          "stance_touches": 6
+        },
+        {
+          "domain": "ETF AI Analysis",
+          "scored": 1.45,
+          "hits": 0.5333,
+          "hit_rate": 0.3678,
+          "mean_excess": -6.149496,
+          "stance_touches": 5
+        },
+        {
+          "domain": "benzinga.com",
+          "scored": 1.1167,
+          "hits": 0.5333,
+          "hit_rate": 0.4776,
+          "mean_excess": -0.35083,
+          "stance_touches": 4
+        },
+        {
+          "domain": "marketwatch.com",
+          "scored": 1.0833,
+          "hits": 0.3333,
+          "hit_rate": 0.3077,
+          "mean_excess": -5.270941,
+          "stance_touches": 4
+        },
+        {
+          "domain": "barrons.com",
+          "scored": 1.0,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -8.681732,
+          "stance_touches": 1
+        },
+        {
+          "domain": "sharewise.com",
+          "scored": 0.95,
+          "hits": 0.45,
+          "hit_rate": 0.4737,
+          "mean_excess": -1.937482,
+          "stance_touches": 4
+        },
+        {
+          "domain": "bnnbloomberg.ca",
+          "scored": 0.75,
+          "hits": 0.5,
+          "hit_rate": 0.6667,
+          "mean_excess": 0.663944,
+          "stance_touches": 2
+        },
+        {
+          "domain": "uk.finance.yahoo.com",
+          "scored": 0.75,
+          "hits": 0.25,
+          "hit_rate": 0.3333,
+          "mean_excess": -3.34758,
+          "stance_touches": 3
+        },
+        {
+          "domain": "fool.com",
+          "scored": 0.7,
+          "hits": 0.2,
+          "hit_rate": 0.2857,
+          "mean_excess": -3.999669,
+          "stance_touches": 3
+        },
+        {
+          "domain": "cnbc.com",
+          "scored": 0.5833,
+          "hits": 0.25,
+          "hit_rate": 0.4286,
+          "mean_excess": -1.21925,
+          "stance_touches": 2
+        },
+        {
+          "domain": "lse.co.uk",
+          "scored": 0.5833,
+          "hits": 0.5833,
+          "hit_rate": 1.0,
+          "mean_excess": 3.778021,
+          "stance_touches": 2
+        },
+        {
+          "domain": "baystreet.ca",
+          "scored": 0.5,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -5.979504,
+          "stance_touches": 2
+        },
+        {
+          "domain": "insidermonkey.com",
+          "scored": 0.45,
+          "hits": 0.2,
+          "hit_rate": 0.4444,
+          "mean_excess": -0.09997,
+          "stance_touches": 2
+        },
+        {
+          "domain": "fool.ca",
+          "scored": 0.4167,
+          "hits": 0.25,
+          "hit_rate": 0.6,
+          "mean_excess": 3.889227,
+          "stance_touches": 2
+        },
+        {
+          "domain": "bevindustry.com",
+          "scored": 0.3333,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -4.598599,
+          "stance_touches": 1
+        },
+        {
+          "domain": "sg.finance.yahoo.com",
+          "scored": 0.3333,
+          "hits": 0.3333,
+          "hit_rate": 1.0,
+          "mean_excess": 4.869064,
+          "stance_touches": 1
+        },
+        {
+          "domain": "boereport.com",
+          "scored": 0.25,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -0.449093,
+          "stance_touches": 1
+        },
+        {
+          "domain": "invezz.com",
+          "scored": 0.25,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -0.536405,
+          "stance_touches": 1
+        },
+        {
+          "domain": "nz.finance.yahoo.com",
+          "scored": 0.25,
+          "hits": 0.0,
+          "hit_rate": 0.0,
+          "mean_excess": -11.509915,
+          "stance_touches": 1
+        },
+        {
+          "domain": "thespec.com",
+          "scored": 0.25,
+          "hits": 0.25,
+          "hit_rate": 1.0,
+          "mean_excess": 7.466408,
+          "stance_touches": 1
+        }
+      ],
+      "evidence_coverage": {
+        "ticker_meta_analysis": {
+          "rows": 156,
+          "with_evidence": 45,
+          "with_article_ids": 40,
+          "pct_with_evidence": 28.8,
+          "pct_with_article_ids": 25.6
+        },
+        "ticker_analysis": {
+          "rows": 85,
+          "with_evidence": 0,
+          "with_article_ids": 0,
+          "pct_with_evidence": 0.0,
+          "pct_with_article_ids": 0.0
+        }
+      },
+      "domain_attribution": {
+        "stances_with_article_ids_scoreable": 40,
+        "stances_with_resolved_domain": 40,
+        "unresolved_article_id_lookups": 0,
+        "top_n": 25
+      }
+    },
+    "90": {
+      "horizon_days": 90,
+      "total_scored": 0,
+      "hit_rate_by_source": {},
+      "hit_rate_by_verdict": {},
+      "hit_rate_by_confidence_band": {},
+      "avg_excess_by_source": {},
+      "median_excess_by_source": {},
+      "best_calls": [],
+      "worst_calls": [],
+      "counts_by_source": {},
+      "counts_by_verdict": {},
+      "counts_by_confidence_band": {},
+      "by_domain": [],
+      "evidence_coverage": {},
+      "domain_attribution": {
+        "stances_with_article_ids_scoreable": 0,
+        "stances_with_resolved_domain": 0,
+        "unresolved_article_id_lookups": 0,
+        "top_n": 25
+      }
+    }
+  }
+}

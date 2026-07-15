@@ -534,6 +534,58 @@ Run date: **2026-06-10** (script: `web_dashboard/scripts/run_cheap_learn_audits.
 
 **Decision:** Ship Pillar 1 (stance ledger + outcomes + flips) first. Start Shape A (Smart Prioritizer) only after track-record has signal. Defer Shape B/C until audits #2 and #4 improve.
 
+## Source-ROI results (Phase H1)
+
+Run date: **2026-07-15** (script: `web_dashboard/scripts/run_source_roi_report.py`; raw JSON:
+[`docs/source_roi_report_results.json`](source_roi_report_results.json)). Domain credit uses
+fractional **1/N** when a stance cites multiple article domains.
+
+### By source (7d / 30d)
+
+| Source | 7d scored | 7d hit rate | 7d mean excess | 30d scored | 30d hit rate | 30d mean excess |
+|--------|-----------|-------------|----------------|------------|--------------|-----------------|
+| `ticker_meta_analysis` | 862 | 44.1% | −0.58 | 156 | 51.3% | −1.45 |
+| `ticker_analysis` | 446 | 47.8% | −0.28 | 85 | 52.9% | −1.84 |
+| `action_queue_ai_review` | 25 | 68.0% | −4.24 | — | — | — |
+| `confluence` | 3 | 33.3% | −3.51 | — | — | — |
+
+90d outcomes: **0 rows** yet (ledger still maturing).
+
+### Evidence coverage (on the 7d join)
+
+| Source | % with `evidence` | % with article_ids |
+|--------|-------------------|--------------------|
+| `ticker_meta_analysis` | 87.3% | 78.0% |
+| `ticker_analysis` | 81.4% | 71.6% |
+| `action_queue_ai_review` / `confluence` | 0% (by design) | 0% |
+
+Older 30d `ticker_analysis` rows predate G1 (0% article_ids on that horizon slice) — domain ROI
+is only trustworthy on post-provenance ledger rows.
+
+### Top domains by 7d scored weight (fractional)
+
+| Domain | Scored (weight) | Hit rate | Mean excess |
+|--------|-----------------|----------|-------------|
+| finance.yahoo.com | 299.7 | 42.8% | −1.33 |
+| theglobeandmail.com | 147.5 | 43.7% | −0.71 |
+| aol.com | 56.6 | 39.4% | −1.15 |
+| seekingalpha.com | 49.2 | 51.3% | −0.11 |
+| ETF AI Analysis | 44.1 | 43.2% | −1.41 |
+| ca.finance.yahoo.com | 40.1 | 56.5% | +0.35 |
+| morningstar.com | 7.6 (low-n) | 71.3% | +2.48 |
+
+### Decision notes (2026-07-15)
+
+1. **Directional hit rates hover ~44–53%** on meta/analysis — barely better than a coin flip at
+   7d; 30d slightly better on rate but **mean excess vs ^RUT is still negative**. Do not unlock
+   new collectors (G6 / §4.5 / §4.6 / §5.3) on the strength of current ROI.
+2. **Queue ALIGNED vs TENSION** on 7d: ALIGNED 100% (tiny n) vs TENSION 60% — calibration signal
+   exists but sample is small; keep logging before retiring the review pass.
+3. **Yahoo Finance dominates** article evidence weight; Canadian/Yahoo hosts and SA are the only
+   domains with meaningful 7d mass. Domain down-weighting is premature until 30d evidence coverage
+   catches up (post-G1). Next Learn step stays **H2** (feed clusters / dilution / prior stance into
+   the meta bundle) rather than new feeds.
+
 ### Phase A checklist
 
 - [x] 1.1 `stance_history` table + INSERT hooks (meta, ticker_analysis, action_queue review)
@@ -554,10 +606,10 @@ flowchart TD
     A2 --> C1["C · Track-record screen"]
     B1 --> D1["D · dossier evidence timeline"]
     C1 --> E1
-    G1["G1 · provenance"] --> H1["H1 · Source-ROI report ← NOW"]
+    G1["G1 · provenance"] --> H1["H1 · Source-ROI report ✓"]
     A2 --> H1
-    H1 --> H2["H2 · Meta-bundle injection"]
-    H1 -.->|"gates"| F56["§4.5 / §4.6 / G6 / §5.3"]
+    H1 --> H2["H2 · Meta-bundle injection ← NEXT"]
+    H1 -.->|"gates (ROI weak)"| F56["§4.5 / §4.6 / G6 / §5.3"]
     H3["H3 · RETRO_DIGEST_RECIPIENTS ops"]
     H2 --> H4["H4 · Trend memory"]
     H5["H5 · congress herd → ledger"]
@@ -573,7 +625,7 @@ flowchart TD
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro code shipped, email unconfigured** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **start here** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1 shipped 2026-07-15; H2 next** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
 
@@ -583,10 +635,12 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
 
 #### H checklist (recommended order)
 
-- [ ] **H1 · Source-ROI report** (P0) — hit rate + excess return sliced by `stance_history.source`
-  and by evidence article domain (G1 `metadata` / evidence manifest). Screen **or** script +
-  table in this doc. Unblocks the “which of ~55 jobs matter?” guardrail. Days of work; 30d
-  outcome data ready since ~2026-07-10.
+- [x] **H1 · Source-ROI report** (P0) — hit rate + excess return sliced by `stance_history.source`
+  and by evidence article domain (G1 `metadata` / evidence manifest). Extended
+  `build_track_record_summary` + `/track-record` +
+  `web_dashboard/scripts/run_source_roi_report.py` →
+  [`docs/source_roi_report_results.json`](source_roi_report_results.json). Shipped 2026-07-15;
+  see [Source-ROI results](#source-roi-results-phase-h1) below.
 - [ ] **H2 · Meta-bundle injection** — feature-flagged artifact families into
   `build_artifact_bundle` / evidence builder (mirror R1):
   - insider clusters
