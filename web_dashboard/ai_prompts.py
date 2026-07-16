@@ -378,6 +378,8 @@ signals about institutional rotation themes—not verified facts.
    a hypothetical neutral baseline (0 = weakest / no clear bid, higher = stronger rotation evidence in the excerpts).
 4. If excerpts are empty, contradictory, or off-topic, use INSUFFICIENT_DATA / UNKNOWN enums and keep confidence low.
 5. Do not invent tickers, prices, or dates not present in the bundle.
+6. When the bundle includes **Rotation rank - recent runs**, use it only for momentum/persistence judgement
+   (continuation vs reversal across prior runs). It is prior synthesis history — not new ETF-flow evidence.
 
 Return JSON only:
 {{
@@ -398,9 +400,13 @@ MARKET_DAILY_BRIEF_PROMPT = """You are a concise macro strategist. Input is ONLY
 ## Benchmark statistics
 {benchmark_stats}
 
+## Prior regime history
+{regime_history}
+
 ## Task
 Summarize risk tone for a US-focused equity trader: large-cap vs small-cap (RUT), growth (QQQ) vs broad (SPX/VTI). Mention commodities only if provided in the stats block.
 Do NOT recommend specific stocks or ETFs to buy/sell. No ticker picks.
+Use prior regime history only to note persistence or deterioration (e.g. multi-session risk-off), not as new data; do not overfit to it. If history is "(none)", ignore it.
 
 Return JSON only:
 {{
