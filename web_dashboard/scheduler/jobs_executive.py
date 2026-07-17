@@ -352,7 +352,9 @@ def fetch_executive_trades_job() -> None:
             f"errors={stats['errors']}"
         )
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        mark_job_completed(job_id, target_date, message)
+        mark_job_completed(
+            job_id, target_date, None, [], duration_ms=duration_ms, message=message
+        )
         logger.info(message)
 
     except Exception as exc:
@@ -362,7 +364,8 @@ def fetch_executive_trades_job() -> None:
         try:
             from utils.job_tracking import mark_job_failed
 
-            mark_job_failed(job_id, datetime.now(timezone.utc).date(), message)
+            fail_date = locals().get("target_date") or datetime.now(timezone.utc).date()
+            mark_job_failed(job_id, fail_date, None, message, duration_ms=duration_ms)
         except Exception:
             pass
         logger.error(message, exc_info=True)

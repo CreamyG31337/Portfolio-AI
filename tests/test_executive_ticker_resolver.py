@@ -609,3 +609,54 @@ def test_congress_trades_template_includes_executive_chamber() -> None:
     )
     content = template_path.read_text(encoding="utf-8")
     assert 'value="Executive"' in content
+
+
+def test_fetch_executive_trades_job_finalizes_with_funds_processed() -> None:
+    """Regression: mark_job_completed requires fund_name + funds_processed."""
+    from scheduler.jobs_executive import fetch_executive_trades_job
+
+    politician_result = MagicMock()
+    politician_result.data = [{"id": 1, "party": "Republican", "state": "US"}]
+
+    table = MagicMock()
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.limit.return_value = table
+    table.execute.return_value = politician_result
+
+    supabase = MagicMock()
+    supabase.table.return_value = table
+
+    with patch("utils.job_tracking.mark_job_started") as mark_started, patch(
+        "utils.job_tracking.mark_job_completed"
+    ) as mark_completed, patch(
+        "utils.job_tracking.mark_job_failed"
+    ) as mark_failed, patch(
+        "scheduler.jobs_executive.log_job_execution"
+    ), patch(
+        "scheduler.jobs_executive.fetch_open_cabinet_transactions", return_value=[]
+    ), patch(
+        "scheduler.jobs_executive.process_executive_transactions",
+        return_value={
+            "inserted": 0,
+            "skipped_bond": 0,
+            "unresolved": 0,
+            "duplicates": 0,
+            "cache_upserts": 0,
+            "errors": 0,
+        },
+    ), patch(
+        "supabase_client.SupabaseClient",
+        return_value=MagicMock(supabase=supabase),
+    ):
+        fetch_executive_trades_job()
+
+    mark_started.assert_called_once()
+    mark_failed.assert_not_called()
+    mark_completed.assert_called_once()
+    args, kwargs = mark_completed.call_args
+    assert args[0] == "executive_trades"
+    assert args[2] is None
+    assert args[3] == []
+    assert "duration_ms" in kwargs
+    assert "message" in kwargs
