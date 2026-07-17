@@ -315,7 +315,9 @@ outbound sending. Reuse:
 
 **Recipients (decided):** this is a system-self-review digest, not a per-user portfolio digest.
 Send to a small **admin/owner recipient list** from env/system_settings (e.g.
-`RETRO_DIGEST_RECIPIENTS` — comma-separated emails). Call `send_mailgun_message` directly; do
+`RETRO_DIGEST_RECIPIENT_ACCOUNTS` — comma-separated `user_profiles.full_name` values resolved
+to current account emails; direct `RETRO_DIGEST_RECIPIENTS` remains supported). Call
+`send_mailgun_message` directly; do
 **not** route through the per-user `user_newsletter_subscriptions` wave in
 `outbound_newsletter_pipeline.py`. Gate send behind a feature flag (e.g.
 `RETRO_DIGEST_ENABLED` or reuse Mailgun config presence check).
@@ -325,9 +327,9 @@ since outcomes are sparse until ~July); send path behind enable flag; recipients
 list only.
 **Size:** S (≈1 day).
 
-**Ops status (2026-06-20):** Code shipped; **prod email not configured** — no
-`RETRO_DIGEST_RECIPIENTS` set. The Sunday job logs flips/hit-rate summary only until someone
-adds recipients + Mailgun outbound (same keys as portfolio digest). Intentionally deferred.
+**Ops status (updated 2026-07-16):** Account-based recipient resolution shipped under Phase H3.
+The production deploy defaults `RETRO_DIGEST_RECIPIENT_ACCOUNTS` to `Lance Colton`; its current
+`user_profiles.email` is resolved at send time. Mailgun outbound keys are still required.
 
 ## G6 — FINRA daily short volume (optional stretch)
 

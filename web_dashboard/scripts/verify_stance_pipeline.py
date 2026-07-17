@@ -138,9 +138,12 @@ def main() -> int:
         recipients = get_retro_digest_recipients()
         print(f"  enabled={retro_digest_enabled()} recipients={len(recipients)}")
         if recipients:
-            print(f"  first={recipients[0]}")
+            print("  recipient resolution succeeded (addresses not printed)")
         else:
-            print("  (set RETRO_DIGEST_RECIPIENTS + Mailgun to enable weekly email)")
+            print(
+                "  (set RETRO_DIGEST_RECIPIENT_ACCOUNTS or "
+                "RETRO_DIGEST_RECIPIENTS + Mailgun)"
+            )
     except Exception as exc:
         print(f"  (lookup failed: {exc})")
 

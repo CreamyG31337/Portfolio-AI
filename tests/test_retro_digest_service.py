@@ -1,7 +1,8 @@
 """Tests for weekly retro Mailgun digest (ROADMAP G5)."""
 
-from decimal import Decimal
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from web_dashboard.retro_digest_service import (
     build_weekly_retro_digest_html,
@@ -11,9 +12,51 @@ from web_dashboard.retro_digest_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _clear_account_recipient_env(monkeypatch) -> None:
+    monkeypatch.delenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS", raising=False)
+
+
 def test_get_retro_digest_recipients_parses_env(monkeypatch) -> None:
     monkeypatch.setenv("RETRO_DIGEST_RECIPIENTS", "a@test.com, b@test.com ")
     assert get_retro_digest_recipients() == ["a@test.com", "b@test.com"]
+
+
+def test_get_retro_digest_recipients_resolves_dashboard_account(monkeypatch) -> None:
+    monkeypatch.delenv("RETRO_DIGEST_RECIPIENTS", raising=False)
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS", "Lance Colton")
+    client = MagicMock()
+    client.supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[{"full_name": "Lance Colton", "email": "current@test.com"}]
+    )
+
+    assert get_retro_digest_recipients(supabase_client=client) == ["current@test.com"]
+    client.supabase.table.assert_called_once_with("user_profiles")
+
+
+def test_get_retro_digest_recipients_skips_ambiguous_account(monkeypatch) -> None:
+    monkeypatch.delenv("RETRO_DIGEST_RECIPIENTS", raising=False)
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS", "Lance Colton")
+    client = MagicMock()
+    client.supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[
+            {"full_name": "Lance Colton", "email": "one@test.com"},
+            {"full_name": "lance colton", "email": "two@test.com"},
+        ]
+    )
+
+    assert get_retro_digest_recipients(supabase_client=client) == []
+
+
+def test_get_retro_digest_recipients_dedupes_direct_and_account(monkeypatch) -> None:
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENTS", "same@test.com")
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS", "Lance Colton")
+    client = MagicMock()
+    client.supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[{"full_name": "Lance Colton", "email": "same@test.com"}]
+    )
+
+    assert get_retro_digest_recipients(supabase_client=client) == ["same@test.com"]
 
 
 def test_build_weekly_retro_digest_html_empty_data() -> None:

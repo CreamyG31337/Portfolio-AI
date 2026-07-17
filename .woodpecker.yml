@@ -439,6 +439,11 @@ steps:
         [ -n "$NEWSLETTER_EMAIL" ] && FLASK_CMD="$FLASK_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
         [ -n "$MAILGUN_SEND_DOMAIN" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_SEND_DOMAIN=\"$MAILGUN_SEND_DOMAIN\""
         [ -n "$MAILGUN_FROM" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_FROM=\"$MAILGUN_FROM\""
+        # Weekly stance retro: resolve the current email from the dashboard account.
+        # Host optional env may override this default or add direct email recipients.
+        FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_RECIPIENT_ACCOUNTS=\"${RETRO_DIGEST_RECIPIENT_ACCOUNTS:-Lance Colton}\""
+        [ -n "$RETRO_DIGEST_RECIPIENTS" ] && FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_RECIPIENTS=\"$RETRO_DIGEST_RECIPIENTS\""
+        [ -n "$RETRO_DIGEST_ENABLED" ] && FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_ENABLED=\"$RETRO_DIGEST_ENABLED\""
         if [ -n "$APP_DOMAIN" ]; then
           FLASK_CMD="$FLASK_CMD -e PUBLIC_BASE_URL=\"https://$APP_DOMAIN\""
         fi

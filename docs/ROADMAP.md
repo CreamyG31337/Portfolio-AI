@@ -610,7 +610,7 @@ flowchart TD
     A2 --> H1
     H1 --> H2["H2 · Meta-bundle injection ✓"]
     H1 -.->|"gates (ROI weak)"| F56["§4.5 / §4.6 / G6 / §5.3"]
-    H3["H3 · RETRO_DIGEST_RECIPIENTS ops ← ops"]
+    H3["H3 · account-based retro recipient ✓"]
     H2 --> H4["H4 · Trend memory ✓"]
     H5["H5 · congress herd → ledger ← NEXT"]
     H6["H6 · executive ship-or-kill"]
@@ -622,10 +622,10 @@ flowchart TD
 | **B** | 2.1 Today screen, then 2.2 Ideas inbox | ~1–2 wk — **shipped 2026-06-10 (V1)** |
 | **C** | 2.4 Track record (after ledger matures) | days — **shipped 2026-06-10 (V1; 30d mature ~2026-07-10)** |
 | **D** | 2.3 dossier timeline; 2.5 polish; 4.4 earnings | ~1–2 wk — **partial 2026-06-10** |
-| **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C job shipped (gated); retro code shipped, email unconfigured** |
+| **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C gated; retro code + account recipient shipped** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1+H2+H4 shipped; H3 ops / H5 next** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1–H4 shipped; H5 next** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
 
@@ -645,8 +645,11 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
   `build_artifact_bundle_with_evidence` (mirror R1) behind `META_ANALYSIS_PHASE_H2`
   (default on). Families: `insider_cluster`, `dilution`, `filing`, `confluence`,
   `prior_stance`. Prompt rule #9. Shipped 2026-07-15.
-- [ ] **H3 · Ops: `RETRO_DIGEST_RECIPIENTS`** — set in prod (no code). Weekly self-review
-  stops logging into the void. (G5 code already shipped 2026-06-20.)
+- [x] **H3 · Weekly retro recipient** — account-based resolution via
+  `RETRO_DIGEST_RECIPIENT_ACCOUNTS`; production deploy defaults to dashboard account
+  `Lance Colton`, resolving its current `user_profiles.email` at send time. Ambiguous
+  account matches are skipped. Direct `RETRO_DIGEST_RECIPIENTS` remains supported.
+  Shipped 2026-07-16.
 - [x] **H4 · Trend memory** — prior regime history into market brief (last 10 sessions) and
   rotation-rank history into sector meta (last 4 runs), behind `META_ANALYSIS_TREND_MEMORY`
   (default on). Prompt rules updated; kill with `=false`. Shipped 2026-07-16.
@@ -715,7 +718,7 @@ Full specs, research tasks, and acceptance criteria live in
   True in prod). See [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) G2.
 - [x] **G4** confluence scorer (`confluence_events`, ledger hook at score ≥ 3, Today block) — shipped 2026-06-17
 - [x] **G5** weekly retro → Mailgun digest — **code shipped 2026-06-20** (`retro_digest_service.py`);
-  **email not configured in prod** → track as **Phase H3** (`RETRO_DIGEST_RECIPIENTS`)
+  account-based recipient resolution + deploy default shipped as **Phase H3** (2026-07-16)
 - [x] **G7** Canadian insider coverage via yfinance (`source` on `insider_trades`, weekly job) — shipped 2026-06-20
 - [ ] **G6** FINRA daily short volume (optional) — **gated by Phase H1**; do not start in H
 
@@ -733,8 +736,8 @@ Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun
 - **`sec_filings` enabled in prod** — `filing_events` populated; job runs weekdays 18:30 ET.
   **Note (2026-07-15):** Today/dossier only — not in meta bundle until H2.
 - **`confluence` live** — events + Today block shipping. **Same gap:** not in meta bundle (H2).
-- **G5 retro Mailgun** — code shipped (`retro_digest_service.py`); **not configured in prod**
-  (no `RETRO_DIGEST_RECIPIENTS`). → **Phase H3**. Weekly job still runs and logs summary.
+- **G5 retro Mailgun** — code shipped (`retro_digest_service.py`); Phase H3 now resolves
+  the `Lance Colton` dashboard account to its current profile email at send time.
 - **`idea_triage` empty** at June verify — re-check under **Phase H7**.
 
 Two real findings from the June 2026 ledger rollout (still relevant):
