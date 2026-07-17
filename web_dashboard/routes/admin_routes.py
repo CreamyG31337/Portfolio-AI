@@ -430,8 +430,8 @@ def _get_cached_contributors_flask():
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
         
-        result = client.supabase.table("contributors").select("id, name, email").order("name").execute()
-        return result.data if result.data else []
+        from supabase_pagination import fetch_all_rows
+        return fetch_all_rows(client, "contributors", select="id, name, email", order="name")
     except Exception as e:
         logger.error(f"Error getting contributors: {e}", exc_info=True)
         return []
@@ -3069,16 +3069,17 @@ def api_contributions_summary():
         # Service role client
         client = SupabaseClient(use_service_role=True)
         
-        result = client.supabase.table("fund_contributions").select("contributor, fund, contribution_type, amount").execute()
+        from supabase_pagination import fetch_all_rows
+        rows = fetch_all_rows(client, "fund_contributions", select="contributor, fund, contribution_type, amount")
         
-        if not result.data:
+        if not rows:
             return jsonify({"summary": []})
             
         # Manually aggregate in Python since Supabase JS client groupBy is limited
         # structure: { 'contributor|fund': { name, fund, contribution: 0, withdrawal: 0 } }
         agg = {}
         
-        for row in result.data:
+        for row in rows:
             key = f"{row['contributor']}|{row['fund']}"
             if key not in agg:
                 agg[key] = {
