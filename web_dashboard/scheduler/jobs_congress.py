@@ -114,6 +114,13 @@ def fetch_congress_trades_job() -> None:
         try:
             from supabase_client import SupabaseClient
             from web_dashboard.utils.politician_mapping import lookup_politician_metadata, resolve_politician_name
+            from web_dashboard.utils.congress_trade_normalize import (
+                CONGRESS_TRADE_UPSERT_ON_CONFLICT,
+                normalize_amount,
+                normalize_owner,
+                normalize_ticker,
+                normalize_trade_type,
+            )
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
@@ -207,7 +214,7 @@ def fetch_congress_trades_job() -> None:
                                 skipped_no_ticker += 1
                                 continue
                             
-                            ticker = ticker.strip().upper()
+                            ticker = normalize_ticker(ticker)
                             
                             # Get politician name (FMP uses firstName and lastName)
                             first_name = trade_data.get('firstName') or trade_data.get('first_name') or ''
@@ -320,20 +327,18 @@ def fetch_congress_trades_job() -> None:
                                     trade_type = 'Purchase'
                                 elif 'sale' in description or 'sell' in description:
                                     trade_type = 'Sale'
+                                elif 'exchange' in description:
+                                    trade_type = 'Exchange'
+                                elif 'receive' in description:
+                                    trade_type = 'Received'
                                 else:
                                     trade_type = 'Purchase'  # Default
                             
-                            # Normalize to Purchase or Sale
-                            trade_type_lower = trade_type.lower()
-                            if 'purchase' in trade_type_lower or 'buy' in trade_type_lower:
-                                trade_type = 'Purchase'
-                            else:
-                                trade_type = 'Sale'
+                            trade_type = normalize_trade_type(trade_type)
                             
                             # Get amount (keep as string - FMP may use 'amount' or 'value')
                             amount = trade_data.get('amount') or trade_data.get('value') or trade_data.get('range') or ''
-                            if amount:
-                                amount = str(amount).strip()
+                            amount = normalize_amount(amount)
                             
                             # Get asset type (default to Stock)
                             asset_type = trade_data.get('assetType') or trade_data.get('asset_type') or 'Stock'
@@ -368,10 +373,7 @@ def fetch_congress_trades_job() -> None:
                             
                             # Extract owner (Self/Spouse/Dependent)
                             owner = trade_data.get('owner') or trade_data.get('assetOwner') or trade_data.get('ownerType')
-                            if owner:
-                                owner = str(owner).strip().title()
-                            else:
-                                owner = 'Unknown'  # Default matches migration 36
+                            owner = normalize_owner(owner)
                             
                             # Extract disclosure link
                             disclosure_link = trade_data.get('link') or trade_data.get('disclosureUrl') or trade_data.get('url')
@@ -453,7 +455,7 @@ def fetch_congress_trades_job() -> None:
                                 result = supabase_client.supabase.table("congress_trades")\
                                     .upsert(
                                         trade_record,
-                                        on_conflict="politician_id,ticker,transaction_date,amount,type,owner"
+                                        on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
                                     )\
                                     .execute()
                                 

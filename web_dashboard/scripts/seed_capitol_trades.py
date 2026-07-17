@@ -479,11 +479,38 @@ def seed_congress_trades(months_back: int = 3, page_size: int = 100) -> None:
                     continue
             
             # Deduplicate records within the batch by unique key
-            # (politician, ticker, transaction_date, amount)
+            from web_dashboard.utils.congress_trade_normalize import (
+                CONGRESS_TRADE_UPSERT_ON_CONFLICT,
+                congress_trade_dedupe_key,
+                normalize_amount,
+                normalize_owner,
+                normalize_trade_type,
+                normalize_ticker,
+            )
+            from web_dashboard.utils.politician_mapping import lookup_politician_metadata
+
             seen_keys = set()
             unique_records = []
             for record in page_records:
-                key = (record['politician'], record['ticker'], record['transaction_date'], record['amount'])
+                politician_name = record.pop("politician", None)
+                if not politician_name:
+                    continue
+                meta = lookup_politician_metadata(client, politician_name)
+                if not meta:
+                    continue
+                record["politician_id"] = meta["politician_id"]
+                record["ticker"] = normalize_ticker(record.get("ticker"))
+                record["amount"] = normalize_amount(record.get("amount"))
+                record["type"] = normalize_trade_type(record.get("type"))
+                record["owner"] = normalize_owner(record.get("owner"))
+                key = congress_trade_dedupe_key(
+                    record["politician_id"],
+                    record["ticker"],
+                    record["transaction_date"],
+                    record["amount"],
+                    record["type"],
+                    record["owner"],
+                )
                 if key not in seen_keys:
                     seen_keys.add(key)
                     unique_records.append(record)
@@ -495,7 +522,7 @@ def seed_congress_trades(months_back: int = 3, page_size: int = 100) -> None:
                     result = client.supabase.table("congress_trades")\
                         .upsert(
                             page_records,
-                            on_conflict="politician,ticker,transaction_date,amount"
+                            on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
                         )\
                         .execute()
                     

@@ -139,14 +139,19 @@
                     </div>
                     <input type="hidden" id="congress-ticker-filter-hidden" name="ticker" value="{{ current_ticker|default('All') }}">
                 </div>
-                <select name="politician"
-                    class="w-full text-sm border border-border bg-dashboard-surface-alt rounded-lg p-2 text-text-primary focus:ring-accent focus:border-accent">
-                    <option value="All" {% if current_politician=='All' %}selected{% endif %}>All Politicians</option>
-                    {% for politician in unique_politicians %}
-                    <option value="{{ politician }}" {% if current_politician==politician %}selected{% endif %}>{{
-                        politician }}</option>
-                    {% endfor %}
-                </select>
+                <div class="relative">
+                    <input type="text" id="congress-politician-filter-input"
+                        inputmode="text"
+                        autocomplete="off"
+                        placeholder="Type politician name... (or leave empty for All)"
+                        value="{% if current_politician and current_politician != 'All' %}{{ current_politician }}{% endif %}"
+                        class="w-full text-sm px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
+                    <div id="congress-politician-filter-dropdown"
+                        class="hidden absolute z-50 w-full mt-1 max-h-60 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+                    </div>
+                    <input type="hidden" id="congress-politician-filter-hidden" name="politician"
+                        value="{{ current_politician|default('All') }}">
+                </div>
             </div>
         </div>
 
@@ -448,6 +453,7 @@
     "lazyLoad": true
 }
 </script>
+<script id="congress-politicians-data" type="application/json">{{ unique_politicians | default([]) | tojson }}</script>
 
 <script>
     // Toggle amount legend visibility

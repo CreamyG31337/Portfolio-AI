@@ -1458,10 +1458,212 @@ async function reanalyzeSelectedTrades(): Promise<void> {
     }
 };
 
+/**
+ * Searchable politician filter (type partial name to narrow the list).
+ */
+function setupPoliticianAutocomplete(): void {
+    const inputEl = document.getElementById('congress-politician-filter-input') as HTMLInputElement | null;
+    const dropdownEl = document.getElementById('congress-politician-filter-dropdown') as HTMLDivElement | null;
+    const hiddenEl = document.getElementById('congress-politician-filter-hidden') as HTMLInputElement | null;
+    const dataEl = document.getElementById('congress-politicians-data');
+
+    if (!inputEl || !dropdownEl || !hiddenEl || !dataEl) {
+        return;
+    }
+
+    const input = inputEl;
+    const dropdown = dropdownEl;
+    const hidden = hiddenEl;
+
+    let politicians: string[] = [];
+    try {
+        const parsed: unknown = JSON.parse(dataEl.textContent || '[]');
+        if (Array.isArray(parsed)) {
+            politicians = parsed.filter((p): p is string => typeof p === 'string');
+        }
+    } catch (err) {
+        console.error('[CongressTrades] Failed to parse politicians list:', err);
+        return;
+    }
+
+    let selectedIndex = -1;
+    const MAX_RESULTS = 50;
+
+    function filterPoliticians(query: string): string[] {
+        const q = query.trim().toLowerCase();
+        if (!q) {
+            return politicians.slice(0, MAX_RESULTS);
+        }
+        return politicians
+            .filter((name) => name.toLowerCase().includes(q))
+            .slice(0, MAX_RESULTS);
+    }
+
+    function hideDropdown(): void {
+        dropdown.classList.add('hidden');
+        selectedIndex = -1;
+    }
+
+    function selectPolitician(name: string): void {
+        if (name === 'All') {
+            input.value = '';
+            hidden.value = 'All';
+        } else {
+            input.value = name;
+            hidden.value = name;
+        }
+        hideDropdown();
+    }
+
+    function updateHighlight(items: NodeListOf<Element>): void {
+        items.forEach((item, idx) => {
+            if (idx === selectedIndex) {
+                item.classList.add('bg-dashboard-background');
+            } else {
+                item.classList.remove('bg-dashboard-background');
+            }
+        });
+        if (selectedIndex >= 0 && items[selectedIndex]) {
+            items[selectedIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function showDropdown(matches: string[], includeAll: boolean): void {
+        dropdown.innerHTML = '';
+
+        if (includeAll) {
+            const allItem = document.createElement('div');
+            allItem.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
+            allItem.dataset.politician = 'All';
+            allItem.textContent = 'All Politicians';
+            allItem.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectPolitician('All');
+            });
+            dropdown.appendChild(allItem);
+        }
+
+        matches.forEach((name) => {
+            const item = document.createElement('div');
+            item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
+            item.dataset.politician = name;
+            item.textContent = name;
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                selectPolitician(name);
+            });
+            dropdown.appendChild(item);
+        });
+
+        if (dropdown.childElementCount === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'px-4 py-2 text-text-secondary text-sm';
+            empty.textContent = 'No matching politicians';
+            dropdown.appendChild(empty);
+        }
+
+        selectedIndex = -1;
+        dropdown.classList.remove('hidden');
+    }
+
+    function refreshDropdown(): void {
+        const query = input.value.trim();
+        const matches = filterPoliticians(query);
+        // Always offer "All Politicians" when the field is empty or query looks like "all"
+        const includeAll = query.length === 0 || query.toLowerCase() === 'all';
+        showDropdown(matches, includeAll);
+    }
+
+    input.addEventListener('input', () => {
+        const query = input.value.trim();
+        if (query.length === 0) {
+            hidden.value = 'All';
+        } else {
+            // Keep hidden in sync only when an exact (case-insensitive) match exists;
+            // otherwise wait for explicit selection so partial typing doesn't submit a bad filter.
+            const exact = politicians.find((p) => p.toLowerCase() === query.toLowerCase());
+            hidden.value = exact || 'All';
+        }
+        refreshDropdown();
+    });
+
+    input.addEventListener('focus', () => {
+        refreshDropdown();
+    });
+
+    input.addEventListener('blur', () => {
+        setTimeout(() => hideDropdown(), 150);
+    });
+
+    input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('[data-politician]');
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (dropdown.classList.contains('hidden')) {
+                refreshDropdown();
+            }
+            selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            updateHighlight(items);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            selectedIndex = Math.max(selectedIndex - 1, -1);
+            updateHighlight(items);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (selectedIndex >= 0 && items[selectedIndex]) {
+                selectPolitician((items[selectedIndex] as HTMLElement).dataset.politician || 'All');
+            } else if (input.value.trim().length === 0) {
+                selectPolitician('All');
+            } else {
+                const exact = politicians.find(
+                    (p) => p.toLowerCase() === input.value.trim().toLowerCase()
+                );
+                if (exact) {
+                    selectPolitician(exact);
+                } else {
+                    // Prefer first filtered match on Enter
+                    const matches = filterPoliticians(input.value);
+                    if (matches.length === 1) {
+                        selectPolitician(matches[0]);
+                    }
+                }
+            }
+        } else if (e.key === 'Escape') {
+            hideDropdown();
+        }
+    });
+
+    // Resolve unique partial matches before Apply Filters submits
+    const form = input.closest('form');
+    if (form) {
+        form.addEventListener('submit', () => {
+            const query = input.value.trim();
+            if (query.length === 0) {
+                hidden.value = 'All';
+                return;
+            }
+            if (hidden.value !== 'All' && hidden.value.toLowerCase() === query.toLowerCase()) {
+                return;
+            }
+            const exact = politicians.find((p) => p.toLowerCase() === query.toLowerCase());
+            if (exact) {
+                selectPolitician(exact);
+                return;
+            }
+            const matches = filterPoliticians(query);
+            if (matches.length === 1) {
+                selectPolitician(matches[0]);
+            }
+        });
+    }
+}
+
 // Auto-initialize if config is present
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize model selection
     initModelSelect();
+    setupPoliticianAutocomplete();
 
     // Handle date filter toggle
     const useDateFilter = document.getElementById('use-date-filter') as HTMLInputElement | null;

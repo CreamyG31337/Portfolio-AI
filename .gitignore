@@ -172,6 +172,9 @@ cython_debug/
 # SEC insider backfill debug (raw filing samples, do not commit)
 debug/insider_junk/
 
+# Raw filing/disclosure documents pulled during debugging (do not commit)
+debug/*.pdf
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
