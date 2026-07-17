@@ -2,14 +2,29 @@
 
 {% block title %}Track record - Portfolio Dashboard{% endblock %}
 {% block page_title %}Track record{% endblock %}
-{% block page_subtitle %}Source-ROI: hit rates and excess return by ledger source and article domain{% endblock %}
+{% block page_subtitle %}How accurate the AI's buy/sell calls have been, measured 30 days later against the Russell 2000{% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto space-y-6">
-    <div id="track-loading" class="text-sm text-text-secondary">Loading outcomes…</div>
+    <section class="bg-dashboard-surface border border-border rounded-lg p-4 text-sm space-y-2">
+        <h2 class="text-lg font-semibold">How to read this page</h2>
+        <p>
+            Every directional stance the AI takes (BUY, SELL, BULLISH, BEARISH, AVOID, &hellip;) is recorded.
+            30 days later the stock's price change is compared to the Russell&nbsp;2000 index (^RUT) over the same window.
+        </p>
+        <ul class="list-disc pl-5 space-y-1 text-text-secondary">
+            <li><strong class="text-text-primary">Excess return</strong> = the stock's % return minus the index's % return, in percentage points (pp). Positive means the stock beat the market.</li>
+            <li><strong class="text-text-primary">Hit</strong> = the call was directionally right vs the market: a bullish call on a stock that beat the index, or a bearish call on one that lagged it.</li>
+            <li><strong class="text-text-primary">Hit rate</strong> = hits &divide; scored calls. Because excess return is roughly a coin flip by construction, <em>~50% means no edge</em>. What makes money is a positive <strong class="text-text-primary">mean excess return</strong> &mdash; being very right on hits and only slightly wrong on misses.</li>
+            <li>Treat groups with fewer than ~30 scored calls as noise, not signal.</li>
+        </ul>
+    </section>
+    <div id="track-loading" class="text-sm text-text-secondary">Loading outcomes&hellip;</div>
     <div id="track-error" class="hidden text-sm text-theme-error-text"></div>
+    <section id="track-headline" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="track-summary" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4"></section>
     <section id="track-source-table" class="hidden bg-dashboard-surface border border-border rounded-lg p-4 overflow-x-auto"></section>
+    <section id="track-confidence" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="track-domain-table" class="hidden bg-dashboard-surface border border-border rounded-lg p-4 overflow-x-auto"></section>
     <section id="track-coverage" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="track-verdict" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
