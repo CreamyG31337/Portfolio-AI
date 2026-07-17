@@ -59,6 +59,17 @@ def test_get_retro_digest_recipients_dedupes_direct_and_account(monkeypatch) -> 
     assert get_retro_digest_recipients(supabase_client=client) == ["same@test.com"]
 
 
+def test_get_retro_digest_recipients_dedupes_case_insensitive(monkeypatch) -> None:
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENTS", "Same@Test.com")
+    monkeypatch.setenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS", "Lance Colton")
+    client = MagicMock()
+    client.supabase.table.return_value.select.return_value.ilike.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[{"full_name": "Lance Colton", "email": "same@test.com"}]
+    )
+
+    assert get_retro_digest_recipients(supabase_client=client) == ["Same@Test.com"]
+
+
 def test_build_weekly_retro_digest_html_empty_data() -> None:
     pg = MagicMock()
     pg.execute_query.return_value = []
