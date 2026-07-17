@@ -395,6 +395,85 @@ function flashButtonText(btn: HTMLButtonElement, transient: string, restore: str
     }, ms);
 }
 
+function flashButtonHtml(btn: HTMLElement, transientHtml: string, restoreHtml: string, ms = 1500): void {
+    btn.innerHTML = transientHtml;
+    window.setTimeout(() => {
+        btn.innerHTML = restoreHtml;
+    }, ms);
+}
+
+/** Plain-text dump of a job's name + recent run messages (for clipboard). */
+function buildJobLogText(job: Job): string {
+    const name = job.name || job.id;
+    const lines: string[] = [
+        `Job: ${name}`,
+        `ID: ${job.id}`,
+        `Status: ${getJobStatusLabel(job)}`,
+    ];
+
+    if (job.last_error) {
+        lines.push(`Last error: ${job.last_error}`);
+    }
+
+    if (job.is_running && job.running_since) {
+        lines.push(`Running since: ${job.running_since}`);
+    }
+
+    if (job.is_running && job.live_steps && job.live_steps.length > 0) {
+        lines.push('', 'Live steps (oldest → newest):');
+        const stepsAsc = [...job.live_steps].reverse();
+        for (const step of stepsAsc) {
+            const ts = step.created_at ? new Date(step.created_at).toLocaleString() : '';
+            lines.push(`[${ts}] ${step.status}: ${step.message}`);
+        }
+    }
+
+    if (job.recent_logs && job.recent_logs.length > 0) {
+        lines.push('', 'Recent runs:');
+        for (const log of job.recent_logs) {
+            const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '';
+            const level = (log.level || 'INFO').toUpperCase();
+            const duration =
+                log.duration_ms != null && !Number.isNaN(Number(log.duration_ms))
+                    ? ` (${log.duration_ms} ms)`
+                    : '';
+            lines.push(`[${ts}] ${level}: ${log.message}${duration}`);
+        }
+    } else {
+        lines.push('', 'Recent runs: (none)');
+    }
+
+    return lines.join('\n');
+}
+
+async function handleCopyJobLog(e: Event): Promise<void> {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget as HTMLElement;
+    const jobId = btn.getAttribute('data-job-id');
+    if (!jobId) {
+        return;
+    }
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) {
+        showJobsError('Could not find job data to copy');
+        return;
+    }
+    const text = buildJobLogText(job);
+    const ok = await copyTextToClipboard(text);
+    const restoreHtml = btn.innerHTML;
+    flashButtonHtml(
+        btn,
+        ok
+            ? '<i class="fas fa-check text-theme-success-text"></i>'
+            : '<i class="fas fa-times text-theme-error-text"></i>',
+        restoreHtml,
+    );
+    if (!ok) {
+        showJobsError('Failed to copy job log to clipboard');
+    }
+}
+
 function wireAiActivityControls(): void {
     const sel = document.getElementById('ai-activity-window') as HTMLSelectElement | null;
     if (sel) {
@@ -881,6 +960,11 @@ function renderJobs(jobsData: Job[]): void {
         btn.addEventListener('click', handleJobAction);
     });
 
+    const copyLogButtons = document.querySelectorAll('.job-copy-log-btn');
+    copyLogButtons.forEach((btn) => {
+        btn.addEventListener('click', handleCopyJobLog);
+    });
+
     renderTimelineView(jobs);
 }
 
@@ -902,8 +986,12 @@ function createJobCard(job: Job): string {
     if (job.recent_logs && job.recent_logs.length > 0) {
         logsHtml = `
             <div class="mt-4 bg-dashboard-background rounded border border-border overflow-hidden">
-                <div class="px-3 py-1 bg-dashboard-surface text-xs font-semibold text-text-secondary border-b border-border">
-                    Recent Logs
+                <div class="px-3 py-1 bg-dashboard-surface text-xs font-semibold text-text-secondary border-b border-border flex items-center justify-between gap-2">
+                    <span>Recent Logs</span>
+                    <button type="button" class="job-copy-log-btn text-xs font-medium text-accent hover:text-accent-hover px-2 py-0.5 border border-accent/40 rounded hover:bg-accent/10 transition-colors"
+                        data-job-id="${escapeAttribute(job.id)}" title="Copy job name and recent run logs" aria-label="Copy recent logs">
+                        <i class="fas fa-copy mr-1"></i>Copy log
+                    </button>
                 </div>
                 <div class="max-h-32 overflow-y-auto">
                     ${job.recent_logs.map(log => `
@@ -1127,6 +1215,10 @@ function createJobCard(job: Job): string {
                 </div>
                 
                 <div class="flex space-x-2">
+                    <button type="button" class="job-copy-log-btn text-text-secondary hover:text-accent p-2"
+                        data-job-id="${safeJobId}" title="Copy job name and recent run logs" aria-label="Copy job log">
+                        <i class="fas fa-copy"></i>
+                    </button>
                     ${job.next_run
             ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2"
                                 data-action="pause" data-id="${safeActualId}" title="Pause Job" aria-label="Pause Job">
