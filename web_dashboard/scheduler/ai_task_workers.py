@@ -1409,6 +1409,12 @@ def congress_trade_analysis_task_handler(task: Mapping[str, Any], backend: str) 
     if not trade_rows:
         raise ValueError(f"congress trade id={trade_id} missing from enriched view")
     trade = trade_rows[0]
+    if trade.get("quality_status") == "garbage":
+        logger.info(
+            "analyze_congress_trades trade_id=%s is quarantine garbage; skipping",
+            trade_id,
+        )
+        return
 
     if backend == BACKEND_GLM:
         ollama = OllamaClient(force_base_url_only=True)

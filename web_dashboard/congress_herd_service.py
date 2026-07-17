@@ -31,6 +31,7 @@ def fetch_recent_congress_buys(
                 "politician_id,ticker,politician,party,chamber,transaction_date,amount,type"
             )
             .eq("type", "Purchase")
+            .neq("quality_status", "garbage")
             .gte("transaction_date", cutoff)
             .order("transaction_date", desc=True)
             .range(offset, offset + _PAGE_SIZE - 1)

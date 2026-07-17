@@ -488,6 +488,16 @@ def fetch_congress_trades_job() -> None:
             except Exception as e:
                 logger.error(f"Unexpected error processing {chamber}: {e}", exc_info=True)
         
+        # Quarantine known-bad disclosures (fingerprint registry; fresh-DB safe)
+        try:
+            from utils.congress_trade_quality import apply_trade_quality_overrides
+
+            quality_stats = apply_trade_quality_overrides(supabase_client)
+            if quality_stats.get("matched"):
+                logger.info("Congress trade quality overrides: %s", quality_stats)
+        except Exception as quality_err:
+            logger.warning("Congress trade quality overrides failed: %s", quality_err)
+
         # Log completion
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {errors} errors, {warnings} warnings"
@@ -554,6 +564,7 @@ def _run_analyze_congress_trades_enqueue_mode(job_id: str, start_time: float) ->
             client.supabase.table("congress_trades")
             .select("id")
             .is_("conflict_score", "null")
+            .neq("quality_status", "garbage")
             .order("transaction_date", desc=True)
             .order("id", desc=True)
             .limit(batch_size)
@@ -727,6 +738,7 @@ def analyze_congress_trades_job() -> None:
             response = client.supabase.table("congress_trades_enriched")\
                 .select("*")\
                 .is_("conflict_score", "null")\
+                .neq("quality_status", "garbage")\
                 .order("transaction_date", desc=True)\
                 .limit(batch_size)\
                 .execute()

@@ -167,6 +167,7 @@ def _get_congress_trades_for_portfolio(fund: str, days: int = 30) -> List[Dict]:
         query = client.supabase.table("congress_trades_enriched")\
             .select("ticker, politician, chamber, party, state, transaction_date, type, amount, owner")\
             .in_("ticker", lookup_tickers)\
+            .neq("quality_status", "garbage")\
             .gte("transaction_date", start_date.isoformat())\
             .lte("transaction_date", end_date.isoformat())\
             .order("transaction_date", desc=True)

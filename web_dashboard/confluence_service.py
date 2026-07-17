@@ -191,6 +191,7 @@ def _fetch_congress_purchase_tickers(
                 supabase_client.supabase.table("congress_trades_enriched")
                 .select("ticker")
                 .eq("type", "Purchase")
+                .neq("quality_status", "garbage")
                 .gte("transaction_date", cutoff)
                 .in_("ticker", batch)
                 .execute()

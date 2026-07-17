@@ -1,0 +1,1 @@
+CREATE TRIGGER trg_congress_trades_preserve_quality BEFORE UPDATE ON public.congress_trades FOR EACH ROW EXECUTE FUNCTION congress_trades_preserve_quality();

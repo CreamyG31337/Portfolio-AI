@@ -554,6 +554,16 @@ def seed_congress_trades(months_back: int = 3, page_size: int = 100) -> None:
             logger.exception("Critical error in seeder")
             break
     
+    # Quarantine known-bad disclosures (fingerprint registry; fresh-DB safe)
+    try:
+        from utils.congress_trade_quality import apply_trade_quality_overrides
+
+        quality_stats = apply_trade_quality_overrides(client)
+        print(f"Quality overrides: {quality_stats}")
+    except Exception as quality_err:
+        logger.warning("Congress trade quality overrides failed: %s", quality_err)
+        print(f"⚠️  Quality overrides failed: {quality_err}")
+
     print()
     print("=" * 70)
     print("✅ SEEDING COMPLETE")

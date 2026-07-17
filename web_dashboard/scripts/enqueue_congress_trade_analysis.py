@@ -65,6 +65,7 @@ def fetch_unscored_trade_ids(
             supabase.supabase.table("congress_trades")
             .select("id")
             .is_("conflict_score", "null")
+            .neq("quality_status", "garbage")
             .order("transaction_date", desc=True)
             .order("id", desc=True)
             .range(offset, offset + take - 1)

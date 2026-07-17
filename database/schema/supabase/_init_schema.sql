@@ -66,6 +66,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/backfill_preconverted_values.sql
 \i functions/calculate_daily_performance.sql
 \i functions/can_modify_data.sql
+\i functions/congress_trades_preserve_quality.sql
 \i functions/create_user_profile.sql
 \i functions/delete_user_safe.sql
 \i functions/complete_ai_task.sql
@@ -112,6 +113,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i views/latest_positions.sql
 
 -- TRIGGERS
+\i triggers/trg_congress_trades_preserve_quality.sql
 \i triggers/trigger_set_portfolio_position_date_only.sql
 \i triggers/update_dividend_log_updated_at.sql
 \i triggers/update_fund_contributions_updated_at.sql

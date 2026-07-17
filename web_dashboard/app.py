@@ -4686,6 +4686,8 @@ def get_congress_trades_cached(
 
         # Build base filter function for reuse
         def apply_filters(q):
+            # Default UI/API: hide quarantined garbage; corrected siblings stay visible
+            q = q.neq("quality_status", "garbage")
             if ticker_filter:
                 q = q.eq("ticker", ticker_filter)
             if politician_filter:

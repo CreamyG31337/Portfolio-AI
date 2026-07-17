@@ -197,6 +197,7 @@ def compute_congress_positions_job() -> None:
             resp = client.supabase.table("congress_trades") \
                 .select("id, politician_id, ticker, type, transaction_date, price, amount") \
                 .in_("type", ["Purchase", "Sale"]) \
+                .neq("quality_status", "garbage") \
                 .not_.is_("price", "null") \
                 .order("politician_id") \
                 .order("ticker") \

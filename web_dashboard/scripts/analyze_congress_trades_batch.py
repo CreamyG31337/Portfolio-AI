@@ -1145,6 +1145,9 @@ def main():
             # Skip trades with null metadata if requested
             if args.skip_nulls:
                 query = query.not_.is_("party", "null").not_.is_("state", "null")
+
+            # Quarantined disclosures stay out of conflict scoring
+            query = query.neq("quality_status", "garbage")
             
             # Order by transaction_date DESC, then id DESC for deterministic ordering
             # This ensures consistent pagination even when multiple trades have the same date
