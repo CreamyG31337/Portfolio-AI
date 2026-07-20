@@ -278,6 +278,17 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 22, 'minute': 30, 'timezone': 'America/New_York'},
         ],
     },
+    'congress_herd': {
+        'name': 'Congress Herd Ledger',
+        'description': 'Nightly no-LLM write of congress herd buys into stance_history (ROADMAP H5)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        # After confluence (22:30 ET); independent of FMP congress fetch success.
+        'cron_triggers': [
+            {'hour': 22, 'minute': 45, 'timezone': 'America/New_York'},
+        ],
+    },
     'weekly_stance_retro': {
         'name': 'Weekly Stance Retro',
         'description': 'Weekly log summary of stance flips and outcome hit rates',
@@ -741,6 +752,7 @@ from scheduler.jobs_dilution_watch import dilution_watch_job
 from scheduler.jobs_yahoo_sedi_insiders import yahoo_sedi_insiders_job
 from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_confluence import confluence_job
+from scheduler.jobs_congress_herd import congress_herd_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -847,6 +859,7 @@ __all__ = [
     'yahoo_sedi_insiders_job',
     'sec_filings_job',
     'confluence_job',
+    'congress_herd_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -1570,6 +1583,29 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600,
         )
         logger.info("Registered job: confluence (nightly after stance_outcomes + sec_filings)")
+
+    if AVAILABLE_JOBS.get('congress_herd', {}).get('enabled_by_default', True):
+        ch_cfg = AVAILABLE_JOBS['congress_herd']
+        ch_triggers = ch_cfg.get(
+            'cron_triggers',
+            [{'hour': 22, 'minute': 45, 'timezone': 'America/New_York'}],
+        )
+        ch_trigger = ch_triggers[0]
+        scheduler.add_job(
+            congress_herd_job,
+            trigger=CronTrigger(
+                hour=ch_trigger.get('hour', 22),
+                minute=ch_trigger.get('minute', 45),
+                timezone=ch_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='congress_herd',
+            name=f"{get_job_icon('congress_herd')} Congress Herd Ledger",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: congress_herd (nightly stance_history writes)")
 
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']

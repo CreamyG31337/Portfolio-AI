@@ -11,10 +11,13 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from stance_history import record_stance_safe
+
 logger = logging.getLogger(__name__)
 
 _JUNK_TICKERS = {"", "-", "N/A", "NONE", "NULL"}
 _PAGE_SIZE = 1000
+LEDGER_LIMIT_DEFAULT = 100
 
 
 def fetch_recent_congress_buys(
@@ -151,3 +154,50 @@ def build_congress_herd_buys(
         watched_tickers=watched,
         limit=limit,
     )
+
+
+def record_congress_herd_stances(
+    postgres: Any,
+    supabase_client: Any,
+    *,
+    days: int = 30,
+    min_politicians: int = 2,
+    limit: int = LEDGER_LIMIT_DEFAULT,
+) -> dict[str, int]:
+    """Write scoreable BULLISH herd readings into ``stance_history`` (Phase H5).
+
+    Mirror of confluence's ledger hook: mechanical, no LLM, fund-agnostic.
+    Dedupe lives in ``record_stance`` (same ticker/source/stance/confidence).
+    """
+    herds = build_congress_herd_buys(
+        supabase_client,
+        days=days,
+        min_politicians=min_politicians,
+        limit=limit,
+    )
+    stances_written = 0
+    for herd in herds:
+        ticker = str(herd.get("ticker") or "").strip()
+        if not ticker:
+            continue
+        if record_stance_safe(
+            postgres,
+            ticker=ticker,
+            source="congress_herd",
+            stance="BULLISH",
+            confidence=None,
+            fund_key="",
+            metadata={
+                "politician_count": herd.get("politician_count"),
+                "buy_count": herd.get("buy_count"),
+                "latest_buy": herd.get("latest_buy"),
+                "window_days": days,
+                "held": herd.get("held"),
+                "watched": herd.get("watched"),
+            },
+        ):
+            stances_written += 1
+    return {
+        "herds": len(herds),
+        "stances_written": stances_written,
+    }

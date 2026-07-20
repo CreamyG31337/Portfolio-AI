@@ -5,7 +5,8 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
-| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work (2026-07-15):** source-ROI report, meta-bundle injection of Phase G signals + prior stance, trend memory, congress herd → ledger, executive-trades consumer-or-kill. |
+| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H5 shipped; **H6** executive ship-or-kill next, then H7. |
+| **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | Phase G brief (2026-06-11): provenance, dilution, EDGAR filings, confluence. **G1–G5 + G7 shipped; G6 optional.** No longer the primary kickoff — see Phase H. |
 | [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads + **Decide-layer job map** (meta vs Insights eval vs Action Queue review — table + mermaid). Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
@@ -119,7 +120,7 @@ Learn plumbing ahead of Learn→Synthesize / Learn→Collect wiring).
 |----------------------|---------|
 | **Executive trades** | `jobs_executive.py` upserts; only readers are the job + backfill. No route/template/analysis. [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) never shipped. **Ship the consumer or disable the job.** |
 | **Weekly retro** | Computes flips + hit rates Sundays; Mailgun code shipped 2026-06-20; **`RETRO_DIGEST_RECIPIENTS` never set in prod** — self-review logs into the abyss. Five-minute env fix. |
-| **Congress Learn exemption** | `congress_trade_returns` + conflict scores exist; **5.1b / 5.1c** and herd → `stance_history` never landed — congress pipeline largely **ungradeable**. |
+| **Congress Learn exemption** | Herd → `stance_history` shipped as **Phase H5** (2026-07-20). **5.1b / 5.1c** still open. |
 | **Ideas inbox labels** | `idea_triage` empty at June verify; if Accept/Dismiss unused, alpha terminus produces no labeled relevance data — honest product signal if still unused. |
 
 ### Failure mode to watch
@@ -512,7 +513,7 @@ whether it warrants a §5.2-style read-only benchmark before anything else.
 - [x] **5.1a** congress herd-buy service + `GET /api/congress/herd-buys` + Today-screen block (mirror `insider_clusters_service`) — shipped 2026-06-20
 - [ ] **5.1b** politician greediness leaderboard (conflict × volume, with realized-return column) on the congress page — after H5
 - [ ] **5.1c** late-filer flag (disclosure − transaction > 45d) on congress page + dossier — after H5
-- [ ] **5.1** record congress herd reading as `stance_history` source for outcome scoring — **Phase H5**
+- [x] **5.1** record congress herd reading as `stance_history` source for outcome scoring — **Phase H5** (shipped 2026-07-20)
 - [ ] **5.2** `validate_against_govgreed.py` read-only audit + results table in this doc
 - [ ] **5.3** FEC "Triple Signal" — **deferred** until Learn layer clears the new-collection guardrail (and after H1 + H5)
 
@@ -612,8 +613,10 @@ flowchart TD
     H1 -.->|"gates (ROI weak)"| F56["§4.5 / §4.6 / G6 / §5.3"]
     H3["H3 · account-based retro recipient ✓"]
     H2 --> H4["H4 · Trend memory ✓"]
-    H5["H5 · congress herd → ledger ← NEXT"]
-    H6["H6 · executive ship-or-kill"]
+    H5["H5 · congress herd → ledger ✓"]
+    H6["H6 · executive ship-or-kill ← NEXT"]
+    H5 -.->|"after H closes"| I1["I1 · story dedup + corroboration"]
+    H5 -.->|"after H closes"| I2["I2 · FRED stress → regime_json"]
 ```
 
 | Phase | Scope | Size |
@@ -625,7 +628,8 @@ flowchart TD
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C gated; retro code + account recipient shipped** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1–H4 shipped; H5 next** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1–H5 shipped; H6 next** |
+| **I** (backlog) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
 
@@ -653,8 +657,10 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
 - [x] **H4 · Trend memory** — prior regime history into market brief (last 10 sessions) and
   rotation-rank history into sector meta (last 4 runs), behind `META_ANALYSIS_TREND_MEMORY`
   (default on). Prompt rules updated; kill with `=false`. Shipped 2026-07-16.
-- [ ] **H5 · Congress herd → `stance_history`** — one `record_stance_safe(..., source=
-  'congress_herd')` so the pipeline enters the Learn layer; then 5.1b/5.1c as follow-ons.
+- [x] **H5 · Congress herd → `stance_history`** — nightly `congress_herd` job calls
+  `record_congress_herd_stances` → `record_stance_safe(..., source='congress_herd',
+  stance='BULLISH')` (mirror confluence). Today/API remain read-only. Shipped 2026-07-20;
+  5.1b/5.1c remain follow-ons.
 - [ ] **H6 · Executive trades: ship or kill** — implement
   [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) **or** disable
   `jobs_executive` (collector-into-void violates guardrails).
@@ -671,6 +677,39 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
 | **§4.6** 13F ownership deltas | New collection; after source-ROI |
 | **§5.3** FEC Triple Signal | Explicitly deferred until congress Learn edge proven |
 | **Shape A/B** LLM research selection | After ROI + (for B) domain-health / theme coverage |
+
+### Phase I — Collection quality & macro context (WorldMonitor borrows)
+
+**Created 2026-07-20** from [`docs/research/WORLDMONITOR.md`](research/WORLDMONITOR.md).
+**Do not start until Phase H closes** (H5–H7). These are clean-room ideas only —
+**never** fork WorldMonitor AGPL handlers into this repo; reimplement algorithms / call
+the MIT `worldmonitor-sdk` if needed. Do **not** stand up a second meta-analysis stack or
+use their BTC Market Radar as a micro-cap BUY/CASH gate.
+
+| ID | Item | Why | Gate |
+|----|------|-----|------|
+| **I1** | Story dedup + `corroboration_count` | Exact URL/text-hash dedup lets SearXNG+RSS double-count the same catalyst; port hashed dual-view cosine technique into Python; feed count into `calculate_relevance_score` | Quality fix (not a new collector); after H — pull forward only if H1 news ROI looks inflated |
+| **I2** | FRED stress (+ optional equity F&G) → `regime_json` | Narrative regime has no quantitative curve/stress backing; `pandas-datareader` already unused in requirements | New macro inputs; after H |
+| **I3** | Finish `sec_form4_poc.py` → raw Form 4 codes, then P/S conviction filter | Quiver scrape already collapsed codes; filter needs EDGAR XML | After H |
+| **I4** | Add SEC + Fed press-release feeds; 3 new SearXNG queries | Confirmed live: 6 feeds in `rss_feeds` (not 4); `finance.yahoo.com`/`seekingalpha.com` already top source-ROI domains via SearXNG, no feed needed; SEC/Fed press releases confirmed absent from every path (RSS, domain-health, source-ROI) | Ops/verify anytime; cheap |
+| **I5** | Optional `worldmonitor-sdk` / MCP for macro only | MIT SDK; cache hard; Pro quota tight | Lowest priority; prefer I1–I2 in-house |
+
+#### I checklist
+
+- [ ] **I1 · Story dedup + corroboration** — clean-room Python module; wire into
+  `market_research_job` + `rss_feed_ingest_job`; skip re-extract/re-summarize on match;
+  increment `corroboration_count`; use as relevance multiplier.
+- [ ] **I2 · FRED stress → `market_daily_brief.regime_json`** — spike with
+  `pandas-datareader` (no new dep); optional equity Fear & Greed blend later.
+- [ ] **I3 · Raw Form 4 ingestion + P/S filter** — finish `sec_form4_poc.py`, then
+  conviction filter on open-market P/S only.
+- [ ] **I4 · RSS feed additions** — add SEC (`sec.gov/news/pressreleases.rss`) and Fed
+  (`federalreserve.gov/feeds/press_all.xml`) direct feeds; add 3 SearXNG/Google-News queries
+  (financial regulation/enforcement, IPO news, economic data — CPI/GDP/jobs) to the
+  `market_research_job` rotation. Skip Yahoo Finance/Seeking Alpha as dedicated feeds — already
+  arriving via SearXNG and top-scored in source-ROI; a dedicated feed would just raise the
+  near-dup rate I1 is meant to fix.
+- [ ] **I5 · Optional WorldMonitor SDK/MCP** — macro/news context only; last resort after I1–I2.
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -763,6 +802,11 @@ TEST_* residue — production jobs must filter by `is_production`.
 - **No autonomous trading.** Outputs are suggestions a human approves. Ever.
 - **No new collection jobs until the Learn layer says which existing ones earn their keep.**
   As of 2026-07-15 that means: **finish Phase H1 (source-ROI) before G6 / §4.5 / §4.6 / §5.3.**
+  Phase I (WorldMonitor borrows) starts **after Phase H closes**; I1 is a quality fix on
+  existing news paths, not a license to add feeds early.
+- **No AGPL infection.** WorldMonitor platform code is AGPL-3.0 — learn locally from
+  `.research_worldmonitor/` (gitignored); reimplement algorithms clean-room or use the MIT
+  SDK. Never merge their TypeScript handlers into this app.
 - **No collector-into-a-void.** If a job writes data with no route, analysis, or ledger consumer,
   either ship the consumer or disable the job (see Phase H6 executive trades).
 - New value must be a **new artifact type, a queue decision, or a screen** — not "more articles."
