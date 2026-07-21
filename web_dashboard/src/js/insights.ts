@@ -1,3 +1,4 @@
+import { Modal } from "flowbite";
 import { sentimentToneClasses } from "./sentiment_badges.js";
 
 export {};
@@ -318,12 +319,9 @@ async function attachUrl(thesisId: string): Promise<void> {
 }
 
 function wireModal(): void {
-  // TODO(palette): Convert #insights-modal to Flowbite Modal markup + API
-  // (aria/focus/Esc) instead of manual .hidden toggles — see trade_entry.ts.
   const modal = document.getElementById("insights-modal");
   const form = document.getElementById("insights-form") as HTMLFormElement | null;
-  document.getElementById("insights-new-btn")?.addEventListener("click", () => modal?.classList.remove("hidden"));
-  document.getElementById("insights-modal-cancel")?.addEventListener("click", () => modal?.classList.add("hidden"));
+  // Flowbite handles modal open/close via data attributes (data-modal-target, data-modal-hide)
   document.getElementById("insights-detail-close")?.addEventListener("click", () => {
     document.getElementById("insights-detail")?.classList.add("hidden");
   });
@@ -346,7 +344,11 @@ function wireModal(): void {
       alert(err.error || `HTTP ${resp.status}`);
       return;
     }
-    modal?.classList.add("hidden");
+    const modalEl = document.getElementById("insights-modal");
+    if (modalEl) {
+      const modal = new Modal(modalEl);
+      modal.hide();
+    }
     form.reset();
     await loadTheses();
   });

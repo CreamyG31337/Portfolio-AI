@@ -40,7 +40,7 @@
         <button type="button" id="insights-refresh-btn" class="btn-outline">
             Refresh
         </button>
-        <button type="button" id="insights-new-btn" class="btn-outline">
+        <button type="button" id="insights-new-btn" data-modal-target="insights-modal" data-modal-toggle="insights-modal" class="btn-outline">
             New thesis
         </button>
     </div>
@@ -55,8 +55,8 @@
 </div>
 
 <!-- New thesis modal -->
-<div id="insights-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-    <div class="bg-dashboard-surface border border-border rounded-lg shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+<div id="insights-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-lg bg-dashboard-surface border border-border rounded-lg shadow-lg p-6 max-h-[90vh] overflow-y-auto">
         <h3 class="text-lg font-semibold text-text-primary mb-4">New thesis</h3>
         <form id="insights-form" class="space-y-3">
             <div>
@@ -100,7 +100,7 @@
                     class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-text-primary">
             </div>
             <div class="flex justify-end gap-2 pt-2">
-                <button type="button" id="insights-modal-cancel"
+                <button type="button" id="insights-modal-cancel" data-modal-hide="insights-modal"
                     class="px-3 py-1 text-sm border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Cancel</button>
                 <button type="submit" class="btn-outline">Create</button>
             </div>
