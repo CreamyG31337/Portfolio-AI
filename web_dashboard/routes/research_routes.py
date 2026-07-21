@@ -1283,12 +1283,23 @@ def reanalyze_article_stream():
                         client = SupabaseClient(use_service_role=True)
                     
                     if client:
-                        funds_result = client.supabase.table("funds").select("name").eq("is_production", True).execute()
-                        if funds_result.data:
-                            prod_funds = [f['name'] for f in funds_result.data]
-                            positions_result = client.supabase.table("latest_positions").select("ticker").in_("fund", prod_funds).execute()
-                            if positions_result.data:
-                                owned_tickers = [pos['ticker'] for pos in positions_result.data if pos.get('ticker')]
+                        from supabase_pagination import fetch_all_rows
+                        funds_data = fetch_all_rows(
+                            client,
+                            "funds",
+                            select="name",
+                            filters=[("is_production", "eq", True)]
+                        )
+                        if funds_data:
+                            prod_funds = [f['name'] for f in funds_data]
+                            positions_data = fetch_all_rows(
+                                client,
+                                "latest_positions",
+                                select="ticker",
+                                apply_query=lambda q: q.in_("fund", prod_funds)
+                            )
+                            if positions_data:
+                                owned_tickers = [pos['ticker'] for pos in positions_data if pos.get('ticker')]
                 except Exception as e:
                     logger.warning(f"Could not fetch owned tickers: {e}")
                 

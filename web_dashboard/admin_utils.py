@@ -59,8 +59,8 @@ def get_cached_funds() -> List[Dict[str, Any]]:
             return []
         try:
             with perf_timer("DB: funds.select", log_to_console=False):
-                funds_result = client.supabase.table("funds").select("*").order("name").execute()
-            return funds_result.data if funds_result.data else []
+                from supabase_pagination import fetch_all_rows
+                return fetch_all_rows(client, "funds", select="*", order="name")
         except Exception as e:
             logger.error(f"Error loading funds: {e}")
             return []
