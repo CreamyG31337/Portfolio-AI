@@ -615,9 +615,15 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             return
             
         # Get already processed dividends (key: fund, ticker, pay_date)
-        processed_res = client.supabase.table("dividend_log").select("fund, ticker, pay_date, ex_date").execute()
+        from supabase_pagination import fetch_all_rows
+
+        # ⚡ Bolt: Use paginated fetch to prevent missing dividend log entries on large databases
+        # Supabase caps responses at 1000 rows. Without fetch_all_rows, we might replay past dividends
+        # if the table grows past 1000 records, leading to false duplicates.
+        processed_data = fetch_all_rows(client, "dividend_log", select="fund, ticker, pay_date, ex_date")
+
         processed_keys = set()
-        for row in processed_res.data:
+        for row in processed_data:
             # Track both pay_date and ex_date to avoid duplicates
             processed_keys.add((row['fund'], row['ticker'], row['pay_date']))
             processed_keys.add((row['fund'], row['ticker'], row['ex_date']))

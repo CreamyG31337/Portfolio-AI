@@ -81,3 +81,7 @@
 ## 2026-07-25 - Pandas .apply() vs List Comprehensions for is_stock_ticker and normalize_holding_ticker
 **Learning:** In `jobs_etf_watchtower.py`, using `df['ticker'].apply(normalize_holding_ticker)` and `df[df['ticker'].apply(is_stock_ticker)]` is significantly slower than using list comprehensions. `df['ticker'].apply` has a high overhead because it creates a new Pandas Series for each row. Using `np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)` provides a 2x-4x speedup for boolean filtering, and `[normalize_holding_ticker(x) for x in df['ticker'].tolist()]` gives a ~20% speedup for string transformations.
 **Action:** Replace `df['col'].apply(custom_func)` with `np.array([custom_func(x) for x in df['col'].tolist()], dtype=bool)` for boolean filtering and `[custom_func(x) for x in df['col'].tolist()]` for column assignment, bypassing the slow Pandas `apply` method overhead.
+
+## 2025-05-15 - Unbounded Supabase Query in jobs_dividends.py
+**Learning:** Supabase caps unbounded queries at 1000 rows. `processed_res = client.supabase.table("dividend_log").select(...).execute()` was vulnerable to silently missing past dividend records, risking duplicate entries.
+**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.
