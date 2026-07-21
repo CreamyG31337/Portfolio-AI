@@ -190,6 +190,107 @@ Enums for "risk_pattern":
 The confidence_score (0.0-1.0) indicates how certain you are.
 """
 
+# Executive-branch sessions have no committees; score via policy/contract levers (ROADMAP H6).
+EXECUTIVE_SESSION_PROMPT_TEMPLATE = """
+Role: Forensic Financial Analyst
+Mission: Classify the **INTENT** behind Executive-branch trading sessions
+(president / executive officers). Do **not** use congressional committee logic.
+
+--- INPUT DATA ---
+**Subject:** {politician} ({party} - {state})
+**Chamber:** {chamber}
+
+**Session Activity ({trade_count} trades):**
+{trades_table}
+
+--- ANALYSIS LOGIC (Follow Step-by-Step) ---
+
+STEP 1: EXECUTIVE POLICY LINK?
+Weigh whether the executive branch has a concrete lever over the issuer's sector:
+- **Policy control:** regulate / subsidize / tariff the sector (energy, defense, pharma,
+  semis, banks, crypto, etc.)?
+- **Federal contracting:** is the issuer a major federal contractor?
+- **Direct mention/action:** company or sector named in recent executive orders,
+  tariffs, appointments, or agency actions?
+- **Timing vs policy events (v1):** if you recall a nearby EO/tariff/appointment affecting
+  the sector around the trade date, note it — but lower confidence_score when relying on
+  general knowledge rather than provided facts.
+  - *YES (concrete lever):* Proceed to Step 2.
+  - *NO:* Mark as "NO_RELATIONSHIP" (Score 0.0).
+- Hard rule: "the president influences markets" is NOT a link. Require a sector-specific lever.
+
+STEP 2: DIRECTION OF TRADE?
+- **BUYING:** active bet on the sector.
+  - *Verdict:* If Link is YES -> "CONFLICT_BUY" (Score 0.9).
+- **SELLING:** ambiguous. Proceed to Step 3.
+
+STEP 3: SELLING CONTEXT
+- **Small Sell ($1k - $15k):** likely housekeeping / diversifying.
+  - *Verdict:* "ROUTINE_DIVESTMENT" (Score 0.1 - Safe).
+- **Large Sell ($50k+) or Full Exit:** material dump.
+  - *Verdict:* If Link is YES -> "SUSPICIOUS_SELL" (Score 0.8 - Danger).
+- **Options/Shorts:** betting against the name/sector.
+  - *Verdict:* "AGGRESSIVE_BET" (Score 1.0 - Critical).
+
+--- OUTPUT REQUIREMENT ---
+Return valid JSON only. "risk_pattern" MUST be one of the enums below.
+
+Enums for "risk_pattern":
+- "CONFLICT_BUY" (Buying when executive policy/contract lever applies)
+- "SUSPICIOUS_SELL" (Large dump when lever applies)
+- "AGGRESSIVE_BET" (Options/Shorts)
+- "ROUTINE_DIVESTMENT" (Small sales)
+- "NO_RELATIONSHIP" (No concrete executive lever)
+
+{{
+  "conflict_score": 0.1,
+  "confidence_score": 0.7,
+  "risk_pattern": "ROUTINE_DIVESTMENT",
+  "reasoning": "Subject is Executive chamber. Sector has tariff exposure, but the trade is a small sale (<$15k), consistent with routine rebalancing rather than policy-timed profit-taking."
+}}
+
+The confidence_score (0.0-1.0) indicates how certain you are. Prefer ≤0.75 when timing
+claims rest on general knowledge rather than provided facts.
+"""
+
+
+def is_executive_chamber(chamber: str | None) -> bool:
+    """True when the session/trade is presidential / executive-branch."""
+    return str(chamber or "").strip().casefold() == "executive"
+
+
+def build_session_conflict_prompt(
+    *,
+    politician: str,
+    party: str,
+    state: str,
+    chamber: str,
+    trade_count: int,
+    trades_table: str,
+    committees: str | None = None,
+) -> str:
+    """Build the session LLM prompt; executive chamber skips committee rubric."""
+    if is_executive_chamber(chamber):
+        return EXECUTIVE_SESSION_PROMPT_TEMPLATE.format(
+            trade_count=trade_count,
+            politician=politician,
+            party=party,
+            state=state,
+            chamber=chamber,
+            trades_table=trades_table,
+        )
+    committee_descriptions = get_committee_context(committees or "Unknown")
+    return SESSION_PROMPT_TEMPLATE.format(
+        trade_count=trade_count,
+        politician=politician,
+        party=party,
+        state=state,
+        chamber=chamber,
+        committee_descriptions=committee_descriptions,
+        trades_table=trades_table,
+    )
+
+
 # Legacy prompt for single-trade analysis (kept for backward compatibility if needed)
 PROMPT_TEMPLATE = """
 Analyze this trade for potential Insider Trading/Conflict of Interest.
@@ -822,9 +923,12 @@ def analyze_session(
         # Prefetch all securities data in one query
         tickers = list(set(t.get('ticker') for t in trades if t.get('ticker')))
         prefetch_securities_batch(supabase, tickers)
-        
-        # Prefetch politician committee data (one call for the session's politician)
-        prefetch_politician_committees(supabase, politician_name)
+
+        session_chamber = str(trades[0].get("chamber") or "").strip()
+        executive_session = is_executive_chamber(session_chamber)
+        # Executive officers have no committees — skip the degenerate prefetch.
+        if not executive_session:
+            prefetch_politician_committees(supabase, politician_name)
         
         # Enrich each trade with context (now uses cache, no Supabase calls)
         enriched_trades = []
@@ -886,21 +990,15 @@ def analyze_session(
         
         # Format trades table
         trades_table = format_trades_table(enriched_trades)
-        
-        # Generate committee context descriptions for injection
-        committee_descriptions = get_committee_context(politician_context['committees'])
-        
-        # Build prompt with injected context
-        prompt = SESSION_PROMPT_TEMPLATE.format(
-            trade_count=trade_count,
+
+        prompt = build_session_conflict_prompt(
             politician=politician_context['politician'],
             party=politician_context['party'],
             state=politician_context['state'],
             chamber=politician_context['chamber'],
-            committee_descriptions=committee_descriptions,
-            start_date=start_date,
-            end_date=end_date,
-            trades_table=trades_table
+            trade_count=trade_count,
+            trades_table=trades_table,
+            committees=politician_context['committees'],
         )
         
         

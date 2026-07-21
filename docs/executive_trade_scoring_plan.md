@@ -1,6 +1,7 @@
 # Executive Trade Conflict Scoring (Follow-up Plan)
 
-Status: Proposed. Follow-up to the executive-trades ingest feature (commit `cb1d4746`).
+Status: **Shipped v1 (2026-07-21, Phase H6).** Follow-up to the executive-trades ingest
+feature (commit `cb1d4746`). v2 (`executive_actions` table) remains deferred.
 
 ## Problem
 
@@ -78,7 +79,11 @@ Deferred until v1 rubric proves useful.
 
 ## Rollout
 
-1. Land chamber-branch scorer + tests.
+1. ~~Land chamber-branch scorer + tests.~~ **Done** — `build_session_conflict_prompt` /
+   `EXECUTIVE_SESSION_PROMPT_TEMPLATE` in `analyze_congress_trades_batch.py`;
+   `tests/test_executive_conflict_scoring.py`.
 2. Re-run analysis over executive rows only (they'll have `conflict_score IS NULL`
-   after backfill): `analyze_congress_trades_batch.py` picks them up automatically.
-3. Spot-check a sample of scored executive trades for sane reasoning.
+   after backfill, or mark sessions `needs_reanalysis`): `analyze_congress_trades_batch.py`
+   picks them up automatically.
+3. Spot-check a sample of scored executive trades for sane reasoning. If scores stay
+   noise, reconsider disabling `executive_trades` collector (H6 kill path).

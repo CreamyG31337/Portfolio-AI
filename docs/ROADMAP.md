@@ -5,12 +5,12 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
-| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H5 shipped; **H6** executive ship-or-kill next, then H7. |
+| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H6 shipped; **H7** Ideas usage check next. |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | Phase G brief (2026-06-11): provenance, dilution, EDGAR filings, confluence. **G1–G5 + G7 shipped; G6 optional.** No longer the primary kickoff — see Phase H. |
 | [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads + **Decide-layer job map** (meta vs Insights eval vs Action Queue review — table + mermaid). Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
-| [`docs/executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) | Unshipped consumer plan for `jobs_executive.py` data — decide ship vs disable (Phase H). |
+| [`docs/executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) | Executive conflict rubric for `chamber='Executive'` — **v1 shipped (Phase H6)**. |
 | [`docs/AI_TASK_QUEUE_DESIGN.md`](AI_TASK_QUEUE_DESIGN.md) | Infra status for the AI task queue. Any new LLM job in this plan should be queue-managed. |
 | [`docs/DASHBOARD_RESEARCH_LOOP.md`](DASHBOARD_RESEARCH_LOOP.md) | How the Action Queue / market brief / enrichment currently fit together. |
 
@@ -118,7 +118,7 @@ Learn plumbing ahead of Learn→Synthesize / Learn→Collect wiring).
 
 | Dead / half-wired end | Reality |
 |----------------------|---------|
-| **Executive trades** | `jobs_executive.py` upserts; only readers are the job + backfill. No route/template/analysis. [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) never shipped. **Ship the consumer or disable the job.** |
+| **Executive trades** | Open Cabinet → `congress_trades` (`chamber='Executive'`) with Congress UI filter. **H6 shipped 2026-07-21:** executive sessions use a policy/contract rubric instead of the degenerate committee prompt. Spot-check scores after deploy; kill collector only if v1 stays useless. |
 | **Weekly retro** | Computes flips + hit rates Sundays; Mailgun code shipped 2026-06-20; **`RETRO_DIGEST_RECIPIENTS` never set in prod** — self-review logs into the abyss. Five-minute env fix. |
 | **Congress Learn exemption** | Herd → `stance_history` shipped as **Phase H5** (2026-07-20). **5.1b / 5.1c** still open. |
 | **Ideas inbox labels** | `idea_triage` empty at June verify; if Accept/Dismiss unused, alpha terminus produces no labeled relevance data — honest product signal if still unused. |
@@ -614,7 +614,8 @@ flowchart TD
     H3["H3 · account-based retro recipient ✓"]
     H2 --> H4["H4 · Trend memory ✓"]
     H5["H5 · congress herd → ledger ✓"]
-    H6["H6 · executive ship-or-kill ← NEXT"]
+    H6["H6 · executive conflict scoring ✓"]
+    H7["H7 · Ideas usage check ← NEXT"]
     H5 -.->|"after H closes"| I1["I1 · story dedup + corroboration"]
     H5 -.->|"after H closes"| I2["I2 · FRED stress → regime_json"]
 ```
@@ -628,7 +629,7 @@ flowchart TD
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C gated; retro code + account recipient shipped** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive ship-or-kill; retro recipients | ~1–2 wk — **H1–H5 shipped; H6 next** |
+| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive scoring; retro recipients | ~1–2 wk — **H1–H6 shipped; H7 next** |
 | **I** (backlog) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
@@ -661,9 +662,10 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
   `record_congress_herd_stances` → `record_stance_safe(..., source='congress_herd',
   stance='BULLISH')` (mirror confluence). Today/API remain read-only. Shipped 2026-07-20;
   5.1b/5.1c remain follow-ons.
-- [ ] **H6 · Executive trades: ship or kill** — implement
-  [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md) **or** disable
-  `jobs_executive` (collector-into-void violates guardrails).
+- [x] **H6 · Executive conflict scoring (v1)** — `chamber='Executive'` sessions use
+  `EXECUTIVE_SESSION_PROMPT_TEMPLATE` (policy/contract levers) instead of committee
+  rubric; collector stays on. See [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md).
+  Shipped 2026-07-21.
 - [ ] **H7 · Ideas usage check** — confirm whether `idea_triage` has any Accept/Dismiss in prod;
   if unused after months, treat as product signal (retire pressure or fix UX) before building
   relevance-scorer training on empty labels.
@@ -808,7 +810,8 @@ TEST_* residue — production jobs must filter by `is_production`.
   `.research_worldmonitor/` (gitignored); reimplement algorithms clean-room or use the MIT
   SDK. Never merge their TypeScript handlers into this app.
 - **No collector-into-a-void.** If a job writes data with no route, analysis, or ledger consumer,
-  either ship the consumer or disable the job (see Phase H6 executive trades).
+  either ship the consumer or disable the job. (Executive trades: scoring v1 shipped as H6;
+  spot-check before considering kill.)
 - New value must be a **new artifact type, a queue decision, or a screen** — not "more articles."
   Prefer **reading existing scored/structured outputs back into synthesis** (Phase H2/H4) over
   new collectors.
