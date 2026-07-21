@@ -88,8 +88,17 @@ def get_retro_digest_recipients(
     direct = [e.strip() for e in raw.split(",") if e.strip() and "@" in e]
     accounts = _configured_recipient_accounts()
     resolved = _emails_for_accounts(accounts, supabase_client=supabase_client)
-    # Preserve configuration order while avoiding duplicate sends.
-    return list(dict.fromkeys([*direct, *resolved]))
+
+    # Preserve configuration order while avoiding case-insensitive duplicate sends.
+    seen = set()
+    deduped = []
+    for email in [*direct, *resolved]:
+        lower = email.casefold()
+        if lower not in seen:
+            seen.add(lower)
+            deduped.append(email)
+
+    return deduped
 
 
 def retro_digest_enabled(
