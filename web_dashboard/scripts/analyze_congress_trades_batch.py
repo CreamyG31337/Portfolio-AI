@@ -333,6 +333,42 @@ Return JSON with TWO fields:
 The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations.
 """
 
+# Single-trade executive path (AI queue / analyze_trade). Same levers as session H6.
+EXECUTIVE_PROMPT_TEMPLATE = """
+Analyze this Executive-branch trade for potential conflict of interest.
+Do **not** use congressional committee logic — the subject has no committees.
+
+Data:
+- Politician: {politician} ({party} - {state})
+- Chamber: {chamber}
+- Asset Owner: {owner}
+- Ticker: {ticker}
+- Company: {company_name}
+- Sector: {sector}
+{description_section}- Date: {date}
+- Type: {type}
+- Amount: {amount}
+
+Task:
+Calculate a 'conflict_score' from 0.0 to 1.0 based on executive levers:
+1. HIGH (0.8-1.0): Concrete policy/contract lever — regulate/subsidize/tariff the sector,
+   major federal contractor, or company/sector named in recent EO/tariff/appointment near
+   the trade date, and the trade direction fits an active bet (buy) or material dump (large sell).
+2. MEDIUM (0.4-0.7): Plausible sector policy exposure without a tight company-specific link.
+3. LOW (0.0-0.3): No concrete executive lever, or small routine sale / housekeeping.
+
+Hard rules:
+- "The president influences markets" is NOT a link. Require a sector-specific lever.
+- Prefer confidence_score ≤ 0.75 when timing claims rest on general knowledge.
+
+Return JSON:
+{{
+  "conflict_score": 0.15,
+  "confidence_score": 0.7,
+  "reasoning": "Executive chamber; no concrete tariff/contract lever for this Materials name; small purchase looks routine."
+}}
+"""
+
 
 def sync_supabase_conflict_score(
     supabase: SupabaseClient,
@@ -672,8 +708,11 @@ def analyze_trade(
     # Create context copy with formatted description
     formatted_context = context.copy()
     formatted_context['description_section'] = description_section
-    
-    prompt = PROMPT_TEMPLATE.format(**formatted_context)
+
+    if is_executive_chamber(context.get("chamber")):
+        prompt = EXECUTIVE_PROMPT_TEMPLATE.format(**formatted_context)
+    else:
+        prompt = PROMPT_TEMPLATE.format(**formatted_context)
     
     logger.info(f"Analyzing {context['politician']} - {context['ticker']}...")
     

@@ -84,3 +84,37 @@ def test_build_session_conflict_prompt_house_uses_committee_rubric() -> None:
     assert "Armed Services: defense contractors" in prompt
     assert "Congressional trading sessions" in prompt
     assert "LMT" in prompt
+
+
+def test_analyze_trade_uses_executive_prompt(monkeypatch) -> None:
+    """Queue workers call analyze_trade — must not use committee PROMPT_TEMPLATE."""
+    captured: dict = {}
+
+    def _fake_collect(ollama, prompt="", **_kwargs):
+        captured["prompt"] = prompt
+        return (
+            '{"conflict_score": 0.2, "confidence_score": 0.7, "reasoning": "ok"}',
+            "test-model",
+        )
+
+    monkeypatch.setattr(_batch, "collect_with_summary_model_chain", _fake_collect)
+    context = {
+        "politician": "Donald Trump",
+        "party": "R",
+        "state": "USA",
+        "chamber": "Executive",
+        "owner": "Self",
+        "committees": "Unknown",
+        "ticker": "NVDA",
+        "company_name": "NVIDIA",
+        "sector": "Technology",
+        "description": None,
+        "date": "2026-03-01",
+        "type": "Purchase",
+        "amount": "$15,001 - $50,000",
+    }
+    result = _batch.analyze_trade(object(), context, "test-model")
+    assert result["conflict_score"] == 0.2
+    assert "Committee Assignments" not in captured["prompt"]
+    assert "executive" in captured["prompt"].casefold()
+    assert "NVDA" in captured["prompt"]
