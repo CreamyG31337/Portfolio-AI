@@ -14,6 +14,16 @@
         Results show on the ticker dossier when workers finish.
         Dismiss / Snooze only hide the idea — they do not train the AI.
     </p>
+    <div class="mb-4 flex flex-wrap items-end gap-3">
+        <label class="block flex-1 min-w-[12rem] max-w-sm">
+            <span class="text-xs text-text-secondary">Filter by ticker</span>
+            <input type="search" id="ideas-ticker-filter" name="ticker"
+                placeholder="Type ticker prefix (e.g. CO → COST)"
+                autocomplete="off" spellcheck="false"
+                class="mt-1 w-full rounded-lg border border-border bg-dashboard-background px-3 py-2 text-sm text-text-primary uppercase placeholder:normal-case placeholder:text-text-secondary focus:outline-none focus:ring-2 focus:ring-accent/40">
+        </label>
+        <p id="ideas-filter-status" class="text-xs text-text-secondary pb-2" aria-live="polite"></p>
+    </div>
     <div id="ideas-loading" class="text-sm text-text-secondary">Loading ideas…</div>
     <div id="ideas-error" class="hidden text-sm text-theme-error-text mb-4"></div>
     <div id="ideas-list" class="space-y-3"></div>

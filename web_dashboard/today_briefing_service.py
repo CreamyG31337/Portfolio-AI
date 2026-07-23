@@ -46,28 +46,71 @@ def fetch_stance_flips(postgres: PostgresClient, *, days: int = 2, limit: int = 
     return [dict(r) for r in rows]
 
 
-def fetch_alpha_ideas(postgres: PostgresClient, *, limit: int = 15) -> list[dict[str, Any]]:
+def _normalize_ideas_ticker_filter(ticker: str | None) -> str | None:
+    """Uppercase alnum/.- only prefix for Ideas inbox filter; None = no filter."""
+    if not ticker:
+        return None
+    cleaned = "".join(ch for ch in str(ticker).upper().strip() if ch.isalnum() or ch in ".-")
+    return cleaned[:20] or None
+
+
+def fetch_alpha_ideas(
+    postgres: PostgresClient,
+    *,
+    limit: int = 15,
+    ticker: str | None = None,
+) -> list[dict[str, Any]]:
+    ticker_prefix = _normalize_ideas_ticker_filter(ticker)
     try:
-        return _fetch_alpha_ideas_query(postgres, limit=limit)
+        return _fetch_alpha_ideas_query(postgres, limit=limit, ticker_prefix=ticker_prefix)
     except Exception as exc:
         logger.warning("fetch_alpha_ideas failed (idea_triage may be missing): %s", exc)
-        return postgres.execute_query(
-            """
+        return _fetch_alpha_ideas_fallback(postgres, limit=limit, ticker_prefix=ticker_prefix)
+
+
+def _ticker_prefix_clause(column_expr: str = "ra.tickers") -> str:
+    # Prefix match so typing "CO" finds COST without loading the full 14d pool client-side.
+    return f"""
+          AND EXISTS (
+              SELECT 1
+              FROM unnest(COALESCE({column_expr}, ARRAY[]::text[])) AS t(sym)
+              WHERE upper(t.sym) LIKE %s
+          )
+    """
+
+
+def _fetch_alpha_ideas_fallback(
+    postgres: PostgresClient,
+    *,
+    limit: int,
+    ticker_prefix: str | None,
+) -> list[dict[str, Any]]:
+    sql = """
             SELECT id, title, article_type, source, fetched_at,
                    relevance_score, tickers, summary
             FROM research_articles
             WHERE article_type IN ('Alpha Research', 'Opportunity Discovery')
               AND fetched_at >= NOW() - INTERVAL '14 days'
+    """
+    params: list[Any] = []
+    if ticker_prefix:
+        sql += _ticker_prefix_clause("tickers")
+        params.append(f"{ticker_prefix}%")
+    sql += """
             ORDER BY relevance_score DESC NULLS LAST, fetched_at DESC
             LIMIT %s
-            """,
-            (limit,),
-        )
+            """
+    params.append(limit)
+    return postgres.execute_query(sql, tuple(params))
 
 
-def _fetch_alpha_ideas_query(postgres: PostgresClient, *, limit: int = 15) -> list[dict[str, Any]]:
-    return postgres.execute_query(
-        """
+def _fetch_alpha_ideas_query(
+    postgres: PostgresClient,
+    *,
+    limit: int = 15,
+    ticker_prefix: str | None = None,
+) -> list[dict[str, Any]]:
+    sql = """
         SELECT ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
                ra.relevance_score, ra.tickers, ra.summary
         FROM research_articles ra
@@ -75,11 +118,17 @@ def _fetch_alpha_ideas_query(postgres: PostgresClient, *, limit: int = 15) -> li
         WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
           AND ra.fetched_at >= NOW() - INTERVAL '14 days'
           AND (it.id IS NULL OR (it.status = 'snoozed' AND it.snooze_until < NOW()))
+    """
+    params: list[Any] = []
+    if ticker_prefix:
+        sql += _ticker_prefix_clause("ra.tickers")
+        params.append(f"{ticker_prefix}%")
+    sql += """
         ORDER BY ra.relevance_score DESC NULLS LAST, ra.fetched_at DESC
         LIMIT %s
-        """,
-        (limit,),
-    )
+        """
+    params.append(limit)
+    return postgres.execute_query(sql, tuple(params))
 
 
 def build_today_briefing(

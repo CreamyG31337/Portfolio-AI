@@ -153,6 +153,8 @@ async function addTicker(symbol: string): Promise<void> {
   const ticker = symbol.trim().toUpperCase();
   if (!ticker) return;
   const tierSel = el("watchlist-add-tier") as HTMLSelectElement | null;
+  // NOTE: server upsert overwrites watched_tickers_v2.source — re-adding a ticker
+  // that came from Ideas Accept will replace ideas_inbox with watchlist_search.
   try {
     const resp = await fetch("/api/watchlist", {
       method: "POST",

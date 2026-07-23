@@ -24,6 +24,9 @@ interface IdeaRow {
   thesis_attention?: ThesisAttentionFlag[];
 }
 
+let loadSeq = 0;
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 function getSelectedFund(): string | null {
   const fromUi = (
     window as unknown as { ui?: { getSelectedFund?: () => string | null } }
@@ -33,6 +36,16 @@ function getSelectedFund(): string | null {
   const v = (sel?.value || "").trim();
   if (!v || v.toLowerCase() === "all") return null;
   return v;
+}
+
+function currentTickerFilter(): string {
+  const input = document.getElementById("ideas-ticker-filter") as HTMLInputElement | null;
+  return (input?.value || "").trim().toUpperCase();
+}
+
+function setFilterStatus(text: string): void {
+  const el = document.getElementById("ideas-filter-status");
+  if (el) el.textContent = text;
 }
 
 async function triage(
@@ -98,15 +111,23 @@ function escapeAttr(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
-function renderIdeas(rows: IdeaRow[]): void {
+function renderIdeas(rows: IdeaRow[], filter: string): void {
   const list = document.getElementById("ideas-list");
   const loading = document.getElementById("ideas-loading");
   if (loading) loading.classList.add("hidden");
   if (!list) return;
   if (!rows.length) {
-    list.innerHTML = `<p class="text-sm text-text-secondary">Inbox empty — check back after the next alpha run.</p>`;
+    list.innerHTML = filter
+      ? `<p class="text-sm text-text-secondary">No open ideas matching ticker prefix “${escapeAttr(filter)}”.</p>`
+      : `<p class="text-sm text-text-secondary">Inbox empty — check back after the next alpha run.</p>`;
+    setFilterStatus(filter ? `0 matches for ${filter}` : "");
     return;
   }
+  setFilterStatus(
+    filter
+      ? `${rows.length} match${rows.length === 1 ? "" : "es"} for ${filter}${rows.length >= 100 ? " (capped)" : ""}`
+      : `${rows.length} idea${rows.length === 1 ? "" : "s"}${rows.length >= 50 ? " (top by relevance)" : ""}`
+  );
   list.innerHTML = rows
     .map((row) => {
       const tickers = (row.tickers || []).join(", ");
@@ -150,13 +171,29 @@ function renderIdeas(rows: IdeaRow[]): void {
 }
 
 async function loadIdeas(): Promise<void> {
+  const seq = ++loadSeq;
+  const filter = currentTickerFilter();
+  const loading = document.getElementById("ideas-loading");
+  const err = document.getElementById("ideas-error");
+  if (loading) {
+    loading.textContent = filter ? `Searching ideas for ${filter}…` : "Loading ideas…";
+    loading.classList.remove("hidden");
+  }
+  if (err) err.classList.add("hidden");
+
   try {
-    const resp = await fetch("/api/ideas/inbox");
+    const params = new URLSearchParams();
+    // Filtered queries use the API max so a deep ticker isn't lost to the top-50 default.
+    params.set("limit", filter ? "100" : "50");
+    if (filter) params.set("ticker", filter);
+    const resp = await fetch(`/api/ideas/inbox?${params.toString()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const body = (await resp.json()) as { data: IdeaRow[] };
-    renderIdeas(body.data || []);
+    if (seq !== loadSeq) return;
+    renderIdeas(body.data || [], filter);
   } catch (e) {
-    const err = document.getElementById("ideas-error");
+    if (seq !== loadSeq) return;
+    if (loading) loading.classList.add("hidden");
     if (err) {
       err.textContent = e instanceof Error ? e.message : String(e);
       err.classList.remove("hidden");
@@ -164,4 +201,16 @@ async function loadIdeas(): Promise<void> {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => void loadIdeas());
+function setupTickerFilter(): void {
+  const input = document.getElementById("ideas-ticker-filter") as HTMLInputElement | null;
+  if (!input) return;
+  input.addEventListener("input", () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => void loadIdeas(), 200);
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  setupTickerFilter();
+  void loadIdeas();
+});

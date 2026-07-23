@@ -491,6 +491,12 @@ def upsert_watchlist_ticker(
     """Ensure securities row exists, then upsert watched_tickers_v2.
 
     Caller should pass a service-role Supabase client (RLS has no user writes).
+
+    WARNING: This upsert always writes ``source`` on conflict. That overwrites
+    provenance such as ``ideas_inbox`` (Ideas Accept — used later to expire or
+    audit discovery adds). Prefer ``update_watchlist_item`` for tier/active
+    patches so ``source``/``created_at`` stay intact. Do not casually re-upsert
+    an existing Ideas row with ``manual`` / ``watchlist_ui`` / ``bulk_paste``.
     """
     fund_s = (fund or "").strip()
     ticker_u = normalize_ticker(ticker)
@@ -513,6 +519,7 @@ def upsert_watchlist_ticker(
                     "ticker": ticker_u,
                     "error": "failed to register ticker in securities",
                 }
+        # WARNING: on_conflict replaces source — see docstring above.
         supabase_client.supabase.table(WATCHLIST_V2_TABLE).upsert(
             {
                 "fund": fund_s,
@@ -537,7 +544,11 @@ def update_watchlist_item(
     is_active: bool | None = None,
     priority_tier: str | None = None,
 ) -> dict[str, Any]:
-    """Patch is_active and/or priority_tier for an existing (fund, ticker) row."""
+    """Patch is_active and/or priority_tier for an existing (fund, ticker) row.
+
+    Does not touch ``source`` or ``created_at`` (keeps ``ideas_inbox`` provenance).
+    Only the missing-row activate fallback below upserts and may set source.
+    """
     fund_s = (fund or "").strip()
     ticker_u = normalize_ticker(ticker)
     if not fund_s or not ticker_u:
@@ -558,7 +569,8 @@ def update_watchlist_item(
             .execute()
         )
         if not (result.data or []):
-            # Row missing — upsert soft state if activating
+            # Row missing — upsert soft state if activating.
+            # WARNING: only safe because no prior row (hence no ideas_inbox to keep).
             if is_active is True:
                 return upsert_watchlist_ticker(
                     supabase_client,
@@ -595,7 +607,12 @@ def upsert_watchlist_tickers_bulk(
     priority_tier: str = "B",
     source: str = "bulk_paste",
 ) -> dict[str, Any]:
-    """Upsert many tickers; returns results map and failed list."""
+    """Upsert many tickers; returns results map and failed list.
+
+    WARNING: each ticker goes through ``upsert_watchlist_ticker``, which overwrites
+    ``source`` on conflict (including ``ideas_inbox``). Do not bulk-paste over
+    Ideas-accepted names if you still need that provenance for expiry.
+    """
     parsed = parse_ticker_list(tickers)[:MAX_BULK_TICKERS]
     results: dict[str, str] = {}
     for t in parsed:
