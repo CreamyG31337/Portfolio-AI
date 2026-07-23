@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { Modal } from "flowbite";
 import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
@@ -97,15 +98,20 @@ function updateFundIndicators(): void {
     if (elements.cashIndicator) elements.cashIndicator.textContent = label;
 }
 
-// TODO(palette): Use Flowbite Modal API (new Modal(el).show()/hide()) instead of
-// simulating clicks on data-modal-hide triggers — see trade_entry.ts.
 function closeEditModal(): void {
-    document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
+    const modalEl = document.getElementById('edit-fund-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.hide();
+    }
 }
 
-// Close create modal by clicking Flowbite's hide trigger
 function closeCreateModal(): void {
-    document.querySelector<HTMLElement>('[data-modal-hide="create-fund-modal"]')?.click();
+    const modalEl = document.getElementById('create-fund-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.hide();
+    }
 }
 
 // Load funds from API
@@ -260,12 +266,12 @@ function openEditModal(fundName: string): void {
         elements.deleteConfirmInput.value = '';
     }
 
-    // Open via Flowbite's trigger so the modal is in Flowbite's registry (required for data-modal-hide)
-    const trigger = document.getElementById('edit-fund-modal-trigger');
-    if (trigger) {
-        trigger.click();
+    const modalEl = document.getElementById('edit-fund-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.show();
     } else {
-        console.error('[Funds] Edit fund modal trigger not found');
+        console.error('[Funds] Edit fund modal not found');
     }
 }
 
