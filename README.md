@@ -255,6 +255,7 @@ python simple_repository_switch.py csv
 **Technical Documentation (in `docs/`)**
 *   [⭐ Roadmap — Intelligence & UX (master plan; Phase H active)](docs/ROADMAP.md)
 *   [Phase G Plan — mostly shipped; G6 gated](docs/PHASE_G_PLAN.md)
+*   [Phase J+K Plan — event catalysts & YouTube captions (backlog)](docs/PHASE_JK_PLAN.md)
 *   [Cache Management](docs/CACHE_MANAGEMENT.md)
 *   [Database Schema](docs/DATABASE_SCHEMA.md)
 *   [Portfolio Architecture](docs/PORTFOLIO_ARCHITECTURE.md)

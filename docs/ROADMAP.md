@@ -7,6 +7,9 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 |-----|--------------------------|
 | **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H6 shipped; **H7** Ideas usage check next. |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
+| **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
+| **This doc → [Phase K](#phase-k--youtube-captions--research-articles)** | **Backlog (post-H, prefer after I1):** pull video captions/subtitles → normalize into `research_articles`-shaped rows so existing extract/summarize/meta paths analyze them (earnings calls, IR, curated finance channels). Absorbs the deferred “earnings-call transcript” idea from Phase G. |
+| [`docs/PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) | **Integration brief for Phases J + K** (2026-07-22): how captions and event playbooks plug into `research_articles` → meta / Ideas / Today / dossier / source-ROI. Read before implementing either phase. |
 | [`docs/PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | Phase G brief (2026-06-11): provenance, dilution, EDGAR filings, confluence. **G1–G5 + G7 shipped; G6 optional.** No longer the primary kickoff — see Phase H. |
 | [`docs/INSIGHTS.md`](INSIGHTS.md) | Human thesis threads + **Decide-layer job map** (meta vs Insights eval vs Action Queue review — table + mermaid). Not Sector Insights; not fund `fund_thesis`. |
 | [`docs/meta_analysis_roadmap.md`](meta_analysis_roadmap.md) | Deep detail on the meta-analysis layers (Phases 1–3 shipped). This doc supersedes its "Later phases" section as the prioritized plan. |
@@ -46,6 +49,7 @@ flowchart LR
         A6["Congress + insider trades"]
         A7["ETF Watchtower holdings"]
         A8["Benchmarks / dividends"]
+        A9["YouTube captions → articles ← Phase K"]
     end
     subgraph Synthesize["2 · SYNTHESIZE — shipped, healthy"]
         B1["ticker_analysis"]
@@ -67,10 +71,12 @@ flowchart LR
         D4["Track-record screen ✓"]
         D5["Source-ROI report ← missing"]
         D6["Prior stance → meta bundle ← missing"]
+        D7["Event/news catalyst backtest ← Phase J"]
     end
     Collect --> Synthesize --> Decide --> Learn
     Learn -.->|"down-weight noisy sources"| Synthesize
     Learn -.->|"kill collectors that never pay off"| Collect
+    Learn -.->|"event→ticker playbooks when macro rhymes"| Decide
 ```
 
 The feedback-loop confusion of early 2026 came from repeatedly enriching layer 2 (sector priors,
@@ -399,6 +405,12 @@ one-shot AI-lock retry (same pattern as market brief / UI summaries) and log
    "digests consume `regime_canonical`" when implemented.)
 4. **Shape A — Smart Prioritizer** (optional, after C): use meta outputs + staleness to rank
    the nightly research queue instead of round-robin.
+5. **Event / news catalyst backtesting** (Phase J, after I1): labeled world-event windows +
+   article evidence → abnormal returns → repeatable `event_class` playbooks → Ideas/Today when
+   live news rhymes. See [Phase J](#phase-j--event--news-catalyst-backtesting).
+6. **YouTube captions → articles** (Phase K, after H; prefer after I1): allowlisted channels /
+   earnings uploads → caption text landed as `research_articles` so summarize/meta/J2 reuse
+   the same path. See [Phase K](#phase-k--youtube-captions--research-articles).
 
 ## Pillar 4 — New things to track (micro-cap-focused)
 
@@ -631,6 +643,8 @@ flowchart TD
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
 | **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive scoring; retro recipients | ~1–2 wk — **H1–H6 shipped; H7 next** |
 | **I** (backlog) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** |
+| **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); gated new collector — **not started** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**active**)
 
@@ -712,6 +726,205 @@ use their BTC Market Radar as a micro-cap BUY/CASH gate.
   arriving via SearXNG and top-scored in source-ROI; a dedicated feed would just raise the
   near-dup rate I1 is meant to fix.
 - [ ] **I5 · Optional WorldMonitor SDK/MCP** — macro/news context only; last resort after I1–I2.
+
+### Phase J — Event / news catalyst backtesting
+
+**Created 2026-07-22.** Goal: find securities that **move hard and repeatedly** around
+recognizable news / world-event classes — defense & weapons primes when conflict escalates,
+pandemic beneficiaries during COVID waves, energy names on supply shocks, etc. — so a human
+can get a short, evidence-backed watchlist when a similar event starts forming.
+
+**Full integration map:** [`docs/PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) (schema sketch, job list,
+which pipelines auto-consume vs need explicit wiring — Ideas is Alpha/Opportunity-only today).
+
+This is a **Learn-layer** capability (historical pattern mining → inspectable playbooks), not
+autonomous trading and not “add another news feed.” Prefer existing `research_articles`,
+price history, sector/theme tags, and (once shipped) Phase I story clusters + FRED stress.
+
+**Do not start until Phase I has landed I1** (story dedup — otherwise event windows double-count
+the same catalyst) and Phase H is closed. I2 (FRED stress) is optional but useful as a
+non-narrative event marker.
+
+#### Why this belongs here
+
+| Existing piece | Gap Phase J fills |
+|----------------|-------------------|
+| Nightly article ingest + theme tags | Articles are scored for *today’s* ticker meta; we never ask “which names historically exploded around *this class* of event?” |
+| `stance_outcomes` / source-ROI | Grades *our* stances, not exogenous macro shocks |
+| Sector / market regime | Regime is present-tense; no replay of named historical episodes (COVID, Ukraine invasion, rate-hike cycle, …) |
+| Ideas / Today | Need a path from “event rhymes with past episode” → ranked tickers with abnormal-return evidence |
+
+#### Mental model
+
+```mermaid
+flowchart LR
+    E["Event corpus<br/>labeled windows + article clusters"]
+    U["Universe<br/>holdings · watchlist · theme peers"]
+    R["Return engine<br/>abnormal ret / vol vs baseline"]
+    P["Playbooks<br/>event_class → ticker stats"]
+    S["Surface<br/>Ideas / Today when live news matches"]
+    E --> R
+    U --> R
+    R --> P
+    P --> S
+```
+
+#### Design constraints
+
+- **Human-in-the-loop only** — playbooks suggest watchlists / Ideas candidates; never auto-orders.
+- **No new collectors to start** — seed events manually or from existing articles; optional public
+  event calendars later only if J1–J3 prove signal.
+- **Repeatability > one-off pumps** — a name that spiked once in 2020 is anecdote; a name (or
+  thin peer set) that responded the same way across ≥2 analogous windows is a candidate.
+- **Micro-cap honest** — liquidity / days-to-exit (§4.3) must appear on any surfaced name;
+  “predictable” that you can’t exit is worthless.
+- **Inspectable** — every playbook row links event window dates, article IDs / story clusters,
+  and the return series used.
+
+#### J checklist (recommended order)
+
+- [ ] **J1 · Event corpus v0** — curated table of named historical episodes with
+  `event_class`, `start_date`, `end_date` (or peak window), optional `geo` / `severity`, and
+  notes. Seed ~8–15 hand-labeled windows first (COVID waves, major conflict escalations,
+  energy shocks, rate-panic weeks, etc.). Schema in Research DB; admin/script seed only —
+  no LLM required for v0.
+- [ ] **J2 · Article → event linking** — attach `research_articles` (and Phase I story clusters
+  when available) to event windows by date overlap + theme/keyword/`event_class` tags.
+  Output: evidence pack per event (article IDs, tickers mentioned, domains).
+- [ ] **J3 · Abnormal-return backtest engine** — for each event × candidate ticker (holdings,
+  watchlist, theme peers from articles/ETF holdings): compute excess return and vol vs a
+  market/sector baseline over configurable windows (e.g. T−5…T+20 trading days). Persist
+  results (`event_backtest_results` or similar). Pure math / yfinance — no LLM.
+- [ ] **J4 · Playbook rollup** — aggregate across events in the same `event_class`: hit rate of
+  direction, median excess return, consistency score, sample size. Emit
+  `event_class → ranked tickers` playbooks with min-N gates so one-off spikes don’t rank.
+- [ ] **J5 · Live rhyme surfacing** — when current news / regime / (optional) FRED stress
+  matches an `event_class` (rules or light classifier), push top playbook names into Ideas
+  or a Today “event rhymes” block with the historical evidence link. Feature-flagged;
+  queue-managed if any LLM classification is used.
+- [ ] **J6 · Optional enrichment** — only after J4 shows useful consistency: expand event
+  corpus via LLM-assisted labeling of article clusters; optional external event calendars;
+  sector-level playbooks (not just tickers). Still no AGPL WorldMonitor fork — macro context
+  via I2 / I5 only.
+
+#### Still gated / out of scope for J
+
+| Item | Why |
+|------|-----|
+| Auto-trading off playbooks | North star remains human approval |
+| Standing up a second “world events” collector farm | Use existing news + curated windows first |
+| Treating BTC Market Radar / WorldMonitor conflict maps as buy gates | Wrong universe; license risk |
+| Replacing source-ROI / stance Learn | Complementary — exogenous shocks vs our own calls |
+
+### Phase K — YouTube captions → research articles
+
+**Created 2026-07-22.** Goal: treat long-form video (earnings calls, investor days, curated
+finance / macro channels) as first-class text evidence by pulling **captions/subtitles** and
+normalizing them into rows the existing article pipeline already understands
+(`research_articles` → extract tickers / summarize / meta fusion / Phase J event linking).
+
+**Full integration map:** [`docs/PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) (caption stack, summarize
+requirement for meta snippets, Ideas allowlist gotcha, source-ROI `source` grain, length/cost).
+
+Absorbs the deferred **“Earnings-call transcript summarization”** item from
+[`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) (gated there on source-ROI; H1 has since shipped).
+
+**Do not start until Phase H closes.** Prefer **after I1** (story dedup) so the same talk
+mirrored on YouTube + a news write-up does not double-count. This *is* a new collector —
+keep the allowlist tiny until source-ROI on `article_type = 'YouTube Transcript'` (or similar)
+looks useful.
+
+#### Why this belongs here
+
+| Existing piece | Gap Phase K fills |
+|----------------|-------------------|
+| SearXNG / RSS / email / scrape | Text web only; misses primary-source spoken content (CEO Q&A, channel deep-dives) |
+| Social posts (Reddit / StockTwits) | Short-form chatter, not hour-long structured narrative |
+| §4.4 earnings calendar | Dates only — no transcript body to reason over |
+| Phase G deferred earnings transcripts | Same need; never scheduled as a phase |
+
+#### Mental model
+
+```mermaid
+flowchart LR
+    C["Curated sources<br/>channel IDs · video URL allowlist"]
+    Y["Caption fetch<br/>official / auto subs"]
+    N["Normalize<br/>title · url · published_at · body text"]
+    A["research_articles<br/>article_type = YouTube Transcript"]
+    P["Existing pipeline<br/>summarize · tickers · meta · J2"]
+    C --> Y --> N --> A --> P
+```
+
+#### Design constraints
+
+- **Captions, not audio ASR first** — prefer YouTube timedtext / `yt-dlp --write-auto-subs`
+  (or equivalent). Whisper/local ASR only as fallback when no captions exist and the video is
+  on the allowlist.
+- **Article-shaped, not a parallel store** — unique `url` = canonical watch URL (with stable
+  video id); body = cleaned caption text (drop `[Music]`, collapse duplicates); metadata
+  carries `video_id`, `channel_id`, `duration_s`, `caption_lang`, `caption_kind`
+  (manual vs auto).
+- **Curated allowlist only** — start with: (1) IR / earnings uploads for holdings + watchlist
+  when discoverable, (2) a short hand-picked channel list (macro / sector experts you already
+  trust). No open-web “scrape all finance YouTube.”
+- **Reuse consumers** — after insert, the same summarize / relevance / ticker-extract paths as
+  other articles; do **not** build a separate YouTube meta stack.
+- **ToS / storage hygiene** — fetch for internal analysis; don’t re-host video; respect rate
+  limits; skip age-restricted / no-caption videos cleanly.
+- **Queue-managed LLM** — any transcript summarization goes through the AI task queue like
+  other article enrichment.
+
+#### Research notes — what to borrow (2026-07-22)
+
+GitHub survey for **subtitle/caption rippers only** (not trading apps). Clear winners; thin
+wrapper ecosystem on top.
+
+| Project | Stars / license | Role for us |
+|---------|-----------------|-------------|
+| [`jdepoix/youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api) | ~8k · **MIT** | **Primary borrow for K1.** Pure Python timedtext client: manual + auto captions, language preference, translate helper, no API key, no Selenium. Actively maintained (1.x `fetch` / `list` API). Proxy support for IP blocks. |
+| [`yt-dlp/yt-dlp`](https://github.com/yt-dlp/yt-dlp) | ~180k · **Unlicense** | **Channel/playlist enumeration + resilient VTT fallback.** `--write-auto-subs --skip-download` or Python `YoutubeDL`; also pulls title/upload date/channel id without a Data API key. Heavier dep than transcript-api alone. |
+| [`jkawamoto/mcp-youtube-transcript`](https://github.com/jkawamoto/mcp-youtube-transcript) | ~450 · **MIT** | Optional **dev/agent MCP** to poke transcripts while building K — not a runtime dependency for Flask. |
+| `haron/yt-dlp-transcript`, `LinuxIsCool/yt-dlp-transcripts`, assorted “channel transcript downloader” gists | &lt;20 stars | Thin CLI wrappers around the two above. **Don’t vendor** — copy patterns (list videos → fetch captions → join text), not the packages. |
+| Older one-offs (`vvigilante/youtube-subtitles-downloader`, `sdtblck/youtube_subtitle_dataset`, `danielcliu/youtube-channel-transcript-api`) | stale / tiny | Superseded by transcript-api + yt-dlp; channel helper needs YouTube Data API v3 quota — prefer yt-dlp listing instead. |
+
+**Recommended K1 stack:** `youtube-transcript-api` for caption body + `yt-dlp` (already the
+industry default) for allowlisted channel/playlist discovery and metadata. Official YouTube
+Data API **does not** expose caption download for arbitrary videos — these unofficial timedtext
+clients are the standard approach. Expect breakage when Google changes internals; pin versions
+and treat fetch failures as skippable.
+
+#### K checklist (recommended order)
+
+- [ ] **K1 · PoC caption fetch** — script: video URL → cleaned plain text + metadata; prefer
+  [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api) (official + auto
+  EN); fall back to `yt-dlp --write-auto-subs --skip-download` + VTT strip if timedtext fails.
+  Document failure modes (no subs, geo, login, `RequestBlocked`). No browser automation unless
+  both paths fail on allowlisted IR videos.
+- [ ] **K2 · Normalize → `research_articles`** — upsert by watch URL; set
+  `article_type` (e.g. `YouTube Transcript`), title from video title, `published_at` from
+  upload time, body from captions; domain/source label distinct for source-ROI slicing.
+  Wire retention/domain-health the same way as other ingest paths.
+- [ ] **K3 · Allowlist job** — scheduler job: poll curated `youtube_sources` (channel id or
+  playlist / search query scoped to ticker IR) for new videos since last run; enqueue caption
+  fetch + article upsert. Cap per run. Holdings-scoped discovery filters
+  `funds.is_production = true`.
+- [ ] **K4 · Enrichment parity** — ensure new rows hit existing summarize / ticker extraction
+  (queue-managed); confirm they appear in ticker meta article blocks and dossier evidence
+  timeline. Spot-check an earnings-call video end-to-end.
+- [ ] **K5 · Source-ROI slice** — after ~30d of outcomes, compare
+  `YouTube Transcript` (and channel domains) vs other article sources in the H1 report; kill
+  or shrink the allowlist if it never pays off.
+- [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap
+  model; still land as the same article type.
+
+#### Still gated / out of scope for K
+
+| Item | Why |
+|------|-----|
+| Vacuuming trending finance YouTube | Noise + ToS risk; allowlist first |
+| Parallel “video insights” UI/stack | Must flow through `research_articles` |
+| Replacing paid transcript vendors as a dependency | Optional later; captions-first is free enough for v0 |
+| Auto-trading on video-derived stances | Same north star — human approval |
 
 ### Phase B–F checklist (2026-06-10)
 
@@ -805,7 +1018,11 @@ TEST_* residue — production jobs must filter by `is_production`.
 - **No new collection jobs until the Learn layer says which existing ones earn their keep.**
   As of 2026-07-15 that means: **finish Phase H1 (source-ROI) before G6 / §4.5 / §4.6 / §5.3.**
   Phase I (WorldMonitor borrows) starts **after Phase H closes**; I1 is a quality fix on
-  existing news paths, not a license to add feeds early.
+  existing news paths, not a license to add feeds early. Phase J (event/news catalyst
+  backtesting) starts **after I1**; it mines existing articles + curated event windows — do
+  not invent new event collectors until J4 proves repeatable signal. Phase K (YouTube
+  captions → articles) is an allowlisted new collector — start only after H closes (prefer
+  after I1); kill channels that fail the source-ROI slice (K5).
 - **No AGPL infection.** WorldMonitor platform code is AGPL-3.0 — learn locally from
   `.research_worldmonitor/` (gitignored); reimplement algorithms clean-room or use the MIT
   SDK. Never merge their TypeScript handlers into this app.
@@ -907,3 +1124,22 @@ lost. Paste as-is; each instructs the agent to read the relevant doc first.
 > before declaring any phase done. If a data assumption fails (e.g., a table or column named in
 > the roadmap doesn't exist), stop and re-verify against `docs/database/research_schema.md` and
 > `database/schema/` rather than guessing.
+
+### Phase J / K kickoff (backlog — do not start until H closes + prefer I1)
+
+> You are working in the Portfolio-AI repo (Windows + PowerShell, venv at `.\venv`). Read
+> `docs/ROADMAP.md` Phase J and Phase K, then **`docs/PHASE_JK_PLAN.md` in full** (integration
+> map). Also Guardrails in ROADMAP and `AGENTS.md` (Research DB via Postgres for articles;
+> Flask uses SupabaseRepository for fund data; Decimal; TEST fund locally).
+>
+> Implement **one checklist item per PR-sized change**. Prefer K1 PoC or J1+J3 math first —
+> see kickoff snippets at the bottom of `PHASE_JK_PLAN.md`. Critical gotchas already verified
+> in code: ticker meta only embeds article **title/conclusion/sentiment** (top 6 / 90d);
+> Ideas inbox only lists `Alpha Research` + `Opportunity Discovery`; sector meta only reads
+> `ETF Analysis`. Do **not** assume a new `research_articles` row appears on Ideas or in
+> sector meta. Summarize is mandatory before YouTube rows are useful to meta.
+>
+> Hard rules: no autonomous trading; allowlisted YouTube only; additive Research schema;
+> holdings filters use `funds.is_production = true`; AI enrichment via task queue; no AGPL
+> WorldMonitor code; don't touch `verification/`; update ROADMAP checklists + PHASE_JK_PLAN
+> open questions as you resolve them.

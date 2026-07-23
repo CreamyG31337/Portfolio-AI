@@ -389,7 +389,7 @@ that area now) to avoid collisions.
 | Shape A smart prioritizer | track record shows signal (~2026-07-10) |
 | Shape B theme research, Shape C dedicated job | their cheap-learn gates (ROADMAP "Cheap-learn results") |
 | 13F ownership deltas (§4.6) | after G2 proves the EDGAR plumbing |
-| Earnings-call transcript summarization | after source-ROI proves synthesis hit rate |
+| Earnings-call transcript summarization | **→ Phase K** in [`ROADMAP.md`](ROADMAP.md#phase-k--youtube-captions--research-articles) (YouTube captions → `research_articles`; H1 source-ROI already shipped) |
 | Bi-monthly short interest (§4.5) | superseded by G6 unless G6 research says otherwise |
 | Embedding-based article dedup | anytime as a palate cleanser; not load-bearing |
 | Holdings-table days-to-exit column | frontend polish; needs async grid enrichment, see §4.3 note |
