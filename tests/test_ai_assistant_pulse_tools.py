@@ -110,6 +110,29 @@ class TestPulseFormatting:
         assert "$10-11" in text
         assert "RISK_ON" in text
 
+    def test_format_marks_tension(self) -> None:
+        pulse = {
+            "ok": True,
+            "market": None,
+            "market_unavailable_reason": "research_db:X",
+            "candidates": [
+                {
+                    "ticker": "AAA",
+                    "advise": "SELL",
+                    "confidence": 0.8,
+                    "stance": "BUY",
+                    "is_held": True,
+                    "tension": True,
+                    "tension_reason": "signal SELL vs analysis stance BUY",
+                    "reason": "signal:SELL",
+                }
+            ],
+            "candidate_count": 1,
+        }
+        text = format_intelligence_pulse(pulse)
+        assert "TENSION" in text
+        assert "signal SELL vs analysis stance BUY" in text
+
     def test_lean_candidate_strips_noise(self) -> None:
         row = {
             "ticker": "xyz",
@@ -127,6 +150,50 @@ class TestPulseFormatting:
         assert "_logo_url" not in lean
         assert lean.get("reason")
         assert len(lean["reason"]) <= 120
+
+
+class TestCandidateTension:
+    def test_opposite_sign_stance_flags_tension(self) -> None:
+        from ai_assistant_candidates import candidate_tension
+
+        is_t, reason = candidate_tension("SELL", stance="BUY")
+        assert is_t is True
+        assert reason and "SELL" in reason and "BUY" in reason
+
+    def test_buy_vs_bearish_meta_flags_tension(self) -> None:
+        from ai_assistant_candidates import candidate_tension
+
+        is_t, _ = candidate_tension("BUY", stance=None, meta_conviction="BEARISH")
+        assert is_t is True
+
+    def test_aligned_no_tension(self) -> None:
+        from ai_assistant_candidates import candidate_tension
+
+        assert candidate_tension("BUY", stance="BULLISH")[0] is False
+
+    def test_watch_is_neutral_no_tension(self) -> None:
+        from ai_assistant_candidates import candidate_tension
+
+        # WATCH means "wait", not a contradiction with a bullish stance.
+        assert candidate_tension("WATCH", stance="BUY")[0] is False
+        # HOLD stance is neutral too.
+        assert candidate_tension("BUY", stance="HOLD")[0] is False
+
+    def test_annotate_demotes_tension_rows_stably(self) -> None:
+        from ai_assistant_candidates import annotate_and_demote_tension
+
+        rows = [
+            {"ticker": "AAA", "advise": "SELL", "stance": "BUY"},  # tension
+            {"ticker": "BBB", "advise": "BUY", "stance": "BULLISH"},  # clean
+            {"ticker": "CCC", "advise": "BUY", "meta_conviction": "BEARISH"},  # tension
+        ]
+        out = annotate_and_demote_tension(rows)
+        # Clean row rises; tension rows sink but keep relative order.
+        assert [r["ticker"] for r in out] == ["BBB", "AAA", "CCC"]
+        assert out[0].get("tension") is not True
+        assert out[1]["tension"] is True
+        assert out[1]["tension_reason"]
+        assert out[2]["tension"] is True
 
 
 class TestToolExecutors:
@@ -373,14 +440,59 @@ class TestSignalFallbackBuilder:
             "ai_assistant_candidates.get_active_watchlist_rows",
             return_value=watchlist,
         ):
+            # CCC is held so its SELL is a legitimate (actionable) exit signal.
             rows = build_signal_fallback_candidates(
-                mock_sb, fund="TEST", limit=10
+                mock_sb, fund="TEST", held_tickers={"CCC"}, limit=10
             )
         tickers = [r["ticker"] for r in rows]
         assert "CCC" in tickers
         assert "BBB" in tickers
         assert "AAA" not in tickers  # HOLD skipped
         assert tickers[0] == "CCC"  # SELL first
+
+    def test_skips_non_held_sell(self) -> None:
+        from ai_assistant_candidates import build_signal_fallback_candidates
+
+        mock_sb = MagicMock()
+        watchlist = [{"ticker": "DDD"}]
+        signals = [
+            {
+                "ticker": "DDD",
+                "overall_signal": "SELL",
+                "confidence_score": 0.8,
+                "fear_risk_signal": {"fear_level": "EXTREME"},
+            }
+        ]
+
+        def _table(name: str):
+            table = MagicMock()
+            if name == "signal_analysis":
+                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=signals
+                )
+            else:
+                table.select.return_value.in_.return_value.execute.return_value = MagicMock(
+                    data=[{"ticker": "DDD", "sector": "Tech"}]
+                )
+            return table
+
+        mock_sb.supabase.table.side_effect = _table
+        with patch(
+            "ai_assistant_candidates.get_active_watchlist_rows",
+            return_value=watchlist,
+        ):
+            # Not held -> a SELL is not actionable and must be dropped.
+            rows = build_signal_fallback_candidates(
+                mock_sb, fund="TEST", held_tickers=set(), limit=10
+            )
+            assert rows == []
+            # Held -> the SELL is a real exit signal and is kept.
+            held_rows = build_signal_fallback_candidates(
+                mock_sb, fund="TEST", held_tickers={"DDD"}, limit=10
+            )
+        assert [r["ticker"] for r in held_rows] == ["DDD"]
+        assert held_rows[0]["advise"] == "SELL"
+        assert held_rows[0]["is_held"] is True
 
     def test_sector_and_action_filters(self) -> None:
         from ai_assistant_candidates import build_signal_fallback_candidates

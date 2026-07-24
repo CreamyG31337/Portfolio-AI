@@ -218,6 +218,9 @@ def _tool_list_entry_candidates(
         except Exception as exc:
             logger.warning("list_entry_candidates signal fallback failed: %s", exc)
 
+    from ai_assistant_candidates import annotate_and_demote_tension
+
+    lean = annotate_and_demote_tension(lean)
     lean = lean[:limit]
     if not lean:
         return _no_data(
