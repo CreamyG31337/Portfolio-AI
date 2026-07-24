@@ -519,14 +519,28 @@ def upsert_watchlist_ticker(
                     "ticker": ticker_u,
                     "error": "failed to register ticker in securities",
                 }
-        # WARNING: on_conflict replaces source — see docstring above.
+        # First, try to fetch the existing row to preserve its source
+        existing = (
+            supabase_client.supabase.table(WATCHLIST_V2_TABLE)
+            .select("source")
+            .eq("fund", fund_s)
+            .eq("ticker", ticker_u)
+            .limit(1)
+            .execute()
+        )
+
+        final_source = (source or "manual")[:50]
+        if existing.data and existing.data[0].get("source"):
+            final_source = existing.data[0]["source"]
+
+        # WARNING: on_conflict replaces source — see docstring above, but we preserve it via the fetch above.
         supabase_client.supabase.table(WATCHLIST_V2_TABLE).upsert(
             {
                 "fund": fund_s,
                 "ticker": ticker_u,
                 "priority_tier": tier,
                 "is_active": bool(is_active),
-                "source": (source or "manual")[:50],
+                "source": final_source,
             },
             on_conflict="fund,ticker",
         ).execute()
