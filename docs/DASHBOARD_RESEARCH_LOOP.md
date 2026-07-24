@@ -49,6 +49,7 @@ Optional nightly (or on-demand) LLM pass that stores a compact **verdict** (e.g.
 |--------|---------|-------------------|
 | Dashboard | Portfolio summary, Action Queue, Market brief card | `/api/dashboard/summary`, `/api/dashboard/action-queue`, `/api/dashboard/market-brief` |
 | Today | Regime + **Advise pack** (ranked buy/sell) + flips + queue + Insights attention | `/api/today/briefing` (`advise_pack`) |
+| AI Assistant | Decide chat: optional **Today Intelligence Pulse** + on-demand tools (candidates, setup, market, sector, holdings, search) | `/ai-assistant`, pulse/tools in `ai_intelligence_pulse.py` / `ai_assistant_tools.py` — wishlist in [`ROADMAP.md` → AI Assistant](ROADMAP.md#ai-assistant--decide-chat-surface-shipped--wishlist) |
 | Watchlist | Fund-scoped watched tickers: list, bulk paste, soft-remove, tier, analysis status, queue analyze | `/watchlist`, `GET/POST /api/watchlist`, `POST /api/watchlist/analyze`, `PATCH /api/watchlist/item`. Results live on ticker dossier (`/ticker?ticker=…`). Ticker page Add/Remove. Ideas Accept still adds discovery tickers (`source=ideas_inbox`). |
 | Ticker detail | Full ticker AI analysis + meta synthesis | `/api/v2/ticker/<t>/analysis`, `/api/v2/ticker/<t>/meta-analysis` |
 | Insights | Human thesis threads (org-wide); due-for-review queue | `/insights`, `/api/insights`, `/api/insights/due`, `/api/ticker/<t>/insights` |

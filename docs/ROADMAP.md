@@ -6,6 +6,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 | Doc | Relationship to this one |
 |-----|--------------------------|
 | **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H6 shipped; **H7** Ideas usage check next. |
+| **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not a new phase ahead of H7). |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
 | **This doc → [Phase K](#phase-k--youtube-captions--research-articles)** | **Backlog (post-H, prefer after I1):** pull video captions/subtitles → normalize into `research_articles`-shaped rows so existing extract/summarize/meta paths analyze them (earnings calls, IR, curated finance channels). Absorbs the deferred “earnings-call transcript” idea from Phase G. |
@@ -384,6 +385,47 @@ when sample sizes are large enough; recent confluence bullish/risk adjusts rank 
 downgrade BUY→RISK). `action_queue_ai_review` and `insights_thesis_evaluation` schedule a
 one-shot AI-lock retry (same pattern as market brief / UI summaries) and log
 `skipped_ai_lock` instead of failing silently.
+
+### AI Assistant — Decide chat surface (**shipped** + wishlist)
+
+**Created 2026-07-24.** Chat is a Decide-layer *consumption* surface over data Today / queue /
+research already produce — not a new collector and not auto-trading. Keep wishlist work
+**parallel** to Phase H (do not displace H7); prefer small PR-sized items.
+
+#### Shipped (2026-07-24)
+
+| Piece | What |
+|-------|------|
+| **Today Intelligence Pulse** | Lean context block: market brief + top candidates (`ai_intelligence_pulse.py`). Toggle: `ai_include_intelligence_pulse`. |
+| **Signal fallback** | When Action Queue / Advise are empty (common: no BUYs, SELL/RISK need held), rank watchlist `signal_analysis` (SELL→BUY→WATCH; skip HOLD) — `ai_assistant_candidates.py`. |
+| **v1 tools** | `list_entry_candidates`, `get_ticker_setup`, `get_market_brief`, `get_sector_rotation`, `get_signals_overview`, `get_holdings_snapshot`, `search_web`, `search_research` — question matrix in `ai_assistant_question_matrix.py`. |
+| **Tool loop** | Chat handler tool rounds (max 3) + SSE `{status:"tool"}`; skip search/RAG prefetch when tools on. |
+| **Reliable reads** | Service-role Supabase after fund ACL for watchlist/signals (`ai_assistant_clients.py`); degraded pulse (no market / 0 candidates) caches ≤90s instead of 6h closed-session TTL. |
+| **Quality harness** | `web_dashboard/scripts/quality_test_ai_assistant_chat.py` → `verification/ai_assistant_quality_latest.json`. |
+
+**Not “market closed”:** `Market: (unavailable)` means Research DB brief fetch failed (or no row) — briefs are cached and should load after hours. UI copy is model-agnostic (“the model can call tools…”).
+
+#### Wishlist (benefit from more changes)
+
+Ordered by leverage for the chat surface; all stay human-in-the-loop.
+
+| ID | Item | Why |
+|----|------|-----|
+| **A1** | **Multi-backend tool calling** | Tools currently default on for the GLM transport (`backend == "glm"`). Model dropdown already lists Qwen / Granite / others — extend the tool loop (or Ollama-native tools) so non-GLM picks get the same Decide path instead of prefetch-only. |
+| **A2** | **Contradiction-aware pulse / candidates** | Quality runs already show signal `SELL` + analysis `stance: BUY` on the same ticker (e.g. CLS.TO, MU). Rank/label TENSION (or demote) instead of presenting a clean “entry” hint. Reuse queue `ai_review` / research_context patterns. |
+| **A3** | **Single ranking source with Today Advise** | Pulse rebuilds queue→advise→signal fallback; Today ships `advise_pack`. Drift confuses humans. Prefer one builder (or thin wrapper) so chat pulse and `/today` agree. |
+| **A4** | **Tool catalog v2** | Add lean tools for thesis attention, confluence / liquidity / earnings calendar, Ideas triage peek, and a track-record / source-ROI slice — so open-ended questions don’t invent Learn answers. |
+| **A5** | **Pulse health in the UI** | Context preview still looks “fine” when market is unavailable. Chip or one-line reason (`research_db:…`) + optional “refresh context” when degraded. |
+| **A6** | **Sector tool honesty** | `get_sector_rotation` often hits `INSUFFICIENT_DATA` when ETF Analysis articles are thin — return that reason clearly; don’t pretend sector narrative exists. (Data fix stays ETF/meta ops, not chat.) |
+| **A7** | **Learn reweight in chat candidates** | Mirror Advise v1: multiply candidate scores by track-record hit rates when n is large enough, so chat discovery inherits the Learn→Decide arrow. |
+
+#### Still out of scope for this surface
+
+| Item | Why |
+|------|-----|
+| Auto-orders from chat / tools | North star unchanged |
+| Stuffing friend tips into Ideas via chat | Watchlist / Ideas separation stays |
+| New collectors “for the assistant” | Assistant consumes existing artifacts; Phase H/I/J/K own feeds |
 
 ---
 
