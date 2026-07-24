@@ -1234,8 +1234,8 @@ class AIAssistant {
             }
         }
 
-        // Get pre-loaded context (synchronous - no API call)
-        // Only send context with the FIRST message of a conversation
+        // Resend cached portfolio context every turn (stateless GLM/Ollama need it;
+        // WebAI backend only injects it on the first turn to avoid session bloat).
         const isFirstMessage = this.conversationHistory.length === 1; // After adding user message
 
         // If it's the first message, ensure context is ready
@@ -1257,14 +1257,16 @@ class AIAssistant {
             }
         }
 
-        const contextString = isFirstMessage ? this.getCachedContext() : null;
+        const contextString = this.getCachedContext();
+        // Prior turns only — current user message is already in `query` / full_prompt
+        const priorHistory = this.conversationHistory.slice(0, -1).slice(-20);
 
-        // Debug logging
-        if (isFirstMessage) {
-            console.log('[AIAssistant] First message - including context, length:', contextString?.length || 0);
-        } else {
-            console.log('[AIAssistant] Subsequent message - context already in conversation history');
-        }
+        console.log(
+            '[AIAssistant] Sending message with context length:',
+            contextString?.length || 0,
+            'prior history turns:',
+            priorHistory.length
+        );
 
         // Build request
         const requestData: ChatRequest = {
@@ -1272,8 +1274,8 @@ class AIAssistant {
             model: this.selectedModel,
             fund: this.selectedFund,
             context_items: this.contextItems,
-            context_string: contextString, // Only sent with first message
-            conversation_history: this.conversationHistory.slice(-20), // Last 20 messages
+            context_string: contextString,
+            conversation_history: priorHistory,
             include_search: this.includeSearch,
             include_repository: this.includeRepository,
             include_price_volume: this.includePriceVolume,
