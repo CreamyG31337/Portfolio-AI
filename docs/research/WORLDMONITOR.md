@@ -176,7 +176,7 @@ Neither catches "same story, different wording, different URL" — and our archi
 
 Their `_classifier.ts` (threat-level keyword classifier: nuclear strike / coup / invasion / etc.) is pure geo-military and has zero relevance here — skip it entirely, don't be tempted by proximity to the dedup module.
 
-**Feed breadth — confirmed (2026-07-20):** the real seed (`web_dashboard/schema/13_rss_feeds.sql`, matches the test fixture) has exactly **6 feeds**: StockTwits, CNBC Finance, Investing.com Breaking, Fortune Finance, one Google News AI-stocks query, Hunterbrook. Adding a feed is trivial — one `INSERT` into `rss_feeds` (see `web_dashboard/scripts/add_research_feed.py` for the pattern), no code changes, since `rss_feed_ingest_job` reads every enabled row dynamically.
+**Feed breadth — confirmed (2026-07-20):** the real seed (`database/test_seed_research.sql`, matches the test fixture) has exactly **6 feeds**: StockTwits, CNBC Finance, Investing.com Breaking, Fortune Finance, one Google News AI-stocks query, Hunterbrook. Adding a feed is trivial — one `INSERT` into `rss_feeds` (see `web_dashboard/scripts/add_research_feed.py` for the pattern), no code changes, since `rss_feed_ingest_job` reads every enabled row dynamically.
 
 Diffed against WorldMonitor's finance catalog (`_feeds.ts`) — **and cross-checked against what's already flowing in opportunistically via SearXNG** (`docs/source_roi_report_results.json` scores domains by contribution, so it doubles as a "what are we already getting" check):
 
