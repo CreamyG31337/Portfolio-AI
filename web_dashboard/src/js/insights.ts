@@ -68,6 +68,44 @@ function formatDate(iso?: string): string {
   }
 }
 
+function linkHostname(href: string): string {
+  try {
+    return new URL(href).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+function renderEvidenceItem(ev: ThesisEvidence, thesisTitle: string): string {
+  const href = (ev.url || ev.article_url || "").trim();
+  const host = href ? linkHostname(href) : "";
+  const kind = ev.evidence_kind || "evidence";
+  // user_url rows from moat probe wrongly used the thesis title as caption while
+  // pointing at quote pages (e.g. Yahoo). Prefer a real article title, else host.
+  let label = (ev.article_title || "").trim();
+  if (!label) {
+    const title = (ev.title || "").trim();
+    const titleLooksLikeThesis =
+      !!title &&
+      (title === thesisTitle || title.startsWith("[LLM draft]"));
+    if (kind === "user_url" && titleLooksLikeThesis && host) {
+      label = host;
+    } else if (title) {
+      label = title;
+    } else {
+      label = host || href || kind;
+    }
+  }
+  const destHint =
+    href && host && label !== host
+      ? ` <span class="text-xs text-text-secondary">(${escapeHtml(host)})</span>`
+      : "";
+  const link = href
+    ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="text-accent underline">${escapeHtml(label)}</a>${destHint}`
+    : escapeHtml(label);
+  return `<li class="text-sm"><span class="text-xs text-text-secondary">${escapeHtml(ev.relation)} · ${escapeHtml(kind)}</span> — ${link}</li>`;
+}
+
 function reviewBadge(row: ThesisRow): string {
   const bits: string[] = [];
   if (row.is_weak) {
@@ -207,13 +245,23 @@ async function openDetail(thesisId: string): Promise<void> {
         </div>`;
       })
       .join("");
-    const evidence = (t.evidence || [])
-      .map((ev) => {
-        const label = ev.title || ev.article_title || ev.url || ev.evidence_kind;
-        const href = ev.url || ev.article_url;
-        const link = href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener" class="text-accent underline">${escapeHtml(label || "")}</a>` : escapeHtml(label || "");
-        return `<li class="text-sm"><span class="text-xs text-text-secondary">${ev.relation}</span> — ${link}</li>`;
-      })
+    const evidence = (t.evidence || []).map((ev) => renderEvidenceItem(ev, t.title)).join("");
+
+    const dispOpts = ["bullish", "bearish", "neutral"]
+      .map(
+        (d) =>
+          `<option value="${d}"${d === t.disposition ? " selected" : ""}>${d}</option>`
+      )
+      .join("");
+    const intentOpts = [
+      ["seek_entry", "Seek entry"],
+      ["seek_exit", "Seek exit"],
+      ["monitor", "Monitor"],
+    ]
+      .map(
+        ([v, label]) =>
+          `<option value="${v}"${v === t.intent ? " selected" : ""}>${label}</option>`
+      )
       .join("");
 
     body.innerHTML = `
@@ -229,16 +277,33 @@ async function openDetail(thesisId: string): Promise<void> {
       <section class="mb-6">
         <h3 class="text-sm font-semibold text-text-primary mb-2">Thread</h3>
         ${entries || "<p class='text-sm text-text-secondary'>No entries.</p>"}
-        <textarea id="detail-comment" rows="3" placeholder="Add comment or review…"
+        <textarea id="detail-comment" rows="3" placeholder="Write a note…"
           class="w-full mt-2 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary"></textarea>
+        <div class="mt-2 space-y-1 text-xs text-text-secondary">
+          <p><span class="font-medium text-text-primary">Comment</span> — discussion note only. Does not change stance or clear due/stale.</p>
+          <p><span class="font-medium text-text-primary">Review</span> — human check-in that bumps last reviewed (clears due ≥14d / stale ≥30d). Optionally update disposition/intent below. AI replies do not count as a review.</p>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <div>
+            <label class="text-xs text-text-secondary" for="detail-disposition">Disposition (review)</label>
+            <select id="detail-disposition"
+              class="w-full mt-1 text-sm bg-dashboard-background border border-border rounded-lg px-2 py-1.5 text-text-primary">${dispOpts}</select>
+          </div>
+          <div>
+            <label class="text-xs text-text-secondary" for="detail-intent">Intent (review)</label>
+            <select id="detail-intent"
+              class="w-full mt-1 text-sm bg-dashboard-background border border-border rounded-lg px-2 py-1.5 text-text-primary">${intentOpts}</select>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-2 mt-2">
-          <button type="button" data-action="comment" class="btn-outline-sm">Add comment</button>
-          <button type="button" data-action="review" class="btn-outline-sm">Add review</button>
+          <button type="button" data-action="comment" class="btn-outline-sm" title="Add a discussion note without refreshing the review clock">Add comment</button>
+          <button type="button" data-action="review" class="btn-outline-sm" title="Mark as reviewed and optionally update stance">Add review</button>
           <button type="button" data-action="archive" class="px-3 py-1 text-xs border border-border rounded-lg text-text-secondary hover:bg-dashboard-surface-alt">Archive</button>
         </div>
       </section>
       <section>
         <h3 class="text-sm font-semibold text-text-primary mb-2">Evidence</h3>
+        <p class="text-xs text-text-secondary mb-2">Linked sources for this thesis (articles, filings, notes). Host shown in parentheses so you can see where the link goes.</p>
         <ul class="list-disc list-inside space-y-1 mb-2">${evidence || "<li class='text-sm text-text-secondary'>None linked.</li>"}</ul>
         <input id="detail-evidence-url" type="url" placeholder="Paste URL to attach"
           class="w-full text-sm bg-dashboard-background border border-border rounded-lg px-3 py-1 text-text-primary">
@@ -270,11 +335,19 @@ async function postEntry(thesisId: string, kind: "comment" | "review"): Promise<
   const ta = document.getElementById("detail-comment") as HTMLTextAreaElement | null;
   const body = ta?.value.trim();
   if (!body) return;
+  const payload: Record<string, string> = { entry_kind: kind, body };
+  if (kind === "review") {
+    const disposition = (document.getElementById("detail-disposition") as HTMLSelectElement | null)
+      ?.value;
+    const intent = (document.getElementById("detail-intent") as HTMLSelectElement | null)?.value;
+    if (disposition) payload.disposition = disposition;
+    if (intent) payload.intent = intent;
+  }
   const resp = await fetch(`/api/insights/${encodeURIComponent(thesisId)}/entries`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ entry_kind: kind, body }),
+    body: JSON.stringify(payload),
   });
   if (!resp.ok) {
     alert(`Failed: HTTP ${resp.status}`);

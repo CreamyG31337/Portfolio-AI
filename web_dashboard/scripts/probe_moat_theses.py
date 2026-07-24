@@ -202,6 +202,33 @@ def _is_weak_draft(draft: dict[str, Any]) -> bool:
     return False
 
 
+def _is_junk_evidence_url(url: str) -> bool:
+    """Quote/profile pages are not supporting articles — skip as source_url."""
+    u = (url or "").strip().lower()
+    if not u:
+        return True
+    junk_markers = (
+        "finance.yahoo.com/quote",
+        "finance.yahoo.com/quote/",
+        "seekingalpha.com/symbol/",
+        "marketwatch.com/investing/stock/",
+        "nasdaq.com/market-activity/stocks/",
+        "google.com/finance/quote",
+        "cnbc.com/quotes/",
+    )
+    return any(m in u for m in junk_markers)
+
+
+def _first_usable_evidence_url(urls: Any) -> str | None:
+    if not isinstance(urls, list):
+        return None
+    for raw in urls:
+        url = str(raw or "").strip()
+        if url and not _is_junk_evidence_url(url):
+            return url
+    return None
+
+
 def _company_name(pg: Any, ticker: str) -> str:
     rows = pg.execute_query(
         "SELECT name FROM securities WHERE ticker = %s LIMIT 1",
@@ -452,7 +479,7 @@ def main() -> int:
             if disp not in ("bullish", "bearish", "neutral"):
                 disp = "neutral"
             urls = draft.get("evidence_urls") or []
-            source_url = urls[0] if urls else None
+            source_url = _first_usable_evidence_url(urls)
             title = str(draft.get("title") or f"[LLM draft] Moat — {ticker}")
             if weak and "[WEAK CONTEXT]" not in title:
                 title = title.replace("[LLM draft]", "[LLM draft][WEAK CONTEXT]", 1)

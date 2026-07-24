@@ -39,6 +39,26 @@ def _normalize_ticker(ticker: str) -> str:
     return (ticker or "").upper().strip()
 
 
+def _url_evidence_title(url: str) -> str:
+    """Short display label for a pasted URL — never reuse the thesis title."""
+    from urllib.parse import urlparse
+
+    raw = (url or "").strip()
+    if not raw:
+        return "Source link"
+    try:
+        parsed = urlparse(raw)
+        host = (parsed.netloc or "").removeprefix("www.")
+        path = parsed.path or ""
+        if path in ("", "/"):
+            return host or raw[:80]
+        # Keep path short so evidence rows stay scannable
+        clipped = path if len(path) <= 48 else path[:45] + "…"
+        return f"{host}{clipped}" if host else clipped
+    except Exception:
+        return raw[:80]
+
+
 def _parse_ts(val: Any) -> datetime | None:
     if val is None:
         return None
@@ -513,14 +533,17 @@ def create_thesis(
     entry_id = str(entry_rows[0]["id"]) if entry_rows else None
 
     if source_url and source_url.strip():
+        # Caption must describe the URL destination — not the thesis title
+        # (moat probe used to make "[LLM draft] …" look like an article link to Yahoo).
+        src = source_url.strip()
         add_evidence(
             pg,
             thesis_id=thesis_id,
             entry_id=entry_id,
             evidence_kind="user_url",
             created_by=created_by,
-            url=source_url.strip(),
-            title=title_s,
+            url=src,
+            title=_url_evidence_title(src),
             relation="supports",
         )
 
