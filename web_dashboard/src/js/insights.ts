@@ -44,6 +44,81 @@ interface ThesisDetail extends ThesisRow {
   evidence?: ThesisEvidence[];
 }
 
+interface HoldingPos {
+  shares: number;
+  value: number;
+}
+
+const holdingsByTicker = new Map<string, HoldingPos>();
+let holdingsFundName: string | null = null;
+let openThesisId: string | null = null;
+
+function getSelectedFund(): string | null {
+  const fromUi = (
+    window as unknown as { ui?: { getSelectedFund?: () => string | null } }
+  ).ui?.getSelectedFund?.();
+  if (fromUi) return fromUi;
+  const sel = document.getElementById("global-fund-select") as HTMLSelectElement | null;
+  const v = (sel?.value || "").trim();
+  if (!v || v.toLowerCase() === "all") return null;
+  return v;
+}
+
+function formatCompactDollars(value: number): string {
+  const abs = Math.abs(value);
+  if (abs >= 10_000) {
+    const k = value / 1000;
+    const rounded = Math.abs(k) >= 100 ? k.toFixed(0) : k.toFixed(1);
+    return `$${rounded}k`;
+  }
+  return (
+    "$" +
+    Math.round(value).toLocaleString("en-US", {
+      maximumFractionDigits: 0,
+    })
+  );
+}
+
+async function loadHoldings(): Promise<void> {
+  const fund = getSelectedFund();
+  holdingsFundName = fund;
+  holdingsByTicker.clear();
+  if (!fund) return;
+  try {
+    const params = new URLSearchParams({ fund });
+    const resp = await fetch(`/api/dashboard/holdings?${params.toString()}`, {
+      credentials: "include",
+    });
+    if (!resp.ok) return;
+    const body = (await resp.json()) as {
+      data?: Array<{ ticker?: string; shares?: number; value?: number }>;
+    };
+    for (const row of body.data || []) {
+      const ticker = String(row.ticker || "")
+        .trim()
+        .toUpperCase();
+      if (!ticker) continue;
+      const shares = Number(row.shares) || 0;
+      const value = Number(row.value) || 0;
+      if (shares <= 0 && value <= 0) continue;
+      holdingsByTicker.set(ticker, { shares, value });
+    }
+  } catch {
+    // Holdings are optional enrichment — don't block Insights.
+  }
+}
+
+function holdingChip(ticker: string): string {
+  const pos = holdingsByTicker.get(ticker.trim().toUpperCase());
+  if (!pos || (pos.shares <= 0 && pos.value <= 0)) return "";
+  const fund = holdingsFundName || "Selected fund";
+  const sharesLabel =
+    pos.shares === 1 ? "1 share" : `${pos.shares.toLocaleString("en-US")} shares`;
+  const title = escapeHtml(`${fund} · ${sharesLabel}`);
+  const amount = escapeHtml(formatCompactDollars(pos.value));
+  return `<span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded border border-border text-text-secondary" title="${title}"><i class="fas fa-briefcase text-[10px] opacity-80" aria-hidden="true"></i><span>${amount}</span></span>`;
+}
+
 function badgeClass(disposition: string): string {
   return sentimentToneClasses(disposition);
 }
@@ -189,6 +264,7 @@ async function loadTheses(): Promise<void> {
         return `<article class="bg-dashboard-surface border border-border rounded-lg p-4 cursor-pointer hover:border-accent/50 insights-row" data-id="${row.id}">
           <div class="flex flex-wrap items-center gap-2 mb-1">
             <a href="/ticker?ticker=${encodeURIComponent(row.ticker)}" class="font-bold text-accent underline" onclick="event.stopPropagation()">${row.ticker}</a>
+            ${holdingChip(row.ticker)}
             <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(row.disposition)}">${row.disposition}</span>
             <span class="px-2 py-0.5 text-xs rounded border border-border text-text-secondary">${intentLabel(row.intent)}</span>
             ${reviewBadge(row)}
@@ -219,6 +295,7 @@ async function openDetail(thesisId: string): Promise<void> {
   const panel = document.getElementById("insights-detail");
   const body = document.getElementById("insights-detail-body");
   if (!panel || !body) return;
+  openThesisId = thesisId;
   panel.classList.remove("hidden");
   body.innerHTML = `<p class="text-sm text-text-secondary">Loading…</p>`;
 
@@ -266,13 +343,15 @@ async function openDetail(thesisId: string): Promise<void> {
 
     body.innerHTML = `
       <div class="mb-4">
-        <div class="flex flex-wrap gap-2 mb-2">
+        <div class="flex flex-wrap gap-2 mb-2 items-center">
+          <span class="font-bold text-accent">${escapeHtml(t.ticker)}</span>
+          ${holdingChip(t.ticker)}
           <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(t.disposition)}">${t.disposition}</span>
           <span class="px-2 py-0.5 text-xs rounded border border-border">${intentLabel(t.intent)}</span>
           <span class="text-xs text-text-secondary">${t.status}</span>
         </div>
         <h2 class="text-xl font-bold text-text-primary">${escapeHtml(t.title)}</h2>
-        <p class="text-xs text-text-secondary mt-1">${t.ticker} · ${t.created_by}</p>
+        <p class="text-xs text-text-secondary mt-1">${escapeHtml(t.created_by)}</p>
       </div>
       <section class="mb-6">
         <h3 class="text-sm font-semibold text-text-primary mb-2">Thread</h3>
@@ -369,6 +448,7 @@ async function archiveThesis(thesisId: string): Promise<void> {
     return;
   }
   document.getElementById("insights-detail")?.classList.add("hidden");
+  openThesisId = null;
   await loadTheses();
 }
 
@@ -400,6 +480,7 @@ function wireModal(): void {
   const form = document.getElementById("insights-form") as HTMLFormElement | null;
   // Flowbite handles modal open/close via data attributes (data-modal-target, data-modal-hide)
   document.getElementById("insights-detail-close")?.addEventListener("click", () => {
+    openThesisId = null;
     document.getElementById("insights-detail")?.classList.add("hidden");
   });
   form?.addEventListener("submit", async (ev) => {
@@ -429,12 +510,27 @@ function wireModal(): void {
 
 document.addEventListener("DOMContentLoaded", () => {
   wireModal();
-  document.getElementById("insights-refresh-btn")?.addEventListener("click", () => void loadTheses());
+  document.getElementById("insights-refresh-btn")?.addEventListener("click", () => {
+    void (async () => {
+      await loadHoldings();
+      await loadTheses();
+    })();
+  });
   document.getElementById("insights-show-archived")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-due-only")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-intent")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-disposition")?.addEventListener("change", () => void loadTheses());
   document.getElementById("insights-filter-ticker")?.addEventListener("change", () => void loadTheses());
+
+  window.addEventListener("fundChanged", () => {
+    void (async () => {
+      await loadHoldings();
+      await loadTheses();
+      if (openThesisId && !document.getElementById("insights-detail")?.classList.contains("hidden")) {
+        await openDetail(openThesisId);
+      }
+    })();
+  });
 
   const params = new URLSearchParams(window.location.search);
   const deepThesis = (params.get("thesis") || window.location.hash.replace(/^#/, "") || "").trim();
@@ -444,6 +540,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (input) input.value = deepTicker;
   }
   void (async () => {
+    await loadHoldings();
     await loadTheses();
     if (deepThesis) {
       await openDetail(deepThesis);
