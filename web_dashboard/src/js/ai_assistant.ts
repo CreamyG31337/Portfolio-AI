@@ -74,6 +74,7 @@ interface ChatRequest {
     include_insider_trades?: boolean;
     include_congress_trades?: boolean;
     include_etf_trades?: boolean;
+    include_intelligence_pulse?: boolean;
     search_results: any;
     repository_articles: any;
 }
@@ -83,6 +84,8 @@ interface ChatResponse {
     chunk?: string;
     done?: boolean;
     error?: string;
+    status?: string;
+    name?: string;
 }
 
 interface PortfolioIntelligenceResponse {
@@ -114,6 +117,7 @@ class AIAssistant {
     private includeInsiderTrades: boolean;
     private includeCongressTrades: boolean;
     private includeEtfTrades: boolean;
+    private includeIntelligencePulse: boolean;
 
     // Context caching - calculate once, use for all messages
     private contextString: string | null = null;  // The actual context text to send to LLM
@@ -139,6 +143,7 @@ class AIAssistant {
         this.includeInsiderTrades = true;
         this.includeCongressTrades = true;
         this.includeEtfTrades = true;
+        this.includeIntelligencePulse = true;
     }
 
     async init(): Promise<void> {
@@ -340,6 +345,7 @@ class AIAssistant {
         const toggleInsiderTrades = document.getElementById('toggle-insider-trades') as HTMLInputElement | null;
         const toggleCongressTrades = document.getElementById('toggle-congress-trades') as HTMLInputElement | null;
         const toggleEtfTrades = document.getElementById('toggle-etf-trades') as HTMLInputElement | null;
+        const toggleIntelligencePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
 
         if (toggleThesis) {
             toggleThesis.addEventListener('change', (e: Event) => {
@@ -401,6 +407,14 @@ class AIAssistant {
                 this.includeEtfTrades = target.checked;
                 this.saveEtfTradesPreference(target.checked);
                 this.loadContext(); // Reload context when toggle changes
+            });
+        }
+        if (toggleIntelligencePulse) {
+            toggleIntelligencePulse.addEventListener('change', (e: Event) => {
+                const target = e.target as HTMLInputElement;
+                this.includeIntelligencePulse = target.checked;
+                this.saveIntelligencePulsePreference(target.checked);
+                this.loadContext();
             });
         }
 
@@ -726,6 +740,7 @@ class AIAssistant {
             const includeInsiderTrades = this.includeInsiderTrades;
             const includeCongressTrades = this.includeCongressTrades;
             const includeEtfTrades = this.includeEtfTrades;
+            const includeIntelligencePulse = this.includeIntelligencePulse;
 
             const cacheKey = [
                 this.selectedFund,
@@ -735,7 +750,8 @@ class AIAssistant {
                 includeFundamentals,
                 includeInsiderTrades,
                 includeCongressTrades,
-                includeEtfTrades
+                includeEtfTrades,
+                includeIntelligencePulse
             ].join('|');
 
             const cached = this.contextCache.get(cacheKey);
@@ -768,7 +784,8 @@ class AIAssistant {
                     include_fundamentals: includeFundamentals,
                     include_insider_trades: includeInsiderTrades,
                     include_congress_trades: includeCongressTrades,
-                    include_etf_trades: includeEtfTrades
+                    include_etf_trades: includeEtfTrades,
+                    include_intelligence_pulse: includeIntelligencePulse
                 }),
                 signal: controller.signal
             });
@@ -1104,6 +1121,7 @@ class AIAssistant {
         const toggleInsiderTrades = document.getElementById('toggle-insider-trades') as HTMLInputElement | null;
         const toggleCongressTrades = document.getElementById('toggle-congress-trades') as HTMLInputElement | null;
         const toggleEtfTrades = document.getElementById('toggle-etf-trades') as HTMLInputElement | null;
+        const toggleIntelligencePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
 
         let enabledCount = 0;
         if (toggleThesis?.checked) enabledCount++;
@@ -1113,6 +1131,7 @@ class AIAssistant {
         if (toggleInsiderTrades?.checked) enabledCount++;
         if (toggleCongressTrades?.checked) enabledCount++;
         if (toggleEtfTrades?.checked) enabledCount++;
+        if (toggleIntelligencePulse?.checked) enabledCount++;
 
         if (summary) {
             if (enabledCount === 0) {
@@ -1206,11 +1225,13 @@ class AIAssistant {
         // Show loading indicator with Tailwind spinner
         const loadingId = this.addMessage('assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
 
-        // Perform search if enabled
+        // Perform search if enabled (legacy prefetch for non-GLM models).
+        // GLM uses on-demand search_web / search_research tools instead.
         let searchResults: any = null;
         let repositoryArticles: any = null;
+        const modelUsesTools = (this.selectedModel || '').toLowerCase().startsWith('glm-');
 
-        if (this.includeSearch && this.config.searxngAvailable) {
+        if (!modelUsesTools && this.includeSearch && this.config.searxngAvailable) {
             try {
                 searchResults = await this.performSearch(query);
                 // Display search results if any
@@ -1222,7 +1243,7 @@ class AIAssistant {
             }
         }
 
-        if (this.includeRepository && this.config.ollamaAvailable) {
+        if (!modelUsesTools && this.includeRepository && this.config.ollamaAvailable) {
             try {
                 repositoryArticles = await this.performRepositorySearch(query);
                 // Display repository articles if any
@@ -1283,6 +1304,7 @@ class AIAssistant {
             include_insider_trades: this.includeInsiderTrades,
             include_congress_trades: this.includeCongressTrades,
             include_etf_trades: this.includeEtfTrades,
+            include_intelligence_pulse: this.includeIntelligencePulse,
             search_results: searchResults,
             repository_articles: repositoryArticles
         };
@@ -1477,6 +1499,14 @@ class AIAssistant {
                                             if (sendBtn) sendBtn.disabled = false;
                                             if (chatInput) chatInput.disabled = false;
                                             return;
+                                        }
+                                        if (data.status === 'tool' && data.name) {
+                                            this.updateMessage(
+                                                loadingId,
+                                                'assistant',
+                                                `<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Looking up via ${data.name}…</span></div>`,
+                                                true
+                                            );
                                         }
                                         if (data.chunk) {
                                             fullResponse += data.chunk;
@@ -2071,6 +2101,16 @@ class AIAssistant {
                         }
                         console.log('[AIAssistant] Loaded includeEtfTrades preference:', this.includeEtfTrades);
                     }
+
+                    // Load intelligence pulse preference (defaults to true)
+                    if (typeof data.preferences.ai_include_intelligence_pulse === 'boolean') {
+                        this.includeIntelligencePulse = data.preferences.ai_include_intelligence_pulse;
+                        const togglePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
+                        if (togglePulse) {
+                            togglePulse.checked = this.includeIntelligencePulse;
+                        }
+                        console.log('[AIAssistant] Loaded includeIntelligencePulse preference:', this.includeIntelligencePulse);
+                    }
                 }
             }
         } catch (err) {
@@ -2179,6 +2219,29 @@ class AIAssistant {
             }
         } catch (err) {
             console.error('[AIAssistant] Error saving includeEtfTrades preference:', err);
+        }
+    }
+
+    async saveIntelligencePulsePreference(includePulse: boolean): Promise<void> {
+        try {
+            const response = await fetch('/api/settings/ai_include_intelligence_pulse', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ include_intelligence_pulse: includePulse })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log('[AIAssistant] Saved includeIntelligencePulse preference:', includePulse);
+                } else {
+                    console.warn('[AIAssistant] Failed to save preference:', result.error);
+                }
+            } else {
+                console.warn('[AIAssistant] Failed to save preference, status:', response.status);
+            }
+        } catch (err) {
+            console.error('[AIAssistant] Error saving includeIntelligencePulse preference:', err);
         }
     }
 }

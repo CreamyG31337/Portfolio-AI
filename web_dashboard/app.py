@@ -3518,6 +3518,37 @@ def update_ai_include_etf_trades():
         logger.error(f"Error updating AI include_etf_trades: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
+
+@app.route('/api/settings/ai_include_intelligence_pulse', methods=['POST'])
+@require_auth
+def update_ai_include_intelligence_pulse():
+    """Update user AI include Today intelligence pulse preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+
+        data = request.get_json()
+        include_pulse = data.get('include_intelligence_pulse')
+
+        if include_pulse is None:
+            return jsonify({"success": False, "error": "include_intelligence_pulse is required"}), 400
+
+        user_id = get_user_id_flask()
+        logger.debug(
+            "Updating AI include_intelligence_pulse for user %s to %s",
+            user_id,
+            include_pulse,
+        )
+
+        result = set_user_preference('ai_include_intelligence_pulse', include_pulse)
+        if result:
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Failed to save preference"}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating AI include_intelligence_pulse: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
 @app.route('/api/settings/debug', methods=['GET'])
 @require_auth
 def settings_debug():

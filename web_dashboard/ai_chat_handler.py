@@ -186,7 +186,8 @@ class ChatHandler:
         conversation_history: list[dict[str, str]],
         search_results: dict[str, Any] | None = None,
         repository_articles: list[dict[str, Any]] | None = None,
-        include_search: bool = True
+        include_search: bool = True,
+        enable_tools: bool | None = None,
     ) -> Response:
         """
         Route chat request to appropriate backend and return response.
@@ -198,6 +199,7 @@ class ChatHandler:
             search_results: Optional search results to include
             repository_articles: Optional repository articles to include
             include_search: Whether search is enabled (affects GLM prompt)
+            enable_tools: Override tool-calling (default: True for GLM backend)
 
         Returns:
             Flask Response (streaming or JSON)
@@ -205,6 +207,8 @@ class ChatHandler:
         from ai_prompts import get_system_prompt
         from prompt_safety import prepare_untrusted_for_prompt
         from research_utils import escape_markdown
+
+        use_tools = enable_tools if enable_tools is not None else (self.backend == "glm")
 
         # WebAI keeps a persistent session: inject portfolio context only on the
         # first UI turn so follow-ups do not re-append the full holdings blob.
@@ -214,51 +218,54 @@ class ChatHandler:
             include_portfolio_context = False
 
         # Build full prompt with sanitized, delimited untrusted context blocks.
+        # When GLM tools are enabled, skip stuffing prefetch search/RAG into the
+        # prompt — the model should call search_web / search_research on demand.
         prompt_parts: list[str] = []
         if context_string and include_portfolio_context:
             prompt_parts.append(
                 prepare_untrusted_for_prompt(context_string, source="chat_context")
             )
 
-        if search_results and search_results.get('formatted'):
-            prompt_parts.append(
-                prepare_untrusted_for_prompt(
-                    search_results['formatted'],
-                    source="chat_search_results",
+        if not use_tools:
+            if search_results and search_results.get('formatted'):
+                prompt_parts.append(
+                    prepare_untrusted_for_prompt(
+                        search_results['formatted'],
+                        source="chat_search_results",
+                    )
                 )
-            )
 
-        if repository_articles:
-            articles_text = "## Relevant Research from Repository:\n\n"
-            for i, article in enumerate(repository_articles, 1):
-                similarity = article.get('similarity', 0)
-                raw_summary = article.get('summary', article.get('content', '')[:300])
-                title = prepare_untrusted_for_prompt(
-                    article.get('title', 'Untitled'),
-                    source=f"repo_article_{i}_title",
-                )
-                summary = prepare_untrusted_for_prompt(
-                    escape_markdown(raw_summary),
-                    source=f"repo_article_{i}_summary",
-                )
-                source = prepare_untrusted_for_prompt(
-                    article.get('source', 'Unknown'),
-                    source=f"repo_article_{i}_source",
-                    max_chars=200,
-                )
-                published = article.get('published_at', '')
+            if repository_articles:
+                articles_text = "## Relevant Research from Repository:\n\n"
+                for i, article in enumerate(repository_articles, 1):
+                    similarity = article.get('similarity', 0)
+                    raw_summary = article.get('summary', article.get('content', '')[:300])
+                    title = prepare_untrusted_for_prompt(
+                        article.get('title', 'Untitled'),
+                        source=f"repo_article_{i}_title",
+                    )
+                    summary = prepare_untrusted_for_prompt(
+                        escape_markdown(raw_summary),
+                        source=f"repo_article_{i}_summary",
+                    )
+                    source = prepare_untrusted_for_prompt(
+                        article.get('source', 'Unknown'),
+                        source=f"repo_article_{i}_source",
+                        max_chars=200,
+                    )
+                    published = article.get('published_at', '')
 
-                articles_text += f"### Article {i} (Similarity: {similarity:.2%})\n"
-                articles_text += f"**{title}**\n"
-                articles_text += f"*Source: {source}"
-                if published:
-                    articles_text += f" | Published: {published}"
-                articles_text += "*\n\n"
-                if raw_summary:
-                    articles_text += f"{summary}\n\n"
-                articles_text += "---\n\n"
+                    articles_text += f"### Article {i} (Similarity: {similarity:.2%})\n"
+                    articles_text += f"**{title}**\n"
+                    articles_text += f"*Source: {source}"
+                    if published:
+                        articles_text += f" | Published: {published}"
+                    articles_text += "*\n\n"
+                    if raw_summary:
+                        articles_text += f"{summary}\n\n"
+                    articles_text += "---\n\n"
 
-            prompt_parts.append(articles_text)
+                prompt_parts.append(articles_text)
 
         if prompt_parts:
             full_prompt = "\n\n".join(prompt_parts) + f"\n\n{query}"
@@ -266,14 +273,22 @@ class ChatHandler:
             full_prompt = query
 
         # Get model-specific system prompt (pass include_search for GLM models)
-        system_prompt = get_system_prompt(self.model, allow_search=include_search)
+        system_prompt = get_system_prompt(
+            self.model,
+            allow_search=include_search,
+            enable_tools=use_tools and self.backend == "glm",
+        )
 
         # Route to appropriate backend
         if self.backend == 'webai':
             return self._handle_webai(full_prompt, system_prompt)
         elif self.backend == 'glm':
             return self._handle_glm_stream(
-                full_prompt, system_prompt, conversation_history, query
+                full_prompt,
+                system_prompt,
+                conversation_history,
+                query,
+                enable_tools=use_tools,
             )
         else:  # ollama
             return self._handle_ollama_stream(
@@ -335,22 +350,17 @@ class ChatHandler:
         system_prompt: str,
         conversation_history: list[dict[str, str]],
         current_query: str = "",
+        enable_tools: bool = True,
     ) -> Response:
         """
-        Handle GLM streaming response via SSE.
+        Handle GLM response via SSE.
 
-        Args:
-            full_prompt: Full prompt with context
-            system_prompt: System prompt
-            conversation_history: Previous messages (prior turns preferred)
-            current_query: Bare user query for defensive history dedupe
-
-        Returns:
-            Streaming SSE response
+        When ``enable_tools`` is True, runs a non-stream tool-call loop (max 3
+        rounds) then streams the final text. Otherwise streams a single pass.
         """
         from flask import jsonify
         from glm_config import get_zhipu_api_key
-        from glm_transport import glm_chat_completion
+        from glm_transport import glm_chat_completion, glm_chat_completion_message
         from pathlib import Path
 
         try:
@@ -382,19 +392,101 @@ class ChatHandler:
                 current_query,
             )
 
+            max_tool_rounds = 3
+            tool_wall_seconds = 90.0
+
             def generate_glm():
                 try:
-                    for part in glm_chat_completion(
-                        messages,
-                        model=self.model,
-                        stream=True,
-                        json_mode=False,
-                        temperature=temperature,
-                        max_tokens=max_tokens,
-                        timeout=90.0,
-                        allow_cheap_fallback=True,
-                    ):
-                        if part:
+                    if not enable_tools:
+                        for part in glm_chat_completion(
+                            messages,
+                            model=self.model,
+                            stream=True,
+                            json_mode=False,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            timeout=90.0,
+                            allow_cheap_fallback=True,
+                        ):
+                            if part:
+                                yield f"data: {json.dumps({'chunk': part, 'done': False})}\n\n"
+                        yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
+                        return
+
+                    from ai_assistant_tools import (
+                        TOOL_SCHEMAS,
+                        AssistantToolContext,
+                        execute_tool,
+                    )
+                    import time as _time
+
+                    tool_ctx = AssistantToolContext(
+                        user_id=self.user_id,
+                        fund=self.fund,
+                    )
+                    working = list(messages)
+                    started = _time.monotonic()
+                    final_content = ""
+
+                    for round_i in range(max_tool_rounds + 1):
+                        if _time.monotonic() - started > tool_wall_seconds:
+                            yield f"data: {json.dumps({'error': 'Tool loop timed out', 'done': True})}\n\n"
+                            return
+
+                        result = glm_chat_completion_message(
+                            working,
+                            model=self.model,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            tools=TOOL_SCHEMAS if round_i < max_tool_rounds else None,
+                            tool_choice="auto" if round_i < max_tool_rounds else None,
+                            timeout=90.0,
+                            allow_cheap_fallback=True,
+                        )
+                        if result.error and not result.content and not result.has_tool_calls:
+                            yield f"data: {json.dumps({'error': result.error, 'done': True})}\n\n"
+                            return
+
+                        if result.has_tool_calls and round_i < max_tool_rounds:
+                            assistant_msg: dict[str, Any] = {
+                                "role": "assistant",
+                                "content": result.content or None,
+                                "tool_calls": result.tool_calls,
+                            }
+                            working.append(assistant_msg)
+                            for tc in result.tool_calls:
+                                fn = tc.get("function") or {}
+                                name = str(fn.get("name") or "")
+                                args_raw = fn.get("arguments") or "{}"
+                                yield (
+                                    "data: "
+                                    + json.dumps(
+                                        {
+                                            "status": "tool",
+                                            "name": name,
+                                            "done": False,
+                                        }
+                                    )
+                                    + "\n\n"
+                                )
+                                tool_json = execute_tool(name, args_raw, tool_ctx)
+                                working.append(
+                                    {
+                                        "role": "tool",
+                                        "tool_call_id": tc.get("id") or f"call_{name}",
+                                        "content": tool_json,
+                                    }
+                                )
+                            continue
+
+                        final_content = result.content or ""
+                        break
+
+                    if final_content:
+                        # Stream final answer in modest chunks for UI parity
+                        chunk_size = 48
+                        for i in range(0, len(final_content), chunk_size):
+                            part = final_content[i : i + chunk_size]
                             yield f"data: {json.dumps({'chunk': part, 'done': False})}\n\n"
                     yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
                 except Exception as e:

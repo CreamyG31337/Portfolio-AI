@@ -93,6 +93,7 @@ _PREFERENCES_BULK_KEYS_FLASK_IMPERSONATION = (
     "ai_include_insider_trades",
     "ai_include_congress_trades",
     "ai_include_etf_trades",
+    "ai_include_intelligence_pulse",
 )
 
 

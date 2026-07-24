@@ -45,6 +45,30 @@ When analyzing the portfolio, consider:
 - Performance relative to investment goals
 - Opportunities for optimization"""
 
+# System prompt for GLM with native tools (pulse + on-demand research tools)
+GLM_SYSTEM_PROMPT_WITH_TOOLS = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio and research universe.
+
+You receive a lean Today Intelligence Pulse (market headline/regime + ranked candidates) and optional portfolio tables. The pulse is a HINT, not the whole universe.
+
+You have tools. Call them when needed:
+- list_entry_candidates — ranked BUY/SELL/RISK/WATCH setups; filter by sector, action, or held_only
+- get_ticker_setup — stored stance, entry_zone, target, stop, key levels, meta conviction for a ticker
+- get_market_brief — full market headline + narrative + regime
+- get_sector_rotation — sector rotation meta (pass a sector name or omit for top ranks)
+- get_signals_overview — watchlist signal counts / top tickers
+- get_holdings_snapshot — lean current fund positions (optional ticker filter)
+- search_web — live news/web via SearXNG (news only; NOT a substitute for entry levels)
+- search_research — semantic search of internal research articles
+
+Rules:
+- Never invent prices, entry zones, targets, stops, or news. Only cite pulse/tool fields.
+- If a tool returns ok=false / no_data, say you do not have that data — do not fabricate.
+- Web search is for news context only; trading levels come from get_ticker_setup / candidates.
+- Portfolio advice must combine holdings facts with ticker setup, not vibes.
+- Out of scope: social-sentiment deep dives, options chains, tax/brokerage execution, arbitrary stocks with no research row.
+- Be specific, cite tickers and levels when present, keep answers actionable and concise."""
+
+
 # System prompt for GLM (can receive search results, but should not initiate searches)
 GLM_SYSTEM_PROMPT_NO_SEARCH = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
 You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
@@ -135,12 +159,17 @@ Provide insights on:
 }
 
 
-def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
+def get_system_prompt(
+    model: str = None,
+    allow_search: bool = True,
+    enable_tools: bool = False,
+) -> str:
     """Get the appropriate system prompt based on the model and search preference.
     
     Args:
         model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b', 'glm-5.2')
         allow_search: Whether the model should be told it can search (default: True)
+        enable_tools: When True for GLM, use the tool-calling system prompt
         
     Returns:
         System prompt string
@@ -150,8 +179,10 @@ def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
     
     model_lower = model.lower()
     
-    # GLM models: can receive search results, search behavior controlled by allow_search
+    # GLM models: tool-calling prompt takes precedence when enabled
     if model_lower.startswith('glm-'):
+        if enable_tools:
+            return GLM_SYSTEM_PROMPT_WITH_TOOLS
         if allow_search:
             return GLM_SYSTEM_PROMPT_WITH_SEARCH
         else:

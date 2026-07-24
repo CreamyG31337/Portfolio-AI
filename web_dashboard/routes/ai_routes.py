@@ -443,7 +443,8 @@ def _build_context_from_packet(
     include_fundamentals: bool,
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
-    include_etf_trades: bool = True
+    include_etf_trades: bool = True,
+    include_intelligence_pulse: bool = True,
 ) -> tuple:
     """Build context string from a pre-fetched data packet.
     
@@ -476,6 +477,18 @@ def _build_context_from_packet(
     etf_context = data_packet.get('etf_context') or _empty_etf_context()
 
     context_parts = []
+
+    if include_intelligence_pulse:
+        t0 = time.time()
+        try:
+            from ai_intelligence_pulse import build_and_format_intelligence_pulse
+
+            pulse_text = build_and_format_intelligence_pulse(fund)
+            if pulse_text:
+                context_parts.append(pulse_text)
+        except Exception as e:
+            logger.warning(f"Error building intelligence pulse: {e}")
+        format_timings['format_intelligence_pulse'] = round((time.time() - t0) * 1000, 1)
 
     if not positions_df.empty:
         t0 = time.time()
@@ -540,7 +553,8 @@ def _get_preview_context_string(
     include_fundamentals: bool,
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
-    include_etf_trades: bool = True
+    include_etf_trades: bool = True,
+    include_intelligence_pulse: bool = True,
 ) -> tuple:
     """Build preview context string with market-hours-aware caching.
 
@@ -561,7 +575,7 @@ def _get_preview_context_string(
         '_get_preview_context_string',
         (user_id, fund, include_thesis, include_trades, include_price_volume,
          include_fundamentals, include_insider_trades, include_congress_trades,
-         include_etf_trades),
+         include_etf_trades, include_intelligence_pulse),
         {}
     )
 
@@ -590,7 +604,8 @@ def _get_preview_context_string(
         include_fundamentals=include_fundamentals,
         include_insider_trades=include_insider_trades,
         include_congress_trades=include_congress_trades,
-        include_etf_trades=include_etf_trades
+        include_etf_trades=include_etf_trades,
+        include_intelligence_pulse=include_intelligence_pulse,
     )
 
     # Combine all timings
@@ -816,6 +831,9 @@ def api_ai_preview_context():
         include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
         include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
         include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
+        include_intelligence_pulse = _coerce_bool_flag(
+            data.get('include_intelligence_pulse'), True
+        )
 
         context_string, timings = _get_preview_context_string(
             user_id=user_id,
@@ -826,7 +844,8 @@ def api_ai_preview_context():
             include_fundamentals=include_fund,
             include_insider_trades=include_insider_trades,
             include_congress_trades=include_congress_trades,
-            include_etf_trades=include_etf_trades
+            include_etf_trades=include_etf_trades,
+            include_intelligence_pulse=include_intelligence_pulse,
         )
         # #region agent log
         _debug_log_preview("ai_routes:api_ai_preview_context:after_build", "context_string result", {"type": type(context_string).__name__ if context_string is not None else "NoneType", "len": len(context_string) if context_string is not None else None, "hypothesisId": "A"})
@@ -925,6 +944,9 @@ def api_ai_context_build():
         include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
         include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
         include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
+        include_intelligence_pulse = _coerce_bool_flag(
+            data.get('include_intelligence_pulse'), True
+        )
 
         context_string, _format_timings = _build_context_from_packet(
             fund=fund,
@@ -935,7 +957,8 @@ def api_ai_context_build():
             include_fundamentals=include_fund,
             include_insider_trades=include_insider_trades,
             include_congress_trades=include_congress_trades,
-            include_etf_trades=include_etf_trades
+            include_etf_trades=include_etf_trades,
+            include_intelligence_pulse=include_intelligence_pulse,
         )
         context_parts = context_string.split("\n\n---\n\n") if context_string else []
         
