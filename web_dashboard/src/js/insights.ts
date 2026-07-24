@@ -83,9 +83,9 @@ async function loadHoldings(): Promise<void> {
   const fund = getSelectedFund();
   holdingsFundName = fund;
   holdingsByTicker.clear();
-  if (!fund) return;
   try {
-    const params = new URLSearchParams({ fund });
+    const params = new URLSearchParams();
+    if (fund) params.append("fund", fund);
     const resp = await fetch(`/api/dashboard/holdings?${params.toString()}`, {
       credentials: "include",
     });
