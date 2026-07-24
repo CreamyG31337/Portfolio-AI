@@ -1,4 +1,3 @@
-import { Modal } from "flowbite";
 import { sentimentToneClasses } from "./sentiment_badges.js";
 
 export {};
@@ -318,8 +317,13 @@ async function attachUrl(thesisId: string): Promise<void> {
   await openDetail(thesisId);
 }
 
+function closeInsightsModal(): void {
+  // tsc does not bundle bare "flowbite" imports for the browser; use the same
+  // data-modal-hide click pattern as funds.ts / trade_entry.ts.
+  document.querySelector<HTMLElement>('[data-modal-hide="insights-modal"]')?.click();
+}
+
 function wireModal(): void {
-  const modal = document.getElementById("insights-modal");
   const form = document.getElementById("insights-form") as HTMLFormElement | null;
   // Flowbite handles modal open/close via data attributes (data-modal-target, data-modal-hide)
   document.getElementById("insights-detail-close")?.addEventListener("click", () => {
@@ -344,11 +348,7 @@ function wireModal(): void {
       alert(err.error || `HTTP ${resp.status}`);
       return;
     }
-    const modalEl = document.getElementById("insights-modal");
-    if (modalEl) {
-      const modal = new Modal(modalEl);
-      modal.hide();
-    }
+    closeInsightsModal();
     form.reset();
     await loadTheses();
   });
