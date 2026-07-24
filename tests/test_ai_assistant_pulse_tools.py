@@ -61,6 +61,22 @@ class TestPulseFormatting:
         text = format_intelligence_pulse(None)
         assert "No pulse data" in text
 
+    def test_format_market_unavailable_reason(self) -> None:
+        text = format_intelligence_pulse(
+            {
+                "ok": True,
+                "market": None,
+                "market_unavailable_reason": "research_db:OperationalError",
+                "candidates": [],
+                "candidate_count": 0,
+                "candidate_source": "none",
+            }
+        )
+        assert "unavailable — research_db:OperationalError" in text
+        assert "Top candidates (0)" in text
+        # Must not imply cash-session closed
+        assert "closed" not in text.lower()
+
     def test_format_with_market_and_candidates(self) -> None:
         pulse = {
             "ok": True,
@@ -244,6 +260,10 @@ class TestToolExecutors:
                 return_value=advise,
             ),
             patch("ai_assistant_tools._postgres", return_value=MagicMock(execute_query=MagicMock(return_value=[]))),
+            patch(
+                "flask_data_utils.get_current_positions_flask",
+                return_value=pd.DataFrame(columns=["ticker"]),
+            ),
         ):
             raw = execute_tool(
                 "list_entry_candidates",
@@ -255,6 +275,158 @@ class TestToolExecutors:
         assert data["count"] == 1
         assert data["candidates"][0]["ticker"] == "ENRG"
         assert data["candidates"][0]["sector"] == "Energy"
+        assert data.get("source") == "action_queue"
+
+    def test_list_entry_candidates_signal_fallback(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        mock_sb = MagicMock()
+        fallback_rows = [
+            {
+                "ticker": "RMBS",
+                "advise": "SELL",
+                "confidence": 0.8,
+                "is_held": False,
+                "reason": "signal:SELL fear=EXTREME",
+                "source": "signal_fallback",
+                "fear_level": "EXTREME",
+            }
+        ]
+        with (
+            patch("ai_assistant_tools._supabase", return_value=mock_sb),
+            patch(
+                "action_queue_service.build_action_queue_items",
+                return_value=[],
+            ),
+            patch("action_queue_service.attach_research_context"),
+            patch("action_queue_service.attach_ai_reviews"),
+            patch(
+                "advise_service.build_advise_recommendations",
+                return_value=[],
+            ),
+            patch("ai_assistant_tools._postgres", return_value=MagicMock(execute_query=MagicMock(return_value=[]))),
+            patch(
+                "flask_data_utils.get_current_positions_flask",
+                return_value=pd.DataFrame(columns=["ticker"]),
+            ),
+            patch(
+                "ai_assistant_candidates.build_signal_fallback_candidates",
+                return_value=fallback_rows,
+            ),
+        ):
+            raw = execute_tool("list_entry_candidates", {"limit": 5}, ctx)
+        data = json.loads(raw)
+        assert data["ok"] is True
+        assert data["source"] == "signal_fallback"
+        assert data["candidates"][0]["ticker"] == "RMBS"
+
+
+class TestSignalFallbackBuilder:
+    def test_ranks_sell_before_watch_and_skips_hold(self) -> None:
+        from ai_assistant_candidates import build_signal_fallback_candidates
+
+        mock_sb = MagicMock()
+        watchlist = [
+            {"ticker": "AAA"},
+            {"ticker": "BBB"},
+            {"ticker": "CCC"},
+        ]
+        signals = {
+            "AAA": {
+                "ticker": "AAA",
+                "overall_signal": "HOLD",
+                "confidence_score": 0.99,
+                "fear_risk_signal": {"fear_level": "LOW", "risk_score": 0},
+            },
+            "BBB": {
+                "ticker": "BBB",
+                "overall_signal": "WATCH",
+                "confidence_score": 0.55,
+                "fear_risk_signal": {"fear_level": "MODERATE", "risk_score": 20},
+            },
+            "CCC": {
+                "ticker": "CCC",
+                "overall_signal": "SELL",
+                "confidence_score": 0.8,
+                "fear_risk_signal": {"fear_level": "EXTREME", "risk_score": 75},
+            },
+        }
+
+        def _table(name: str):
+            table = MagicMock()
+            if name == "signal_analysis":
+                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=list(signals.values())
+                )
+            elif name == "securities":
+                table.select.return_value.in_.return_value.execute.return_value = MagicMock(
+                    data=[
+                        {"ticker": "AAA", "sector": "Tech"},
+                        {"ticker": "BBB", "sector": "Energy"},
+                        {"ticker": "CCC", "sector": "Tech"},
+                    ]
+                )
+            return table
+
+        mock_sb.supabase.table.side_effect = _table
+
+        with patch(
+            "ai_assistant_candidates.get_active_watchlist_rows",
+            return_value=watchlist,
+        ):
+            rows = build_signal_fallback_candidates(
+                mock_sb, fund="TEST", limit=10
+            )
+        tickers = [r["ticker"] for r in rows]
+        assert "CCC" in tickers
+        assert "BBB" in tickers
+        assert "AAA" not in tickers  # HOLD skipped
+        assert tickers[0] == "CCC"  # SELL first
+
+    def test_sector_and_action_filters(self) -> None:
+        from ai_assistant_candidates import build_signal_fallback_candidates
+
+        mock_sb = MagicMock()
+        watchlist = [{"ticker": "ENRG"}, {"ticker": "TECH"}]
+        signals = [
+            {
+                "ticker": "ENRG",
+                "overall_signal": "WATCH",
+                "confidence_score": 0.7,
+                "fear_risk_signal": {"fear_level": "LOW"},
+            },
+            {
+                "ticker": "TECH",
+                "overall_signal": "WATCH",
+                "confidence_score": 0.9,
+                "fear_risk_signal": {"fear_level": "LOW"},
+            },
+        ]
+
+        def _table(name: str):
+            table = MagicMock()
+            if name == "signal_analysis":
+                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                    data=signals
+                )
+            else:
+                table.select.return_value.in_.return_value.execute.return_value = MagicMock(
+                    data=[
+                        {"ticker": "ENRG", "sector": "Energy"},
+                        {"ticker": "TECH", "sector": "Technology"},
+                    ]
+                )
+            return table
+
+        mock_sb.supabase.table.side_effect = _table
+        with patch(
+            "ai_assistant_candidates.get_active_watchlist_rows",
+            return_value=watchlist,
+        ):
+            rows = build_signal_fallback_candidates(
+                mock_sb, sector_filter="Energy", limit=10
+            )
+        assert len(rows) == 1
+        assert rows[0]["ticker"] == "ENRG"
 
 
 class TestPrompts:

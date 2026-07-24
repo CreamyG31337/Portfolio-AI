@@ -1,0 +1,146 @@
+{
+  "fund": "Project Chimera",
+  "pulse_candidate_count": 8,
+  "market": {
+    "brief_date": "2026-07-24",
+    "headline": "Broad sell-off: Growth leads decline, small caps hold firm in calm volatility",
+    "risk_regime": "RISK_OFF",
+    "breadth_proxy": "LEADERSHIP_NARROW",
+    "volatility_state": "CALM",
+    "regime_confidence": 0.75,
+    "macro_themes": [
+      "Growth leadership fading",
+      "Small-cap resilience",
+      "Orderly correction",
+      "Broad market weakness"
+    ]
+  },
+  "candidates": [
+    {
+      "ticker": "RMBS",
+      "advise": "SELL",
+      "confidence": 0.8,
+      "is_held": false,
+      "reason": "signal:SELL fear=EXTREME",
+      "fear_level": "EXTREME",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$98.00-$101.00",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "CLS.TO",
+      "advise": "SELL",
+      "confidence": 0.8,
+      "is_held": false,
+      "reason": "signal:SELL fear=EXTREME",
+      "fear_level": "EXTREME",
+      "source": "signal_fallback",
+      "sector": "Technology",
+      "entry_zone": "$465-$475",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "MU",
+      "advise": "SELL",
+      "confidence": 0.8,
+      "is_held": false,
+      "reason": "signal:SELL fear=EXTREME",
+      "fear_level": "EXTREME",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$950-$970",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "IREN",
+      "advise": "SELL",
+      "confidence": 0.8,
+      "is_held": false,
+      "reason": "signal:SELL fear=EXTREME",
+      "fear_level": "EXTREME",
+      "source": "signal_fallback",
+      "sector": "Financial Services",
+      "entry_zone": "$37-39",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "GLCC.TO",
+      "advise": "WATCH",
+      "confidence": 0.5,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Materials",
+      "entry_zone": "$45-47",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "TSM",
+      "advise": "WATCH",
+      "confidence": 0.5,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$410-$420",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "URNM",
+      "advise": "WATCH",
+      "confidence": 0.49,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Energy",
+      "entry_zone": "$48.00-$49.50",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "HURA.TO",
+      "advise": "WATCH",
+      "confidence": 0.49,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Energy",
+      "stance": "HOLD"
+    }
+  ],
+  "chat": [
+    {
+      "family": "discovery_timing",
+      "query": "What stock has a good entry point right now? Cite entry zones if you have them.",
+      "tools": [
+        "list_entry_candidates({\"action\":\"BUY\",\"limit\":10})",
+        "get_ticker_setup({\"ticker\":\"TSM\"})",
+        "get_market_brief({})"
+      ],
+      "answer": "## Best Entry Candidate: **TSM (Taiwan Semiconductor)**\n\nIn today's **RISK_OFF / narrow leadership** market, the BUY queue is actually empty \u2014 there are no fresh BUY signals firing. However, TSM stands out as the best-defined setup from stored research:\n\n### TSM Entry Zone & Trade Plan\n| Field | Value |\n|---|---|\n| **Stance** | BUY (swing trade) |\n| **Entry Zone** | **$410 \u2013 $420** |\n| **Target** | $460 |\n| **Stop Loss** | $395 |\n| **Confidence** | 0.62 |\n| **Meta Conviction** | BULLISH |\n\n### Why TSM?\n- **Strong catalysts**: $100B Arizona fab expansion signaling AI-driven demand; insider net buying (VP-level purchases).\n- **Key support cluster**: $410 and $400 are the floor levels \u2014 the entry zone sits right at first support.\n- **Upside to resistance**: $440 (first), then $460 (target) gives ~10% potential from entry midpoint.\n\n### \u26a0\ufe0f Important Caveats\n1. **Regime conflict**: We're in a **RISK_OFF, orderly correction** \u2014 semis are growth-sensitive and the Nasdaq led declines at -1.90% today. This is a *pull-back buy*, not a momentum chase.\n2. **Technical vs. fundamental tension**: The live signal is only **WATCH** (conf 0.50) with **MODERATE fear**, which conflicts with the bullish fundamental stance. The meta engine flags this contradiction explicitly.\n3. **Geopolitical overhang**: Taiwan Strait risk is an ever-present tail risk.\n\n### Bottom Line\nTSM at **$410\u2013$420** is the only ticker with a fully fleshed-out BUY setup right now. But given the risk-off tape, the disciplined play is to **wait for price to actually reach that zone** and show stabilization (e.g., a hold of $410 support) before committing. Set the stop at **$395** \u2014 a break below invalidates the thesis.\n\nWant me to check sector rotation for semiconductors, or look at any other tickers in more detail?",
+      "elapsed_s": 18.1
+    },
+    {
+      "family": "market",
+      "query": "What's the market doing today? Summarize regime and headline.",
+      "tools": [
+        "get_market_brief({})"
+      ],
+      "answer": "## Market Summary \u2014 July 24, 2026\n\n### Headline\n**Broad sell-off: Growth leads decline, small caps hold firm in calm volatility**\n\n### Regime Snapshot\n| Factor | Reading |\n|---|---|\n| **Risk Regime** | \ud83d\udd34 RISK_OFF |\n| **Breadth** | \ud83d\udfe1 LEADERSHIP_NARROW |\n| **Volatility** | \ud83d\udfe2 CALM |\n| **Confidence** | 75% |\n\n### What's Happening\n- **US equities closed lower across the board.** The Nasdaq 100 led the decline at **-1.90%**, with the S&P 500 and total market index both down **over 1%**.\n- **Small caps (Russell 2000) held up best** at only **-0.67%** \u2014 showing relative resilience but still in negative territory, so this is **a broad pullback, not a rotation**.\n- The **5-day trend confirms persistent downward pressure**, with all benchmarks down 1.1\u20132.0%.\n- **No sector is showing positive momentum.**\n\n### Key Takeaways\n1. **Orderly correction, not panic.** Despite the selling, volatility remains calm \u2014 this isn't a flight-to-safety scramble.\n2. **Growth leadership is fading.** The sectors/tickers that led the run-up are absorbing the heaviest losses.\n3. **Watch for a support break.** The brief flags that a break below current support levels would confirm further downside ahead.\n\nThe action queue reflects this backdrop \u2014 **four SELL signals** (RMBS, CLS.TO, MU, IREN) triggered on extreme fear, with notable semiconductors/market names flashing risk. Would you like to dig into any specific ticker, sector, or candidate?",
+      "elapsed_s": 11.4
+    },
+    {
+      "family": "sector",
+      "query": "How is Health Care rotating right now based on our sector meta?",
+      "tools": [
+        "get_sector_rotation({\"sector\":\"Health Care\"})"
+      ],
+      "answer": "## Health Care Sector Rotation\n\nUnfortunately, our sector meta currently shows **no actionable data** for Health Care. Here's what the system returned:\n\n| Field | Value |\n|---|---|\n| **Sector Stance** | Insufficient Data |\n| **Momentum State** | Unknown |\n| **News Pressure** | Unknown |\n| **Rotation Rank** | 0 |\n| **Confidence** | 0.00 |\n| **Risk Flag** | *no ETF analysis articles in lookback* |\n\n### What this means\nThe lack of data is driven by **no ETF analysis articles in the recent lookback window** \u2014 our sector rotation model hasn't ingested enough Health Care research to assign a momentum state or directional stance.\n\n### What I *can* tell you from today's Pulse\nThe broader market regime is **RISK_OFF** with **narrow leadership** and **calm volatility** \u2014 growth is leading the decline while small caps hold firm. That's a backdrop where defensive sectors like Health Care *could* benefit from rotation, but we'd need the ETF/research pipeline to update before confirming that from our own meta.\n\n### If you want to dig deeper\n- I can **search for recent Health Care news** via web to get a directional read.\n- I can check if any **Health Care tickers** are in our watchlist/candidate queue.\n- I can also look at **top-rotating sectors** overall to see what's actually leading right now.\n\nWould you like me to run any of those?",
+      "elapsed_s": 11.6
+    }
+  ]
+}

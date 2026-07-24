@@ -63,10 +63,11 @@ def _truncate_json(payload: dict[str, Any], max_chars: int = _MAX_TOOL_JSON_CHAR
     )
 
 
-def _supabase():
-    from flask_data_utils import get_supabase_client_flask
+def _supabase(fund: str | None = None):
+    """Service-role research client after fund ACL (see ai_assistant_clients)."""
+    from ai_assistant_clients import get_assistant_research_supabase
 
-    return get_supabase_client_flask()
+    return get_assistant_research_supabase(fund)
 
 
 def _postgres():
@@ -116,12 +117,28 @@ def _tool_list_entry_candidates(
     action_filter = (args.get("action") or "").strip().upper()
     held_only = bool(args.get("held_only") or False)
 
-    supabase = _supabase()
+    supabase = _supabase(ctx.fund)
     if not supabase:
         return _no_data("supabase_unavailable")
 
     fetch_n = max(limit * 3, 30) if (sector_filter or action_filter or held_only) else max(limit * 2, 20)
-    actions = build_action_queue_items(supabase, ctx.fund, fetch_n)
+    try:
+        from flask_data_utils import get_current_positions_flask
+        import pandas as pd
+
+        positions_df = get_current_positions_flask(ctx.fund) if ctx.fund else None
+    except Exception:
+        import pandas as pd
+
+        positions_df = pd.DataFrame(columns=["ticker"])
+    if positions_df is None:
+        import pandas as pd
+
+        positions_df = pd.DataFrame(columns=["ticker"])
+
+    actions = build_action_queue_items(
+        supabase, ctx.fund, fetch_n, positions_df=positions_df
+    )
     pg = None
     try:
         pg = _postgres()
@@ -169,6 +186,38 @@ def _tool_list_entry_candidates(
     if pg is not None:
         _enrich_entry_zones(pg, lean)
 
+    source_label = "action_queue"
+    if not lean:
+        # Fallback: watchlist signal_analysis ranking (queue often empty when
+        # there are no BUYs and SELL/RISK need held positions).
+        held: set[str] = set()
+        if positions_df is not None and not getattr(positions_df, "empty", True):
+            col = "ticker" if "ticker" in positions_df.columns else "symbol"
+            if col in positions_df.columns:
+                held = {
+                    str(t).upper().strip()
+                    for t in positions_df[col].dropna().tolist()
+                    if str(t).strip()
+                }
+        try:
+            from ai_assistant_candidates import build_signal_fallback_candidates
+
+            lean = build_signal_fallback_candidates(
+                supabase,
+                fund=ctx.fund,
+                held_tickers=held,
+                limit=limit,
+                sector_filter=sector_filter or None,
+                action_filter=action_filter or None,
+                held_only=held_only,
+            )
+            if lean:
+                source_label = "signal_fallback"
+                if pg is not None:
+                    _enrich_entry_zones(pg, lean)
+        except Exception as exc:
+            logger.warning("list_entry_candidates signal fallback failed: %s", exc)
+
     lean = lean[:limit]
     if not lean:
         return _no_data(
@@ -181,6 +230,7 @@ def _tool_list_entry_candidates(
         {
             "candidates": lean,
             "count": len(lean),
+            "source": source_label,
             "filters": {
                 "sector": sector_filter or None,
                 "action": action_filter or None,
@@ -290,7 +340,8 @@ def _tool_get_market_brief(
             except json.JSONDecodeError:
                 regime_raw = None
         canon = normalize_market_regime(
-            regime_raw if isinstance(regime_raw, dict) else None
+            regime_raw if isinstance(regime_raw, dict) else None,
+            brief_date=row.get("brief_date"),
         )
         narrative = row.get("narrative")
         if isinstance(narrative, str) and len(narrative) > 900:
@@ -389,7 +440,7 @@ def _tool_get_signals_overview(
     try:
         from ui_ai_phase2_digests import build_signals_overview_digest
 
-        supabase = _supabase()
+        supabase = _supabase(ctx.fund)
         if not supabase:
             return _no_data("supabase_unavailable")
         digest = build_signals_overview_digest(supabase, top_n=12)

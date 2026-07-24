@@ -59,7 +59,13 @@ def _lean_candidate(row: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in out.items() if v is not None and v != ""}
 
 
-def _fetch_market_pulse() -> dict[str, Any] | None:
+def _fetch_market_pulse() -> tuple[dict[str, Any] | None, str | None]:
+    """Load latest market brief from Research DB.
+
+    Returns ``(market_dict, unavailable_reason)``. Unavailable is *not* the same
+    as the US cash equity session being closed — briefs are cached rows in
+    ``market_daily_brief`` and should still load after hours.
+    """
     try:
         from market_brief_service import fetch_latest_brief
         from market_regime_normalization import normalize_market_regime
@@ -68,7 +74,7 @@ def _fetch_market_pulse() -> dict[str, Any] | None:
         pg = PostgresClient()
         row = fetch_latest_brief(pg)
         if not row:
-            return None
+            return None, "no_brief_row"
         regime_raw = row.get("regime_json")
         if isinstance(regime_raw, str):
             import json
@@ -77,19 +83,25 @@ def _fetch_market_pulse() -> dict[str, Any] | None:
                 regime_raw = json.loads(regime_raw)
             except json.JSONDecodeError:
                 regime_raw = None
-        canon = normalize_market_regime(regime_raw if isinstance(regime_raw, dict) else None)
-        return {
-            "brief_date": str(row.get("brief_date") or ""),
-            "headline": _short(row.get("headline"), 160),
-            "risk_regime": canon.get("risk_regime"),
-            "breadth_proxy": canon.get("breadth_proxy"),
-            "volatility_state": canon.get("volatility_state"),
-            "regime_confidence": canon.get("regime_confidence"),
-            "macro_themes": (canon.get("macro_themes") or [])[:4],
-        }
+        canon = normalize_market_regime(
+            regime_raw if isinstance(regime_raw, dict) else None,
+            brief_date=row.get("brief_date"),
+        )
+        return (
+            {
+                "brief_date": str(row.get("brief_date") or ""),
+                "headline": _short(row.get("headline"), 160),
+                "risk_regime": canon.get("risk_regime"),
+                "breadth_proxy": canon.get("breadth_proxy"),
+                "volatility_state": canon.get("volatility_state"),
+                "regime_confidence": canon.get("regime_confidence"),
+                "macro_themes": (canon.get("macro_themes") or [])[:4],
+            },
+            None,
+        )
     except Exception as exc:
         logger.warning("intelligence pulse: market brief failed: %s", exc)
-        return None
+        return None, f"research_db:{type(exc).__name__}"
 
 
 def _enrich_entry_zones(
@@ -133,16 +145,28 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
             build_action_queue_items,
         )
         from advise_service import build_advise_recommendations
-        from flask_data_utils import get_supabase_client_flask
+        from ai_assistant_clients import get_assistant_research_supabase
+        from flask_data_utils import get_current_positions_flask
         from postgres_client import PostgresClient
+        import pandas as pd
 
-        supabase = get_supabase_client_flask()
+        # Service role after fund ACL — user JWT/anon often returns empty
+        # watched_tickers_v2 / signal_analysis under RLS.
+        supabase = get_assistant_research_supabase(fund)
         if not supabase:
             return []
 
         # Fetch a wider queue then rank via advise
         queue_limit = max(limit * 2, 20)
-        actions = build_action_queue_items(supabase, fund, queue_limit)
+        try:
+            positions_df = get_current_positions_flask(fund) if fund else None
+        except Exception:
+            positions_df = pd.DataFrame(columns=["ticker"])
+        if positions_df is None:
+            positions_df = pd.DataFrame(columns=["ticker"])
+        actions = build_action_queue_items(
+            supabase, fund, queue_limit, positions_df=positions_df
+        )
         pg = None
         try:
             pg = PostgresClient()
@@ -171,7 +195,31 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
 
         if pg is not None:
             _enrich_entry_zones(pg, lean)
-        return [c for c in lean if c.get("ticker")]
+        lean = [c for c in lean if c.get("ticker")]
+        if lean:
+            return lean
+
+        # Fallback when action queue produced nothing
+        held: set[str] = set()
+        if not positions_df.empty:
+            col = "ticker" if "ticker" in positions_df.columns else "symbol"
+            if col in positions_df.columns:
+                held = {
+                    str(t).upper().strip()
+                    for t in positions_df[col].dropna().tolist()
+                    if str(t).strip()
+                }
+        from ai_assistant_candidates import build_signal_fallback_candidates
+
+        fallback = build_signal_fallback_candidates(
+            supabase,
+            fund=fund,
+            held_tickers=held,
+            limit=limit,
+        )
+        if pg is not None:
+            _enrich_entry_zones(pg, fallback)
+        return [c for c in fallback if c.get("ticker")]
     except Exception as exc:
         logger.warning("intelligence pulse: candidates failed: %s", exc)
         return []
@@ -183,14 +231,22 @@ def build_intelligence_pulse(
     candidate_limit: int = _DEFAULT_CANDIDATE_LIMIT,
 ) -> dict[str, Any]:
     """Return structured pulse dict (for tools/tests) — not a prompt string."""
-    market = _fetch_market_pulse()
+    market, market_reason = _fetch_market_pulse()
     candidates = _fetch_candidates(fund, candidate_limit)
+    source = "action_queue"
+    if candidates and any(c.get("source") == "signal_fallback" for c in candidates):
+        source = "signal_fallback"
+    elif not candidates:
+        source = "none"
     return {
         "ok": True,
         "fund": fund,
         "market": market,
+        "market_unavailable_reason": market_reason,
         "candidates": candidates,
         "candidate_count": len(candidates),
+        "candidate_source": source,
+        "degraded": bool(market_reason) or not candidates,
     }
 
 
@@ -220,11 +276,15 @@ def format_intelligence_pulse(pulse: dict[str, Any] | None) -> str:
             lines.append(f"  As of: {market['brief_date']}")
         lines.append("")
     else:
-        lines.append("Market: (unavailable)")
+        reason = pulse.get("market_unavailable_reason") or "research_db"
+        # Not market-hours: brief is a Research DB cache row.
+        lines.append(f"Market: (unavailable — {reason})")
         lines.append("")
 
     candidates = pulse.get("candidates") or []
-    lines.append(f"Top candidates ({len(candidates)}):")
+    source = pulse.get("candidate_source") or ""
+    src_note = f" via {source}" if source and source not in ("action_queue", "none", "") else ""
+    lines.append(f"Top candidates ({len(candidates)}{src_note}):")
     if not candidates:
         lines.append("  (none)")
     else:
@@ -247,7 +307,9 @@ def format_intelligence_pulse(pulse: dict[str, Any] | None) -> str:
 
     lines.append("")
     lines.append(
-        "Note: Pulse is a ranked hint from watchlist/action-queue research. "
+        "Note: Pulse is a ranked hint from watchlist/action-queue research"
+        + (" (signal fallback when queue empty)" if source == "signal_fallback" else "")
+        + ". "
         "Use tools for sector filters, named tickers, news, or deeper market narrative. "
         "Do not invent prices or entry zones."
     )

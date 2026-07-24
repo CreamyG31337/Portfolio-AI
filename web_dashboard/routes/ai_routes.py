@@ -617,8 +617,16 @@ def _get_preview_context_string(
 
     result = (context_string, all_timings)
 
-    # Cache with dynamic TTL based on market hours
+    # Cache with dynamic TTL based on market hours.
+    # Degraded pulse (research DB down / empty candidates) must not stick for 6h
+    # after the cash session closes — that masked Chimera empties while an older
+    # Webull cache still looked fine.
     ttl = _get_ai_context_cache_ttl()
+    if include_intelligence_pulse and (
+        "Market: (unavailable" in context_string
+        or "Top candidates (0)" in context_string
+    ):
+        ttl = min(ttl, 90)
     try:
         cache.set(cache_key, result, timeout=ttl)
         logger.debug(f"[PERF] AI context cached for {fund} with TTL={ttl}s")
