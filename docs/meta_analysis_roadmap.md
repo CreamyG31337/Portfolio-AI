@@ -4,15 +4,18 @@ This document tracks the multi-layer meta-analysis program and keeps the next ph
 
 > **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan**. As of
 > **2026-07-15**, active work is **Phase H** (source-ROI, meta-bundle injection, trend memory) —
-> see ROADMAP “Key findings from the 2026-07-15 design review.” This doc remains the deep
-> reference for the meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section
-> is superseded by `ROADMAP.md`.
+> see ROADMAP “Key findings from the 2026-07-15 design review.” Backlog after H: **Phase I**
+> (news quality / FRED) then **Phase J** (event/news catalyst backtesting) and **Phase K**
+> (YouTube captions → research articles). This doc remains the deep reference for the
+> meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section is superseded by
+> `ROADMAP.md`.
 
 **Related docs (keep in sync when the pipeline changes):**
 
 | Doc | Purpose |
 |-----|---------|
 | [`docs/ROADMAP.md`](ROADMAP.md) | **Master plan** — prioritized pillars, decision surfaces, sequencing |
+| [`docs/PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) | Event catalyst backtest + YouTube captions → articles (pipeline integration) |
 | [`docs/INSIGHTS.md`](INSIGHTS.md) | Human theses + **Decide-layer job map** (meta vs thesis eval vs queue review — table + mermaid) |
 | [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) | Ops cheat sheet: catch-up after outage, one-command backfill |
 | [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) | ETF group + ticker analysis jobs, prompts, storage |
@@ -475,6 +478,8 @@ Near term (recommended order):
 3. **Phase 2c (when scheduled):** Newsletters / digests consuming **`regime_canonical`** — deferred; see Phase 2c above.
 4. **Quality loop:** 10–20 ticker eval set; regression on `stance`, `contradictions`, `risk_flags` after prompt/model changes.
 5. **Lock-aware scheduling:** Batch or stagger meta jobs if AI lock wait grows (global lock serializes anyway).
+6. **Event/news catalyst backtesting:** See master plan **Phase J** in [`ROADMAP.md`](ROADMAP.md#phase-j--event--news-catalyst-backtesting) (after Phase I story dedup).
+7. **YouTube captions as articles:** See master plan **Phase K** in [`ROADMAP.md`](ROADMAP.md#phase-k--youtube-captions--research-articles) (allowlisted channels → `research_articles`).
 
 ### Phase 4 — Outcome feedback
 

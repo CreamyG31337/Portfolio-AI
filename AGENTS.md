@@ -133,13 +133,15 @@ cp .env.test.template .env
 
 ## Mandrel MCP Server (Persistent AI Memory)
 
+Shared memory across agents/sessions (not a code graph — use Graphify for that).
+
 - Runs on Ubuntu server, MCP HTTP Bridge at port **8082** (not 8081 = direct REST API)
 - Configure URL in `mcps/mandrel/SERVER_METADATA.json` (gitignored; copy from `.example`)
-- **Start every session**: `mandrel_ping` → `project_current` → `context_get_recent` → `task_list`
-- **During work**: `context_store` for learnings/decisions, `task_update` for progress
-- **End session**: `context_store` (type `completion`), update task statuses
+- **Session start (light)**: `project_current` once if unsure of project; `context_get_recent` or `task_list` only when continuing prior work
+- **Before repeating known pain**: `context_search` (semantic) — older bug/architecture notes live here, not in `context_get_recent`
+- **During / end of work**: `context_store` handoffs agents can pick up; `task_create` / `task_update` for multi-agent coordination; `decision_record` for durable architecture choices
 - `context_store` type must be one of: code, decision, error, discussion, planning, completion, reflections, handoff (NOTE: `milestone` is documented but rejected by the DB constraint — use `completion`)
-- Call `mandrel_help` to discover all tools
+- Prefer targeted search/store over dumping `mandrel_help` every session
 
 ## Supabase MCP Server
 

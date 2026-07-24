@@ -97,7 +97,12 @@ def ideas_inbox_api():
     try:
         pg = PostgresClient()
         limit = request.args.get("limit", default=50, type=int)
-        rows = fetch_alpha_ideas(pg, limit=max(1, min(limit, 100)))
+        ticker = request.args.get("ticker", default=None, type=str)
+        rows = fetch_alpha_ideas(
+            pg,
+            limit=max(1, min(limit, 100)),
+            ticker=ticker,
+        )
         serialized = _serialize_rows(rows)
         try:
             from user_insights_service import thesis_attention_by_ticker
@@ -182,6 +187,9 @@ def ideas_triage_api():
                 ticker = str(t).upper().strip()
                 if not ticker:
                     continue
+                # Provenance for later expiry/audit: source=ideas_inbox on watched_tickers_v2.
+                # Do not re-upsert these tickers via watchlist UI/bulk with a different source
+                # until upsert preserves existing provenance (see watchlist_access warning).
                 outcome = upsert_watchlist_ticker(
                     write_client,
                     fund=str(fund),

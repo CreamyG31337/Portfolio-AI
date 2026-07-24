@@ -194,3 +194,18 @@ def test_ideas_inbox_enriches_thesis_attention(client, auth_ok):
     assert resp.status_code == 200
     row = resp.get_json()["data"][0]
     assert row["thesis_attention"][0]["llm_verdict"] == "TENSION"
+
+
+@skip_without_plotly
+def test_ideas_inbox_passes_ticker_filter(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch("routes.intelligence_routes.PostgresClient", return_value=MagicMock()), patch(
+        "routes.intelligence_routes.fetch_alpha_ideas",
+        return_value=[],
+    ) as mock_fetch:
+        resp = client.get("/api/ideas/inbox?ticker=co&limit=100")
+    assert resp.status_code == 200
+    mock_fetch.assert_called_once()
+    kwargs = mock_fetch.call_args.kwargs
+    assert kwargs.get("ticker") == "co"
+    assert kwargs.get("limit") == 100

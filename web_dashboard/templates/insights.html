@@ -2,12 +2,19 @@
 
 {% block title %}Insights - Portfolio Dashboard{% endblock %}
 {% block page_title %}Insights{% endblock %}
-{% block page_subtitle %}Thesis threads — human research separate from automated signals{% endblock %}
+{% block page_subtitle %}Human thesis threads — separate from automated signals and fund philosophy{% endblock %}
 
 {% block content %}
 <div class="max-w-6xl mx-auto">
-    <p class="text-sm text-text-secondary mb-4">
-        Capture bullish/bearish/neutral theses with seek entry/exit intent. Archive hides threads from the default list (recycle bin).
+    <p class="text-sm text-text-secondary mb-2">
+        Capture bullish/bearish/neutral theses with seek entry/exit (or monitor) intent.
+        Open a thread to add a <span class="text-text-primary">comment</span> (discussion only)
+        or a <span class="text-text-primary">review</span> (marks it freshly reviewed; can update stance).
+        AI evaluation replies are advisory and do not clear due/stale.
+    </p>
+    <p class="text-xs text-text-secondary mb-4">
+        Archive hides threads from the default list (recycle bin). Due ≥14 days / stale ≥30 days since last human review.
+        Briefcase chips show position size in the currently selected fund.
     </p>
 
     <div class="flex flex-wrap items-center gap-3 mb-4">
