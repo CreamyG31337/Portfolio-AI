@@ -31,8 +31,11 @@ from glm_transport import GlmMessageResult, _normalize_tool_calls
 
 
 class TestQuestionMatrix:
-    def test_has_ten_families(self) -> None:
-        assert len(QUESTION_MATRIX) == 10
+    def test_has_expected_families(self) -> None:
+        assert len(QUESTION_MATRIX) == 12
+        families = {row["family"] for row in QUESTION_MATRIX}
+        assert "portfolio_performance" in families
+        assert "event_investigation" in families
 
     def test_required_tools_covered_by_catalog(self) -> None:
         names = catalog_tool_names()
@@ -385,6 +388,138 @@ class TestToolExecutors:
         assert data["ok"] is True
         assert data["source"] == "signal_fallback"
         assert data["candidates"][0]["ticker"] == "RMBS"
+
+
+class TestHistoryTools:
+    def test_portfolio_performance_missing_fund(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund=None)
+        data = json.loads(execute_tool("get_portfolio_performance", {}, ctx))
+        assert data["ok"] is False
+        assert data["reason"] == "missing_fund"
+
+    def test_portfolio_performance_ok_computes_return_and_drawdown(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        # Rising then dipping curve: peak at +20, drawdown to +5 (-15 from peak).
+        dates = pd.date_range("2025-01-01", periods=40, freq="D")
+        perf = [0.0] + [i * 1.0 for i in range(1, 20)] + [20.0 - j * 0.75 for j in range(20)]
+        curve = pd.DataFrame(
+            {
+                "date": dates,
+                "value": [1000 + p * 10 for p in perf],
+                "performance_pct": perf,
+            }
+        )
+        with patch(
+            "flask_data_utils.calculate_portfolio_value_over_time_flask",
+            return_value=curve,
+        ):
+            data = json.loads(
+                execute_tool("get_portfolio_performance", {"window": "all"}, ctx)
+            )
+        assert data["ok"] is True
+        assert data["window"] == "all"
+        assert data["peak"]["pct"] == pytest.approx(20.0, abs=0.01)
+        assert data["max_drawdown"]["pct"] < 0
+        assert len(data["curve"]) <= 12
+        assert data["trading_days"] == 40
+
+    def test_portfolio_performance_no_data(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        with patch(
+            "flask_data_utils.calculate_portfolio_value_over_time_flask",
+            return_value=pd.DataFrame(),
+        ):
+            data = json.loads(execute_tool("get_portfolio_performance", {}, ctx))
+        assert data["ok"] is False
+        assert data["reason"] == "no_data"
+
+    def test_trade_history_filters_and_summarizes(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        trades = pd.DataFrame(
+            [
+                {"timestamp": "2026-01-10", "ticker": "ABC", "reason": "Opening position", "quantity": 10, "price": 5.0, "total_value": 50.0},
+                {"timestamp": "2026-02-15", "ticker": "ABC", "reason": "SELL: lock gains", "quantity": 10, "price": 7.0, "total_value": 70.0},
+                {"timestamp": "2026-03-01", "ticker": "XYZ", "reason": "Opening position", "quantity": 2, "price": 20.0, "total_value": 40.0},
+            ]
+        )
+        with patch("flask_data_utils.get_trade_log_flask", return_value=trades):
+            data = json.loads(
+                execute_tool("get_trade_history", {"ticker": "abc"}, ctx)
+            )
+        assert data["ok"] is True
+        assert data["ticker"] == "ABC"
+        assert data["matched"] == 2
+        assert {r["ticker"] for r in data["trades"]} == {"ABC"}
+        # Most recent first
+        assert data["trades"][0]["date"] == "2026-02-15"
+        assert data["summary"]["buys"] == 1
+        assert data["summary"]["sells"] == 1
+
+    def test_trade_history_no_trades(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        with patch("flask_data_utils.get_trade_log_flask", return_value=pd.DataFrame()):
+            data = json.loads(execute_tool("get_trade_history", {}, ctx))
+        assert data["ok"] is False
+        assert data["reason"] == "no_trades"
+
+    def test_price_history_biggest_moves(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        idx = pd.date_range("2026-01-01", periods=6, freq="D")
+        # Big -20% drop on day 3.
+        closes = [100.0, 101.0, 102.0, 81.6, 82.0, 83.0]
+        price_df = pd.DataFrame({"Close": closes, "Volume": [1000] * 6}, index=idx)
+        fake_result = MagicMock()
+        fake_result.df = price_df
+        fake_fetcher = MagicMock()
+        fake_fetcher.fetch_price_data.return_value = fake_result
+        with (
+            patch("market_data.data_fetcher.MarketDataFetcher", return_value=fake_fetcher),
+            patch("market_data.price_cache.PriceCache"),
+            patch("config.settings.get_settings"),
+        ):
+            data = json.loads(
+                execute_tool("get_price_history", {"ticker": "abc", "window": "30d"}, ctx)
+            )
+        assert data["ok"] is True
+        assert data["ticker"] == "ABC"
+        assert data["bars"] == 6
+        assert data["biggest_moves"]
+        # The -20% day should be the top move by magnitude.
+        assert data["biggest_moves"][0]["pct"] < -15
+        assert data["biggest_moves"][0]["date"] == "2026-01-04"
+        assert len(data["curve"]) <= 12
+
+    def test_price_history_missing_ticker(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        data = json.loads(execute_tool("get_price_history", {}, ctx))
+        assert data["ok"] is False
+        assert data["reason"] == "missing_ticker"
+
+    def test_search_web_time_range_passthrough(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        fake_client = MagicMock()
+        fake_client.search.return_value = {
+            "results": [{"title": "t", "url": "http://x", "content": "c", "engine": "e"}]
+        }
+        with patch("searxng_client.get_searxng_client", return_value=fake_client):
+            data = json.loads(
+                execute_tool(
+                    "search_web",
+                    {"query": "why did ABC drop", "time_range": "month"},
+                    ctx,
+                )
+            )
+        assert data["ok"] is True
+        assert data["time_range"] == "month"
+        assert fake_client.search.call_args.kwargs["time_range"] == "month"
+
+    def test_search_web_invalid_time_range_defaults_to_week(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        fake_client = MagicMock()
+        fake_client.search.return_value = {"results": []}
+        with patch("searxng_client.get_searxng_client", return_value=fake_client):
+            execute_tool("search_web", {"query": "q", "time_range": "decade"}, ctx)
+        assert fake_client.search.call_args.kwargs["time_range"] == "week"
 
 
 class TestSignalFallbackBuilder:

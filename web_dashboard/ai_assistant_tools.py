@@ -507,6 +507,9 @@ def _tool_get_holdings_snapshot(
     return _ok({"fund": ctx.fund, "holdings": holdings, "count": len(holdings)})
 
 
+_WEB_TIME_RANGES = {"day", "week", "month", "year"}
+
+
 def _tool_search_web(
     ctx: AssistantToolContext,
     args: dict[str, Any],
@@ -517,6 +520,11 @@ def _tool_search_web(
     tickers = args.get("tickers") or []
     if isinstance(tickers, str):
         tickers = [tickers]
+    # Widen the lookback beyond a week so the model can investigate older moves.
+    # SearXNG only supports these coarse buckets (no arbitrary since/until).
+    time_range = str(args.get("time_range") or "week").strip().lower()
+    if time_range not in _WEB_TIME_RANGES:
+        time_range = "week"
     try:
         from searxng_client import get_searxng_client
 
@@ -524,7 +532,7 @@ def _tool_search_web(
         if not client:
             return _no_data("searxng_unavailable")
         # Prefer news category for company news questions
-        result = client.search(query, categories=["news", "general"], time_range="week", max_results=6)
+        result = client.search(query, categories=["news", "general"], time_range=time_range, max_results=6)
         results = []
         for r in (result.get("results") or [])[:6]:
             results.append(
@@ -536,8 +544,16 @@ def _tool_search_web(
                 }
             )
         if not results:
-            return _no_data("no_data", query=query)
-        return _ok({"query": query, "tickers": tickers, "results": results, "count": len(results)})
+            return _no_data("no_data", query=query, time_range=time_range)
+        return _ok(
+            {
+                "query": query,
+                "tickers": tickers,
+                "time_range": time_range,
+                "results": results,
+                "count": len(results),
+            }
+        )
     except Exception as exc:
         logger.warning("search_web failed: %s", exc)
         return _no_data("query_failed", query=query)
@@ -589,6 +605,376 @@ def _tool_search_research(
         return _no_data("query_failed", query=query)
 
 
+def _resolve_window_days(
+    window: str | None,
+    since: str | None,
+    default_days: int | None,
+) -> int | None:
+    """Turn a window token / since-date into a day count.
+
+    Returns None to mean "all history" (no cutoff). ``since`` (YYYY-MM-DD) wins
+    over ``window``. Accepts Nd/Nw/Nm/Ny and 'all'/'max'/'inception'.
+    """
+    from datetime import date as _date
+
+    s = str(since or "").strip()
+    if s:
+        try:
+            parsed = _date.fromisoformat(s[:10])
+            delta = (_date.today() - parsed).days
+            return max(1, delta)
+        except ValueError:
+            pass
+    w = str(window or "").strip().lower()
+    if not w:
+        return default_days
+    if w in ("all", "max", "inception", "since_inception", "sinceinception"):
+        return None
+    import re
+
+    m = re.fullmatch(r"(\d+)\s*([dwmy])", w)
+    if m:
+        n = int(m.group(1))
+        unit = m.group(2)
+        mult = {"d": 1, "w": 7, "m": 30, "y": 365}[unit]
+        return max(1, n * mult)
+    # Bare integer = days.
+    if w.isdigit():
+        return max(1, int(w))
+    return default_days
+
+
+def _downsample(rows: list[Any], max_points: int = 12) -> list[Any]:
+    """Evenly sample a series down to max_points, always keeping first and last."""
+    n = len(rows)
+    if n <= max_points or max_points < 2:
+        return list(rows)
+    step = (n - 1) / (max_points - 1)
+    idxs = sorted({round(i * step) for i in range(max_points)})
+    return [rows[i] for i in idxs]
+
+
+def _tool_get_portfolio_performance(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    if not ctx.fund:
+        return _no_data("missing_fund")
+    import pandas as pd
+
+    from flask_data_utils import calculate_portfolio_value_over_time_flask
+
+    days = _resolve_window_days(args.get("window"), args.get("since"), None)
+    window_label = "all" if days is None else f"{days}d"
+    try:
+        curve = calculate_portfolio_value_over_time_flask(ctx.fund, days=days)
+    except Exception as exc:
+        logger.warning("get_portfolio_performance failed for %s: %s", ctx.fund, exc)
+        return _no_data("query_failed", fund=ctx.fund)
+
+    if curve is None or getattr(curve, "empty", True):
+        return _no_data("no_data", fund=ctx.fund, window=window_label)
+    if "performance_pct" not in curve.columns or "date" not in curve.columns:
+        return _no_data("no_data", fund=ctx.fund, window=window_label)
+
+    curve = curve.sort_values("date").reset_index(drop=True)
+    perf = curve["performance_pct"].astype(float)
+    dates = pd.to_datetime(curve["date"])
+    values = curve.get("value")
+
+    # performance_pct is normalized to ~0 at the window start, so the last row is
+    # the window return.
+    total_return_pct = round(float(perf.iloc[-1]), 2)
+    peak_idx = int(perf.idxmax())
+    cummax = perf.cummax()
+    drawdown = perf - cummax
+    dd_idx = int(drawdown.idxmin())
+
+    start_date = dates.iloc[0].strftime("%Y-%m-%d")
+    end_date = dates.iloc[-1].strftime("%Y-%m-%d")
+    elapsed_days = max(1, (dates.iloc[-1] - dates.iloc[0]).days)
+
+    cagr_pct = None
+    if elapsed_days >= 300:  # only annualize when the window spans ~a year+
+        years = elapsed_days / 365.0
+        growth = 1.0 + (total_return_pct / 100.0)
+        if growth > 0:
+            cagr_pct = round((growth ** (1.0 / years) - 1.0) * 100.0, 2)
+
+    points = []
+    for i in range(len(curve)):
+        pt = {
+            "date": dates.iloc[i].strftime("%Y-%m-%d"),
+            "perf_pct": round(float(perf.iloc[i]), 2),
+        }
+        if values is not None:
+            try:
+                pt["value"] = round(float(values.iloc[i]), 2)
+            except (TypeError, ValueError):
+                pass
+        points.append(pt)
+    curve_out = _downsample(points, max_points=12)
+
+    def _val(i: int) -> float | None:
+        if values is None:
+            return None
+        try:
+            return round(float(values.iloc[i]), 2)
+        except (TypeError, ValueError):
+            return None
+
+    return _ok(
+        {
+            "fund": ctx.fund,
+            "window": window_label,
+            "start_date": start_date,
+            "end_date": end_date,
+            "trading_days": int(len(curve)),
+            "start_value": _val(0),
+            "end_value": _val(len(curve) - 1),
+            "total_return_pct": total_return_pct,
+            "peak": {
+                "date": dates.iloc[peak_idx].strftime("%Y-%m-%d"),
+                "pct": round(float(perf.iloc[peak_idx]), 2),
+            },
+            "max_drawdown": {
+                "date": dates.iloc[dd_idx].strftime("%Y-%m-%d"),
+                "pct": round(float(drawdown.iloc[dd_idx]), 2),
+            },
+            "cagr_pct": cagr_pct,
+            "curve": curve_out,
+        }
+    )
+
+
+def _tool_get_trade_history(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    if not ctx.fund:
+        return _no_data("missing_fund")
+    import pandas as pd
+
+    from flask_data_utils import get_trade_log_flask
+    from utils.trade_reason import infer_trade_action, is_sell_reason
+
+    ticker = str(args.get("ticker") or "").upper().strip()
+    action_filter = str(args.get("action") or "").upper().strip()
+    since = str(args.get("since") or "").strip()
+    limit = int(args.get("limit") or 20)
+    limit = max(1, min(limit, 50))
+
+    try:
+        df = get_trade_log_flask(limit=1000, fund=ctx.fund)
+    except Exception as exc:
+        logger.warning("get_trade_history failed for %s: %s", ctx.fund, exc)
+        return _no_data("query_failed", fund=ctx.fund)
+
+    if df is None or getattr(df, "empty", True):
+        return _no_data("no_trades", fund=ctx.fund)
+
+    ticker_col = "ticker" if "ticker" in df.columns else "symbol"
+    ts_col = "timestamp" if "timestamp" in df.columns else "date"
+    work = df.copy()
+    # Column name must not start with "_" — itertuples renames those positionally.
+    if ts_col in work.columns:
+        work["parsed_ts"] = pd.to_datetime(work[ts_col], errors="coerce", utc=True)
+    else:
+        work["parsed_ts"] = pd.NaT
+
+    if ticker and ticker_col in work.columns:
+        work = work[work[ticker_col].astype(str).str.upper() == ticker]
+    if since:
+        try:
+            cutoff = pd.Timestamp(since[:10], tz="UTC")
+            work = work[work["parsed_ts"] >= cutoff]
+        except (ValueError, TypeError):
+            pass
+
+    reason_series = work["reason"] if "reason" in work.columns else None
+    if action_filter in ("BUY", "SELL") and reason_series is not None:
+        actions = reason_series.apply(lambda r: infer_trade_action(r, default="BUY"))
+        work = work[actions == action_filter]
+
+    work = work.sort_values("parsed_ts", ascending=False, na_position="last")
+
+    rows: list[dict[str, Any]] = []
+    buys = sells = 0
+    bought_total = sold_total = 0.0
+    for row in work.head(limit).itertuples(index=False):
+        reason = getattr(row, "reason", "") or ""
+        action = infer_trade_action(reason, default="BUY")
+        sym = str(getattr(row, ticker_col, "") or getattr(row, "symbol", "") or "").upper()
+        qty = getattr(row, "quantity", None)
+        if qty is None:
+            qty = getattr(row, "shares", None)
+        price = getattr(row, "price", None)
+        total = getattr(row, "total_value", None)
+        try:
+            if total in (None, "") and qty is not None and price is not None:
+                total = float(qty) * float(price)
+        except (TypeError, ValueError):
+            total = None
+        ts = getattr(row, "parsed_ts", None)
+        date_str = ts.strftime("%Y-%m-%d") if ts is not None and pd.notna(ts) else None
+        rows.append(
+            {
+                "date": date_str,
+                "action": action,
+                "ticker": sym,
+                "qty": _num(qty),
+                "price": _num(price),
+                "total": _num(total),
+            }
+        )
+
+    # Summary over the full filtered set (not just the returned page).
+    if reason_series is not None:
+        sell_mask = work["reason"].apply(is_sell_reason)
+        sells = int(sell_mask.sum())
+        buys = int(len(work) - sells)
+    for row in work.itertuples(index=False):
+        try:
+            t = getattr(row, "total_value", None)
+            if t in (None, ""):
+                q = getattr(row, "quantity", None) or getattr(row, "shares", None)
+                p = getattr(row, "price", None)
+                t = float(q) * float(p) if q is not None and p is not None else 0.0
+            t = float(t)
+        except (TypeError, ValueError):
+            t = 0.0
+        if is_sell_reason(getattr(row, "reason", "") or ""):
+            sold_total += t
+        else:
+            bought_total += t
+
+    if not rows:
+        return _no_data("no_data", fund=ctx.fund, ticker=ticker or None)
+    return _ok(
+        {
+            "fund": ctx.fund,
+            "ticker": ticker or None,
+            "count": len(rows),
+            "matched": int(len(work)),
+            "trades": rows,
+            "summary": {
+                "buys": buys,
+                "sells": sells,
+                "gross_bought": round(bought_total, 2),
+                "gross_sold": round(sold_total, 2),
+            },
+            "note": "Realized P&L per round-trip not included in v1.",
+        }
+    )
+
+
+def _tool_get_price_history(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    ticker = str(args.get("ticker") or "").upper().strip()
+    if not ticker:
+        return _no_data("missing_ticker")
+    import pandas as pd
+
+    days = _resolve_window_days(args.get("window"), args.get("since"), 90)
+    if days is None:
+        days = 1825  # cap "all" at ~5y for a single ticker to bound the fetch
+    window_label = f"{days}d"
+
+    try:
+        from datetime import datetime, timedelta, timezone
+
+        from config.settings import get_settings
+        from market_data.data_fetcher import MarketDataFetcher
+        from market_data.price_cache import PriceCache
+
+        settings = get_settings()
+        fetcher = MarketDataFetcher(cache_instance=PriceCache(settings=settings))
+        end_d = datetime.now(timezone.utc)
+        start_d = end_d - timedelta(days=days)
+        result = fetcher.fetch_price_data(ticker, start_d, end_d)
+    except Exception as exc:
+        logger.warning("get_price_history failed for %s: %s", ticker, exc)
+        return _no_data("query_failed", ticker=ticker)
+
+    df = getattr(result, "df", None)
+    if df is None or getattr(df, "empty", True):
+        return _no_data("no_data", ticker=ticker, window=window_label)
+
+    close_col = next(
+        (c for c in df.columns if str(c).lower() == "close"),
+        None,
+    )
+    if close_col is None:
+        return _no_data("no_data", ticker=ticker, window=window_label)
+
+    closes = df[close_col].astype(float).dropna()
+    if closes.empty:
+        return _no_data("no_data", ticker=ticker, window=window_label)
+
+    idx = closes.index
+    def _d(i: Any) -> str:
+        try:
+            return pd.Timestamp(i).strftime("%Y-%m-%d")
+        except Exception:
+            return str(i)[:10]
+
+    first_close = float(closes.iloc[0])
+    last_close = float(closes.iloc[-1])
+    change_pct = round((last_close - first_close) / first_close * 100, 2) if first_close else None
+    hi_idx = closes.idxmax()
+    lo_idx = closes.idxmin()
+
+    # Biggest single-day moves (the hook for "what happened on that date").
+    pct = closes.pct_change().dropna() * 100
+    biggest = []
+    if not pct.empty:
+        ordered = pct.reindex(pct.abs().sort_values(ascending=False).index)
+        for i, v in ordered.head(5).items():
+            biggest.append({"date": _d(i), "pct": round(float(v), 2)})
+
+    points = [
+        {"date": _d(idx[i]), "close": round(float(closes.iloc[i]), 4)}
+        for i in range(len(closes))
+    ]
+    curve_out = _downsample(points, max_points=12)
+
+    return _ok(
+        {
+            "ticker": ticker,
+            "window": window_label,
+            "start_date": _d(idx[0]),
+            "end_date": _d(idx[-1]),
+            "bars": int(len(closes)),
+            "first_close": round(first_close, 4),
+            "last_close": round(last_close, 4),
+            "change_pct": change_pct,
+            "high": {"date": _d(hi_idx), "close": round(float(closes.loc[hi_idx]), 4)},
+            "low": {"date": _d(lo_idx), "close": round(float(closes.loc[lo_idx]), 4)},
+            "biggest_moves": biggest,
+            "curve": curve_out,
+        }
+    )
+
+
+def _num(v: Any) -> float | None:
+    """Best-effort float for lean trade rows; None when not numeric."""
+    if v is None or v == "":
+        return None
+    try:
+        import pandas as pd
+
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    try:
+        return round(float(v), 4)
+    except (TypeError, ValueError):
+        return None
+
+
 TOOL_HANDLERS: dict[str, Callable[[AssistantToolContext, dict[str, Any]], dict[str, Any]]] = {
     "list_entry_candidates": _tool_list_entry_candidates,
     "get_ticker_setup": _tool_get_ticker_setup,
@@ -596,6 +982,9 @@ TOOL_HANDLERS: dict[str, Callable[[AssistantToolContext, dict[str, Any]], dict[s
     "get_sector_rotation": _tool_get_sector_rotation,
     "get_signals_overview": _tool_get_signals_overview,
     "get_holdings_snapshot": _tool_get_holdings_snapshot,
+    "get_portfolio_performance": _tool_get_portfolio_performance,
+    "get_trade_history": _tool_get_trade_history,
+    "get_price_history": _tool_get_price_history,
     "search_web": _tool_search_web,
     "search_research": _tool_search_research,
 }
@@ -706,10 +1095,89 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "get_portfolio_performance",
+            "description": (
+                "Fund performance over a window: total return, peak, max drawdown, "
+                "and a downsampled equity curve. Use window='all' for since-inception "
+                "or e.g. '30d'/'90d'/'1y'/'2y'. Fund-scoped, read-only."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "window": {
+                        "type": "string",
+                        "description": "Nd/Nw/Nm/Ny or 'all' (e.g. '90d', '1y', 'all')",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional start date YYYY-MM-DD (overrides window)",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_trade_history",
+            "description": (
+                "Past executed trades for this fund (date/action/ticker/qty/price/total) "
+                "plus buy/sell counts. Filter by ticker, action, or since-date. "
+                "Realized P&L per round-trip is not included yet."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Optional ticker filter"},
+                    "action": {
+                        "type": "string",
+                        "enum": ["BUY", "SELL"],
+                        "description": "Optional action filter",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional start date YYYY-MM-DD",
+                    },
+                    "limit": {"type": "integer", "description": "Max rows (1-50)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_price_history",
+            "description": (
+                "Historical daily closes for a ticker over a window: first/last close, "
+                "high/low, % change, the 5 biggest single-day moves (with dates), and a "
+                "downsampled close curve. Pair the biggest-move dates with search_web to "
+                "explain what drove a move."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Ticker symbol"},
+                    "window": {
+                        "type": "string",
+                        "description": "Nd/Nw/Nm/Ny (e.g. '90d', '1y'); default 90d",
+                    },
+                    "since": {
+                        "type": "string",
+                        "description": "Optional start date YYYY-MM-DD (overrides window)",
+                    },
+                },
+                "required": ["ticker"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_web",
             "description": (
                 "Live web/news search via SearXNG. Use for recent news; "
-                "not a substitute for get_ticker_setup entry levels."
+                "not a substitute for get_ticker_setup entry levels. "
+                "Widen time_range to investigate older events."
             ),
             "parameters": {
                 "type": "object",
@@ -719,6 +1187,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "type": "array",
                         "items": {"type": "string"},
                         "description": "Optional related tickers",
+                    },
+                    "time_range": {
+                        "type": "string",
+                        "enum": ["day", "week", "month", "year"],
+                        "description": "Lookback bucket (default week)",
                     },
                 },
                 "required": ["query"],

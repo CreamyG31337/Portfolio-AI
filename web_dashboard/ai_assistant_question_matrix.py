@@ -100,6 +100,22 @@ QUESTION_MATRIX: list[QuestionFamily] = [
         "pulse_fields": ["market", "candidates"],
         "notes": "Pulse + optional signals overview.",
     },
+    {
+        "id": 11,
+        "family": "portfolio_performance",
+        "example": "How has the fund done over the last year / since inception?",
+        "expected_tools": ["get_portfolio_performance", "get_trade_history"],
+        "pulse_fields": [],
+        "notes": "Windowed performance/curve; window='all' for inception.",
+    },
+    {
+        "id": 12,
+        "family": "event_investigation",
+        "example": "Why did ABC drop last month? What moved it?",
+        "expected_tools": ["get_price_history", "search_web"],
+        "pulse_fields": [],
+        "notes": "price_history biggest_moves -> search_web(time_range) for the cause.",
+    },
 ]
 
 # Tools that must exist in the v1 catalog (union of matrix expectations).
@@ -111,6 +127,9 @@ REQUIRED_TOOL_NAMES: frozenset[str] = frozenset(
         "get_sector_rotation",
         "get_signals_overview",
         "get_holdings_snapshot",
+        "get_portfolio_performance",
+        "get_trade_history",
+        "get_price_history",
         "search_web",
         "search_research",
     }

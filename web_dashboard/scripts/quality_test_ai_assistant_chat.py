@@ -77,6 +77,14 @@ QUESTIONS: list[dict[str, str]] = [
         "family": "holdings_risk",
         "q": "Any of my holdings look risky right now (RISK/SELL)?",
     },
+    {
+        "family": "portfolio_performance",
+        "q": "How has this fund performed since inception? Use tools; give total return, peak, and max drawdown.",
+    },
+    {
+        "family": "event_investigation",
+        "q": "Look at TSM's price history over the last 90 days, find its biggest single-day move, and use web search to explain what drove it. Do not guess.",
+    },
 ]
 
 
@@ -135,6 +143,10 @@ def _probe_tools(fund: str, sb: Any) -> None:
         ("get_sector_rotation", {"sector": "Health Care"}),
         ("get_ticker_setup", {"ticker": "TSM"}),
         ("get_signals_overview", {}),
+        ("get_portfolio_performance", {"window": "all"}),
+        ("get_trade_history", {"limit": 5}),
+        ("get_price_history", {"ticker": "TSM", "window": "90d"}),
+        ("search_web", {"query": "TSM stock news", "time_range": "month"}),
     ]
     print("\n========== TOOL PROBES ==========")
     with _service_patches(sb)[0], _service_patches(sb)[1], _service_patches(sb)[2]:
