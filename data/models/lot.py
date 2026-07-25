@@ -190,14 +190,18 @@ class LotTracker:
         return self.get_total_remaining_cost_basis() / total_shares
     
     def get_realized_pnl_summary(self) -> Dict[str, Any]:
-        """Get summary of realized P&L from all sales."""
-        # This would need to be calculated from trade history
-        # For now, return placeholder
-        return {
-            'total_realized_pnl': Decimal('0'),
-            'total_shares_sold': Decimal('0'),
-            'average_sell_price': Decimal('0')
-        }
+        """Not supported on LotTracker — use FIFOTradeProcessor instead.
+
+        LotTracker only retains each lot's *remaining* shares; it never records
+        sale proceeds, so realized P&L cannot be derived from its state. The
+        working implementation is FIFOTradeProcessor.get_realized_pnl_summary(),
+        which reads it back from trade history. Fail loud so a stray call can't
+        silently return zeros.
+        """
+        raise NotImplementedError(
+            "Use FIFOTradeProcessor.get_realized_pnl_summary(); LotTracker does not "
+            "retain sale records to compute realized P&L."
+        )
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""

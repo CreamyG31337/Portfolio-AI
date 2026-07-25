@@ -437,9 +437,9 @@ class TestHistoryTools:
         ctx = AssistantToolContext(user_id="u1", fund="TEST")
         trades = pd.DataFrame(
             [
-                {"timestamp": "2026-01-10", "ticker": "ABC", "reason": "Opening position", "quantity": 10, "price": 5.0, "total_value": 50.0},
-                {"timestamp": "2026-02-15", "ticker": "ABC", "reason": "SELL: lock gains", "quantity": 10, "price": 7.0, "total_value": 70.0},
-                {"timestamp": "2026-03-01", "ticker": "XYZ", "reason": "Opening position", "quantity": 2, "price": 20.0, "total_value": 40.0},
+                {"timestamp": "2026-01-10", "ticker": "ABC", "reason": "Opening position", "quantity": 10, "price": 5.0, "total_value": 50.0, "pnl": 0.0, "cost_basis": 50.0, "currency": "USD"},
+                {"timestamp": "2026-02-15", "ticker": "ABC", "reason": "SELL: lock gains", "quantity": 10, "price": 7.0, "total_value": 70.0, "pnl": 20.0, "cost_basis": 50.0, "currency": "USD"},
+                {"timestamp": "2026-03-01", "ticker": "XYZ", "reason": "Opening position", "quantity": 2, "price": 20.0, "total_value": 40.0, "pnl": 0.0, "cost_basis": 40.0, "currency": "USD"},
             ]
         )
         with patch("flask_data_utils.get_trade_log_flask", return_value=trades):
@@ -454,6 +454,35 @@ class TestHistoryTools:
         assert data["trades"][0]["date"] == "2026-02-15"
         assert data["summary"]["buys"] == 1
         assert data["summary"]["sells"] == 1
+        # Realized P&L surfaced on the sell row and aggregated per currency.
+        sell_row = data["trades"][0]
+        assert sell_row["action"] == "SELL"
+        assert sell_row["realized_pnl"] == 20.0
+        assert sell_row["currency"] == "USD"
+        # Buys have no realized_pnl key.
+        assert "realized_pnl" not in data["trades"][1]
+        realized = data["summary"]["realized_pnl_by_currency"]
+        assert realized["USD"]["pnl"] == 20.0
+        assert realized["USD"]["cost_basis"] == 50.0
+        assert realized["USD"]["return_pct"] == 40.0
+        assert realized["USD"]["sales"] == 1
+
+    def test_trade_history_realized_pnl_per_currency(self) -> None:
+        ctx = AssistantToolContext(user_id="u1", fund="TEST")
+        # Mixed CAD + USD sells must never be summed into one number.
+        trades = pd.DataFrame(
+            [
+                {"timestamp": "2026-01-05", "ticker": "USA", "reason": "SELL: trim", "quantity": 10, "price": 12.0, "total_value": 120.0, "pnl": 30.0, "cost_basis": 90.0, "currency": "USD"},
+                {"timestamp": "2026-01-06", "ticker": "CAN.TO", "reason": "SELL: exit", "quantity": 5, "price": 8.0, "total_value": 40.0, "pnl": -10.0, "cost_basis": 50.0, "currency": "CAD"},
+            ]
+        )
+        with patch("flask_data_utils.get_trade_log_flask", return_value=trades):
+            data = json.loads(execute_tool("get_trade_history", {}, ctx))
+        realized = data["summary"]["realized_pnl_by_currency"]
+        assert realized["USD"]["pnl"] == 30.0
+        assert realized["CAD"]["pnl"] == -10.0
+        # Two distinct currency buckets, kept separate.
+        assert set(realized.keys()) == {"USD", "CAD"}
 
     def test_trade_history_no_trades(self) -> None:
         ctx = AssistantToolContext(user_id="u1", fund="TEST")

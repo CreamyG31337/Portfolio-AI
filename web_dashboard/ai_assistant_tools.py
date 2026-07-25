@@ -798,6 +798,11 @@ def _tool_get_trade_history(
 
     work = work.sort_values("parsed_ts", ascending=False, na_position="last")
 
+    # Realized P&L is persisted per sell row by the FIFO processor (trade_log.pnl,
+    # with the matched cost_basis). Surface it when present; native currency per row,
+    # so realized totals are aggregated per currency (never CAD+USD summed together).
+    has_pnl = "pnl" in work.columns
+
     rows: list[dict[str, Any]] = []
     buys = sells = 0
     bought_total = sold_total = 0.0
@@ -817,22 +822,27 @@ def _tool_get_trade_history(
             total = None
         ts = getattr(row, "parsed_ts", None)
         date_str = ts.strftime("%Y-%m-%d") if ts is not None and pd.notna(ts) else None
-        rows.append(
-            {
-                "date": date_str,
-                "action": action,
-                "ticker": sym,
-                "qty": _num(qty),
-                "price": _num(price),
-                "total": _num(total),
-            }
-        )
+        trade_row = {
+            "date": date_str,
+            "action": action,
+            "ticker": sym,
+            "qty": _num(qty),
+            "price": _num(price),
+            "total": _num(total),
+        }
+        # Only sells carry realized P&L; buys default to 0 in the DB.
+        if has_pnl and is_sell_reason(reason):
+            trade_row["realized_pnl"] = _num(getattr(row, "pnl", None))
+            trade_row["currency"] = str(getattr(row, "currency", "") or "") or None
+        rows.append(trade_row)
 
     # Summary over the full filtered set (not just the returned page).
     if reason_series is not None:
         sell_mask = work["reason"].apply(is_sell_reason)
         sells = int(sell_mask.sum())
         buys = int(len(work) - sells)
+    # Realized P&L accumulated per currency (pnl is stored in the trade's native currency).
+    realized: dict[str, dict[str, float]] = {}
     for row in work.itertuples(index=False):
         try:
             t = getattr(row, "total_value", None)
@@ -843,13 +853,38 @@ def _tool_get_trade_history(
             t = float(t)
         except (TypeError, ValueError):
             t = 0.0
-        if is_sell_reason(getattr(row, "reason", "") or ""):
+        is_sell = is_sell_reason(getattr(row, "reason", "") or "")
+        if is_sell:
             sold_total += t
         else:
             bought_total += t
+        if has_pnl and is_sell:
+            ccy = str(getattr(row, "currency", "") or "USD").upper()
+            bucket = realized.setdefault(ccy, {"pnl": 0.0, "cost_basis": 0.0, "sales": 0})
+            bucket["pnl"] += _num(getattr(row, "pnl", None)) or 0.0
+            bucket["cost_basis"] += _num(getattr(row, "cost_basis", None)) or 0.0
+            bucket["sales"] += 1
+
+    realized_by_currency: dict[str, dict[str, Any]] = {}
+    for ccy, b in realized.items():
+        cb = b["cost_basis"]
+        realized_by_currency[ccy] = {
+            "pnl": round(b["pnl"], 2),
+            "cost_basis": round(cb, 2),
+            "return_pct": round(b["pnl"] / cb * 100, 2) if cb > 0 else None,
+            "sales": b["sales"],
+        }
 
     if not rows:
         return _no_data("no_data", fund=ctx.fund, ticker=ticker or None)
+    summary: dict[str, Any] = {
+        "buys": buys,
+        "sells": sells,
+        "gross_bought": round(bought_total, 2),
+        "gross_sold": round(sold_total, 2),
+    }
+    if realized_by_currency:
+        summary["realized_pnl_by_currency"] = realized_by_currency
     return _ok(
         {
             "fund": ctx.fund,
@@ -857,13 +892,11 @@ def _tool_get_trade_history(
             "count": len(rows),
             "matched": int(len(work)),
             "trades": rows,
-            "summary": {
-                "buys": buys,
-                "sells": sells,
-                "gross_bought": round(bought_total, 2),
-                "gross_sold": round(sold_total, 2),
-            },
-            "note": "Realized P&L per round-trip not included in v1.",
+            "summary": summary,
+            "note": (
+                "Realized P&L is FIFO, matched and stored at sell time; "
+                "totals are per currency (native), not converted to a base currency."
+            ),
         }
     )
 
@@ -1122,8 +1155,9 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "get_trade_history",
             "description": (
                 "Past executed trades for this fund (date/action/ticker/qty/price/total) "
-                "plus buy/sell counts. Filter by ticker, action, or since-date. "
-                "Realized P&L per round-trip is not included yet."
+                "plus buy/sell counts. Sell rows carry realized_pnl; the summary reports "
+                "realized_pnl_by_currency (FIFO, native currency — never sum across currencies). "
+                "Filter by ticker, action, or since-date."
             ),
             "parameters": {
                 "type": "object",

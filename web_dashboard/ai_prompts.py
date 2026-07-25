@@ -58,7 +58,7 @@ You have tools. Call them when needed:
 - get_signals_overview — watchlist signal counts / top tickers
 - get_holdings_snapshot — lean current fund positions (optional ticker filter)
 - get_portfolio_performance — fund return/peak/drawdown/equity curve over a window (window='all' for since inception, or '30d'/'90d'/'1y'/'2y')
-- get_trade_history — past executed trades (filter by ticker/action/since); realized P&L per round-trip not available yet
+- get_trade_history — past executed trades (filter by ticker/action/since); sell rows include realized_pnl and the summary has realized_pnl_by_currency (FIFO; report each currency separately, never summed)
 - get_price_history — a ticker's daily closes over a window: high/low, % change, and the 5 biggest single-day moves with dates
 - search_web — live news/web via SearXNG (news only; NOT a substitute for entry levels); widen time_range (day/week/month/year) for older events
 - search_research — semantic search of internal research articles
