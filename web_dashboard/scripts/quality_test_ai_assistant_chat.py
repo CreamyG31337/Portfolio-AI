@@ -85,6 +85,26 @@ QUESTIONS: list[dict[str, str]] = [
         "family": "event_investigation",
         "q": "Look at TSM's price history over the last 90 days, find its biggest single-day move, and use web search to explain what drove it. Do not guess.",
     },
+    {
+        "family": "track_record",
+        "q": "Which of our stance sources or verdicts have actually been right over the last 30 days? Use the track record; note small samples.",
+    },
+    {
+        "family": "thesis_attention",
+        "q": "Which of my thesis threads need attention right now (due, stale, or in tension)? Use tools; don't invent.",
+    },
+    {
+        "family": "confluence",
+        "q": "Are there any tickers where multiple independent signals are stacking up recently? Use the confluence tool.",
+    },
+    {
+        "family": "ideas_triage",
+        "q": "What new discovery ideas came in that I haven't triaged yet? List the top few with tickers.",
+    },
+    {
+        "family": "earnings",
+        "q": "Do any of my current holdings report earnings soon? Check holdings, then their earnings dates.",
+    },
 ]
 
 
@@ -146,6 +166,11 @@ def _probe_tools(fund: str, sb: Any) -> None:
         ("get_portfolio_performance", {"window": "all"}),
         ("get_trade_history", {"limit": 5}),
         ("get_price_history", {"ticker": "TSM", "window": "90d"}),
+        ("get_track_record", {"horizon_days": 30}),
+        ("get_theses_attention", {}),
+        ("get_confluence", {"days": 7}),
+        ("get_ideas_triage", {"limit": 5}),
+        ("get_earnings_calendar", {"tickers": ["TSM", "AAPL"]}),
         ("search_web", {"query": "TSM stock news", "time_range": "month"}),
     ]
     print("\n========== TOOL PROBES ==========")

@@ -32,10 +32,12 @@ from glm_transport import GlmMessageResult, _normalize_tool_calls
 
 class TestQuestionMatrix:
     def test_has_expected_families(self) -> None:
-        assert len(QUESTION_MATRIX) == 12
+        assert len(QUESTION_MATRIX) == 17
         families = {row["family"] for row in QUESTION_MATRIX}
         assert "portfolio_performance" in families
         assert "event_investigation" in families
+        # A4 wishlist tools.
+        assert {"track_record", "thesis_attention", "confluence", "ideas_triage", "earnings"} <= families
 
     def test_required_tools_covered_by_catalog(self) -> None:
         names = catalog_tool_names()

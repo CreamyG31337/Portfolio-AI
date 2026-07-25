@@ -116,6 +116,46 @@ QUESTION_MATRIX: list[QuestionFamily] = [
         "pulse_fields": [],
         "notes": "price_history biggest_moves -> search_web(time_range) for the cause.",
     },
+    {
+        "id": 13,
+        "family": "track_record",
+        "example": "Which of our signals/sources have actually been right lately?",
+        "expected_tools": ["get_track_record"],
+        "pulse_fields": [],
+        "notes": "Learn-layer hit rate / excess return by source/verdict/domain; not a live signal.",
+    },
+    {
+        "id": 14,
+        "family": "thesis_attention",
+        "example": "Which of my thesis threads need a review / look stale or in tension?",
+        "expected_tools": ["get_theses_attention"],
+        "pulse_fields": [],
+        "notes": "Advisory human threads flagged due/stale/weak or LLM TENSION/STALE_THESIS.",
+    },
+    {
+        "id": 15,
+        "family": "confluence",
+        "example": "Any tickers where multiple signals are stacking up right now?",
+        "expected_tools": ["get_confluence"],
+        "pulse_fields": [],
+        "notes": "Independent signal families aligning; score = how many, direction bullish/risk.",
+    },
+    {
+        "id": 16,
+        "family": "ideas_triage",
+        "example": "What new ideas came in this week that I haven't looked at?",
+        "expected_tools": ["get_ideas_triage"],
+        "pulse_fields": [],
+        "notes": "Untriaged Alpha Research/Opportunity Discovery; confirm with get_ticker_setup.",
+    },
+    {
+        "id": 17,
+        "family": "earnings",
+        "example": "Do any of my holdings report earnings soon?",
+        "expected_tools": ["get_earnings_calendar", "get_holdings_snapshot"],
+        "pulse_fields": [],
+        "notes": "get_holdings_snapshot tickers -> get_earnings_calendar(tickers=...).",
+    },
 ]
 
 # Tools that must exist in the v1 catalog (union of matrix expectations).
@@ -130,6 +170,11 @@ REQUIRED_TOOL_NAMES: frozenset[str] = frozenset(
         "get_portfolio_performance",
         "get_trade_history",
         "get_price_history",
+        "get_track_record",
+        "get_theses_attention",
+        "get_confluence",
+        "get_ideas_triage",
+        "get_earnings_calendar",
         "search_web",
         "search_research",
     }

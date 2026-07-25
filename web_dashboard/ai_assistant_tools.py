@@ -45,7 +45,25 @@ def _truncate_json(payload: dict[str, Any], max_chars: int = _MAX_TOOL_JSON_CHAR
         return raw
     # Progressive shrink for list-heavy payloads
     shrunk = dict(payload)
-    for key in ("candidates", "results", "articles", "sectors", "holdings", "top_signals"):
+    for key in (
+        "candidates",
+        "results",
+        "articles",
+        "sectors",
+        "holdings",
+        "top_signals",
+        "theses",
+        "events",
+        "ideas",
+        "earnings",
+        "by_source",
+        "by_domain",
+        "best_calls",
+        "worst_calls",
+        "trades",
+        "curve",
+        "biggest_moves",
+    ):
         val = shrunk.get(key)
         if isinstance(val, list) and len(val) > 3:
             shrunk[key] = val[: max(3, len(val) // 2)]
@@ -1008,6 +1026,401 @@ def _num(v: Any) -> float | None:
         return None
 
 
+def _clamp_int(v: Any, *, default: int, lo: int, hi: int) -> int:
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return default
+    return max(lo, min(hi, n))
+
+
+def _round_or_none(v: Any, ndigits: int = 2) -> float | None:
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    if f != f:  # NaN
+        return None
+    return round(f, ndigits)
+
+
+def _pct(frac: Any) -> float | None:
+    f = _round_or_none(frac, 6)
+    return None if f is None else round(f * 100.0, 1)
+
+
+def _tool_get_track_record(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Learn-layer track record: were our stances right? Hit rate + excess return
+    sliced by stance source, verdict, and evidence domain (source-ROI).
+    """
+    from track_record_service import build_track_record_summary
+
+    horizon_days = _clamp_int(args.get("horizon_days"), default=30, lo=1, hi=365)
+    if horizon_days not in (7, 30, 90):
+        horizon_days = 30
+    try:
+        summary = build_track_record_summary(_postgres(), horizon_days=horizon_days)
+    except Exception as exc:
+        logger.warning("get_track_record failed: %s", exc)
+        return _no_data("query_failed")
+
+    total = int(summary.get("total_scored") or 0)
+    if total == 0:
+        return _no_data("no_data", horizon_days=horizon_days)
+
+    counts = summary.get("counts_by_source") or {}
+    rate_by_source = summary.get("hit_rate_by_source") or {}
+    avg_excess = summary.get("avg_excess_by_source") or {}
+    sources: list[dict[str, Any]] = []
+    for src, bucket in counts.items():
+        scored = int((bucket or {}).get("scored") or 0)
+        if scored <= 0:
+            continue
+        sources.append(
+            {
+                "source": src,
+                "scored": scored,
+                "hits": int((bucket or {}).get("hits") or 0),
+                "hit_rate_pct": _pct(rate_by_source.get(src)),
+                "avg_excess_return": _round_or_none(avg_excess.get(src), 4),
+            }
+        )
+    # Rank by sample size first so thin, noisy sources don't top the list.
+    sources.sort(key=lambda r: (-r["scored"], -(r["hit_rate_pct"] or 0)))
+
+    verdicts: dict[str, dict[str, Any]] = {}
+    vcounts = summary.get("counts_by_verdict") or {}
+    vrate = summary.get("hit_rate_by_verdict") or {}
+    for v, bucket in vcounts.items():
+        scored = int((bucket or {}).get("scored") or 0)
+        if scored <= 0:
+            continue
+        verdicts[v] = {"scored": scored, "hit_rate_pct": _pct(vrate.get(v))}
+
+    def _call(row: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "ticker": row.get("ticker"),
+            "source": row.get("source"),
+            "excess_return": _round_or_none(row.get("excess_return"), 4),
+        }
+
+    best = [_call(r) for r in (summary.get("best_calls") or [])[:3]]
+    worst = [_call(r) for r in (summary.get("worst_calls") or [])[:3]]
+
+    domains: list[dict[str, Any]] = []
+    for d in (summary.get("by_domain") or [])[:5]:
+        domains.append(
+            {
+                "domain": d.get("domain"),
+                "scored": d.get("scored"),
+                "hit_rate_pct": _pct(d.get("hit_rate")),
+                "mean_excess": _round_or_none(d.get("mean_excess"), 4),
+            }
+        )
+
+    return _ok(
+        {
+            "horizon_days": horizon_days,
+            "total_scored": total,
+            "by_source": sources[:8],
+            "by_verdict": verdicts,
+            "by_domain": domains,
+            "best_calls": best,
+            "worst_calls": worst,
+            "note": (
+                "hit_rate_pct = share of stances that beat their benchmark over the "
+                "horizon; excess_return is vs benchmark. Low 'scored' = small sample, "
+                "treat as noisy. Use to weight which sources/verdicts to trust — not a "
+                "buy/sell signal by itself."
+            ),
+        }
+    )
+
+
+def _tool_get_theses_attention(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Human thesis threads needing review: due/stale/weak or LLM TENSION/STALE_THESIS."""
+    from user_insights_service import list_theses_attention
+
+    ticker = str(args.get("ticker") or "").upper().strip() or None
+    limit = _clamp_int(args.get("limit"), default=15, lo=1, hi=40)
+    try:
+        # Pass ticker into the service (SQL filter) so a global top-N cannot hide it.
+        rows = list_theses_attention(_postgres(), limit=limit, ticker=ticker)
+    except Exception as exc:
+        logger.warning("get_theses_attention failed: %s", exc)
+        return _no_data("query_failed")
+
+    out: list[dict[str, Any]] = []
+    for r in rows or []:
+        tk = str(r.get("ticker") or "").upper()
+        out.append(
+            {
+                "ticker": tk or None,
+                "title": (str(r.get("title") or "")[:120] or None),
+                "disposition": r.get("disposition"),
+                "reasons": r.get("attention_reasons") or [],
+                "llm_verdict": r.get("llm_verdict") or None,
+                "age_days": r.get("age_days"),
+                "review_status": r.get("review_status"),
+            }
+        )
+    if not out:
+        return _no_data("no_data", ticker=ticker)
+    return _ok(
+        {
+            "count": len(out),
+            "theses": out,
+            "note": (
+                "Human thesis threads flagged for review (due/stale/weak, or the LLM "
+                "review found TENSION / STALE_THESIS). Advisory only — surface them so "
+                "the user can revisit; do not auto-trade off them."
+            ),
+        }
+    )
+
+
+def _tool_get_confluence(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Recent confluence events: multiple independent signal families aligning on a ticker."""
+    from confluence_service import fetch_recent_confluence_events
+
+    ticker = str(args.get("ticker") or "").upper().strip()
+    days = _clamp_int(args.get("days"), default=7, lo=1, hi=30)
+    limit = _clamp_int(args.get("limit"), default=15, lo=1, hi=25)
+    tickers = [ticker] if ticker else None
+    try:
+        rows = fetch_recent_confluence_events(
+            _postgres(), tickers=tickers, days=days, limit=limit
+        )
+    except Exception as exc:
+        logger.warning("get_confluence failed: %s", exc)
+        return _no_data("query_failed")
+    if not rows:
+        return _no_data("no_data", ticker=ticker or None, days=days)
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        fams = r.get("families")
+        if not isinstance(fams, list):
+            fams = [fams] if fams else []
+        out.append(
+            {
+                "ticker": str(r.get("ticker") or "").upper() or None,
+                "direction": r.get("direction"),
+                "score": r.get("score"),
+                "families": [str(f) for f in fams],
+                "as_of": str(r.get("as_of") or "")[:10] or None,
+            }
+        )
+    return _ok(
+        {
+            "count": len(out),
+            "days": days,
+            "events": out,
+            "note": (
+                "Confluence = several independent signal families (insider / dilution / "
+                "filing / confluence) landing on the same ticker; higher score = more "
+                "families aligned. direction='risk' can downgrade a BUY."
+            ),
+        }
+    )
+
+
+def _tool_get_ideas_triage(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Untriaged discovery ideas (Alpha Research / Opportunity Discovery), highest relevance first."""
+    from today_briefing_service import fetch_alpha_ideas
+
+    ticker = str(args.get("ticker") or "").upper().strip() or None
+    limit = _clamp_int(args.get("limit"), default=12, lo=1, hi=25)
+    try:
+        rows = fetch_alpha_ideas(_postgres(), limit=limit, ticker=ticker)
+    except Exception as exc:
+        logger.warning("get_ideas_triage failed: %s", exc)
+        return _no_data("query_failed")
+    if not rows:
+        return _no_data("no_data", ticker=ticker)
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        out.append(
+            {
+                "title": (str(r.get("title") or "")[:140] or None),
+                "tickers": [str(t).upper() for t in (r.get("tickers") or [])][:8],
+                "relevance": _round_or_none(r.get("relevance_score")),
+                "type": r.get("article_type"),
+                "source": r.get("source"),
+                "fetched_at": str(r.get("fetched_at") or "")[:10] or None,
+            }
+        )
+    return _ok(
+        {
+            "count": len(out),
+            "ideas": out,
+            "note": (
+                "Untriaged discovery ideas from the last 14 days (highest relevance "
+                "first). Raw ideas, not vetted candidates — confirm with get_ticker_setup "
+                "before acting."
+            ),
+        }
+    )
+
+
+def _next_earnings_date(yf: Any, ticker: str):
+    """Best-effort next *upcoming* earnings date via yfinance; None on failure or only past."""
+    from datetime import date as _date
+    from datetime import datetime as _dt
+
+    def _to_date(v: Any):
+        if v is None:
+            return None
+        if isinstance(v, _date) and not isinstance(v, _dt):
+            return v
+        if isinstance(v, _dt):
+            return v.date()
+        try:
+            return _dt.fromisoformat(str(v)[:10]).date()
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        tk = yf.Ticker(ticker)
+    except Exception:
+        return None
+
+    dates: list[Any] = []
+    # Newer yfinance: .calendar is a dict with 'Earnings Date': [date, ...].
+    try:
+        cal = tk.calendar
+    except Exception:
+        cal = None
+    if isinstance(cal, dict):
+        ed = cal.get("Earnings Date")
+        if isinstance(ed, (list, tuple)):
+            dates = [_to_date(x) for x in ed]
+        elif ed is not None:
+            dates = [_to_date(ed)]
+    elif cal is not None:
+        # Older yfinance: DataFrame with an 'Earnings Date' row.
+        try:
+            if hasattr(cal, "index") and "Earnings Date" in list(cal.index):
+                val = cal.loc["Earnings Date"]
+                seq = val.tolist() if hasattr(val, "tolist") else [val]
+                dates = [_to_date(x) for x in seq]
+        except Exception:
+            pass
+    if not any(d for d in dates):
+        try:
+            df = tk.get_earnings_dates(limit=8)
+            if df is not None and not getattr(df, "empty", True):
+                dates = [_to_date(i) for i in df.index]
+        except Exception:
+            pass
+
+    dates = [d for d in dates if d is not None]
+    if not dates:
+        return None
+    today = _date.today()
+    future = sorted(d for d in dates if d >= today)
+    # Only upcoming dates — past "last known" dates confused the model as "next".
+    return future[0] if future else None
+
+
+def _tool_get_earnings_calendar(
+    ctx: AssistantToolContext,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    """Next scheduled earnings date per ticker (on-demand yfinance read; no DB writes)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from datetime import date as _date
+
+    tickers: list[str] = []
+    raw = args.get("tickers")
+    if isinstance(raw, list):
+        tickers = [str(t).upper().strip() for t in raw if str(t).strip()]
+    one = str(args.get("ticker") or "").upper().strip()
+    if one:
+        tickers.append(one)
+    seen: set[str] = set()
+    tickers = [t for t in tickers if not (t in seen or seen.add(t))]
+    if not tickers:
+        return _no_data(
+            "missing_ticker",
+            message="Pass ticker or tickers[] (e.g. holdings from get_holdings_snapshot).",
+        )
+    tickers = tickers[:10]
+
+    try:
+        import yfinance as yf
+    except Exception as exc:
+        logger.warning("get_earnings_calendar: yfinance unavailable: %s", exc)
+        return _no_data("query_failed", message="earnings data source unavailable")
+
+    today = _date.today()
+
+    def _one(t: str) -> dict[str, Any]:
+        d = _next_earnings_date(yf, t)
+        if d is None:
+            return {"ticker": t, "next_earnings_date": None, "days_until": None}
+        return {
+            "ticker": t,
+            "next_earnings_date": d.isoformat(),
+            "days_until": (d - today).days,
+        }
+
+    events: list[dict[str, Any]] = []
+    # Parallelize yfinance I/O — sequential calls were too slow in the chat tool loop.
+    workers = min(8, len(tickers))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_one, t): t for t in tickers}
+        by_ticker: dict[str, dict[str, Any]] = {}
+        for fut in as_completed(futures):
+            t = futures[fut]
+            try:
+                by_ticker[t] = fut.result()
+            except Exception as exc:
+                logger.warning("get_earnings_calendar %s failed: %s", t, exc)
+                by_ticker[t] = {
+                    "ticker": t,
+                    "next_earnings_date": None,
+                    "days_until": None,
+                }
+        events = [by_ticker[t] for t in tickers]
+
+    events.sort(
+        key=lambda e: (
+            e["days_until"] is None,
+            e["days_until"] if e["days_until"] is not None else 0,
+        )
+    )
+    if not any(e["next_earnings_date"] for e in events):
+        return _no_data("no_data", tickers=tickers)
+    return _ok(
+        {
+            "as_of": today.isoformat(),
+            "count": len(events),
+            "earnings": events,
+            "note": (
+                "Next *upcoming* earnings per ticker (yfinance, on-demand). "
+                "Dates may be estimates/TBC; next_earnings_date=null means no upcoming "
+                "date was available (past-only dates are omitted)."
+            ),
+        }
+    )
+
+
 TOOL_HANDLERS: dict[str, Callable[[AssistantToolContext, dict[str, Any]], dict[str, Any]]] = {
     "list_entry_candidates": _tool_list_entry_candidates,
     "get_ticker_setup": _tool_get_ticker_setup,
@@ -1018,6 +1431,11 @@ TOOL_HANDLERS: dict[str, Callable[[AssistantToolContext, dict[str, Any]], dict[s
     "get_portfolio_performance": _tool_get_portfolio_performance,
     "get_trade_history": _tool_get_trade_history,
     "get_price_history": _tool_get_price_history,
+    "get_track_record": _tool_get_track_record,
+    "get_theses_attention": _tool_get_theses_attention,
+    "get_confluence": _tool_get_confluence,
+    "get_ideas_triage": _tool_get_ideas_triage,
+    "get_earnings_calendar": _tool_get_earnings_calendar,
     "search_web": _tool_search_web,
     "search_research": _tool_search_research,
 }
@@ -1245,6 +1663,107 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "min_similarity": {"type": "number"},
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_track_record",
+            "description": (
+                "Learn-layer scorecard: were our past stances right? Hit rate and average "
+                "excess-return vs benchmark, sliced by stance source, LLM verdict "
+                "(ALIGNED/TENSION), and evidence domain (source-ROI), plus best/worst calls. "
+                "Use to judge which signals/sources to trust. Not a live buy/sell signal."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "horizon_days": {
+                        "type": "integer",
+                        "enum": [7, 30, 90],
+                        "description": "Scoring horizon in days (default 30)",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_theses_attention",
+            "description": (
+                "Human thesis threads that need review: due/stale/weak, or the LLM review "
+                "flagged TENSION / STALE_THESIS (stored stance conflicts with the thread). "
+                "Advisory — surface for the user to revisit, never auto-trade. Optional ticker filter."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Optional ticker filter"},
+                    "limit": {"type": "integer", "description": "Max rows (1-40)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_confluence",
+            "description": (
+                "Recent confluence events: multiple independent signal families "
+                "(insider/dilution/filing/…) aligning on the same ticker. Higher score = "
+                "more families; direction can be bullish or risk. Optional ticker filter; "
+                "days window (default 7)."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Optional ticker filter"},
+                    "days": {"type": "integer", "description": "Lookback days (1-30, default 7)"},
+                    "limit": {"type": "integer", "description": "Max rows (1-25)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_ideas_triage",
+            "description": (
+                "Untriaged discovery ideas (Alpha Research / Opportunity Discovery) from the "
+                "last 14 days, highest relevance first. Raw ideas, not vetted candidates — "
+                "confirm with get_ticker_setup before acting. Optional ticker filter."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Optional ticker prefix filter"},
+                    "limit": {"type": "integer", "description": "Max rows (1-25)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_earnings_calendar",
+            "description": (
+                "Next upcoming earnings date per ticker (on-demand). Pass ticker or tickers[] "
+                "(e.g. holdings from get_holdings_snapshot to check 'any holdings reporting "
+                "soon?'). Returns next date + days_until; null when no upcoming date. "
+                "Dates may be estimates/TBC. Up to 10 tickers."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ticker": {"type": "string", "description": "Single ticker"},
+                    "tickers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Up to 10 tickers",
+                    },
+                },
             },
         },
     },

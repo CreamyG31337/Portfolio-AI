@@ -329,18 +329,27 @@ def list_theses_due(
     include_weak_always: bool = True,
     limit: int = 100,
     now: datetime | None = None,
+    ticker: str | None = None,
 ) -> list[dict[str, Any]]:
     """Active theses due for human review (soft/hard age) and/or weak drafts.
 
     Does not bump last_reviewed_at. Sorted: weak first, then stale before soft, then oldest.
+    Optional ``ticker`` filters in SQL so callers are not capped by a global top-N pool.
     """
     soft = max(1, soft_days)
     hard = max(soft, hard_days)
     now_ts = now or datetime.now(UTC)
     # Fetch a wider pool then classify in Python so weak always-include works.
     fetch_limit = max(1, min(limit * 4, 500))
+    clauses = ["t.status = 'active'"]
+    params: list[Any] = []
+    if ticker:
+        clauses.append("t.ticker = %s")
+        params.append(_normalize_ticker(ticker))
+    params.append(fetch_limit)
+    where = " AND ".join(clauses)
     rows = pg.execute_query(
-        """
+        f"""
         SELECT t.*,
                (SELECT COUNT(*)::int FROM thesis_entries e WHERE e.thesis_id = t.id) AS entry_count,
                (SELECT COUNT(*)::int FROM thesis_evidence ev WHERE ev.thesis_id = t.id) AS evidence_count,
@@ -357,11 +366,11 @@ def list_theses_due(
                    LIMIT 1
                ) AS opening_metadata
         FROM ticker_theses t
-        WHERE t.status = 'active'
+        WHERE {where}
         ORDER BY COALESCE(t.last_reviewed_at, t.created_at) ASC NULLS FIRST
         LIMIT %s
         """,
-        (fetch_limit,),
+        tuple(params),
     )
 
     due: list[dict[str, Any]] = []
@@ -1001,15 +1010,24 @@ def list_theses_attention(
     hard_days: int = DEFAULT_HARD_STALE_DAYS,
     limit: int = 40,
     now: datetime | None = None,
+    ticker: str | None = None,
 ) -> list[dict[str, Any]]:
     """Theses that need human attention: due/stale/weak and/or LLM TENSION/STALE_THESIS.
 
     Used by Today briefing and Ideas badges (ROADMAP §2.6 R2). Deduped by thesis id.
+    Optional ``ticker`` filters in SQL (avoids false misses from a global top-N pool).
     """
     by_id: dict[str, dict[str, Any]] = {}
+    ticker_norm = _normalize_ticker(ticker) if ticker else None
 
     for row in list_theses_due(
-        pg, soft_days=soft_days, hard_days=hard_days, include_weak_always=True, limit=limit, now=now
+        pg,
+        soft_days=soft_days,
+        hard_days=hard_days,
+        include_weak_always=True,
+        limit=limit,
+        now=now,
+        ticker=ticker_norm,
     ):
         tid = str(row.get("id") or "")
         if not tid:
@@ -1025,9 +1043,19 @@ def list_theses_attention(
         row["llm_verdict"] = row.get("llm_verdict")
         by_id[tid] = row
 
+    tension_clauses = [
+        "t.status = 'active'",
+        "UPPER(COALESCE(ll.metadata->>'verdict', '')) IN ('TENSION', 'STALE_THESIS')",
+    ]
+    tension_params: list[Any] = []
+    if ticker_norm:
+        tension_clauses.append("t.ticker = %s")
+        tension_params.append(ticker_norm)
+    tension_params.append(max(1, min(limit, 100)))
+    tension_where = " AND ".join(tension_clauses)
     try:
         tension_rows = pg.execute_query(
-            """
+            f"""
             WITH latest_llm AS (
                 SELECT DISTINCT ON (thesis_id)
                        thesis_id, body, metadata, created_at
@@ -1042,12 +1070,11 @@ def list_theses_attention(
                    UPPER(COALESCE(ll.metadata->>'verdict', '')) AS llm_verdict
             FROM ticker_theses t
             JOIN latest_llm ll ON ll.thesis_id = t.id
-            WHERE t.status = 'active'
-              AND UPPER(COALESCE(ll.metadata->>'verdict', '')) IN ('TENSION', 'STALE_THESIS')
+            WHERE {tension_where}
             ORDER BY ll.created_at DESC
             LIMIT %s
             """,
-            (max(1, min(limit, 100)),),
+            tuple(tension_params),
         )
     except Exception as exc:
         logger.warning("list_theses_attention llm_reply scan failed: %s", exc)
@@ -1113,22 +1140,21 @@ def thesis_attention_by_ticker(
     wanted = {_normalize_ticker(t) for t in tickers if t and str(t).strip()}
     if not wanted:
         return {}
-    rows = list_theses_attention(pg, limit=limit)
+    # Per-ticker queries so a global top-N pool cannot hide a watched name.
     out: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        t = _normalize_ticker(str(row.get("ticker") or ""))
-        if t not in wanted:
-            continue
-        out.setdefault(t, []).append(
-            {
-                "thesis_id": str(row.get("id")),
-                "title": row.get("title"),
-                "disposition": row.get("disposition"),
-                "intent": row.get("intent"),
-                "review_status": row.get("review_status"),
-                "llm_verdict": row.get("llm_verdict"),
-                "is_weak": bool(row.get("is_weak")),
-                "attention_reasons": row.get("attention_reasons") or [],
-            }
-        )
+    per_limit = max(1, min(limit, 20))
+    for t in wanted:
+        for row in list_theses_attention(pg, limit=per_limit, ticker=t):
+            out.setdefault(t, []).append(
+                {
+                    "thesis_id": str(row.get("id")),
+                    "title": row.get("title"),
+                    "disposition": row.get("disposition"),
+                    "intent": row.get("intent"),
+                    "review_status": row.get("review_status"),
+                    "llm_verdict": row.get("llm_verdict"),
+                    "is_weak": bool(row.get("is_weak")),
+                    "attention_reasons": row.get("attention_reasons") or [],
+                }
+            )
     return out
