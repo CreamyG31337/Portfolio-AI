@@ -392,8 +392,22 @@ class ChatHandler:
                 current_query,
             )
 
-            max_tool_rounds = 3
-            tool_wall_seconds = 90.0
+            # Multi-step investigations (e.g. price_history -> several search_web)
+            # need more than a couple of rounds; the wall clock bounds the worst case.
+            max_tool_rounds = 5
+            tool_wall_seconds = 120.0
+            # When the tool budget is exhausted mid-investigation, GLM tends to spill
+            # its next-search planning into the final answer. This nudge (injected only
+            # on the forced-final round) tells it to synthesize from what it has.
+            synthesis_nudge = {
+                "role": "system",
+                "content": (
+                    "You have no more tool calls available. Answer the user's question "
+                    "now using only the tool results already gathered. Cite the specific "
+                    "tickers, dates, numbers, and sources you found. Do NOT describe "
+                    "further searches you would run — give a clear, final synthesis."
+                ),
+            }
 
             def generate_glm():
                 try:
@@ -433,13 +447,18 @@ class ChatHandler:
                             yield f"data: {json.dumps({'error': 'Tool loop timed out', 'done': True})}\n\n"
                             return
 
+                        tools_on = round_i < max_tool_rounds
+                        # Forced-final round after tool use: prompt a clean synthesis.
+                        if not tools_on and working and working[-1].get("role") == "tool":
+                            working.append(synthesis_nudge)
+
                         result = glm_chat_completion_message(
                             working,
                             model=self.model,
                             temperature=temperature,
                             max_tokens=max_tokens,
-                            tools=TOOL_SCHEMAS if round_i < max_tool_rounds else None,
-                            tool_choice="auto" if round_i < max_tool_rounds else None,
+                            tools=TOOL_SCHEMAS if tools_on else None,
+                            tool_choice="auto" if tools_on else None,
                             timeout=90.0,
                             allow_cheap_fallback=True,
                         )

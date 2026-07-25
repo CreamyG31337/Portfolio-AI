@@ -760,3 +760,60 @@ class TestChatHandlerToolLoop:
         assert "get_market_brief" in body
         assert "Markets are RISK_ON" in body
         assert '"done": true' in body or '"done":true' in body
+
+    def test_glm_tool_loop_injects_synthesis_nudge_when_forced(self, app: Any) -> None:
+        """When the model keeps calling tools to the cap, the forced-final round
+        must disable tools AND inject a synthesis nudge so it stops planning."""
+        handler = ChatHandler(user_id="u1", model="glm-5.2", fund="TEST")
+
+        keep_calling = GlmMessageResult(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_x",
+                    "type": "function",
+                    "function": {"name": "get_price_history", "arguments": '{"ticker":"TSM"}'},
+                }
+            ],
+            finish_reason="tool_calls",
+        )
+        final = GlmMessageResult(
+            content="TSM fell 6.98% on 2026-07-01 amid a chip sell-off [source].",
+            tool_calls=[],
+            finish_reason="stop",
+        )
+        # 5 tool-calling rounds (0..4) then the forced-final round (5).
+        mock_glm = MagicMock(side_effect=[keep_calling] * 5 + [final])
+
+        with (
+            app.test_request_context("/api/v2/ai/chat", method="POST"),
+            patch("glm_config.get_zhipu_api_key", return_value="fake-key"),
+            patch("glm_transport.glm_chat_completion_message", mock_glm),
+            patch(
+                "ai_assistant_tools.execute_tool",
+                return_value=json.dumps({"ok": True, "biggest_moves": [{"date": "2026-07-01", "pct": -6.98}]}),
+            ),
+        ):
+            resp = handler._handle_glm_stream(
+                full_prompt="Why did TSM drop?",
+                system_prompt="sys",
+                conversation_history=[],
+                current_query="Why did TSM drop?",
+                enable_tools=True,
+            )
+            body = "".join(
+                c.decode("utf-8") if isinstance(c, (bytes, bytearray)) else str(c)
+                for c in resp.response
+            )
+
+        assert mock_glm.call_count == 6
+        final_call = mock_glm.call_args_list[-1]
+        # Forced-final round: tools disabled.
+        assert final_call.kwargs.get("tools") is None
+        # Synthesis nudge injected into the messages for that final call.
+        sent_messages = final_call.args[0]
+        assert any(
+            "no more tool calls" in str(m.get("content", "")).lower()
+            for m in sent_messages
+        ), "synthesis nudge not injected on forced-final round"
+        assert "TSM fell 6.98%" in body
