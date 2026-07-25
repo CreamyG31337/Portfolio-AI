@@ -7,6 +7,7 @@ Flask routes for admin user management, contributors, and contributor access.
 Migrated from app.py to follow the blueprint pattern.
 """
 
+from supabase_pagination import fetch_all_rows
 from flask import Blueprint, render_template, request, jsonify, redirect, url_for, session
 import logging
 import os
@@ -14,7 +15,6 @@ import re
 import sys
 import uuid
 from pathlib import Path
-from typing import Optional
 
 # Add parent directory to path to allow importing from root
 sys.path.append(str(Path(__file__).parent.parent))
@@ -25,22 +25,17 @@ from auth import require_admin, require_auth
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
 from flask_cache_utils import cache_data
-from dashboard_config import (
-    WEBAI_COOKIES_PATH,
-    COOKIE_REFRESH_LOG_PATH,
-    SHARED_COOKIES_DIR
-)
 import time
 from datetime import datetime
 import json
-from datetime import datetime, timedelta
+from datetime import timedelta, UTC
 # Scheduler imports
 try:
     from scheduler import (
-        get_scheduler, 
-        get_all_jobs_status, 
-        run_job_now, 
-        pause_job, 
+        get_scheduler,
+        get_all_jobs_status,
+        run_job_now,
+        pause_job,
         resume_job,
         start_scheduler,
         is_scheduler_running
@@ -292,19 +287,19 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
             # Check if provided trades have action column
             if existing_trades and len(existing_trades) > 0 and 'action' in existing_trades[0]:
                 has_action_column = True
-        
+
         # Build FIFO queue
         lots = deque()
         for t in existing_trades:
             # Determine if this is a BUY or SELL
             trade_action = None
-            
+
             if has_action_column and t.get('action'):
                 # Use action column if available
                 trade_action = str(t.get('action', '')).upper()
             else:
                 trade_action = infer_trade_action(t.get('reason', ''), default='BUY')
-            
+
             if trade_action in ('BUY', 'DIVIDEND'):
                 lots.append((Decimal(str(t['shares'])), Decimal(str(t['price']))))
             elif trade_action == 'SELL':
@@ -317,12 +312,12 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
                     else:
                         lots[0] = (l_shares - rem, l_price)
                         rem = Decimal('0')
-        
+
         # Calculate cost for this sell
         sell_shares_decimal = Decimal(str(sell_shares))
         total_cost = Decimal('0')
         remaining_sell = sell_shares_decimal
-        
+
         while remaining_sell > 0 and lots:
             l_shares, l_price = lots[0]
             if l_shares <= remaining_sell:
@@ -333,7 +328,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
                 total_cost += remaining_sell * l_price
                 lots[0] = (l_shares - remaining_sell, l_price)
                 remaining_sell = Decimal('0')
-        
+
         proceeds = Decimal(str(sell_shares * sell_price))
         pnl = float(proceeds - total_cost)
         return pnl
@@ -346,7 +341,7 @@ def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: f
 def _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment=False):
     """Get application logs with caching (5s TTL for near real-time)"""
     from log_handler import read_logs_from_file
-    
+
     try:
         # Get all filtered logs
         all_logs = read_logs_from_file(
@@ -357,7 +352,7 @@ def _get_cached_application_logs(level_filter, search, exclude_modules, since_de
             exclude_modules=exclude_modules if exclude_modules else None,
             since_deployment=since_deployment
         )
-        
+
         # Convert datetime objects to strings for cache compatibility
         serializable_logs = []
         for log in all_logs:
@@ -365,7 +360,7 @@ def _get_cached_application_logs(level_filter, search, exclude_modules, since_de
             if 'timestamp' in serializable_log and hasattr(serializable_log['timestamp'], 'strftime'):
                 serializable_log['timestamp'] = serializable_log['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
             serializable_logs.append(serializable_log)
-        
+
         # Logs are already sorted newest first by read_logs_from_file()
         return serializable_logs
     except Exception as e:
@@ -416,7 +411,7 @@ def _get_cached_users_flask():
     try:
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
+
         result = client.supabase.rpc('list_users_with_funds').execute()
         return result.data if result.data else []
     except Exception as e:
@@ -429,8 +424,8 @@ def _get_cached_contributors_flask():
     try:
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
-        from supabase_pagination import fetch_all_rows
+
+
         return fetch_all_rows(client, "contributors", select="id, name, email", order="name")
     except Exception as e:
         logger.error(f"Error getting contributors: {e}", exc_info=True)
@@ -444,13 +439,13 @@ def users_page():
     try:
         from flask_auth_utils import get_user_email_flask
         user_email = get_user_email_flask()
-        
+
         # Get navigation context
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_users')
-        
+
         logger.debug(f"Rendering users page for user: {user_email}")
-        
+
         from flask_auth_utils import can_modify_data_flask
         return render_template(
             "users.html",
@@ -486,21 +481,21 @@ def api_admin_users_list():
     """Get all users with their fund assignments (for Flask page)"""
     try:
         users = _get_cached_users_flask()
-        
+
         # Get stats
         stats = {
             "total_users": len(users),
             "total_funds": len(set(fund for user in users for fund in (user.get('funds') or []))),
             "total_assignments": sum(len(user.get('funds') or []) for user in users)
         }
-        
+
         return jsonify({"users": users, "stats": stats})
     except Exception as e:
         logger.error(f"Error in api_admin_users_list: {e}", exc_info=True)
         return jsonify({"error": "Failed to load users", "users": [], "stats": {"total_users": 0, "total_funds": 0, "total_assignments": 0}}), 500
 
 
-def _normalize_target_user_uuid(raw: object) -> Optional[str]:
+def _normalize_target_user_uuid(raw: object) -> str | None:
     if raw is None:
         return None
     try:
@@ -534,7 +529,7 @@ def api_admin_impersonate_start():
             return jsonify({"error": "Cannot view as yourself"}), 400
 
         users = _get_cached_users_flask()
-        target_email: Optional[str] = None
+        target_email: str | None = None
         for row in users:
             if str(row.get("user_id")) == target:
                 target_email = row.get("email")
@@ -594,13 +589,13 @@ def api_admin_grant_admin():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify user roles"}), 403
-        
+
         data = request.get_json()
         user_email = data.get('user_email')
-        
+
         if not user_email:
             return jsonify({"error": "User email required"}), 400
-        
+
         # Use service role key for admin operations
         service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
@@ -617,12 +612,12 @@ def api_admin_grant_admin():
             },
             json={"user_email": user_email}
         )
-        
+
         if response.status_code == 200:
             result_data = response.json()
             if isinstance(result_data, list) and len(result_data) > 0:
                 result_data = result_data[0]
-            
+
             if result_data and result_data.get('success'):
                 # Clear cache
                 _get_cached_users_flask.clear_all_cache()
@@ -644,13 +639,13 @@ def api_admin_revoke_admin():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify user roles"}), 403
-        
+
         data = request.get_json()
         user_email = data.get('user_email')
-        
+
         if not user_email:
             return jsonify({"error": "User email required"}), 400
-        
+
         # Use service role key for admin operations
         service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
@@ -667,12 +662,12 @@ def api_admin_revoke_admin():
             },
             json={"user_email": user_email}
         )
-        
+
         if response.status_code == 200:
             result_data = response.json()
             if isinstance(result_data, list) and len(result_data) > 0:
                 result_data = result_data[0]
-            
+
             if result_data and result_data.get('success'):
                 # Clear cache
                 _get_cached_users_flask.clear_all_cache()
@@ -847,13 +842,13 @@ def api_admin_delete_user():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot delete users"}), 403
-        
+
         data = request.get_json()
         user_email = data.get('user_email')
-        
+
         if not user_email:
             return jsonify({"error": "User email required"}), 400
-        
+
         # Use service role key for admin operations
         service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
         if not service_key:
@@ -870,7 +865,7 @@ def api_admin_delete_user():
             },
             json={"user_email": user_email}
         )
-        
+
         if response.status_code == 200:
             result_data = response.json()
             if result_data and result_data.get('success'):
@@ -895,31 +890,31 @@ def api_admin_send_invite():
         data = request.get_json() or {}
         user_email = data.get('user_email')
         full_name = (data.get('full_name') or '').strip()
-        
+
         if not user_email:
             return jsonify({"error": "User email required"}), 400
-        
+
         # Allow readonly_admin to send invite to themselves
         current_email = get_user_email_flask()
         can_send = can_modify_data_flask() or (user_email == current_email)
-        
+
         if not can_send:
             return jsonify({"error": "Read-only admin can only send invites to themselves"}), 403
-        
+
         # Use Supabase client to send magic link
         from supabase import create_client
         supabase_url = os.getenv("SUPABASE_URL")
         publishable_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
-        
+
         if not supabase_url or not publishable_key:
             return jsonify({"error": "Supabase configuration missing"}), 500
-        
+
         app_domain = os.getenv("APP_DOMAIN")
         if not app_domain:
             return jsonify({"error": "APP_DOMAIN environment variable is required"}), 500
-        
+
         redirect_url = os.getenv("MAGIC_LINK_REDIRECT_URL", f"https://{app_domain}/auth_callback.html")
-        
+
         supabase = create_client(supabase_url, publishable_key)
         otp_options = {
             "email_redirect_to": redirect_url
@@ -932,7 +927,7 @@ def api_admin_send_invite():
             "email": user_email,
             "options": otp_options
         })
-        
+
         if response:
             return jsonify({"success": True, "message": f"Invite sent to {user_email}"}), 200
         else:
@@ -949,29 +944,29 @@ def api_admin_update_contributor_email():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot update contributor emails"}), 403
-        
+
         data = request.get_json()
         contributor_name = data.get('contributor_name')
         contributor_id = data.get('contributor_id')
         contributor_type = data.get('contributor_type')  # 'contributor', 'fund_contribution', 'user'
         new_email = data.get('new_email')
-        
+
         if not new_email:
             return jsonify({"error": "New email address required"}), 400
-        
+
         # Validate email format
         import re
         email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
         if not re.match(email_pattern, new_email):
             return jsonify({"error": "Invalid email format"}), 400
-        
+
         from app import get_supabase_client
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database"}), 500
-        
+
         updates_made = []
-        
+
         # Update based on type
         if contributor_type == 'contributor' and contributor_id:
             try:
@@ -981,7 +976,7 @@ def api_admin_update_contributor_email():
                 updates_made.append("contributors table")
             except Exception as e:
                 logger.warning(f"Could not update contributors table: {e}")
-        
+
         # Always update fund_contributions for this contributor name
         try:
             client.supabase.table("fund_contributions").update(
@@ -990,21 +985,21 @@ def api_admin_update_contributor_email():
             updates_made.append("fund_contributions records")
         except Exception as e:
             logger.warning(f"Could not update fund_contributions: {e}")
-        
+
         # If it's a registered user, also update auth
         if contributor_type == 'user' and contributor_id:
             try:
                 from supabase import create_client
                 supabase_url = os.getenv("SUPABASE_URL")
                 service_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-                
+
                 if supabase_url and service_key:
                     admin_client = create_client(supabase_url, service_key)
-                    
+
                     # Check if email already exists
                     users_response = admin_client.auth.admin.list_users()
                     users_list = users_response if isinstance(users_response, list) else getattr(users_response, 'users', [])
-                    
+
                     email_exists = False
                     for u in users_list:
                         check_email = u.email if hasattr(u, 'email') else u.get('email') if isinstance(u, dict) else None
@@ -1013,19 +1008,19 @@ def api_admin_update_contributor_email():
                             if str(check_id) != str(contributor_id):
                                 email_exists = True
                                 break
-                    
+
                     if email_exists:
                         return jsonify({"error": f"Email {new_email} is already in use by another user"}), 400
-                    
+
                     # Update email in auth.users
                     update_response = admin_client.auth.admin.update_user_by_id(
                         contributor_id,
                         {"email": new_email}
                     )
-                    
+
                     if update_response and update_response.user:
                         updates_made.append("auth.users")
-                        
+
                         # Also update email in user_profiles table
                         try:
                             client.supabase.table("user_profiles").update(
@@ -1038,7 +1033,7 @@ def api_admin_update_contributor_email():
                         return jsonify({"error": "Failed to update email in auth.users"}), 500
             except Exception as auth_error:
                 logger.warning(f"Could not update auth.users: {auth_error}")
-        
+
         if updates_made:
             # Clear caches
             _get_cached_users_flask.clear_all_cache()
@@ -1075,7 +1070,7 @@ def api_admin_unregistered_contributors():
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database", "contributors": []}), 500
-        
+
         result = client.supabase.rpc('list_unregistered_contributors').execute()
         contributors = result.data if result.data else []
         return jsonify({"contributors": contributors})
@@ -1100,19 +1095,19 @@ def api_admin_contributor_access():
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database", "access": []}), 500
-        
+
         # Get access records
         access_result = client.supabase.table("contributor_access").select(
             "id, contributor_id, user_id, access_level, granted_at"
         ).execute()
-        
+
         if not access_result.data:
             return jsonify({"access": []})
-        
+
         # Get contributor and user details
         contributors = _get_cached_contributors_flask()
         users = _get_cached_users_flask()
-        
+
         # Optimize lookups by creating dictionaries
         contributors_map = {c['id']: c for c in contributors}
         users_map = {u.get('user_id'): u for u in users if u.get('user_id')}
@@ -1123,7 +1118,7 @@ def api_admin_contributor_access():
             contrib = contributors_map.get(access['contributor_id'], {})
             # Get user details
             user = users_map.get(access['user_id'], {})
-            
+
             access_list.append({
                 "id": access['id'],
                 "contributor": contrib.get('name', 'Unknown'),
@@ -1133,7 +1128,7 @@ def api_admin_contributor_access():
                 "access_level": access.get('access_level', 'viewer'),
                 "granted": access.get('granted_at', '')[:10] if access.get('granted_at') else ''
             })
-        
+
         return jsonify({"access": access_list})
     except Exception as e:
         logger.error(f"Error getting contributor access: {e}", exc_info=True)
@@ -1154,18 +1149,18 @@ def api_admin_grant_contributor_access():
         contributor_email = data.get('contributor_email')
         user_email = data.get('user_email')
         access_level = data.get('access_level', 'viewer')
-        
+
         if not contributor_email or not user_email:
             return jsonify({"error": "Contributor email and user email required"}), 400
-        
+
         if access_level not in ['viewer', 'manager', 'owner']:
             return jsonify({"error": "Invalid access level. Must be viewer, manager, or owner"}), 400
-        
+
         from app import get_supabase_client
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database"}), 500
-        
+
         result = client.supabase.rpc(
             'grant_contributor_access',
             {
@@ -1174,7 +1169,7 @@ def api_admin_grant_contributor_access():
                 'access_level': access_level
             }
         ).execute()
-        
+
         if result.data:
             result_data = result.data[0] if isinstance(result.data, list) else result.data
             if result_data.get('success'):
@@ -1197,15 +1192,15 @@ def api_admin_revoke_contributor_access():
         data = request.get_json()
         contributor_email = data.get('contributor_email')
         user_email = data.get('user_email')
-        
+
         if not contributor_email or not user_email:
             return jsonify({"error": "Contributor email and user email required"}), 400
-        
+
         from app import get_supabase_client
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database"}), 500
-        
+
         result = client.supabase.rpc(
             'revoke_contributor_access',
             {
@@ -1213,7 +1208,7 @@ def api_admin_revoke_contributor_access():
                 'user_email': user_email
             }
         ).execute()
-        
+
         if result.data:
             result_data = result.data[0] if isinstance(result.data, list) else result.data
             if result_data.get('success'):
@@ -1235,12 +1230,12 @@ def system_page():
     try:
         from flask_auth_utils import get_user_email_flask
         user_email = get_user_email_flask()
-        
+
         # Get navigation context
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_system')
-        
-        return render_template('system.html', 
+
+        return render_template('system.html',
                              user_email=user_email,
                              **nav_context)
     except Exception as e:
@@ -1252,7 +1247,7 @@ def system_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('system.html', 
+        return render_template('system.html',
                              user_email='Admin',
                              **nav_context)
 
@@ -1262,17 +1257,17 @@ def api_system_status():
     """Get overall system status"""
     try:
         from admin_utils import get_system_status_cached
-        
+
         # Get cached system stats
         status = get_system_status_cached()
-        
+
         # Get recent job logs
         recent_jobs = []
         try:
             from scheduler.scheduler_core import get_job_logs
             # List of key jobs to monitor
             jobs_to_check = ['exchange_rates', 'portfolio_update', 'social_sentiment']
-            
+
             for job_id in jobs_to_check:
                 try:
                     logs = get_job_logs(job_id, limit=1)
@@ -1288,7 +1283,7 @@ def api_system_status():
                     pass
         except ImportError:
             pass
-            
+
         return jsonify({
             "status": status,
             "jobs": recent_jobs
@@ -1303,15 +1298,15 @@ def logs_page():
     """Admin logs viewer page"""
     try:
         from flask_auth_utils import get_user_email_flask
-        
+
         user_email = get_user_email_flask()
-        
+
         # Get navigation context
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_logs')
         template_context = {**nav_context, "user_email": user_email}
         template_context.setdefault("user_theme", "system")
-        
+
         return render_template("logs.html", **template_context)
     except Exception as e:
         logger.error(f"Error rendering logs page: {e}", exc_info=True)
@@ -1339,7 +1334,7 @@ def api_logs_application():
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
-        
+
         # Multiple levels: empty → default (all except DEBUG); "All" → show all; else selected levels
         if not levels:
             level_filter = ["INFO", "WARNING", "ERROR", "PERF"]  # default: everything but DEBUG
@@ -1349,18 +1344,18 @@ def api_logs_application():
             level_filter = [l for l in levels if l in VALID_LOG_LEVELS]
             if not level_filter:
                 level_filter = None
-            
+
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
-        
+
         all_logs = _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment)
-        
+
         # Pagination
         total = len(all_logs)
         start = (page - 1) * limit
         end = start + limit
         logs = all_logs[start:end]
-        
+
         return jsonify({
             'logs': logs,
             'total': total,
@@ -1379,29 +1374,29 @@ def api_logs_ollama():
         limit = int(request.args.get('limit', 100))
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
-        
+
         # Validate inputs
         if limit < 1 or limit > 10000:
             limit = 100
         if page < 1:
             page = 1
-        
+
         all_lines = _get_cached_ollama_log_lines()
-        
+
         # Filter by search if provided
         if search:
             search_lower = search.lower()
             all_lines = [line for line in all_lines if line and search_lower in line.lower()]
-        
+
         # Filter out empty lines
         all_lines = [line for line in all_lines if line and line.strip()]
-        
+
         # Pagination
         total = len(all_lines)
         start = (page - 1) * limit
         end = start + limit
         lines = all_lines[start:end]
-        
+
         # Format logs (Ollama logs may not have structured format)
         logs = []
         for line in lines:
@@ -1412,7 +1407,7 @@ def api_logs_ollama():
                     'module': 'ollama',
                     'message': line.strip()
                 })
-        
+
         pages = (total + limit - 1) // limit if total > 0 else 1
         payload = {
             "logs": logs,
@@ -1444,7 +1439,7 @@ def api_admin_logs_application():
         search = request.args.get('search', '')
         page = int(request.args.get('page', 1))
         since_deployment = request.args.get('since_deployment', 'false').lower() == 'true'
-        
+
         if not levels:
             level_filter = ["INFO", "WARNING", "ERROR", "PERF"]
         elif "All" in levels:
@@ -1453,18 +1448,18 @@ def api_admin_logs_application():
             level_filter = [l for l in levels if l in VALID_LOG_LEVELS]
             if not level_filter:
                 level_filter = None
-            
+
         exclude_heartbeat = request.args.get('exclude_heartbeat', 'true').lower() == 'true'
         exclude_modules = ['scheduler.scheduler_core.heartbeat'] if exclude_heartbeat else None
-        
+
         all_logs = _get_cached_application_logs(level_filter, search, exclude_modules, since_deployment)
-        
+
         # Pagination
         total = len(all_logs)
         start = (page - 1) * limit
         end = start + limit
         logs = all_logs[start:end]
-        
+
         return jsonify({
             'logs': logs,
             'total': total,
@@ -1481,13 +1476,13 @@ def api_docker_containers():
     """List running docker containers"""
     if not os.path.exists("/var/run/docker.sock") and os.name != 'nt': # Minimal check
          # On Windows it might be different, typically npipe:////./pipe/docker_engine
-         pass 
+         pass
 
     try:
         import docker
         client = docker.from_env()
         containers = client.containers.list(all=True)
-        
+
         results = []
         for c in containers:
             results.append({
@@ -1496,10 +1491,10 @@ def api_docker_containers():
                 'status': c.status,
                 'image': c.image.tags[0] if c.image.tags else 'unknown'
             })
-            
+
         # Sort Ollama first
         results.sort(key=lambda x: (0 if 'ollama' in x['name'].lower() else 1, x['name']))
-        
+
         return jsonify({"containers": results})
     except ImportError:
         return jsonify({"error": "Docker python library not installed"}), 500
@@ -1515,14 +1510,14 @@ def api_docker_logs(container_id):
         import docker
         client = docker.from_env()
         container = client.containers.get(container_id)
-        
+
         tail = int(request.args.get('tail', 500))
         logs = container.logs(tail=tail).decode('utf-8', errors='replace')
-        
+
         # Split and reverse (newest first)
         lines = logs.split('\n')
         lines.reverse()
-        
+
         return jsonify({
             "logs": "\n".join(lines[:2000]), # Limit return size
             "name": container.name
@@ -1539,13 +1534,13 @@ def api_list_log_files():
         log_dir = Path(__file__).parent.parent / 'logs'
         if not log_dir.exists():
              return jsonify({"files": []})
-             
+
         files = []
         for f in log_dir.rglob("*.log"):
              files.append(str(f.relative_to(log_dir)))
         for f in log_dir.rglob("*.txt"):
              files.append(str(f.relative_to(log_dir)))
-             
+
         return jsonify({"files": sorted(files)})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1557,9 +1552,9 @@ def api_deployment_info():
     try:
         from log_handler import get_deployment_timestamp
         import os
-        
+
         deployment_timestamp = get_deployment_timestamp()
-        
+
         # Try to read full build stamp
         build_info = {}
         build_stamp_paths = [
@@ -1567,13 +1562,13 @@ def api_deployment_info():
             os.path.join(os.path.dirname(os.path.dirname(__file__)), 'build_stamp.json'),
             os.path.join(os.getcwd(), 'build_stamp.json')
         ]
-        
+
         for build_stamp_path in build_stamp_paths:
             if os.path.exists(build_stamp_path):
-                with open(build_stamp_path, 'r') as f:
+                with open(build_stamp_path) as f:
                     build_info = json.load(f)
                 break
-        
+
         return jsonify({
             "deployment_timestamp": deployment_timestamp.isoformat() if deployment_timestamp else None,
             "build_info": build_info
@@ -1592,10 +1587,10 @@ def api_clear_cache():
     """Clear all Flask caches"""
     try:
         from flask_cache_utils import clear_all_caches
-        
+
         clear_all_caches()
         logger.info("[System API] All caches cleared by admin")
-        
+
         return jsonify({
             "success": True,
             "message": "All caches cleared successfully"
@@ -1613,13 +1608,13 @@ def api_bump_cache_version():
     """Bump cache version to invalidate all cached functions"""
     try:
         from cache_version import bump_cache_version, get_cache_version
-        
+
         old_version = get_cache_version()
         bump_cache_version()
         new_version = get_cache_version()
-        
+
         logger.info(f"[System API] Cache version bumped by admin: {old_version} -> {new_version}")
-        
+
         return jsonify({
             "success": True,
             "message": "Cache version bumped successfully",
@@ -1640,17 +1635,17 @@ def api_reset_cache():
     try:
         from flask_cache_utils import clear_all_caches
         from cache_version import bump_cache_version, get_cache_version
-        
+
         # 1. Clear in-memory/backend caches
         clear_all_caches()
-        
+
         # 2. Bump version for persistent/distributed invalidation
         old_version = get_cache_version()
         bump_cache_version()
         new_version = get_cache_version()
-        
+
         logger.info(f"[System API] System cache reset by admin. Version: {old_version} -> {new_version}")
-        
+
         return jsonify({
             "success": True,
             "message": "System cache reset successfully",
@@ -1670,7 +1665,7 @@ def api_registration_status():
     try:
         from settings import get_system_setting
         registration_enabled = get_system_setting('registration_enabled', default=True)
-        
+
         return jsonify({
             "enabled": registration_enabled
         })
@@ -1686,18 +1681,18 @@ def api_toggle_registration():
         from flask_auth_utils import can_modify_data_flask, get_user_id_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify registration settings"}), 403
-        
+
         from app import get_supabase_client
         client = get_supabase_client()
         if not client:
             return jsonify({"error": "Failed to connect to database"}), 500
-        
+
         data = request.get_json()
         enabled = data.get('enabled', True)
-        
+
         # Get current user ID
         user_id = get_user_id_flask()
-        
+
         # Upsert the setting
         result = client.supabase.table("system_settings").upsert({
             "key": "registration_enabled",
@@ -1705,11 +1700,11 @@ def api_toggle_registration():
             "description": "Controls whether new user registration is allowed",
             "updated_by": user_id
         }).execute()
-        
+
         if result.data:
             status_text = "enabled" if enabled else "disabled"
             logger.info(f"[System API] Registration {status_text} by admin")
-            
+
             return jsonify({
                 "success": True,
                 "enabled": enabled,
@@ -1717,7 +1712,7 @@ def api_toggle_registration():
             })
         else:
             return jsonify({"error": "Failed to update registration setting"}), 500
-            
+
     except Exception as e:
         logger.error(f"[System API] Error toggling registration: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -1730,7 +1725,7 @@ def api_read_log_file():
         filename = request.args.get('filename')
         if not filename:
             return jsonify({"error": "Filename required"}), 400
-            
+
         # Security: Ensure no path traversal using robust path resolution
         try:
             log_dir = Path(__file__).parent.parent / 'logs'
@@ -1738,7 +1733,7 @@ def api_read_log_file():
             log_dir = log_dir.resolve()
             # Note: If filename is absolute, Path / filename returns filename (on that drive)
             target_path = (log_dir / filename).resolve()
-            
+
             # Verify target is within log_dir
             if log_dir != target_path and log_dir not in target_path.parents:
                 logger.warning(f"Path traversal attempt: {filename} -> {target_path}")
@@ -1746,18 +1741,18 @@ def api_read_log_file():
         except Exception as e:
             logger.warning(f"Path resolution error: {e}")
             return jsonify({"error": "Invalid filename"}), 400
-        
+
         if not target_path.exists():
             return jsonify({"error": "File not found"}), 404
 
         if not target_path.is_file():
             return jsonify({"error": "Not a file"}), 400
 
-        with open(target_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(target_path, encoding='utf-8', errors='replace') as f:
             # Read last 2000 lines approx
             lines = f.readlines()
             content = "".join(reversed(lines[-2000:]))
-             
+
         return jsonify({"content": content})
     except Exception as e:
         logger.error(f"Error reading log file: {e}", exc_info=True)
@@ -1777,17 +1772,17 @@ def scheduler_page():
         from flask_auth_utils import get_user_email_flask
         from app import get_navigation_context
         from scheduler.scheduler_core import is_scheduler_running
-        
+
         user_email = get_user_email_flask()
         logger.debug(f"[Scheduler Page] User email: {user_email}")
-        
+
         # Get navigation context
         logger.debug("[Scheduler Page] Getting navigation context...")
         nav_context = get_navigation_context(current_page='admin_scheduler')
         logger.debug(f"[Scheduler Page] Navigation context keys: {list(nav_context.keys())}")
-        
+
         logger.info("[Scheduler Page] Rendering template...")
-        return render_template('jobs.html', 
+        return render_template('jobs.html',
                              user_email=user_email,
                              **nav_context)
     except Exception as e:
@@ -1806,10 +1801,10 @@ def scheduler_page():
             scheduler_status = 'running' if scheduler_running else 'stopped'
         except Exception:
             scheduler_status = 'stopped'
-        
+
         # Ensure scheduler_status is in nav_context for fallback
         nav_context['scheduler_status'] = scheduler_status
-        return render_template('jobs.html', 
+        return render_template('jobs.html',
                              user_email='Admin',
                              **nav_context)
 
@@ -1820,14 +1815,14 @@ def api_scheduler_status():
     try:
         logger.info("[Scheduler API] /api/admin/scheduler/status called")
         start_time = time.time()
-        
+
         running = is_scheduler_running()
         logger.debug(f"[Scheduler API] Scheduler running: {running}")
-        
+
         # Get jobs list (even if scheduler is stopped, we want to show available jobs)
         jobs = []
         try:
-            logger.info(f"[Scheduler API] Calling get_all_jobs_status()...")
+            logger.info("[Scheduler API] Calling get_all_jobs_status()...")
             jobs = get_all_jobs_status()
             logger.info(f"[Scheduler API] get_all_jobs_status() returned {len(jobs)} jobs")
             if jobs:
@@ -1838,15 +1833,15 @@ def api_scheduler_status():
         except Exception as jobs_error:
             logger.error(f"[Scheduler API] Exception calling get_all_jobs_status(): {jobs_error}", exc_info=True)
             jobs = []
-        
+
         # Safety fallback: If get_all_jobs_status() returns empty, fall back to AVAILABLE_JOBS
         # This should rarely be needed since get_all_jobs_status_batched() handles it, but keep as safety net
         if not jobs:
-            logger.warning(f"[Scheduler API] No jobs returned from get_all_jobs_status(). Using safety fallback to AVAILABLE_JOBS...")
+            logger.warning("[Scheduler API] No jobs returned from get_all_jobs_status(). Using safety fallback to AVAILABLE_JOBS...")
             try:
                 from scheduler.jobs import AVAILABLE_JOBS
                 logger.info(f"[Scheduler API] AVAILABLE_JOBS has {len(AVAILABLE_JOBS)} job definitions")
-                
+
                 if AVAILABLE_JOBS:
                     # Extract trigger info properly (same logic as scheduler_core.py)
                     jobs = []
@@ -1874,7 +1869,7 @@ def api_scheduler_status():
                             else:
                                 days = interval_mins // 1440
                                 trigger_desc = f"Every {days} day{'s' if days != 1 else ''}"
-                        
+
                         jobs.append({
                             'id': job_id,
                             'name': config.get('name', job_id),
@@ -1891,24 +1886,24 @@ def api_scheduler_status():
                     logger.error("[Scheduler API] AVAILABLE_JOBS is empty! This is a critical error.")
             except Exception as avail_error:
                 logger.error(f"[Scheduler API] Error in safety fallback: {avail_error}", exc_info=True)
-        
+
         # Serialize datetime objects
         for job in jobs:
             for key, value in job.items():
                 if isinstance(value, datetime):
                     job[key] = value.isoformat()
-            
+
             # Helper for logs
             if 'recent_logs' in job:
                 for log in job['recent_logs']:
                     if isinstance(log.get('timestamp'), datetime):
                         log['timestamp'] = log['timestamp'].isoformat()
-        
+
         processing_time = time.time() - start_time
         logger.info(f"[Scheduler API] Status response prepared - running={running}, jobs={len(jobs)}, time={processing_time:.3f}s")
-        
+
         return jsonify({
-            "success": True, 
+            "success": True,
             "scheduler_running": running,
             "running": running,  # Keep for backward compatibility
             "jobs": jobs,
@@ -1927,7 +1922,7 @@ def api_scheduler_startup_diagnostics():
         import threading
         from scheduler.scheduler_core import get_scheduler_status, _HEARTBEAT_FILE, _LOCK_FILE
         import os
-        
+
         diagnostics = {
             "timestamp": datetime.now().isoformat(),
             "scheduler_status": {},
@@ -1936,20 +1931,20 @@ def api_scheduler_startup_diagnostics():
             "lock_info": {},
             "environment": {}
         }
-        
+
         # Get scheduler status from scheduler_core
         try:
             diagnostics["scheduler_status"] = get_scheduler_status()
         except Exception as e:
             diagnostics["scheduler_status"] = {"error": str(e)}
-        
+
         # Check if SchedulerInitThread is alive
         scheduler_thread = None
         for thread in threading.enumerate():
             if thread.name == "SchedulerInitThread":
                 scheduler_thread = thread
                 break
-        
+
         diagnostics["thread_info"] = {
             "exists": scheduler_thread is not None,
             "is_alive": scheduler_thread.is_alive() if scheduler_thread else False,
@@ -1957,7 +1952,7 @@ def api_scheduler_startup_diagnostics():
             "thread_id": scheduler_thread.ident if scheduler_thread else None,
             "all_threads": [{"name": t.name, "daemon": t.daemon, "alive": t.is_alive()} for t in threading.enumerate()]
         }
-        
+
         # Heartbeat file info
         try:
             if _HEARTBEAT_FILE.exists():
@@ -1978,7 +1973,7 @@ def api_scheduler_startup_diagnostics():
                 }
         except Exception as e:
             diagnostics["heartbeat_info"] = {"error": str(e)}
-        
+
         # Lock file info
         try:
             if _LOCK_FILE.exists():
@@ -2001,7 +1996,7 @@ def api_scheduler_startup_diagnostics():
                 }
         except Exception as e:
             diagnostics["lock_info"] = {"error": str(e)}
-        
+
         # Environment info
         diagnostics["environment"] = {
             "disable_scheduler": os.environ.get('DISABLE_SCHEDULER', 'not set'),
@@ -2010,7 +2005,7 @@ def api_scheduler_startup_diagnostics():
             "process_id": os.getpid() if hasattr(os, 'getpid') else 'N/A',
             "flask_debug": os.environ.get('FLASK_DEBUG', 'not set')
         }
-        
+
         return jsonify(diagnostics)
     except Exception as e:
         logger.error(f"Error getting scheduler diagnostics: {e}", exc_info=True)
@@ -2035,10 +2030,10 @@ def api_scheduler_start():
                     "Start/monitor the dedicated scheduler worker instead."
                 )
             }), 409
-            
+
         if is_scheduler_running():
             return jsonify({"success": True, "message": "Scheduler is already running"})
-        
+
         success = start_scheduler()
         if success:
             return jsonify({"success": True, "message": "Scheduler started successfully"})
@@ -2054,19 +2049,19 @@ def api_scheduler_jobs_list():
     """Get all jobs status"""
     try:
         jobs = get_all_jobs_status()
-        
+
         # Serialize datetime objects
         for job in jobs:
             for key, value in job.items():
                 if isinstance(value, datetime):
                     job[key] = value.isoformat()
-            
+
             # Helper for logs
             if 'recent_logs' in job:
                 for log in job['recent_logs']:
                     if isinstance(log.get('timestamp'), datetime):
                         log['timestamp'] = log['timestamp'].isoformat()
-        
+
         return jsonify({"jobs": jobs})
     except Exception as e:
         logger.error(f"Error getting jobs list: {e}", exc_info=True)
@@ -2080,7 +2075,7 @@ def api_job_params(job_id):
         # Find job definition
         # Try exact match first
         job_def = AVAILABLE_JOBS.get(job_id)
-        
+
         # If not found, try to match base ID (remove suffixes like _close, _open from actual ID)
         if not job_def:
             base_id = job_id
@@ -2089,10 +2084,10 @@ def api_job_params(job_id):
                     base_id = job_id[:-len(suffix)]
                     break
             job_def = AVAILABLE_JOBS.get(base_id)
-        
+
         if not job_def:
             return jsonify({"params": {}})
-            
+
         params = job_def.get('parameters', {})
         return jsonify({"params": params})
     except Exception as e:
@@ -2107,15 +2102,14 @@ def api_run_job(job_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot run jobs"}), 403
-        
+
         # Check if scheduler is running
         if not is_scheduler_running():
             return jsonify({"error": "Scheduler is not running. Please start the scheduler first."}), 400
-            
+
         params = request.get_json() or {}
-        
+
         # Convert date strings to date objects if needed
-        from datetime import date
         processed_params = {}
         for k, v in params.items():
             if k.endswith('_date') and isinstance(v, str):
@@ -2125,9 +2119,9 @@ def api_run_job(job_id):
                     processed_params[k] = v
             else:
                 processed_params[k] = v
-                
+
         success = run_job_now(job_id, **processed_params)
-        
+
         if success:
             return jsonify({"success": True, "message": "Job started successfully"})
         else:
@@ -2142,7 +2136,7 @@ def api_run_job(job_id):
                         return jsonify({"error": f"Job '{job_id}' has no function attached. This is a configuration error."}), 500
             except Exception as check_error:
                 logger.warning(f"Error checking job status: {check_error}")
-            
+
             return jsonify({"error": "Failed to start job. Check server logs for details."}), 500
     except Exception as e:
         logger.error(f"Error running job {job_id}: {e}", exc_info=True)
@@ -2156,7 +2150,7 @@ def api_pause_job(job_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify jobs"}), 403
-            
+
         pause_job(job_id)
         return jsonify({"success": True, "message": "Job paused"})
     except Exception as e:
@@ -2171,7 +2165,7 @@ def api_resume_job(job_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify jobs"}), 403
-            
+
         resume_job(job_id)
         return jsonify({"success": True, "message": "Job resumed"})
     except Exception as e:
@@ -2201,7 +2195,7 @@ def api_scheduler_ai_activity():
         hours: only include rows whose ``started_at`` is within the last N hours.
     """
     try:
-        from datetime import datetime, timedelta, timezone
+        from datetime import datetime, timedelta
 
         from supabase_client import SupabaseClient
         from utils.job_tracking import AI_JOB_NAMES, get_running_ai_job
@@ -2241,7 +2235,7 @@ def api_scheduler_ai_activity():
             .limit(limit)
         )
         if hours_param and hours_param > 0:
-            since = datetime.now(timezone.utc) - timedelta(hours=hours_param)
+            since = datetime.now(UTC) - timedelta(hours=hours_param)
             recent_query = recent_query.gte("started_at", since.isoformat())
         recent_resp = recent_query.execute()
         recent = recent_resp.data or []
@@ -2276,11 +2270,11 @@ def trade_entry_page():
     try:
         from flask_auth_utils import get_user_email_flask
         user_email = get_user_email_flask()
-        
+
         # Get navigation context
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_trade_entry')
-        
+
         # Get last trading date for default date picker value
         try:
             from market_data.market_hours import MarketHours
@@ -2290,8 +2284,8 @@ def trade_entry_page():
             # Fallback to today's date if market hours unavailable
             from datetime import date
             default_trade_date = date.today().isoformat()
-        
-        return render_template('trade_entry.html', 
+
+        return render_template('trade_entry.html',
                              user_email=user_email,
                              default_trade_date=default_trade_date,
                              **nav_context)
@@ -2304,7 +2298,7 @@ def trade_entry_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('trade_entry.html', 
+        return render_template('trade_entry.html',
                              user_email='Admin',
                              **nav_context)
 
@@ -2367,13 +2361,13 @@ def api_preview_email_trade():
 
         data = request.get_json()
         email_text = data.get('text', '')
-        
+
         if not email_text:
             return jsonify({"error": "No email text provided"}), 400
 
         parser = EmailTradeParser()
         trade = parser.parse_email_trade(email_text)
-        
+
         if trade:
             # Serialize trade object
             return jsonify({
@@ -2432,9 +2426,9 @@ def api_submit_trade():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot submit trades"}), 403
-            
+
         data = request.get_json()
-        
+
         # Extract fields
         fund = data.get('fund')
         ticker = data.get('ticker', '').upper()
@@ -2443,9 +2437,9 @@ def api_submit_trade():
         price = float(data.get('price', 0))
         currency = data.get('currency', 'USD')
         # Combined date/time from manual entry, or full timestamp from email parse
-        timestamp_str = data.get('timestamp') 
+        timestamp_str = data.get('timestamp')
         reason = data.get('reason', '')
-        
+
         if not fund or not ticker or shares <= 0 or price <= 0:
              return jsonify({"error": "Invalid trade data"}), 400
 
@@ -2459,7 +2453,7 @@ def api_submit_trade():
             # Validate parsed trade structure
             if not all([ticker, action in ['BUY', 'SELL', 'DIVIDEND'], shares > 0, price > 0]):
                 return jsonify({"error": "Invalid parsed trade data"}), 400
-            
+
             # Validate timestamp is reasonable (not more than 1 day in future)
             if trade_dt > datetime.now() + timedelta(days=1):
                 return jsonify({"error": "Trade timestamp cannot be in the future"}), 400
@@ -2467,22 +2461,22 @@ def api_submit_trade():
         # Calculations
         cost_basis = shares * price
         pnl = 0
-        
+
         # Service role client for admin ops
         admin_client = SupabaseClient(use_service_role=True)
-        
+
         # 1. Ensure ticker exists and metadata is fetched
         try:
             admin_client.ensure_ticker_in_securities(ticker, currency)
         except Exception as e:
             logger.warning(f"Metadata fetch warning for {ticker}: {e}")
-            
+
         # 2. Calculate P&L for SELLs (FIFO)
         if action == "SELL":
             # For bulk uploads or optimizations, we could pre-fetch trades here
             # For now, we pass None to existing_trades, preserving current behavior but enabling future optimization
             pnl = calculate_fifo_pnl(fund, ticker, shares, price, existing_trades=None)
-        
+
         # 3. Format Reason
         final_reason = reason
         if not final_reason:
@@ -2491,7 +2485,7 @@ def api_submit_trade():
              final_reason = f"{final_reason} - SELL"
         elif action == "BUY" and "buy" not in final_reason.lower() and "sell" not in final_reason.lower():
              final_reason = f"{final_reason} - BUY"
-             
+
         # 4. Insert Trade Log
         act = str(action or "BUY").strip().upper()
         if act not in ("BUY", "SELL", "DIVIDEND"):
@@ -2511,7 +2505,7 @@ def api_submit_trade():
             "date": trade_dt.isoformat()
         }
         admin_client.supabase.table("trade_log").insert(trade_data).execute()
-        
+
         # 5. Process Portfolio Update
         try:
             from decimal import Decimal
@@ -2526,20 +2520,20 @@ def api_submit_trade():
                 reason=final_reason,
                 currency=currency
             )
-            
+
             # Web dashboard uses Supabase directly (no CSV data on the server).
             # NOTE: DualWriteRepository was previously used here but had a swapped-args bug
             # (data_dir passed as fund_name) and reads trades from CSV (empty on web server).
             # SupabaseRepository is the correct choice for the web dashboard.
             repository = SupabaseRepository(fund)
-                
+
             processor = TradeProcessor(repository)
             # trade_already_saved=True because we just inserted it above
             processor.process_trade_entry(trade_obj, clear_caches=True, trade_already_saved=True)
-            
+
             # Bump cache version to invalidate dashboard caches (Recent Activity, etc.)
             bump_cache_version()
-            
+
         except Exception as proc_e:
             logger.error(f"Portfolio processor error: {proc_e}", exc_info=True)
             # Trade was saved but portfolio update failed - return partial success
@@ -2575,7 +2569,7 @@ def api_submit_trade():
                 logger.warning(f"Failed to recalc today's performance_metrics: {pm_e}")
 
         return jsonify({
-            "success": True, 
+            "success": True,
             "message": f"Verified: {action} {shares} {ticker}",
             "rebuild_job_id": job_id
         })
@@ -2607,11 +2601,11 @@ def api_update_trade(trade_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify trades"}), 403
-        
+
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
-        
+
         client = SupabaseClient(use_service_role=True)
         tid = str(trade_id)
 
@@ -2620,13 +2614,13 @@ def api_update_trade(trade_id):
             .select("*") \
             .eq("id", tid) \
             .execute()
-        
+
         if not existing.data:
             return jsonify({"error": "Trade not found"}), 404
-        
+
         old_trade = existing.data[0]
         fund = old_trade['fund']
-        
+
         # Extract and validate fields
         ticker = data.get('ticker', old_trade.get('ticker', '')).upper()
         action = data.get('action', 'BUY')
@@ -2635,27 +2629,27 @@ def api_update_trade(trade_id):
         currency = data.get('currency', old_trade.get('currency', 'USD'))
         timestamp_str = data.get('timestamp', old_trade.get('date'))
         reason = data.get('reason', old_trade.get('reason', ''))
-        
+
         if not ticker or shares <= 0 or price <= 0:
             return jsonify({"error": "Invalid trade data: ticker, shares, and price are required"}), 400
-        
+
         try:
             trade_dt = datetime.fromisoformat(timestamp_str)
         except (ValueError, TypeError):
             return jsonify({"error": "Invalid timestamp format"}), 400
-        
+
         # Recalculate
         cost_basis = shares * price
         pnl = 0
         if action == "SELL":
             pnl = calculate_fifo_pnl(fund, ticker, shares, price, existing_trades=None)
-        
+
         # Ensure ticker metadata exists
         try:
             client.ensure_ticker_in_securities(ticker, currency)
         except Exception as e:
             logger.warning(f"Metadata fetch warning for {ticker}: {e}")
-        
+
         act_raw = data.get("action", old_trade.get("action"))
         act = str(act_raw or "").strip().upper()
         if act not in ("BUY", "SELL", "DIVIDEND"):
@@ -2675,33 +2669,33 @@ def api_update_trade(trade_id):
             "currency": currency,
             "date": trade_dt.isoformat()
         }
-        
+
         client.supabase.table("trade_log") \
             .update(update_data) \
             .eq("id", tid) \
             .execute()
-        
+
         # Determine earliest affected date for rebuild
         old_date = datetime.fromisoformat(old_trade['date']).date()
         new_date = trade_dt.date()
         earliest_date = min(old_date, new_date)
-        
+
         # Trigger rebuild from the earliest affected date
         job_id = None
         try:
             job_id = trigger_background_rebuild(fund, earliest_date)
         except Exception as rb_e:
             logger.error(f"Rebuild trigger error after trade update: {rb_e}")
-        
+
         # Bump cache version
         bump_cache_version()
-        
+
         return jsonify({
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
             "rebuild_job_id": job_id
         })
-    
+
     except Exception as e:
         logger.error(f"Error updating trade {trade_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -2721,7 +2715,7 @@ def api_delete_trade(trade_id):
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot delete trades"}), 403
-        
+
         client = SupabaseClient(use_service_role=True)
         tid = str(trade_id)
 
@@ -2730,36 +2724,36 @@ def api_delete_trade(trade_id):
             .select("*") \
             .eq("id", tid) \
             .execute()
-        
+
         if not existing.data:
             return jsonify({"error": "Trade not found"}), 404
-        
+
         old_trade = existing.data[0]
         fund = old_trade['fund']
         trade_date = datetime.fromisoformat(old_trade['date']).date()
-        
+
         # Delete the trade
         client.supabase.table("trade_log") \
             .delete() \
             .eq("id", tid) \
             .execute()
-        
+
         # Trigger rebuild from the deleted trade's date
         job_id = None
         try:
             job_id = trigger_background_rebuild(fund, trade_date)
         except Exception as rb_e:
             logger.error(f"Rebuild trigger error after trade delete: {rb_e}")
-        
+
         # Bump cache version
         bump_cache_version()
-        
+
         return jsonify({
             "success": True,
             "message": f"Trade {tid} deleted",
             "rebuild_job_id": job_id
         })
-    
+
     except Exception as e:
         logger.error(f"Error deleting trade {trade_id}: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
@@ -2773,26 +2767,18 @@ def _trade_entry_display_action(trade_row: dict) -> str:
     return infer_trade_action(trade_row.get("reason"), default="BUY")
 
 
+
+
 def _fetch_trade_log_batches(client, fund: str, batch_size: int = 1000) -> list:
     """All non-DRIP trade_log rows for a fund, newest first (paginated Supabase reads)."""
-    rows: list = []
-    offset = 0
-    while True:
-        data_res = (
-            client.supabase.table("trade_log")
-            .select("*")
-            .eq("fund", fund)
-            .neq("reason", "DRIP")
-            .order("date", desc=True)
-            .range(offset, offset + batch_size - 1)
-            .execute()
-        )
-        batch = data_res.data or []
-        rows.extend(batch)
-        if len(batch) < batch_size:
-            break
-        offset += batch_size
-    return rows
+    return fetch_all_rows(
+        client,
+        "trade_log",
+        filters=[("fund", "eq", fund), ("reason", "neq", "DRIP")],
+        order="date",
+        order_desc=True,
+        page_size=batch_size
+    )
 
 
 @admin_bp.route('/api/admin/trades/recent')
@@ -2826,13 +2812,13 @@ def api_recent_trades():
         side_raw = (request.args.get('side') or 'all').strip().lower()
         if side_raw not in ('all', 'buy', 'sell'):
             side_raw = 'all'
-        
+
         if not fund:
             return jsonify({"trades": [], "total": 0, "page": 0, "pages": 0})
-            
+
         # Use service role as requested for all admin pages
         client = SupabaseClient(use_service_role=True)
-        
+
         if side_raw == 'all':
             count_res = client.supabase.table("trade_log")\
                 .select("id", count="exact")\
@@ -2858,9 +2844,9 @@ def api_recent_trades():
             total = len(filtered)
             offset = page * limit
             trades = filtered[offset:offset + limit]
-        
+
         pages = (total + limit - 1) // limit if total > 0 else 0
-        
+
         return jsonify({
             "trades": trades,
             "total": total,
@@ -2882,11 +2868,11 @@ def contributions_page():
     try:
         from flask_auth_utils import get_user_email_flask
         user_email = get_user_email_flask()
-        
+
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_contributions')
-        
-        return render_template('contributions.html', 
+
+        return render_template('contributions.html',
                              user_email=user_email,
                              **nav_context)
     except Exception as e:
@@ -2898,7 +2884,7 @@ def contributions_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('contributions.html', 
+        return render_template('contributions.html',
                              user_email='Admin',
                              **nav_context)
 
@@ -2910,21 +2896,21 @@ def api_get_contributions():
         fund = request.args.get('fund', 'All')
         c_type = request.args.get('type', 'All')
         search = request.args.get('search', '')
-        
+
         # Use service role as requested
         client = SupabaseClient(use_service_role=True)
-        
+
         query = client.supabase.table("fund_contributions").select("*").order("timestamp", desc=True)
-        
+
         if fund != "All":
             query = query.eq("fund", fund)
         if c_type != "All":
             query = query.eq("contribution_type", c_type)
         if search:
             query = query.ilike("contributor", f"%{search}%")
-            
+
         result = query.execute()
-        
+
         return jsonify({"contributions": result.data or []})
     except Exception as e:
         logger.error(f"Error fetching contributions: {e}", exc_info=True)
@@ -2943,9 +2929,9 @@ def api_add_contribution():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot add contributions"}), 403
-            
+
         data = request.get_json()
-        
+
         fund = data.get('fund')
         contributor_id = data.get('contributor_id')
         name = data.get('contributor')
@@ -2954,23 +2940,23 @@ def api_add_contribution():
         c_type = data.get('type', 'CONTRIBUTION')
         date_str = data.get('date')
         notes = data.get('notes')
-        
+
         if not fund or amount <= 0 or not date_str:
             return jsonify({"error": "Invalid contribution data"}), 400
-        
+
         if not contributor_id and not name:
             return jsonify({"error": "Either contributor_id or contributor name is required"}), 400
-            
+
         # Combine date with current time
         try:
             date_obj = datetime.fromisoformat(date_str).date()
             timestamp = datetime.combine(date_obj, datetime.now().time()).isoformat()
         except:
             return jsonify({"error": "Invalid date format"}), 400
-        
+
         # Service role client
         client = SupabaseClient(use_service_role=True)
-        
+
         # Resolve contributor_id if not provided
         contributor_name = name
         if not contributor_id:
@@ -2980,7 +2966,7 @@ def api_add_contribution():
                 if result.data:
                     contributor_id = result.data[0]['id']
                     contributor_name = result.data[0]['name']
-            
+
             # If still no match, try by exact name
             if not contributor_id and name:
                 result = client.supabase.table("contributors").select("id, name, email").eq("name", name).execute()
@@ -2997,7 +2983,7 @@ def api_add_contribution():
                                 contributor_id = c['id']
                                 contributor_name = c['name']
                                 break
-            
+
             # Still no match? Create new contributor
             if not contributor_id:
                 new_contrib = {
@@ -3020,13 +3006,13 @@ def api_add_contribution():
                     email = result.data[0].get('email')
             else:
                 return jsonify({"error": f"Contributor not found: {contributor_id}"}), 400
-        
+
         # Get fund_id for the FK
         fund_result = client.supabase.table("funds").select("id").eq("name", fund).execute()
         if not fund_result.data:
             return jsonify({"error": f"Fund not found: {fund}"}), 400
         fund_id = fund_result.data[0]['id']
-            
+
         payload = {
             "fund": fund,
             "fund_id": fund_id,
@@ -3038,9 +3024,9 @@ def api_add_contribution():
             "timestamp": timestamp,
             "notes": notes if notes else None
         }
-        
+
         client.supabase.table("fund_contributions").insert(payload).execute()
-        
+
         return jsonify({"success": True, "message": f"{c_type} recorded successfully"})
     except Exception as e:
         logger.error(f"Error adding contribution: {e}", exc_info=True)
@@ -3068,17 +3054,17 @@ def api_contributions_summary():
     try:
         # Service role client
         client = SupabaseClient(use_service_role=True)
-        
-        from supabase_pagination import fetch_all_rows
+
+
         rows = fetch_all_rows(client, "fund_contributions", select="contributor, fund, contribution_type, amount")
-        
+
         if not rows:
             return jsonify({"summary": []})
-            
+
         # Manually aggregate in Python since Supabase JS client groupBy is limited
         # structure: { 'contributor|fund': { name, fund, contribution: 0, withdrawal: 0 } }
         agg = {}
-        
+
         for row in rows:
             key = f"{row['contributor']}|{row['fund']}"
             if key not in agg:
@@ -3088,19 +3074,19 @@ def api_contributions_summary():
                     "contribution": 0,
                     "withdrawal": 0
                 }
-            
+
             amt = float(row.get('amount', 0))
             if row.get('contribution_type') == 'CONTRIBUTION':
                 agg[key]['contribution'] += amt
             else:
                 agg[key]['withdrawal'] += amt
-        
+
         # Convert to list and calculate net
         summary_list = []
         for v in agg.values():
             v['net'] = v['contribution'] - v['withdrawal']
             summary_list.append(v)
-            
+
         return jsonify({"summary": summary_list})
     except Exception as e:
          logger.error(f"Error fetching contribution summary: {e}", exc_info=True)
@@ -3117,11 +3103,11 @@ def ai_settings_page():
     try:
         from flask_auth_utils import get_user_email_flask
         user_email = get_user_email_flask()
-        
+
         from app import get_navigation_context
         nav_context = get_navigation_context(current_page='admin_ai_settings')
-        
-        return render_template('ai_settings.html', 
+
+        return render_template('ai_settings.html',
                              user_email=user_email,
                              **nav_context)
     except Exception as e:
@@ -3133,7 +3119,7 @@ def ai_settings_page():
         except Exception:
             # If navigation context also fails, use minimal fallback
             nav_context = {}
-        return render_template('ai_settings.html', 
+        return render_template('ai_settings.html',
                              user_email='Admin',
                              **nav_context)
 
@@ -3188,7 +3174,7 @@ def api_ai_audit_entries():
     if success_filter_raw not in {"", "true", "false"}:
         return jsonify({"error": "Invalid success filter. Use true or false"}), 400
 
-    success_filter: Optional[bool] = None
+    success_filter: bool | None = None
     if success_filter_raw == "true":
         success_filter = True
     elif success_filter_raw == "false":
@@ -3275,13 +3261,13 @@ def api_ai_skip_list():
     try:
         from ai_skip_list_manager import AISkipListManager
         from supabase_client import SupabaseClient
-        
+
         supabase = SupabaseClient(use_service_role=True)
         skip_manager = AISkipListManager(supabase)
-        
+
         skip_list = skip_manager.get_skip_list()
         return jsonify({'success': True, 'skip_list': skip_list})
-        
+
     except Exception as e:
         logger.error(f"Error fetching skip list: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3293,14 +3279,14 @@ def api_remove_from_skip_list(ticker: str):
     try:
         from ai_skip_list_manager import AISkipListManager
         from supabase_client import SupabaseClient
-        
+
         ticker_upper = ticker.upper().strip()
         supabase = SupabaseClient(use_service_role=True)
         skip_manager = AISkipListManager(supabase)
-        
+
         skip_manager.remove_from_skip_list(ticker_upper)
         return jsonify({'success': True, 'message': f'{ticker_upper} removed from skip list'})
-        
+
     except Exception as e:
         logger.error(f"Error removing {ticker} from skip list: {e}", exc_info=True)
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -3315,7 +3301,7 @@ def _get_cached_etf_tickers():
             SELECT DISTINCT etf_ticker FROM etf_holdings_log
             ORDER BY etf_ticker
         """)
-        
+
         tickers = set(row.get("etf_ticker") for row in result if row.get("etf_ticker"))
         return tickers
     except Exception as e:
@@ -3469,24 +3455,28 @@ def api_get_security_metadata():
         else:  # stock mode - more complex pagination
             # For stock mode, we need to filter out ETF tickers which is harder to paginate
             # Use a larger fetch and filter approach
-            query_builder = _build_securities_query(client, query_text).order("ticker")
-            page_size = 500
-            db_offset = 0
-            all_filtered = []
 
-            # Fetch enough to get the requested page
-            target_count = offset + limit + 1  # +1 to check if there's more
-            while len(all_filtered) < target_count and db_offset < 50000:
-                result = query_builder.range(db_offset, db_offset + page_size - 1).execute()
-                if not result.data:
-                    break
-                filtered = [row for row in result.data if row.get("ticker") not in etf_tickers]
-                all_filtered.extend(filtered)
-                if len(result.data) < page_size:
-                    break
-                db_offset += page_size
+            # Since we can't easily filter by "not in set" at the DB level efficiently via PostgREST
+            # and maintain proper count without pulling a lot of data, we use fetch_all_rows for
+            # robust filtering.
 
-            total = len(all_filtered)  # Approximate - may be more if we hit limit
+            def apply_search_query(q):
+                if query_text:
+                    safe_query = query_text.replace('%', '').replace('_', r'\_')
+                    return q.or_(f"ticker.ilike.%{safe_query}%,company_name.ilike.%{safe_query}%")
+                return q
+
+            all_rows = fetch_all_rows(
+                client,
+                "securities",
+                select="ticker, company_name, description",
+                order="ticker",
+                apply_query=apply_search_query
+            )
+
+            all_filtered = [row for row in all_rows if row.get("ticker") not in etf_tickers]
+
+            total = len(all_filtered)
             has_more = len(all_filtered) > offset + limit
             securities = all_filtered[offset:offset + limit]
 
@@ -3608,24 +3598,24 @@ def api_ai_status():
         except Exception as e:
             ollama_msg = str(e)
             logger.error(f"Error checking Ollama health: {e}", exc_info=True)
-             
+
         # Postgres
         pg_connected, pg_stats = get_postgres_status_cached()
         pg_status = {
             "status": "healthy" if pg_connected else "error",
             "message": f"Connected - {pg_stats.get('total', 0)} articles" if pg_connected and pg_stats else "Not connected"
         }
-        
+
         # WebAI Cookies
         webai_status = {"status": False, "message": "Not configured", "source": None, "has_1psid": False, "has_1psidts": False}
         try:
             from webai_wrapper import check_cookie_config, _load_cookies
             config_status = check_cookie_config()
-            
+
             # Determine cookie source and status
             has_cookies = False
             cookie_source = None
-            
+
             if config_status.get("env_var_exists") and config_status.get("has_secure_1psid"):
                 has_cookies = True
                 cookie_source = "Environment Variable"
@@ -3635,14 +3625,14 @@ def api_ai_status():
             elif config_status.get("cookie_files", {}).get("webai_cookies.json", {}).get("web_exists"):
                 has_cookies = True
                 cookie_source = "Cookie File (web_dashboard)"
-            
+
             # Check shared volume (Docker container)
             from pathlib import Path
             shared_cookie_path = Path("/shared/cookies/webai_cookies.json")
             if shared_cookie_path.exists():
                 has_cookies = True
                 cookie_source = "Shared Volume (/shared/cookies)"
-            
+
             if has_cookies:
                 try:
                     secure_1psid, secure_1psidts = _load_cookies()
@@ -3666,7 +3656,7 @@ def api_ai_status():
         except Exception as e:
             logger.error(f"Error checking WebAI cookies: {e}", exc_info=True)
             webai_status = {"status": False, "message": f"Error: {str(e)[:50]}", "source": None, "has_1psid": False, "has_1psidts": False}
-        
+
         # GLM 4.7 (Zhipu) API Key
         glm_status = {"status": False, "message": "Not set", "source": None}
         try:
@@ -3683,7 +3673,7 @@ def api_ai_status():
         except Exception as e:
             logger.error(f"Error checking GLM API key: {e}", exc_info=True)
             glm_status = {"status": False, "message": f"Error: {str(e)[:50]}", "source": None}
-        
+
         payload: dict[str, object] = {
             "ollama": {"status": ollama_ok, "message": ollama_msg},
             "postgres": pg_status,
@@ -3709,10 +3699,10 @@ def api_get_ai_settings():
         # Assuming a simple KV store or using a specific row in a settings table
         # For now, let's mock/use what's available or query a 'system_config' table if exists,
         # otherwise defaulting to env vars or safe defaults.
-        
+
         # Checking if we have a table for this. If not, we might need to create it or just return mock for now
         # per the existing 'admin_ai_settings.py' logic.
-        
+
         # Looking at previous context, there is a `system_settings` table usually.
         settings = {}
         try:
@@ -3727,7 +3717,7 @@ def api_get_ai_settings():
                 "max_research_batch_size": "50",
                 "ai_summarizing_fallback_models": []
             }
-        
+
         # Add read-only model runtime visibility so admins can see effective values.
         try:
             from ollama_client import load_model_config
@@ -3802,18 +3792,18 @@ def api_update_ai_settings():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify settings"}), 403
-            
+
         data = request.get_json()
         client = SupabaseClient(use_service_role=True)
-        
+
         # Upsert keys
         for key, value in data.items():
             client.supabase.table("system_settings").upsert({
-                "key": key, 
+                "key": key,
                 "value": value,
                 "updated_at": datetime.now().isoformat()
             }).execute()
-            
+
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error updating settings: {e}", exc_info=True)
@@ -3839,18 +3829,18 @@ def api_add_blacklist():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify blacklist"}), 403
-            
+
         data = request.get_json()
         domain = data.get('domain')
         reason = data.get('reason', 'Manual addition')
-        
+
         if not domain:
             return jsonify({"error": "Domain required"}), 400
-            
+
         client = SupabaseClient(use_service_role=True)
         from datetime import datetime
         now = datetime.now().isoformat()
-        
+
         # Upsert into research_domain_health table
         client.supabase.table("research_domain_health").upsert({
             "domain": domain,
@@ -3861,7 +3851,7 @@ def api_add_blacklist():
             "last_failure_reason": reason,
             "updated_at": now
         }).execute()
-        
+
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -3874,23 +3864,23 @@ def api_delete_blacklist():
         from flask_auth_utils import can_modify_data_flask
         if not can_modify_data_flask():
             return jsonify({"error": "Read-only admin cannot modify blacklist"}), 403
-            
+
         domain = request.args.get('domain')
-        
+
         if not domain:
             return jsonify({"error": "Domain required"}), 400
-            
+
         client = SupabaseClient(use_service_role=True)
         from datetime import datetime
         now = datetime.now().isoformat()
-        
+
         # Update research_domain_health table to remove from blacklist
         client.supabase.table("research_domain_health").update({
             "auto_blacklisted": False,
             "consecutive_failures": 0,
             "updated_at": now
         }).eq("domain", domain).execute()
-        
+
         return jsonify({"success": True})
     except Exception as e:
         logger.error(f"Error deleting from blacklist: {e}", exc_info=True)
@@ -3996,10 +3986,10 @@ def api_get_cookie_refresher_logs():
     """Get cookie refresher logs"""
     try:
         from pathlib import Path
-        
+
         log_file = Path("/shared/cookies/cookie_refresher.log")
         lines = request.args.get('lines', 100, type=int)
-        
+
         if not log_file.exists():
             return jsonify({
                 "success": False,
@@ -4007,14 +3997,14 @@ def api_get_cookie_refresher_logs():
                 "logs": [],
                 "message": "Cookie refresher log file does not exist. Logs may not be configured yet."
             })
-        
+
         try:
             # Read last N lines from log file
-            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            with open(log_file, encoding='utf-8', errors='replace') as f:
                 all_lines = f.readlines()
                 # Get last N lines
                 log_lines = all_lines[-lines:] if len(all_lines) > lines else all_lines
-            
+
             return jsonify({
                 "success": True,
                 "logs": log_lines,
@@ -4035,7 +4025,7 @@ def api_get_cookie_refresher_logs():
                 "logs": [],
                 "message": f"Error reading log file: {e}"
             }), 500
-            
+
     except Exception as e:
         logger.error(f"Error getting cookie refresher logs: {e}", exc_info=True)
         return jsonify({"success": False, "error": str(e), "logs": []}), 500
@@ -4047,12 +4037,12 @@ def api_get_cookie_refresher_container_status():
     try:
         import docker
         client = docker.from_env()
-        
+
         # Look for cookie-refresher container
         try:
             container = client.containers.get("cookie-refresher")
             container.reload()  # Refresh status
-            
+
             return jsonify({
                 "success": True,
                 "container_found": True,
@@ -4076,7 +4066,7 @@ def api_get_cookie_refresher_container_status():
                 "error": str(e),
                 "container_found": False
             }), 500
-            
+
     except ImportError:
         return jsonify({
             "success": False,
@@ -4117,7 +4107,7 @@ def api_get_cookie_refresher_status():
         logger.debug(f"Reading cookie file: {cookie_path}")
 
         try:
-            with open(cookie_path, 'r', encoding='utf-8') as f:
+            with open(cookie_path, encoding='utf-8') as f:
                 cookies = json.load(f)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in cookie file: {e}")
@@ -4289,7 +4279,7 @@ def api_update_webai_cookies():
         if shared_cookie_path.exists():
             logger.debug("Cookie file exists - checking for existing metadata to preserve")
             try:
-                with open(shared_cookie_path, 'r', encoding='utf-8') as f:
+                with open(shared_cookie_path, encoding='utf-8') as f:
                     existing_data = json.load(f)
                 if "_refresh_count" in existing_data:
                     cookie_data["_refresh_count"] = existing_data["_refresh_count"]
@@ -4348,7 +4338,7 @@ def api_save_glm_api_key():
             logger.info("GLM 4.7 (Zhipu) API key saved to .secrets")
             return jsonify({"success": True, "message": "API key saved. Restart may be needed for some features to use it."})
         return jsonify({"error": "Failed to save API key (check permissions on web_dashboard/.secrets/)"}), 500
-    except ImportError as e:
+    except ImportError:
         return jsonify({"error": "glm_config not available"}), 500
     except Exception as e:
         logger.error(f"Error saving GLM API key: {e}", exc_info=True)
@@ -4410,33 +4400,33 @@ def api_admin_contributor_contributions(contributor_id):
     try:
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
+
         # Get contributor details
         contrib_result = client.supabase.table("contributors").select("*").eq("id", contributor_id).execute()
         if not contrib_result.data:
             return jsonify({"error": "Contributor not found", "contributions": []}), 404
-        
+
         contributor = contrib_result.data[0]
-        
+
         # Get contributions by contributor_id
         contribs_result = client.supabase.table("fund_contributions")\
             .select("*")\
             .eq("contributor_id", contributor_id)\
             .execute()
-        
+
         # Also get by name (legacy)
         contribs_by_name = client.supabase.table("fund_contributions")\
             .select("*")\
             .eq("contributor", contributor['name'])\
             .execute()
-        
+
         # Combine and deduplicate
         all_contribs = contribs_result.data or []
         contrib_ids = {c.get('id') for c in all_contribs}
         for c in (contribs_by_name.data or []):
             if c.get('id') not in contrib_ids:
                 all_contribs.append(c)
-        
+
         return jsonify({
             "contributor": contributor,
             "contributions": all_contribs
@@ -4466,19 +4456,19 @@ def api_admin_split_contributor():
 
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
+
         # Create new contributor
         new_contrib_data = {
             "name": new_contributor_name,
             "email": new_contributor_email if new_contributor_email else None
         }
         new_contrib_result = client.supabase.table("contributors").insert(new_contrib_data).execute()
-        
+
         if not new_contrib_result.data:
             return jsonify({"error": "Failed to create new contributor"}), 500
-        
+
         new_contrib_id = new_contrib_result.data[0]['id']
-        
+
         # Update selected contributions
         updated_count = 0
         for contrib_id in contribution_ids:
@@ -4488,18 +4478,18 @@ def api_admin_split_contributor():
             }
             if new_contributor_email:
                 update_data["email"] = new_contributor_email
-            
+
             result = client.supabase.table("fund_contributions")\
                 .update(update_data)\
                 .eq("id", contrib_id)\
                 .execute()
-            
+
             if result.data:
                 updated_count += 1
-        
+
         # Clear cache
         _get_cached_contributors_flask.clear_all_cache()
-        
+
         return jsonify({
             "success": True,
             "message": f"Split complete! Created new contributor and moved {updated_count} contribution(s)",
@@ -4531,17 +4521,17 @@ def api_admin_merge_contributors():
 
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
+
         # Get contributor details
         source_result = client.supabase.table("contributors").select("*").eq("id", source_contributor_id).execute()
         target_result = client.supabase.table("contributors").select("*").eq("id", target_contributor_id).execute()
-        
+
         if not source_result.data or not target_result.data:
             return jsonify({"error": "Contributor not found"}), 404
-        
+
         source_contrib = source_result.data[0]
         target_contrib = target_result.data[0]
-        
+
         # Update all contributions
         update_data = {
             "contributor_id": target_contributor_id,
@@ -4549,28 +4539,28 @@ def api_admin_merge_contributors():
         }
         if target_contrib.get('email'):
             update_data["email"] = target_contrib['email']
-        
+
         # Update by contributor_id
         client.supabase.table("fund_contributions")\
             .update(update_data)\
             .eq("contributor_id", source_contributor_id)\
             .execute()
-        
+
         # Update by contributor name (legacy)
         client.supabase.table("fund_contributions")\
             .update(update_data)\
             .eq("contributor", source_contrib['name'])\
             .execute()
-        
+
         # Delete source contributor
         client.supabase.table("contributors")\
             .delete()\
             .eq("id", source_contributor_id)\
             .execute()
-        
+
         # Clear cache
         _get_cached_contributors_flask.clear_all_cache()
-        
+
         return jsonify({
             "success": True,
             "message": f"Merged {source_contrib['name']} into {target_contrib['name']}"
@@ -4598,42 +4588,42 @@ def api_admin_update_contributor(contributor_id):
 
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
-        
+
         # Get current contributor
         current_result = client.supabase.table("contributors").select("*").eq("id", contributor_id).execute()
         if not current_result.data:
             return jsonify({"error": "Contributor not found"}), 404
-        
+
         current_contrib = current_result.data[0]
-        
+
         # Update contributor
         update_data = {"name": new_name}
         if new_email:
             update_data["email"] = new_email
         else:
             update_data["email"] = None
-        
+
         result = client.supabase.table("contributors")\
             .update(update_data)\
             .eq("id", contributor_id)\
             .execute()
-        
+
         if not result.data:
             return jsonify({"error": "Failed to update contributor"}), 500
-        
+
         # Update fund_contributions if name changed
         if new_name != current_contrib.get('name'):
             client.supabase.table("fund_contributions")\
                 .update({"contributor": new_name})\
                 .eq("contributor_id", contributor_id)\
                 .execute()
-            
+
             # Also update by old name (legacy)
             client.supabase.table("fund_contributions")\
                 .update({"contributor": new_name})\
                 .eq("contributor", current_contrib.get('name'))\
                 .execute()
-        
+
         # Update email in fund_contributions if changed
         if new_email != current_contrib.get('email'):
             if new_email:
@@ -4641,10 +4631,10 @@ def api_admin_update_contributor(contributor_id):
                     .update({"email": new_email})\
                     .eq("contributor_id", contributor_id)\
                     .execute()
-        
+
         # Clear cache
         _get_cached_contributors_flask.clear_all_cache()
-        
+
         return jsonify({
             "success": True,
             "message": "Contributor updated successfully"
