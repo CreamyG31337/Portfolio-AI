@@ -27,6 +27,14 @@ sys.path.insert(0, str(WEB))
 sys.path.insert(0, str(REPO_ROOT))
 os.environ.setdefault("DISABLE_SCHEDULER", "true")
 
+# Windows consoles default to cp1252; pulse tables (em-dashes) and model
+# answers (emoji) must not crash the run. Force UTF-8 on the text streams.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):
+        pass
+
 from env_loader import load_project_dotenv  # noqa: E402
 
 load_project_dotenv()

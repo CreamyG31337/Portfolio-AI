@@ -54,6 +54,9 @@ def _lean_candidate(row: dict[str, Any]) -> dict[str, Any]:
         "entry_zone": row.get("entry_zone"),
         "is_held": bool(row.get("is_held")) if "is_held" in row else None,
         "reason": _short(reason_s or one_liner),
+        # A2 tension (already annotated upstream by rank_candidate_pack).
+        "tension": True if row.get("tension") else None,
+        "tension_reason": row.get("tension_reason"),
     }
     # Drop empty values for compactness
     return {k: v for k, v in out.items() if v is not None and v != ""}
@@ -137,6 +140,20 @@ def _enrich_entry_zones(
             c["stance"] = row.get("stance")
 
 
+def _held_from_positions(positions_df: Any) -> set[str]:
+    """Uppercased held-ticker set from a positions DataFrame (empty-safe)."""
+    if positions_df is None or getattr(positions_df, "empty", True):
+        return set()
+    col = "ticker" if "ticker" in positions_df.columns else "symbol"
+    if col not in positions_df.columns:
+        return set()
+    return {
+        str(t).upper().strip()
+        for t in positions_df[col].dropna().tolist()
+        if str(t).strip()
+    }
+
+
 def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
     try:
         from action_queue_service import (
@@ -144,7 +161,8 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
             attach_research_context,
             build_action_queue_items,
         )
-        from advise_service import build_advise_recommendations
+        from advise_service import rank_candidate_pack
+        from ai_assistant_candidates import build_signal_fallback_candidates
         from ai_assistant_clients import get_assistant_research_supabase
         from flask_data_utils import get_current_positions_flask
         from postgres_client import PostgresClient
@@ -175,13 +193,30 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
         except Exception as exc:
             logger.warning("intelligence pulse: enrich skipped: %s", exc)
 
-        advise = build_advise_recommendations(action_queue=actions, limit=limit)
-        # Prefer advise_pack rows; fall back to raw queue if advise empty
-        source_rows: list[dict[str, Any]] = advise if advise else actions[:limit]
-        # Merge entry_zone hints from action research when advise lacks them
+        # A3: single ranking source shared with Today. The chat pulse stays
+        # held-safe — it passes no Insights/confluence Learn inputs, whose
+        # thesis/RISK flips could manufacture an unheld SELL/RISK (A7 will add
+        # held-gated Learn reweight to chat). Signal fallback held-gates SELL/RISK.
+        held = _held_from_positions(positions_df)
+        rows, source = rank_candidate_pack(
+            action_queue=actions,
+            signal_fallback=lambda: build_signal_fallback_candidates(
+                supabase, fund=fund, held_tickers=held, limit=limit
+            ),
+            limit=limit,
+        )
+        if source == "signal_fallback":
+            # Fallback rows are already lean-shaped + A2-annotated; keep the
+            # source/sector/fear keys the pulse relies on.
+            if pg is not None:
+                _enrich_entry_zones(pg, rows)
+            return [c for c in rows if c.get("ticker")]
+
+        # Advise rows: merge is_held / research context from actions, then lean.
+        # A2 tension is already annotated + demoted upstream — do not re-run.
         action_by_t = {str(a.get("ticker") or "").upper(): a for a in actions}
         lean: list[dict[str, Any]] = []
-        for row in source_rows[:limit]:
+        for row in rows[:limit]:
             t = str(row.get("ticker") or "").upper()
             merged = dict(row)
             aq = action_by_t.get(t) or {}
@@ -192,38 +227,9 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
             if not merged.get("ai_review") and aq.get("ai_review"):
                 merged["ai_review"] = aq["ai_review"]
             lean.append(_lean_candidate(merged))
-
-        from ai_assistant_candidates import annotate_and_demote_tension
-
         if pg is not None:
             _enrich_entry_zones(pg, lean)
-        lean = [c for c in lean if c.get("ticker")]
-        lean = annotate_and_demote_tension(lean)
-        if lean:
-            return lean
-
-        # Fallback when action queue produced nothing
-        held: set[str] = set()
-        if not positions_df.empty:
-            col = "ticker" if "ticker" in positions_df.columns else "symbol"
-            if col in positions_df.columns:
-                held = {
-                    str(t).upper().strip()
-                    for t in positions_df[col].dropna().tolist()
-                    if str(t).strip()
-                }
-        from ai_assistant_candidates import build_signal_fallback_candidates
-
-        fallback = build_signal_fallback_candidates(
-            supabase,
-            fund=fund,
-            held_tickers=held,
-            limit=limit,
-        )
-        if pg is not None:
-            _enrich_entry_zones(pg, fallback)
-        fallback = [c for c in fallback if c.get("ticker")]
-        return annotate_and_demote_tension(fallback)
+        return [c for c in lean if c.get("ticker")]
     except Exception as exc:
         logger.warning("intelligence pulse: candidates failed: %s", exc)
         return []

@@ -7,7 +7,7 @@ Does not place trades.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 # Lower = more urgent when sorting by (priority, -score)
 _ADVISE_PRIORITY = {
@@ -351,3 +351,72 @@ def build_advise_recommendations(
         )
     )
     return ranked[: max(1, min(limit, 50))]
+
+
+def _attach_analysis_stance(
+    rows: list[dict[str, Any]],
+    action_queue: list[dict[str, Any]] | None,
+) -> None:
+    """Copy standard ``analysis_stance`` from action-queue research_context onto
+    advise rows in place.
+
+    Advise rows only carry ``meta_conviction``; A2 tension detection also reads
+    the standard ticker_analysis stance. Without this, Today advise_pack would
+    see a narrower tension signal than the chat pulse's leaned candidates.
+    """
+    if not rows or not action_queue:
+        return
+    stance_by_t: dict[str, Any] = {}
+    for a in action_queue:
+        t = str(a.get("ticker") or "").upper().strip()
+        rc = a.get("research_context") if isinstance(a.get("research_context"), dict) else {}
+        stance = rc.get("analysis_stance")
+        if t and stance and t not in stance_by_t:
+            stance_by_t[t] = stance
+    for row in rows:
+        t = str(row.get("ticker") or "").upper().strip()
+        if not row.get("stance") and t in stance_by_t:
+            row["stance"] = stance_by_t[t]
+
+
+def rank_candidate_pack(
+    *,
+    action_queue: list[dict[str, Any]] | None,
+    theses_attention: list[dict[str, Any]] | None = None,
+    track_record: dict[str, Any] | None = None,
+    confluence_events: list[dict[str, Any]] | None = None,
+    signal_fallback: Callable[[], list[dict[str, Any]]] | list[dict[str, Any]] | None = None,
+    limit: int = 12,
+) -> tuple[list[dict[str, Any]], str]:
+    """Single ranking source for Today advise_pack and the chat pulse/candidates.
+
+    A3: both surfaces call this so they cannot structurally drift. Builds ranked
+    advise recommendations; when those are empty (common: no BUYs, SELL/RISK need
+    held) it uses the shared watchlist ``signal_fallback``. A2 tension annotation
+    + demotion is applied to whichever set is returned.
+
+    ``signal_fallback`` may be a precomputed list or a zero-arg callable (invoked
+    only when advise is empty, so callers avoid the DB read on the hot path).
+
+    Returns ``(rows, source)`` where source is ``advise`` | ``signal_fallback`` |
+    ``none``. Advise rows keep their full shape (score/reasons/…); callers that
+    need lean chat rows format them afterwards.
+    """
+    from ai_assistant_candidates import annotate_and_demote_tension
+
+    pack = build_advise_recommendations(
+        action_queue=action_queue or [],
+        theses_attention=theses_attention,
+        track_record=track_record,
+        confluence_events=confluence_events,
+        limit=limit,
+    )
+    if pack:
+        _attach_analysis_stance(pack, action_queue)
+        return annotate_and_demote_tension(pack), "advise"
+
+    fallback = signal_fallback() if callable(signal_fallback) else (signal_fallback or [])
+    fallback = [r for r in (fallback or []) if r.get("ticker")]
+    if fallback:
+        return annotate_and_demote_tension(fallback), "signal_fallback"
+    return [], "none"

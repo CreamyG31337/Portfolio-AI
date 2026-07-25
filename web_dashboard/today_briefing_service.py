@@ -236,8 +236,9 @@ def build_today_briefing(
         logger.warning("Today briefing: theses attention failed: %s", exc)
 
     advise_pack: list[dict[str, Any]] = []
+    advise_source = "advise"
     try:
-        from advise_service import build_advise_recommendations
+        from advise_service import rank_candidate_pack
         from track_record_service import build_track_record_summary
 
         # Prefer 7d (more samples); fall back shape is still valid if empty.
@@ -249,11 +250,37 @@ def build_today_briefing(
         except Exception as tr_exc:
             logger.warning("Today briefing: track record for advise failed: %s", tr_exc)
 
-        advise_pack = build_advise_recommendations(
+        # A3: shared ranking source with the chat pulse. Falls back to the same
+        # held-gated watchlist signals when the queue + theses are empty, so
+        # Today and chat agree instead of Today showing "no items". Inherits A2
+        # tension annotation + demotion.
+        def _today_signal_fallback() -> list[dict[str, Any]]:
+            from ai_assistant_candidates import build_signal_fallback_candidates
+            from flask_data_utils import get_current_positions_flask
+
+            try:
+                held_df = get_current_positions_flask(fund=fund)
+            except Exception:
+                held_df = None
+            held: set[str] = set()
+            if held_df is not None and not getattr(held_df, "empty", True):
+                col = "ticker" if "ticker" in held_df.columns else "symbol"
+                if col in held_df.columns:
+                    held = {
+                        str(t).upper().strip()
+                        for t in held_df[col].dropna().tolist()
+                        if str(t).strip()
+                    }
+            return build_signal_fallback_candidates(
+                supabase_client, fund=fund, held_tickers=held, limit=12
+            )
+
+        advise_pack, advise_source = rank_candidate_pack(
             action_queue=actions,
             theses_attention=theses_attention,
             track_record=track_summary,
             confluence_events=confluence_events,
+            signal_fallback=_today_signal_fallback,
             limit=12,
         )
     except Exception as exc:
@@ -263,6 +290,7 @@ def build_today_briefing(
         "market_regime": regime,
         "market_brief_headline": (brief_row or {}).get("headline"),
         "advise_pack": advise_pack,
+        "advise_source": advise_source,
         "stance_flips": fetch_stance_flips(pg, days=2, limit=20),
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
