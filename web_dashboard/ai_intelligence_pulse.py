@@ -193,9 +193,12 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
                 merged["ai_review"] = aq["ai_review"]
             lean.append(_lean_candidate(merged))
 
+        from ai_assistant_candidates import annotate_and_demote_tension
+
         if pg is not None:
             _enrich_entry_zones(pg, lean)
         lean = [c for c in lean if c.get("ticker")]
+        lean = annotate_and_demote_tension(lean)
         if lean:
             return lean
 
@@ -219,7 +222,8 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
         )
         if pg is not None:
             _enrich_entry_zones(pg, fallback)
-        return [c for c in fallback if c.get("ticker")]
+        fallback = [c for c in fallback if c.get("ticker")]
+        return annotate_and_demote_tension(fallback)
     except Exception as exc:
         logger.warning("intelligence pulse: candidates failed: %s", exc)
         return []
@@ -289,7 +293,7 @@ def format_intelligence_pulse(pulse: dict[str, Any] | None) -> str:
         lines.append("  (none)")
     else:
         lines.append(
-            "  Ticker | Advise | Conf | Stance/Meta | Entry | Held | Reason"
+            "  Ticker | Advise | Conf | Stance/Meta | Entry | Held | Flag | Reason"
         )
         for c in candidates:
             conf = c.get("confidence")
@@ -299,17 +303,26 @@ def format_intelligence_pulse(pulse: dict[str, Any] | None) -> str:
                 conf_s = "—"
             stance_meta = c.get("stance") or c.get("meta_conviction") or "—"
             held = "Y" if c.get("is_held") else ("N" if c.get("is_held") is False else "—")
+            flag = "TENSION" if c.get("tension") else "—"
+            reason = c.get("reason") or "—"
+            if c.get("tension_reason"):
+                reason = (
+                    f"{reason} ({c['tension_reason']})"
+                    if reason != "—"
+                    else str(c["tension_reason"])
+                )
             lines.append(
                 f"  {c.get('ticker', '?'):<6} | {str(c.get('advise') or '—'):<5} | "
                 f"{conf_s:<4} | {stance_meta} | {c.get('entry_zone') or '—'} | "
-                f"{held} | {c.get('reason') or '—'}"
+                f"{held} | {flag} | {reason}"
             )
 
     lines.append("")
     lines.append(
         "Note: Pulse is a ranked hint from watchlist/action-queue research"
         + (" (signal fallback when queue empty)" if source == "signal_fallback" else "")
-        + ". "
+        + ". TENSION marks a live-signal vs stored-research conflict (demoted, not a "
+        "clean entry). SELL is only shown for held positions. "
         "Use tools for sector filters, named tickers, news, or deeper market narrative. "
         "Do not invent prices or entry zones."
     )

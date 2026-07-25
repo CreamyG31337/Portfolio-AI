@@ -50,6 +50,80 @@ def _risk_score(row: dict[str, Any]) -> float:
     return 0.0
 
 
+# Directional token sets for tension detection. Neutral tokens (HOLD/WATCH/
+# NEUTRAL/MONITOR) are intentionally absent — they mean "wait", not "contradict".
+_BULLISH_TOKENS = {
+    "BUY", "STRONG_BUY", "BULLISH", "ACCUMULATE", "LONG", "OVERWEIGHT", "ADD",
+}
+_BEARISH_TOKENS = {
+    "SELL", "STRONG_SELL", "BEARISH", "REDUCE", "SHORT", "UNDERWEIGHT",
+    "AVOID", "TRIM", "RISK",
+}
+
+
+def _direction(token: Any) -> str | None:
+    """Map a stance/advise token to 'bull' | 'bear' | None (neutral/unknown)."""
+    if token is None:
+        return None
+    t = str(token).strip().upper()
+    if not t:
+        return None
+    if t in _BULLISH_TOKENS:
+        return "bull"
+    if t in _BEARISH_TOKENS:
+        return "bear"
+    return None
+
+
+def candidate_tension(
+    advise: Any,
+    stance: Any = None,
+    meta_conviction: Any = None,
+) -> tuple[bool, str | None]:
+    """Detect a directional conflict between the live advise/signal and stored research.
+
+    Tension fires only on *opposite* signs (bullish vs bearish). Neutral tokens
+    (WATCH/HOLD/NEUTRAL/MONITOR) never create tension on their own. Returns
+    ``(is_tension, reason)``.
+    """
+    adv_dir = _direction(advise)
+    if adv_dir is None:
+        return False, None
+    for label, value in (
+        ("analysis stance", stance),
+        ("meta conviction", meta_conviction),
+    ):
+        res_dir = _direction(value)
+        if res_dir is None:
+            continue
+        if res_dir != adv_dir:
+            adv_s = str(advise).strip().upper()
+            val_s = str(value).strip().upper()
+            return True, f"signal {adv_s} vs {label} {val_s}"
+    return False, None
+
+
+def annotate_and_demote_tension(
+    candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Set ``tension``/``tension_reason`` per row and stable-demote conflicts.
+
+    Adds keys in place, then returns a new list ordered so tension rows sink below
+    non-conflicting rows of otherwise-equal rank (kept for inspection, not dropped).
+    """
+    for c in candidates:
+        is_tension, reason = candidate_tension(
+            c.get("advise") or c.get("action"),
+            c.get("stance"),
+            c.get("meta_conviction"),
+        )
+        if is_tension:
+            c["tension"] = True
+            if reason:
+                c["tension_reason"] = reason
+    return sorted(candidates, key=lambda c: 1 if c.get("tension") else 0)
+
+
 def _sectors_for_tickers(supabase: Any, tickers: list[str]) -> dict[str, str]:
     if not supabase or not tickers:
         return {}
@@ -163,6 +237,12 @@ def build_signal_fallback_candidates(
             continue
         elif not include_hold and overall == "HOLD" and not action_filter_u:
             # Skip passive HOLD noise unless explicitly requested.
+            continue
+
+        # A SELL/RISK on a name we don't hold is not actionable: you can't sell what
+        # you don't own, and it isn't an entry. Mirror action-queue held-gating so
+        # discovery never suggests selling an unheld ticker.
+        if advise in {"SELL", "RISK"} and not is_held:
             continue
 
         sec = sector_map.get(ticker, "")

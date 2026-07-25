@@ -402,6 +402,7 @@ research already produce — not a new collector and not auto-trading. Keep wish
 | **Tool loop** | Chat handler tool rounds (max 3) + SSE `{status:"tool"}`; skip search/RAG prefetch when tools on. |
 | **Reliable reads** | Service-role Supabase after fund ACL for watchlist/signals (`ai_assistant_clients.py`); degraded pulse (no market / 0 candidates) caches ≤90s instead of 6h closed-session TTL. |
 | **Quality harness** | `web_dashboard/scripts/quality_test_ai_assistant_chat.py` → `verification/ai_assistant_quality_latest.json`. |
+| **A2 · Contradiction-aware pulse/candidates** (2026-07-24) | Shared `candidate_tension` / `annotate_and_demote_tension` (`ai_assistant_candidates.py`) flag + demote (not drop) live-signal-vs-stored-research conflicts across pulse + `list_entry_candidates`; formatter shows a `TENSION` column. Signal fallback now held-gates SELL/RISK (a non-held SELL is never surfaced — mirrors action-queue semantics; root-caused as fallback design, **not** dust/multi-fund). |
 
 **Not “market closed”:** `Market: (unavailable)` means Research DB brief fetch failed (or no row) — briefs are cached and should load after hours. UI copy is model-agnostic (“the model can call tools…”).
 
@@ -412,7 +413,7 @@ Ordered by leverage for the chat surface; all stay human-in-the-loop.
 | ID | Item | Why |
 |----|------|-----|
 | **A1** | **Multi-backend tool calling** | Tools currently default on for the GLM transport (`backend == "glm"`). Model dropdown already lists Qwen / Granite / others — extend the tool loop (or Ollama-native tools) so non-GLM picks get the same Decide path instead of prefetch-only. |
-| **A2** | **Contradiction-aware pulse / candidates** | Quality runs already show signal `SELL` + analysis `stance: BUY` on the same ticker (e.g. CLS.TO, MU). Rank/label TENSION (or demote) instead of presenting a clean “entry” hint. Reuse queue `ai_review` / research_context patterns. |
+| **A2** | ✅ **shipped 2026-07-24** — Contradiction-aware pulse / candidates | Quality runs showed signal `SELL` + analysis `stance: BUY` on the same ticker (e.g. CLS.TO, MU). Now flags/demotes TENSION and held-gates non-held SELL. Follow-up: surface `dual_tension` in Today `advise_pack` UI; consider a softer "unconfirmed" flag for WATCH-vs-directional-stance divergence (intentionally out of scope here to avoid noise). |
 | **A3** | **Single ranking source with Today Advise** | Pulse rebuilds queue→advise→signal fallback; Today ships `advise_pack`. Drift confuses humans. Prefer one builder (or thin wrapper) so chat pulse and `/today` agree. |
 | **A4** | **Tool catalog v2** | Add lean tools for thesis attention, confluence / liquidity / earnings calendar, Ideas triage peek, and a track-record / source-ROI slice — so open-ended questions don’t invent Learn answers. |
 | **A5** | **Pulse health in the UI** | Context preview still looks “fine” when market is unavailable. Chip or one-line reason (`research_db:…`) + optional “refresh context” when degraded. |
