@@ -1,13 +1,14 @@
 """
-Test P&L calculation consistency with real data in TEST fund.
+Test P&L calculation consistency between CSV and Supabase with realistic trade data.
 
-This module tests P&L calculations using the actual TEST fund directory
-to ensure consistency between CSV and Supabase with real data.
+Uses isolated temp CSV dirs and unique Supabase fund names per run so repeated
+executions cannot accumulate trades and falsely diverge the two backends.
 """
 
 import os
 import tempfile
 import shutil
+import uuid
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -26,22 +27,16 @@ from portfolio.fifo_trade_processor import FIFOTradeProcessor
 
 
 class TestRealDataPnLConsistency:
-    """Test P&L calculations with real data in TEST fund."""
+    """Test P&L calculations are consistent across CSV and Supabase backends."""
     
     @pytest.fixture(autouse=True)
     def setup_test_environment(self):
-        """Set up test environment with real TEST fund data."""
-        # Load Supabase credentials
+        """Set up isolated CSV + Supabase fund (no shared TEST fund pollution)."""
         load_dotenv("web_dashboard/.env")
         
-        # Use actual TEST fund directory
-        self.test_data_dir = "trading_data/funds/TEST"
-        self.test_fund = "test"
+        self.test_data_dir = Path(tempfile.mkdtemp(prefix="test_real_data_pnl_"))
+        self.test_fund = f"TEST_REAL_{uuid.uuid4().hex[:8]}"
         
-        # Ensure TEST directory exists
-        Path(self.test_data_dir).mkdir(parents=True, exist_ok=True)
-        
-        # Create fund in Supabase if it doesn't exist
         try:
             from supabase import create_client
             supabase_url = os.getenv("SUPABASE_URL")
@@ -49,27 +44,37 @@ class TestRealDataPnLConsistency:
             
             if supabase_url and supabase_key:
                 supabase = create_client(supabase_url, supabase_key)
-                # Check if fund exists
-                existing = supabase.table("funds").select("name").eq("name", self.test_fund).execute()
-                if not existing.data:
-                    # Create fund
-                    supabase.table("funds").insert({
-                        "name": self.test_fund,
-                        "description": "Test fund for real data PnL consistency tests",
-                        "currency": "CAD",
-                        "fund_type": "investment"
-                    }).execute()
-                    # Initialize cash balances
-                    supabase.table("cash_balances").upsert([
-                        {"fund": self.test_fund, "currency": "CAD", "amount": 0},
-                        {"fund": self.test_fund, "currency": "USD", "amount": 0}
-                    ]).execute()
+                supabase.table("funds").insert({
+                    "name": self.test_fund,
+                    "description": "Isolated fund for real-data PnL consistency tests",
+                    "currency": "CAD",
+                    "fund_type": "investment"
+                }).execute()
+                supabase.table("cash_balances").upsert([
+                    {"fund": self.test_fund, "currency": "CAD", "amount": 0},
+                    {"fund": self.test_fund, "currency": "USD", "amount": 0}
+                ]).execute()
         except Exception:
             pass
         
         yield
         
-        # Note: We don't clean up the TEST fund data as it's meant for testing
+        try:
+            from supabase import create_client
+            supabase_url = os.getenv("SUPABASE_URL")
+            supabase_key = os.getenv("SUPABASE_SECRET_KEY") or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            
+            if supabase_url and supabase_key:
+                supabase = create_client(supabase_url, supabase_key)
+                supabase.table("funds").delete().eq("name", self.test_fund).execute()
+        except Exception:
+            pass
+        
+        if self.test_data_dir.exists():
+            try:
+                shutil.rmtree(self.test_data_dir)
+            except (PermissionError, OSError):
+                pass
     
     def test_real_data_basic_pnl_consistency(self):
         """Test basic P&L calculations with real data."""
@@ -212,27 +217,18 @@ class TestRealDataPnLConsistency:
         print(f"CSV Shares Sold: {csv_pnl_summary['total_shares_sold']}")
         print(f"Supabase Shares Sold: {supabase_pnl_summary['total_shares_sold']}")
         
-        # FIFO P&L calculations should match
-        # Note: There may be differences due to how trades are stored/retrieved between CSV and Supabase
-        # Shares sold should always match
+        # Isolated backends must agree on FIFO realized P&L and shares sold
         assert csv_pnl_summary['total_shares_sold'] == supabase_pnl_summary['total_shares_sold'], "FIFO shares sold should match"
-        
-        # P&L may differ due to how trades are processed or stored differently
-        # This test documents the actual behavior rather than enforcing exact match
-        # If there's a significant difference, it may indicate a bug that needs investigation
-        pnl_diff = abs(csv_pnl_summary['total_realized_pnl'] - supabase_pnl_summary['total_realized_pnl'])
-        # For now, just verify both calculations complete without error
-        # The actual values are printed for manual inspection
-        assert csv_pnl_summary['total_realized_pnl'] is not None
-        assert supabase_pnl_summary['total_realized_pnl'] is not None
-        # Note: If difference is significant, this may indicate a calculation bug that needs fixing
+        assert csv_pnl_summary['total_realized_pnl'] == supabase_pnl_summary['total_realized_pnl'], "FIFO realized P&L should match"
+        assert csv_pnl_summary['total_shares_sold'] == Decimal("75"), "Expected one isolated sell of 75 shares"
+        assert csv_pnl_summary['total_realized_pnl'] == Decimal("1500.0"), "Expected FIFO PnL of (70-50)*75"
     
     def test_real_data_dual_write_consistency(self):
         """Test dual-write operations with real data."""
         # Create dual-write repository
         dual_repo = DualWriteRepository(
-            data_directory=self.test_data_dir,
-            fund_name=self.test_fund
+            fund_name=self.test_fund,
+            data_directory=str(self.test_data_dir),
         )
         
         # Create test position
