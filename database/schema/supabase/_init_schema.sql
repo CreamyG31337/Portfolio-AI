@@ -19,6 +19,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- TABLES
 \i tables/ai_analysis_queue.sql
 \i tables/ai_analysis_skip_list.sql
+\i tables/ai_assistant_chats.sql
 \i tables/ai_task_queue.sql
 \i tables/apscheduler_jobs.sql
 \i tables/benchmark_data.sql
@@ -126,6 +127,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/benchmark_data_Allow service role to insert benchmark data.sql
 \i policies/benchmark_data_Allow service role to manage benchmark data.sql
 \i policies/benchmark_data_Allow service role to update benchmark data.sql
+\i policies/ai_assistant_chats_Service role full access.sql
+\i policies/ai_assistant_chats_Users manage own.sql
 \i policies/ai_task_queue_Allow authenticated users to read ai task queue.sql
 \i policies/ai_task_queue_Allow service role full access.sql
 \i policies/cash_balances_Admins can view all cash balances.sql

@@ -1169,6 +1169,102 @@ def api_ai_portfolio_intelligence():
         logger.error(f"Error checking portfolio news: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
 
+@ai_bp.route('/api/v2/ai/chat/session', methods=['GET'])
+@require_auth
+def api_ai_chat_session():
+    """Load persisted AI Assistant transcript for the current user + fund."""
+    try:
+        from ai_assistant_session import load_chat
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        fund = (request.args.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            # Fall through — service still scopes by user_id.
+            pass
+        data = load_chat(user_id, fund)
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        logger.error("api_ai_chat_session failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@ai_bp.route('/api/v2/ai/chat/append', methods=['POST'])
+@require_auth
+def api_ai_chat_append():
+    """Append completed turns (or replace with a capped full list) for user+fund."""
+    try:
+        from ai_assistant_session import append_turns, replace_messages
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        data = request.get_json(silent=True) or {}
+        fund = str(data.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            pass
+        model = data.get("model")
+        # Prefer append of new turns; accept full messages[] replace from client.
+        if isinstance(data.get("turns"), list) and data.get("turns"):
+            out = append_turns(user_id, fund, data["turns"], model=model)
+        elif isinstance(data.get("messages"), list):
+            out = replace_messages(user_id, fund, data["messages"], model=model)
+        else:
+            return jsonify({"error": "turns or messages required"}), 400
+        return jsonify({"ok": True, **out})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_ai_chat_append failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@ai_bp.route('/api/v2/ai/chat/clear', methods=['POST'])
+@require_auth
+def api_ai_chat_clear():
+    """Clear persisted transcript for user+fund and reset WebAI disk session."""
+    try:
+        from ai_assistant_session import clear_chat, reset_webai_session
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        data = request.get_json(silent=True) or {}
+        fund = str(data.get("fund") or request.args.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            pass
+        clear_chat(user_id, fund)
+        reset_webai_session(user_id)
+        return jsonify({"ok": True, "fund": fund, "messages": []})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_ai_chat_clear failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @ai_bp.route('/api/v2/ai/chat', methods=['POST'])
 @require_auth
 def api_ai_chat():

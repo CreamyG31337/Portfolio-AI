@@ -126,6 +126,8 @@ class AIAssistant {
     private isSending: boolean = false; // True while a message is being sent (prevent duplicate sends)
     private contextReloadQueued: boolean = false; // True when a refresh is requested during loading
     private contextCache: Map<string, { context: string; charCount: number }> = new Map();
+    /** User text awaiting a completed assistant reply (for persist / interrupt stub). */
+    private pendingPersistUser: string | null = null;
     // TODO(perf): Optionally persist cache to localStorage or add a backend cache key
     // to reuse across sessions if context generation becomes expensive.
 
@@ -164,6 +166,9 @@ class AIAssistant {
 
             // Load context after preferences so trade toggles are correct
             this.loadContext();
+
+            // Restore server-side transcript for the current fund
+            await this.loadSessionFromServer();
 
             // Initialize display
             this.updateModelDisplay();
@@ -306,10 +311,18 @@ class AIAssistant {
                 this.selectedFund = target.value;
                 console.log('[AIAssistant] Fund changed to:', this.selectedFund);
                 this.contextReady = false;
+                this.pendingPersistUser = null;
+                this.isSending = false;
                 this.loadPortfolioTickers();
                 this.loadContext();
+                void this.loadSessionFromServer();
             });
         }
+
+        // Persist an interrupted stub if the user navigates away mid-response.
+        window.addEventListener('pagehide', () => {
+            this.persistInterruptedIfNeeded();
+        });
 
         // Context toggles
         const toggleThesis = document.getElementById('toggle-thesis') as HTMLInputElement | null;
@@ -1173,6 +1186,7 @@ class AIAssistant {
         // Add user message
         this.addMessage('user', query);
         this.conversationHistory.push({ role: 'user', content: query });
+        this.pendingPersistUser = query;
 
         // Hide start analysis area and retry button
         const startAnalysisArea = document.getElementById('start-analysis-area');
@@ -1367,9 +1381,10 @@ class AIAssistant {
 
                 if (data.error) {
                     this.updateMessage(loadingId, 'assistant', `Error: ${data.error}`);
+                    this.pendingPersistUser = null;
                 } else {
                     this.updateMessage(loadingId, 'assistant', data.response || '');
-                    this.conversationHistory.push({ role: 'assistant', content: data.response || '' });
+                    this.recordAssistantReply(data.response || '');
                 }
                 // Re-enable send button and input
                 this.isSending = false;
@@ -1426,7 +1441,7 @@ class AIAssistant {
                             if (done) {
                                 // Remove streaming indicator and finalize
                                 this.updateMessage(loadingId, 'assistant', fullResponse);
-                                this.conversationHistory.push({ role: 'assistant', content: fullResponse });
+                                this.recordAssistantReply(fullResponse);
                                 this.updateRetryButton();
                                 // Re-enable send button and input
                                 this.isSending = false;
@@ -1448,7 +1463,7 @@ class AIAssistant {
                                         const data: ChatResponse = JSON.parse(line.slice(6));
                                         if (data.done) {
                                             this.updateMessage(loadingId, 'assistant', fullResponse);
-                                            this.conversationHistory.push({ role: 'assistant', content: fullResponse });
+                                            this.recordAssistantReply(fullResponse);
                                             this.updateRetryButton();
                                             // Re-enable send button and input
                                             this.isSending = false;
@@ -1510,9 +1525,10 @@ class AIAssistant {
                         if (data.error) {
                             this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
                             this.updateRetryButton();
+                            this.pendingPersistUser = null;
                         } else {
                             this.updateMessage(loadingId, 'assistant', data.response || data.chunk || '');
-                            this.conversationHistory.push({ role: 'assistant', content: data.response || data.chunk || '' });
+                            this.recordAssistantReply(data.response || data.chunk || '');
                             this.updateRetryButton();
                         }
                         // Re-enable send button and input
@@ -1658,6 +1674,16 @@ class AIAssistant {
     }
 
     clearChat(): void {
+        const fund = this.selectedFund;
+        if (fund) {
+            fetch('/api/v2/ai/chat/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ fund }),
+                keepalive: true,
+            }).catch((err: Error) => console.warn('[AIAssistant] clear session failed:', err));
+        }
+        this.pendingPersistUser = null;
         this.messages = [];
         this.conversationHistory = [];
         const messagesDiv = document.getElementById('chat-messages');
@@ -1669,6 +1695,100 @@ class AIAssistant {
         if (this.contextItems.length > 0) {
             this.showStartAnalysis();
         }
+    }
+
+    /** Hydrate UI + conversationHistory from server for the current fund. */
+    async loadSessionFromServer(): Promise<void> {
+        const fund = this.selectedFund;
+        if (!fund) return;
+        try {
+            const res = await fetch(
+                `/api/v2/ai/chat/session?fund=${encodeURIComponent(fund)}`,
+                { headers: { ...getCsrfHeaders() } },
+            );
+            if (!res.ok) {
+                console.warn('[AIAssistant] session load HTTP', res.status);
+                return;
+            }
+            const data = await res.json();
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            this.applySessionMessages(messages);
+        } catch (err) {
+            console.warn('[AIAssistant] session load failed:', err);
+        }
+    }
+
+    applySessionMessages(messages: Array<{ role?: string; content?: string }>): void {
+        this.messages = [];
+        this.conversationHistory = [];
+        this.pendingPersistUser = null;
+        const messagesDiv = document.getElementById('chat-messages');
+        if (messagesDiv) messagesDiv.innerHTML = '';
+
+        for (const raw of messages) {
+            const role = raw.role === 'assistant' ? 'assistant' : 'user';
+            const content = String(raw.content || '');
+            if (!content.trim()) continue;
+            this.addMessage(role, content);
+            this.conversationHistory.push({ role, content });
+        }
+
+        if (this.conversationHistory.length === 0 && this.contextItems.length > 0) {
+            this.showStartAnalysis();
+        } else {
+            const startAnalysisArea = document.getElementById('start-analysis-area');
+            if (startAnalysisArea) startAnalysisArea.classList.add('hidden');
+        }
+        this.updateRetryButton();
+        this.scrollToBottom();
+    }
+
+    recordAssistantReply(content: string): void {
+        this.conversationHistory.push({ role: 'assistant', content });
+        const userText = this.pendingPersistUser;
+        this.pendingPersistUser = null;
+        if (userText) {
+            void this.persistTurns([
+                { role: 'user', content: userText },
+                { role: 'assistant', content },
+            ]);
+        }
+    }
+
+    persistTurns(turns: Message[], keepalive: boolean = false): void {
+        const fund = this.selectedFund;
+        if (!fund || !turns.length) return;
+        const payload = {
+            fund,
+            model: this.selectedModel,
+            turns: turns.map((t) => ({
+                role: t.role,
+                content: t.content,
+                ts: new Date().toISOString(),
+            })),
+        };
+        fetch('/api/v2/ai/chat/append', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            keepalive,
+        }).catch((err: Error) => console.warn('[AIAssistant] append session failed:', err));
+    }
+
+    persistInterruptedIfNeeded(): void {
+        if (!this.isSending || !this.pendingPersistUser || !this.selectedFund) return;
+        const userText = this.pendingPersistUser;
+        this.pendingPersistUser = null;
+        this.persistTurns(
+            [
+                { role: 'user', content: userText },
+                {
+                    role: 'assistant',
+                    content: '*(Response interrupted — navigated away before the reply finished.)*',
+                },
+            ],
+            true,
+        );
     }
 
     showStartAnalysis(): void {
