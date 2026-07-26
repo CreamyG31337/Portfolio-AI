@@ -214,7 +214,7 @@ def reprocess_for_date(
         else:
             logger.info(f"No previous snapshot for {etf_ticker}; skipping article creation")
 
-        upsert_etf_metadata(db, etf_ticker, ETF_CONFIGS[etf_ticker]["provider"])
+        upsert_etf_metadata(db, [etf_ticker])
         upsert_securities_metadata(db, holdings, ETF_CONFIGS[etf_ticker]["provider"])
         save_holdings_snapshot(pc, etf_ticker, holdings, target_date)
         processed += 1
