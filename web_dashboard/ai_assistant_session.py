@@ -52,16 +52,16 @@ def _normalize_messages(raw: Any) -> list[dict[str, Any]]:
 
 
 def load_chat(user_id: str, fund: str) -> dict[str, Any]:
-    """Return ``{fund, model, messages, updated_at}`` (empty messages if none)."""
+    """Return ``{fund, model, messages, updated_at, created_at}`` (empty messages if none)."""
     fund_s = _normalize_fund(fund)
-    empty = {"fund": fund_s, "model": None, "messages": [], "updated_at": None}
+    empty = {"fund": fund_s, "model": None, "messages": [], "updated_at": None, "created_at": None}
     if not user_id or not fund_s:
         return empty
     try:
         client = _supabase()
         result = (
             client.supabase.table("ai_assistant_chats")
-            .select("fund, model, messages, updated_at")
+            .select("fund, model, messages, updated_at, created_at")
             .eq("user_id", user_id)
             .eq("fund", fund_s)
             .limit(1)
@@ -76,6 +76,7 @@ def load_chat(user_id: str, fund: str) -> dict[str, Any]:
             "model": row.get("model"),
             "messages": _normalize_messages(row.get("messages")),
             "updated_at": row.get("updated_at"),
+            "created_at": row.get("created_at"),
         }
     except Exception as exc:
         logger.warning("load_chat failed user=%s fund=%s: %s", user_id, fund_s, exc)
@@ -88,6 +89,7 @@ def replace_messages(
     messages: list[dict[str, Any]],
     *,
     model: str | None = None,
+    created_at: str | None = None,
 ) -> dict[str, Any]:
     """Upsert the full capped message list for ``(user_id, fund)``."""
     fund_s = _normalize_fund(fund)
@@ -103,7 +105,27 @@ def replace_messages(
     }
     if model is not None:
         payload["model"] = str(model).strip() or None
+
     client = _supabase()
+
+    # Preserve created_at to avoid clobbering during upsert
+    if created_at is not None:
+        payload["created_at"] = created_at
+    else:
+        try:
+            existing = (
+                client.supabase.table("ai_assistant_chats")
+                .select("created_at")
+                .eq("user_id", user_id)
+                .eq("fund", fund_s)
+                .limit(1)
+                .execute()
+            )
+            if existing.data and existing.data[0].get("created_at"):
+                payload["created_at"] = existing.data[0]["created_at"]
+        except Exception as exc:
+            logger.warning("replace_messages failed to fetch created_at user=%s fund=%s: %s", user_id, fund_s, exc)
+
     (
         client.supabase.table("ai_assistant_chats")
         .upsert(payload, on_conflict="user_id,fund")
@@ -132,6 +154,7 @@ def append_turns(
         fund,
         merged,
         model=model if model is not None else current.get("model"),
+        created_at=current.get("created_at"),
     )
 
 
