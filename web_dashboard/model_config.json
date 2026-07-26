@@ -12,6 +12,20 @@
             "temperature": 0.1,
             "desc": "Best All-Rounder. High context, fits comfortably in VRAM."
         },
+        "mistral-small:22b": {
+            "num_ctx": 32768,
+            "num_predict": 2048,
+            "temperature": 0.1,
+            "desc": "Dumps tool calls as text JSON in content instead of structured tool_calls (probe 2026-07-25). Hidden from pickers.",
+            "hidden": true
+        },
+        "glm4:latest": {
+            "num_ctx": 32768,
+            "num_predict": 2048,
+            "temperature": 0.1,
+            "desc": "Local Ollama GLM-4 tag — writes tool names as plain text, not structured tool_calls (probe 2026-07-25). Not Z.AI glm-*. Hidden from pickers.",
+            "hidden": true
+        },
         "llama3.1:8b": {
             "num_ctx": 40000,
             "num_predict": 8192,

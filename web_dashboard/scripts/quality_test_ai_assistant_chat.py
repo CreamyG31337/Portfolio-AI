@@ -186,7 +186,11 @@ def _probe_tools(fund: str, sb: Any) -> None:
 
 
 def _run_chat_questions(
-    fund: str, pulse_text: str, limit: int, sb: Any
+    fund: str,
+    pulse_text: str,
+    limit: int,
+    sb: Any,
+    questions: list[dict[str, str]] | None = None,
 ) -> list[dict[str, Any]]:
     from ai_assistant_tools import TOOL_SCHEMAS, AssistantToolContext, execute_tool
     from ai_prompts import get_system_prompt
@@ -201,10 +205,11 @@ def _run_chat_questions(
     ctx = AssistantToolContext(user_id="quality-script", fund=fund)
     system = get_system_prompt(model, allow_search=True, enable_tools=True)
     results: list[dict[str, Any]] = []
+    queue = list(questions if questions is not None else QUESTIONS)[:limit]
 
     print(f"\n========== GLM CHAT ({model}) ==========")
 
-    for item in QUESTIONS[:limit]:
+    for item in queue:
         query = item["q"]
         family = item["family"]
         full_prompt = f"{pulse_text}\n\n{query}" if pulse_text else query
@@ -279,6 +284,11 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--fund", default=None)
     parser.add_argument("--limit", type=int, default=6)
+    parser.add_argument(
+        "--families",
+        default=None,
+        help="Comma-separated question families to run (e.g. track_record,earnings)",
+    )
     parser.add_argument("--skip-chat", action="store_true")
     parser.add_argument(
         "--out",
@@ -307,7 +317,19 @@ def main() -> int:
 
     chat_results: list[dict[str, Any]] = []
     if not args.skip_chat:
-        chat_results = _run_chat_questions(fund, pulse_text, args.limit, sb)
+        questions = QUESTIONS
+        if args.families:
+            wanted = {f.strip() for f in args.families.split(",") if f.strip()}
+            questions = [q for q in QUESTIONS if q["family"] in wanted]
+            if not questions:
+                raise SystemExit(f"No questions matched --families {wanted!r}")
+        chat_results = _run_chat_questions(
+            fund,
+            pulse_text,
+            limit=min(args.limit, len(questions)),
+            sb=sb,
+            questions=questions,
+        )
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
