@@ -104,6 +104,22 @@ def replace_messages(
     if model is not None:
         payload["model"] = str(model).strip() or None
     client = _supabase()
+
+    # Preserve existing created_at if upserting
+    try:
+        existing = (
+            client.supabase.table("ai_assistant_chats")
+            .select("created_at")
+            .eq("user_id", user_id)
+            .eq("fund", fund_s)
+            .limit(1)
+            .execute()
+        )
+        if existing.data and existing.data[0].get("created_at"):
+            payload["created_at"] = existing.data[0]["created_at"]
+    except Exception as exc:
+        logger.warning("Failed to fetch existing created_at for %s/%s: %s", user_id, fund_s, exc)
+
     (
         client.supabase.table("ai_assistant_chats")
         .upsert(payload, on_conflict="user_id,fund")
