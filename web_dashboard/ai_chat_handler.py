@@ -411,7 +411,33 @@ class ChatHandler:
 
             def generate_glm():
                 try:
+                    # Immediate SSE so the client knows the request was accepted
+                    # (not queued/dropped) before the first blocking Z.AI call.
+                    yield (
+                        "data: "
+                        + json.dumps(
+                            {
+                                "status": "thinking",
+                                "phase": "accepted",
+                                "model": self.model,
+                                "done": False,
+                            }
+                        )
+                        + "\n\n"
+                    )
+
                     if not enable_tools:
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "status": "thinking",
+                                    "phase": "waiting_on_model",
+                                    "done": False,
+                                }
+                            )
+                            + "\n\n"
+                        )
                         for part in glm_chat_completion(
                             messages,
                             model=self.model,
@@ -444,6 +470,12 @@ class ChatHandler:
 
                     for round_i in range(max_tool_rounds + 1):
                         if _time.monotonic() - started > tool_wall_seconds:
+                            logger.warning(
+                                "AI chat tool loop wall timeout model=%s fund=%s elapsed=%.1fs",
+                                self.model,
+                                self.fund,
+                                _time.monotonic() - started,
+                            )
                             yield f"data: {json.dumps({'error': 'Tool loop timed out', 'done': True})}\n\n"
                             return
 
@@ -451,6 +483,27 @@ class ChatHandler:
                         # Forced-final round after tool use: prompt a clean synthesis.
                         if not tools_on and working and working[-1].get("role") == "tool":
                             working.append(synthesis_nudge)
+
+                        phase = "waiting_on_model" if tools_on else "synthesizing"
+                        logger.info(
+                            "AI chat GLM round=%s phase=%s model=%s fund=%s",
+                            round_i,
+                            phase,
+                            self.model,
+                            self.fund,
+                        )
+                        yield (
+                            "data: "
+                            + json.dumps(
+                                {
+                                    "status": "thinking",
+                                    "phase": phase,
+                                    "round": round_i,
+                                    "done": False,
+                                }
+                            )
+                            + "\n\n"
+                        )
 
                         result = glm_chat_completion_message(
                             working,
@@ -463,6 +516,12 @@ class ChatHandler:
                             allow_cheap_fallback=True,
                         )
                         if result.error and not result.content and not result.has_tool_calls:
+                            logger.warning(
+                                "AI chat GLM error round=%s model=%s: %s",
+                                round_i,
+                                self.model,
+                                result.error,
+                            )
                             yield f"data: {json.dumps({'error': result.error, 'done': True})}\n\n"
                             return
 
@@ -488,7 +547,25 @@ class ChatHandler:
                                     )
                                     + "\n\n"
                                 )
+                                tool_started = _time.monotonic()
                                 tool_json = execute_tool(name, args_raw, tool_ctx)
+                                logger.info(
+                                    "AI chat tool=%s elapsed=%.2fs model=%s",
+                                    name,
+                                    _time.monotonic() - tool_started,
+                                    self.model,
+                                )
+                                yield (
+                                    "data: "
+                                    + json.dumps(
+                                        {
+                                            "status": "tool_done",
+                                            "name": name,
+                                            "done": False,
+                                        }
+                                    )
+                                    + "\n\n"
+                                )
                                 working.append(
                                     {
                                         "role": "tool",

@@ -128,6 +128,11 @@ class AIAssistant {
     private contextCache: Map<string, { context: string; charCount: number }> = new Map();
     /** User text awaiting a completed assistant reply (for persist / interrupt stub). */
     private pendingPersistUser: string | null = null;
+    /** Live "Generating…" indicator: elapsed timer + phase label while waiting on the model. */
+    private loadingMessageId: string | null = null;
+    private loadingPhase: string = 'Generating response…';
+    private loadingStartedAt: number = 0;
+    private loadingTickTimer: ReturnType<typeof setInterval> | null = null;
     // TODO(perf): Optionally persist cache to localStorage or add a backend cache key
     // to reuse across sessions if context generation becomes expensive.
 
@@ -243,6 +248,85 @@ class AIAssistant {
         // Check against configured webai models list
         const webaiModels = this.config.webaiModels || [];
         return webaiModels.includes(model);
+    }
+
+    private formatElapsed(ms: number): string {
+        const totalSec = Math.floor(ms / 1000);
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    private friendlyToolName(toolName: string): string {
+        const map: Record<string, string> = {
+            get_holdings_snapshot: 'portfolio holdings',
+            get_trade_history: 'trade history',
+            get_track_record: 'track record',
+            get_theses_attention: 'theses needing attention',
+            get_confluence: 'confluence signals',
+            get_ideas_triage: 'ideas queue',
+            get_earnings_calendar: 'earnings calendar',
+            search_web: 'web search',
+            search_research: 'research library',
+            get_ticker_snapshot: 'ticker snapshot',
+            get_price_history: 'price history',
+        };
+        return map[toolName] || toolName.replace(/_/g, ' ');
+    }
+
+    private loadingHint(elapsedMs: number): string {
+        if (elapsedMs < 15000) return '';
+        if (elapsedMs < 45000) {
+            return 'Still working — first tokens can take a bit…';
+        }
+        if (elapsedMs < 90000) {
+            return 'Still going — tool lookups and cloud models often take 1–2 minutes.';
+        }
+        return 'Taking longer than usual — connection is open; hang tight.';
+    }
+
+    private renderLiveLoadingHtml(): string {
+        const elapsed = this.formatElapsed(Date.now() - this.loadingStartedAt);
+        const hint = this.loadingHint(Date.now() - this.loadingStartedAt);
+        const hintHtml = hint
+            ? `<div class="text-xs text-text-secondary mt-1">${hint}</div>`
+            : '';
+        return (
+            `<div class="flex flex-col gap-1">` +
+            `<div class="flex items-center gap-2">` +
+            `<div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div>` +
+            `<span>${this.loadingPhase}</span>` +
+            `<span class="text-xs text-text-secondary tabular-nums" data-loading-elapsed>${elapsed}</span>` +
+            `</div>${hintHtml}</div>`
+        );
+    }
+
+    private startLiveLoading(messageId: string, phase: string = 'Generating response…'): void {
+        this.stopLiveLoading(false);
+        this.loadingMessageId = messageId;
+        this.loadingPhase = phase;
+        this.loadingStartedAt = Date.now();
+        this.updateMessage(messageId, 'assistant', this.renderLiveLoadingHtml(), true);
+        this.loadingTickTimer = setInterval(() => {
+            if (!this.loadingMessageId) return;
+            this.updateMessage(this.loadingMessageId, 'assistant', this.renderLiveLoadingHtml(), true);
+        }, 1000);
+    }
+
+    private setLiveLoadingPhase(phase: string): void {
+        if (!this.loadingMessageId) return;
+        this.loadingPhase = phase;
+        this.updateMessage(this.loadingMessageId, 'assistant', this.renderLiveLoadingHtml(), true);
+    }
+
+    private stopLiveLoading(clearId: boolean = true): void {
+        if (this.loadingTickTimer !== null) {
+            clearInterval(this.loadingTickTimer);
+            this.loadingTickTimer = null;
+        }
+        if (clearId) {
+            this.loadingMessageId = null;
+        }
     }
 
     setupEventListeners(): void {
@@ -1194,8 +1278,9 @@ class AIAssistant {
         if (startAnalysisArea) startAnalysisArea.classList.add('hidden');
         if (retryButtonContainer) retryButtonContainer.classList.add('hidden');
 
-        // Show loading indicator with Tailwind spinner
-        const loadingId = this.addMessage('assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
+        // Live loading indicator (elapsed timer + phase updates while waiting)
+        const loadingId = this.addMessage('assistant', '', true);
+        this.startLiveLoading(loadingId, 'Generating response…');
 
         // Perform search if enabled (legacy prefetch for non-GLM models).
         // GLM uses on-demand search_web / search_research tools instead.
@@ -1205,6 +1290,7 @@ class AIAssistant {
 
         if (!modelUsesTools && this.includeSearch && this.config.searxngAvailable) {
             try {
+                this.setLiveLoadingPhase('Searching the web…');
                 searchResults = await this.performSearch(query);
                 // Display search results if any
                 if (searchResults && searchResults.results && searchResults.results.length > 0) {
@@ -1217,6 +1303,7 @@ class AIAssistant {
 
         if (!modelUsesTools && this.includeRepository && this.config.ollamaAvailable) {
             try {
+                this.setLiveLoadingPhase('Searching research library…');
                 repositoryArticles = await this.performRepositorySearch(query);
                 // Display repository articles if any
                 if (repositoryArticles && repositoryArticles.length > 0) {
@@ -1227,6 +1314,9 @@ class AIAssistant {
             }
         }
 
+        // Back to generating after any prefetch work
+        this.setLiveLoadingPhase('Generating response…');
+
         // Resend cached portfolio context every turn (stateless GLM/Ollama need it;
         // WebAI backend only injects it on the first turn to avoid session bloat).
         const isFirstMessage = this.conversationHistory.length === 1; // After adding user message
@@ -1234,7 +1324,7 @@ class AIAssistant {
         // If it's the first message, ensure context is ready
         if (isFirstMessage && !this.contextReady && this.contextLoading) {
             // Wait for context to load (poll every 100ms for up to 10 seconds)
-            this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Waiting for portfolio data...</span></div>', true);
+            this.setLiveLoadingPhase('Waiting for portfolio data…');
 
             let attempts = 0;
             while (!this.contextReady && attempts < 100) {
@@ -1245,8 +1335,7 @@ class AIAssistant {
             if (!this.contextReady) {
                 console.warn('[AIAssistant] Context load timed out, sending partial/empty context');
             } else {
-                // Update loading message
-                this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
+                this.setLiveLoadingPhase('Generating response…');
             }
         }
 
@@ -1379,6 +1468,7 @@ class AIAssistant {
                 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
                 const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
 
+                this.stopLiveLoading();
                 if (data.error) {
                     this.updateMessage(loadingId, 'assistant', `Error: ${data.error}`);
                     this.pendingPersistUser = null;
@@ -1393,6 +1483,7 @@ class AIAssistant {
             })
             .catch((err: Error) => {
                 console.error('Chat error:', err);
+                this.stopLiveLoading();
                 this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
                 // Re-enable send button and input
                 this.isSending = false;
@@ -1436,19 +1527,33 @@ class AIAssistant {
                     let buffer = '';
                     let fullResponse = '';
 
+                    const finishStream = (text: string): void => {
+                        this.stopLiveLoading();
+                        this.updateMessage(loadingId, 'assistant', text);
+                        this.recordAssistantReply(text);
+                        this.updateRetryButton();
+                        this.isSending = false;
+                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+                        if (sendBtn) sendBtn.disabled = false;
+                        if (chatInput) chatInput.disabled = false;
+                    };
+
+                    const failStream = (message: string): void => {
+                        this.stopLiveLoading();
+                        this.updateMessage(loadingId, 'assistant', `❌ Error: ${message}`);
+                        this.updateRetryButton();
+                        this.isSending = false;
+                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+                        if (sendBtn) sendBtn.disabled = false;
+                        if (chatInput) chatInput.disabled = false;
+                    };
+
                     const readChunk = (): void => {
                         reader.read().then(({ done, value }) => {
                             if (done) {
-                                // Remove streaming indicator and finalize
-                                this.updateMessage(loadingId, 'assistant', fullResponse);
-                                this.recordAssistantReply(fullResponse);
-                                this.updateRetryButton();
-                                // Re-enable send button and input
-                                this.isSending = false;
-                                const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                if (sendBtn) sendBtn.disabled = false;
-                                if (chatInput) chatInput.disabled = false;
+                                finishStream(fullResponse);
                                 return;
                             }
 
@@ -1462,38 +1567,21 @@ class AIAssistant {
                                     try {
                                         const data: ChatResponse = JSON.parse(line.slice(6));
                                         if (data.done) {
-                                            this.updateMessage(loadingId, 'assistant', fullResponse);
-                                            this.recordAssistantReply(fullResponse);
-                                            this.updateRetryButton();
-                                            // Re-enable send button and input
-                                            this.isSending = false;
-                                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                            if (sendBtn) sendBtn.disabled = false;
-                                            if (chatInput) chatInput.disabled = false;
+                                            finishStream(fullResponse);
                                             return;
                                         }
                                         if (data.status === 'tool' && data.name) {
-                                            this.updateMessage(
-                                                loadingId,
-                                                'assistant',
-                                                `<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Looking up via ${data.name}…</span></div>`,
-                                                true
-                                            );
+                                            const label = this.friendlyToolName(data.name);
+                                            this.setLiveLoadingPhase(`Looking up ${label}…`);
                                         }
                                         if (data.chunk) {
+                                            // First token: stop the waiting chrome, show live text
+                                            this.stopLiveLoading();
                                             fullResponse += data.chunk;
                                             this.updateMessage(loadingId, 'assistant', fullResponse + '<span class="inline-block w-2 h-4 bg-gray-500 dark:bg-gray-400 ml-1 animate-pulse">▌</span>');
                                         }
                                         if (data.error) {
-                                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
-                                            this.updateRetryButton();
-                                            // Re-enable send button and input
-                                            this.isSending = false;
-                                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                            if (sendBtn) sendBtn.disabled = false;
-                                            if (chatInput) chatInput.disabled = false;
+                                            failStream(data.error);
                                             return;
                                         }
                                     } catch (e) {
@@ -1504,14 +1592,7 @@ class AIAssistant {
 
                             readChunk();
                         }).catch((err: Error) => {
-                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${err.message}`);
-                            this.updateRetryButton();
-                            // Re-enable send button and input
-                            this.isSending = false;
-                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                            if (sendBtn) sendBtn.disabled = false;
-                            if (chatInput) chatInput.disabled = false;
+                            failStream(err.message);
                         });
                     };
 
@@ -1522,6 +1603,7 @@ class AIAssistant {
                         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
                         const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
 
+                        this.stopLiveLoading();
                         if (data.error) {
                             this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
                             this.updateRetryButton();
@@ -1540,6 +1622,7 @@ class AIAssistant {
             })
             .catch((err: Error) => {
                 console.error('Chat error:', err);
+                this.stopLiveLoading();
                 this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
                 // Re-enable send button and input
                 this.isSending = false;
