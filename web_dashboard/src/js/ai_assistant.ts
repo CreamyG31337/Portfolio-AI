@@ -1541,7 +1541,17 @@ class AIAssistant {
 
                     const failStream = (message: string): void => {
                         this.stopLiveLoading();
-                        this.updateMessage(loadingId, 'assistant', `❌ Error: ${message}`);
+                        const partial = fullResponse.trim();
+                        if (partial) {
+                            // Keep what already streamed — late proxy/network drops are common on long Ollama replies.
+                            const kept =
+                                `${partial}\n\n---\n*(Stream interrupted: ${message}. Partial reply kept above.)*`;
+                            this.updateMessage(loadingId, 'assistant', kept);
+                            this.recordAssistantReply(kept);
+                        } else {
+                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${message}`);
+                            this.pendingPersistUser = null;
+                        }
                         this.updateRetryButton();
                         this.isSending = false;
                         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
@@ -1697,7 +1707,8 @@ class AIAssistant {
         }
 
         messagesDiv.appendChild(messageDiv);
-        this.scrollToBottom();
+        // Stick to bottom for new user turns / loading bubble; streaming updates stay sticky-only.
+        this.scrollToBottom(role === 'user' || isLoading);
 
         return messageId;
     }
@@ -1749,11 +1760,25 @@ class AIAssistant {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     }
 
-    scrollToBottom(): void {
+    /** True when the chat viewport is already near the bottom (sticky-follow zone). */
+    private isChatNearBottom(thresholdPx: number = 120): boolean {
         const container = document.getElementById('chat-container');
-        if (container) {
-            container.scrollTop = container.scrollHeight;
-        }
+        if (!container) return true;
+        const distance =
+            container.scrollHeight - container.scrollTop - container.clientHeight;
+        return distance <= thresholdPx;
+    }
+
+    /**
+     * Scroll chat to bottom. By default only if the user is already near the bottom,
+     * so reading earlier messages while a reply streams is not yanked down.
+     * Pass force=true after sending a message or restoring a session.
+     */
+    scrollToBottom(force: boolean = false): void {
+        const container = document.getElementById('chat-container');
+        if (!container) return;
+        if (!force && !this.isChatNearBottom()) return;
+        container.scrollTop = container.scrollHeight;
     }
 
     clearChat(): void {
@@ -1823,7 +1848,7 @@ class AIAssistant {
             if (startAnalysisArea) startAnalysisArea.classList.add('hidden');
         }
         this.updateRetryButton();
-        this.scrollToBottom();
+        this.scrollToBottom(true);
     }
 
     recordAssistantReply(content: string): void {
