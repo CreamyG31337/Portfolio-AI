@@ -236,24 +236,10 @@
 
                     <hr class="border-border my-6">
 
-                    <!-- Fund Selection -->
-                    <div>
-                        <h3 class="font-semibold mb-2 text-text-primary">🗄️ Data Source</h3>
-                        <select id="fund-select"
-                            class="w-full p-2 border border-border rounded-lg bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent">
-                            {% for fund in available_funds %}
-                            <option value="{{ fund }}">{{ fund }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <hr class="border-border my-6">
-
                     <!-- Portfolio Data -->
                     <div>
                         <h3 class="font-semibold mb-2 text-text-primary">📊 Portfolio Data</h3>
-                        <p class="text-xs text-text-secondary mb-2">ℹ️ Always Included: Holdings, Performance Metrics,
-                            Cash Balances</p>
+                        <p class="text-xs text-text-secondary mb-2">Fund follows the left sidebar selector. Always included: Holdings, Performance Metrics, Cash Balances</p>
                         <p class="text-xs font-semibold mb-2 text-text-primary">Optional:</p>
 
                         <label class="flex items-center mb-2 cursor-pointer">

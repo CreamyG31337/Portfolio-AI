@@ -157,7 +157,6 @@ class AIAssistant {
             this.setupEventListeners();
             console.log('[AIAssistant] Event listeners attached');
             this.loadModels();
-            this.loadFunds();
             this.loadPortfolioTickers();
             this.loadContextItems();
             await this.loadUserPreferences();
@@ -293,45 +292,22 @@ class AIAssistant {
             });
         }
 
-        // Fund selection - use global selector from left nav (or fallback to right sidebar)
+        // Fund selection: left-nav global selector only (no duplicate settings dropdown).
         const globalFundSelect = document.getElementById('global-fund-select') as HTMLSelectElement | null;
-        const rightSidebarFundSelect = document.getElementById('fund-select') as HTMLSelectElement | null;
 
-        // Read initial fund from global selector
         if (globalFundSelect && globalFundSelect.value) {
             this.selectedFund = globalFundSelect.value;
             console.log('[AIAssistant] Initial fund from global selector:', this.selectedFund);
         }
 
-        // Listen to global fund selector (left nav)
         if (globalFundSelect) {
             globalFundSelect.addEventListener('change', (e: Event) => {
                 const target = e.target as HTMLSelectElement;
                 this.selectedFund = target.value;
                 console.log('[AIAssistant] Fund changed to:', this.selectedFund);
-                this.contextReady = false; // Reset context state
-                this.loadPortfolioTickers(); // Reload tickers for new fund
-                this.loadContext(); // Reload context for new fund
-                // Sync right sidebar selector if exists
-                if (rightSidebarFundSelect) {
-                    rightSidebarFundSelect.value = target.value;
-                }
-            });
-        }
-
-        // Also listen to right sidebar fund selector (for backwards compat)
-        if (rightSidebarFundSelect) {
-            rightSidebarFundSelect.addEventListener('change', (e: Event) => {
-                const target = e.target as HTMLSelectElement;
-                this.selectedFund = target.value;
-                console.log('[AIAssistant] Fund changed (sidebar) to:', this.selectedFund);
                 this.contextReady = false;
                 this.loadPortfolioTickers();
                 this.loadContext();
-                // Sync global selector if exists
-                if (globalFundSelect) {
-                    globalFundSelect.value = target.value;
-                }
             });
         }
 
@@ -982,24 +958,6 @@ class AIAssistant {
                 // Don't clear existing options on error - keep fallback
                 this.showError('Failed to load AI models. Using cached models if available.');
             });
-    }
-
-    loadFunds(): void {
-        const select = document.getElementById('fund-select') as HTMLSelectElement | null;
-        if (!select || !this.config.availableFunds) return;
-
-        // Skip if already populated by template
-        if (select.options.length > 0) return;
-
-        this.config.availableFunds.forEach(fund => {
-            const option = document.createElement('option');
-            option.value = fund;
-            option.textContent = fund;
-            if (fund === this.selectedFund) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
     }
 
     loadContextItems(): void {
