@@ -68,23 +68,27 @@ def main() -> int:
     from ideas_quality import (
         NEUTRAL_SENTIMENT_SQL,
         NO_CATALYST_CONCLUSION_RE,
-        SENTIMENT_EXEMPT_REASONS,
-        TITLE_REASONS,
+        RULES,
+        SENTIMENT_EXEMPT_RULES,
+        SENTIMENT_GUARDED_RULES,
+        sql_alternation,
+        sql_pattern,
     )
     from postgres_client import PostgresClient
 
     pg = PostgresClient()
 
     reason_case = " ".join(
-        f"WHEN ra.title ~* '{pattern}' THEN '{label}'" for label, pattern in TITLE_REASONS
+        f"WHEN ra.title ~* '{sql_pattern(r)}' THEN '{r.reason}'" for r in RULES
     )
-    # Unconditional patterns vs those needing a neutral-sentiment confirmation.
-    unconditional_re = "|".join(
-        p for label, p in TITLE_REASONS if label in SENTIMENT_EXEMPT_REASONS
-    )
-    guarded_re = "|".join(
-        p for label, p in TITLE_REASONS if label not in SENTIMENT_EXEMPT_REASONS
-    )
+    # Rules safe to dismiss on the title alone, vs those that additionally require
+    # neutral sentiment (a directional sentiment means the model found something
+    # worth saying -- see the Sinda case in ideas_quality).
+    #
+    # Unlike the pre-extraction filter, EVERY rule is available here: sentiment and
+    # conclusion exist by now, so the demote-only rules can be applied safely.
+    unconditional_re = sql_alternation(SENTIMENT_EXEMPT_RULES)
+    guarded_re = sql_alternation(SENTIMENT_GUARDED_RULES)
     neutral_sql = NEUTRAL_SENTIMENT_SQL
     select_sql = f"""
         SELECT ra.id, ra.title, ra.source, ra.relevance_score, ra.logic_check,

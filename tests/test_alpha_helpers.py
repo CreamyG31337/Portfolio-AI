@@ -110,6 +110,63 @@ def test_low_value_listing_index_reason() -> None:
     )
 
 
+def test_low_value_holdings_list_is_title_only() -> None:
+    """An ETF constituent table is boilerplate regardless of URL shape."""
+    assert low_value_alpha_reason("IEUS Holdings List - iShares MSCI Europe Small-Cap ETF") == (
+        "holdings_list"
+    )
+    assert low_value_alpha_reason("VSCIX Holdings List - Vanguard Small Cap Index I") == (
+        "holdings_list"
+    )
+
+
+def test_low_value_ambiguous_titles_require_url_confirmation() -> None:
+    """Title alone must not drop these -- the phrases occur in real analysis."""
+    # Generated index page: title + URL agree.
+    assert (
+        low_value_alpha_reason(
+            "SCHA Dividend History, Dates & Yield",
+            "https://stockanalysis.com/etf/scha/dividend/",
+        )
+        == "dividend_history"
+    )
+    assert (
+        low_value_alpha_reason(
+            "Rezolve AI Corporate Event Calendar",
+            "https://www.benzinga.com/quote/RZLV/calendar",
+        )
+        == "event_calendar"
+    )
+    # Same phrases in genuine analysis, no confirming URL path -> must be KEPT.
+    assert low_value_alpha_reason(
+        "Why Coca-Cola's Dividend History Makes It A Buy Today",
+        "https://www.fool.com/investing/2026/07/20/coca-cola-dividend/",
+    ) is None
+    assert low_value_alpha_reason(
+        "What The Event Calendar Tells Us About Biotech Catalysts",
+        "https://www.fool.com/investing/2026/07/20/biotech-catalysts/",
+    ) is None
+
+
+def test_demote_only_rules_never_drop_before_extraction() -> None:
+    """The Sinda regression.
+
+    "Sinda Analyst Ratings and Price Targets" matched a boilerplate pattern but its
+    conclusion carried a real signal (three banks with targets above the current
+    price). Sentiment saved it during post-hoc cleanup -- but sentiment does not
+    exist pre-extraction, so these rules must never drop an article here or the
+    article dies before anyone can tell it was worth keeping.
+    """
+    assert low_value_alpha_reason(
+        "Sinda Analyst Ratings and Price Targets | NYSE:SIND | Benzinga",
+        "https://www.benzinga.com/quote/SIND/analyst-ratings",
+    ) is None
+    assert low_value_alpha_reason(
+        "Lumentum Holdings Insider Trading Activity | NASDAQ:LITE | Benzinga",
+        "https://www.benzinga.com/quote/LITE/insider-trades",
+    ) is None
+
+
 def test_is_low_value_alpha_result_allows_real_analysis() -> None:
     # Verified-real saves from prod runs must NOT be filtered.
     legit = [
