@@ -10,9 +10,10 @@ Improve this plan where the codebase contradicts it; keep ROADMAP checklists in 
 items land.
 
 **Gates (do not ignore):**
-- Phase H closed (H7 Ideas usage check at minimum).
+- Phase H closed (**H7 done 2026-07-27:** `idea_triage` still 0 rows — Ideas unused for
+  labels; do not train on triage or silently promote YT into Ideas without a product call).
 - Prefer **I1 story dedup** before either phase at volume (K especially — same story on YT +
-  news write-up will double-count without it).
+  news write-up will double-count without it). K1–K2 PoC OK with a tiny allowlist.
 - No autonomous trading. Additive Research-DB schema only. Holdings jobs filter
   `funds.is_production = true`.
 

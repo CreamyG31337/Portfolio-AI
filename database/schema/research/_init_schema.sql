@@ -39,6 +39,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/action_queue_ai_review.sql
 \i tables/stance_history.sql
 \i tables/stance_outcomes.sql
+\i tables/stance_outcome_attempts.sql
 \i tables/idea_triage.sql
 \i tables/dilution_observations.sql
 \i tables/filing_events.sql

@@ -5,8 +5,8 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
-| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Active work:** H1–H6 shipped; **H7** Ideas usage check next. |
-| **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not a new phase ahead of H7). |
+| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Closed 2026-07-27:** H1–H7 shipped. H7: `idea_triage` still empty (0 Accept/Dismiss/Snooze) despite ~695 Alpha/Opportunity articles — product signal, not a schema bug. |
+| **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not blocking I/K). |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
 | **This doc → [Phase K](#phase-k--youtube-captions--research-articles)** | **Backlog (post-H, prefer after I1):** pull video captions/subtitles → normalize into `research_articles`-shaped rows so existing extract/summarize/meta paths analyze them (earnings calls, IR, curated finance channels). Absorbs the deferred “earnings-call transcript” idea from Phase G. |
@@ -137,7 +137,12 @@ collectors while source-ROI, retro email hookup, and bundle injection of the new
 unbuilt. Hold the roadmap’s own sequencing: close Learn→Synthesize / Learn→Collect before any
 new feed.
 
-### Ordered next work → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)
+### Ordered next work → Phase I (prefer **I1**), then K/J
+
+Phase H closed 2026-07-27 (H7: Ideas triage unused). Prefer **I1 story dedup** before
+volume collectors; **K1–K2 PoC** (YouTube captions) may start in parallel with a tiny
+allowlist — see [Phase K](#phase-k--youtube-captions--research-articles) and
+[`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md).
 
 ---
 
@@ -280,7 +285,19 @@ The missing terminus for the alpha pipeline. New `/ideas` screen showing
 - **Dismiss** / **Snooze**
 
 Persist decisions in a small Research-DB table (e.g. `idea_triage(article_id, status, decided_at, notes)`).
-Side effect: accept/dismiss clicks become labeled data for the article relevance scorer.
+
+> **Correction (2026-07-27).** This section used to claim "accept/dismiss clicks become labeled
+> data for the article relevance scorer." **Retract that.** At one user's click volume the label
+> count is orders of magnitude short of training a text relevance model; "Dismiss" conflates
+> *junk* / *real idea, bad stock* / *already knew* / *no time*; and ranking-then-labelling-the-top
+> is a bandit with no exploration, so it would confirm whatever it started believing.
+>
+> Ideas is a **universe-selection tool, not a measurement tool.** Accept's value is as a
+> *routing action* — it admits a ticker into the nightly analysis universe, where
+> `stance_history` → `stance_outcomes` already produces a real, outcome-based signal with no
+> clicks required. "Which alpha sources produce ideas worth having?" is therefore answerable via
+> `research_articles → stance_history.metadata->'evidence'->'article_ids' → stance_outcomes`,
+> a join whose plumbing G1 already built. Empty `idea_triage` blocks **no** measurement.
 
 **Manual watchlist (shipped 2026-07):** `/watchlist` + ticker-page Add/Remove for friend tips
 and ad-hoc names (bulk paste, soft-remove, tier). Do **not** route those through Ideas —
@@ -299,6 +316,29 @@ scatter/annotation layer on the price chart.
 Once `stance_outcomes` has ~30 days of rows: hit rate by source, sector, and confidence band;
 best/worst calls; calibration (does confidence 0.8 actually hit more than 0.5?). This screen is
 the input for deciding which collection jobs to keep (the Learn→Collect dashed arrow).
+
+> ⚠️ **2026-07-27: the numbers on this screen are not yet interpretable.** A live prod read
+> found three defects — outcome scoring is head-of-line blocked (`scored=0 skipped=202` for
+> multiple nights), every stance is scored against `^RUT` regardless of the ticker's cap band
+> or listing country, and `mean_excess` pools bullish/bearish sign conventions so a correct
+> bearish call scores negative. **Do not retire or retune any source on current numbers.**
+> Repair plan: [`.cursor/plans/measurement_rig.plan.md`](../.cursor/plans/measurement_rig.plan.md).
+
+#### 2.4b Measurement follow-ups (deferred — triggers, not dates)
+
+Deliberately out of the repair plan; each is worth doing once the rig is trustworthy.
+
+| Item | Why | Trigger |
+|------|-----|---------|
+| **Insider buy-vs-sell event study** | The strongest next test, and a **positive control for the rig itself**: buys informative / sells noisy is a well-documented prior, so failure to reproduce it means the measurement is broken, not the hypothesis. Needs no LLM, no `idea_triage` clicks, no stance ledger — event study straight off trades + prices. | After M1–M3 of the repair plan land |
+| **News-sentiment event study** | Answers "is trading on positive/negative news effective?" directly from `research_articles.sentiment` + tickers + forward returns. Also needs no clicks. | After the insider study validates the rig |
+| **Confidence intervals + clustered errors** | ~29 stances per ticker over 46 days are not independent, and stances correlate across tickers on market moves. Effective *n* is in the low hundreds, not 1,884. Point estimates invite over-reading. | Once baselines (M5) exist to compare against |
+| **Pre-registered primary metric per source** | 3 horizons × N sources × 3 confidence bands × ALIGNED/TENSION is dozens of rates; some look terrible by chance. Retiring a collector on its worst slice kills good collectors. | Before the first source-ROI retirement decision |
+| **Score delistings as realized losses** | Unscoreable rows are currently dropped. For a micro-cap book those are disproportionately delistings — i.e. the worst outcomes — so dropping them biases hit rate **upward**. Needs a judgment call on assumed magnitude. | After M1 surfaces the dead-letter set and its size is known |
+| **Sector-level benchmark refinement** | Cap band + geography (repair plan M2a) is the 90% fix; sector-relative scoring is the refinement. | Only if sector slices show systematic bias after M2b |
+
+**Standing rule:** the headline number is `hit_rate − baseline_hit_rate`, never `hit_rate`
+alone, and every rate ships with its `n`.
 
 ### 2.5 Cross-cutting polish
 
@@ -675,7 +715,7 @@ flowchart TD
     H2 --> H4["H4 · Trend memory ✓"]
     H5["H5 · congress herd → ledger ✓"]
     H6["H6 · executive conflict scoring ✓"]
-    H7["H7 · Ideas usage check ← NEXT"]
+    H7["H7 · Ideas usage check ✓"]
     H5 -.->|"after H closes"| I1["I1 · story dedup + corroboration"]
     H5 -.->|"after H closes"| I2["I2 · FRED stress → regime_json"]
 ```
@@ -689,12 +729,12 @@ flowchart TD
 | **E** | Pillar 3 Shape C + weekly retro | ~1 wk — **Shape C gated; retro code + account recipient shipped** |
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
-| **H** (now — active) | Source-ROI; meta-bundle injection; trend memory; congress herd ledger; executive scoring; retro recipients | ~1–2 wk — **H1–H6 shipped; H7 next** |
+| **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas triage still unused (product signal) |
 | **I** (backlog) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
 | **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); gated new collector — **not started** |
 
-### Phase H — Close the Learn ↔ Synthesize loop (**active**)
+### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
 **Created 2026-07-15** from the [2026-07-15 design review](#key-findings-from-the-2026-07-15-design-review).
 Do **not** start §4.5 / §4.6 / §5.3 / G6 until H1 produces a readable source-ROI answer.
@@ -728,9 +768,13 @@ Pattern donor for bundle work: Insights R1 (`### Human ticker thesis threads` + 
   `EXECUTIVE_SESSION_PROMPT_TEMPLATE` (policy/contract levers) instead of committee
   rubric; collector stays on. See [`executive_trade_scoring_plan.md`](executive_trade_scoring_plan.md).
   Shipped 2026-07-21.
-- [ ] **H7 · Ideas usage check** — confirm whether `idea_triage` has any Accept/Dismiss in prod;
-  if unused after months, treat as product signal (retire pressure or fix UX) before building
-  relevance-scorer training on empty labels.
+- [x] **H7 · Ideas usage check** — re-checked Research DB `idea_triage` on **2026-07-27**:
+  **0 rows** (no `accepted` / `dismissed` / `snoozed`). Inbox pool still large:
+  ~695 articles with `article_type IN ('Alpha Research','Opportunity Discovery')`
+  (431 + 264). Same empty-label signal as June verify — **product, not plumbing.**
+  Do **not** build relevance-scorer training on triage labels. Before extending Ideas for
+  J5/K promotions, either fix UX / habit so Accept/Dismiss get used, or treat Ideas as a
+  browse surface only (Today / watchlist / Insights remain the Decide termini).
 
 #### Still gated (do not start in Phase H)
 
@@ -1040,7 +1084,8 @@ Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun
 - **`confluence` live** — events + Today block shipping. **Same gap:** not in meta bundle (H2).
 - **G5 retro Mailgun** — code shipped (`retro_digest_service.py`); Phase H3 now resolves
   the `Lance Colton` dashboard account to its current profile email at send time.
-- **`idea_triage` empty** at June verify — re-check under **Phase H7**.
+- **`idea_triage` empty** at June verify — **H7 re-check 2026-07-27: still 0 rows**
+  (~695 Alpha/Opportunity articles in pool). Product signal; no triage-label training.
 
 Two real findings from the June 2026 ledger rollout (still relevant):
 
