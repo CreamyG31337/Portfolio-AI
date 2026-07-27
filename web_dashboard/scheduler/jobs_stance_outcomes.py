@@ -26,6 +26,7 @@ project_root = str(current_dir.parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
+from benchmarks import resolve_benchmark
 from scheduler.scheduler_core import log_job_execution
 from stance_history import DIRECTIONAL_STANCES, is_directional_stance
 
@@ -40,6 +41,11 @@ JOB_ID = "stance_outcomes"
 # at the head of the `as_of ASC` window forever and starve every newer stance --
 # the cause of the observed `scored=0 skipped=202` stall.
 MAX_SCORING_ATTEMPTS = 5
+
+# 1 = legacy (every stance vs ^RUT). 2 = per-ticker benchmark (M2a).
+# Track-record aggregates should filter to a single version; a future benchmark
+# change bumps this rather than rewriting already-scored rows.
+SCORING_VERSION = 2
 
 # Skip reasons. These exist so the job summary can distinguish a transient,
 # system-wide fetch failure (provider rate-limiting -> no_ticker_price everywhere)
@@ -118,13 +124,36 @@ def _fetch_benchmark_closes(
     supabase_client: Any,
     start: date,
     end: date,
+    symbol: str = BENCHMARK_TICKER,
 ) -> list[dict[str, Any]]:
+    """Benchmark closes, cache-first with a provider fallback that backfills the cache.
+
+    ``benchmark_data`` already holds ^GSPC / ^RUT / QQQ / VTI. ^GSPTSE (needed once
+    per-ticker benchmarks landed) is not there, so a cache miss falls through to the
+    price provider and writes the result back -- no separate backfill job, and any
+    future benchmark self-populates the same way.
+    """
     rows = supabase_client.get_benchmark_data(
-        BENCHMARK_TICKER,
+        symbol,
         datetime.combine(start, datetime.min.time(), tzinfo=UTC),
         datetime.combine(end, datetime.max.time().replace(microsecond=0), tzinfo=UTC),
     )
-    return rows or []
+    if rows:
+        return rows
+
+    logger.info("stance_outcomes_job: benchmark cache miss for %s; fetching", symbol)
+    fetched = _fetch_ticker_closes_yfinance(symbol, start, end)
+    if not fetched:
+        logger.warning("stance_outcomes_job: no benchmark data available for %s", symbol)
+        return []
+    try:
+        supabase_client.cache_benchmark_data(
+            symbol,
+            [{"Date": r["date"], "Close": r["close"]} for r in fetched],
+        )
+    except Exception as exc:
+        logger.warning("stance_outcomes_job: could not cache %s: %s", symbol, exc)
+    return fetched
 
 
 def _fetch_ticker_closes_yfinance(
@@ -184,6 +213,31 @@ def candidate_price_symbols(ticker: str) -> list[str]:
             candidates.append(f"{head}-{tail}")
             candidates.append(f"{head}-{tail}.TO")
     return list(dict.fromkeys(candidates))
+
+
+def load_securities_meta(postgres: Any, tickers: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Fetch benchmark inputs for a batch of tickers, keyed by UPPER(ticker).
+
+    Missing rows are normal, not exceptional: 51 of the stance tickers have no
+    ``securities`` row at all. Callers must treat an absent entry as "unknown", which
+    resolves to the default benchmark flagged as a fallback.
+    """
+    wanted = sorted({(t or "").strip().upper() for t in tickers if t})
+    if not wanted:
+        return {}
+    try:
+        rows = postgres.execute_query(
+            """
+            SELECT upper(ticker) AS ticker, market_cap, price_symbol, currency, benchmark_override
+            FROM securities
+            WHERE upper(ticker) = ANY(%s)
+            """,
+            (wanted,),
+        )
+    except Exception as exc:
+        logger.warning("stance_outcomes_job: securities lookup failed (%s); using defaults", exc)
+        return {}
+    return {str(r["ticker"]): dict(r) for r in rows}
 
 
 def _load_cached_price_symbol(postgres: Any, ticker: str) -> str | None:
@@ -338,6 +392,7 @@ def score_stance_row(
     now: datetime,
     benchmark_rows: Sequence[Mapping[str, Any]],
     ticker_rows: Sequence[Mapping[str, Any]],
+    benchmark_symbol: str = BENCHMARK_TICKER,
 ) -> ScoreResult:
     """Score one stance row.
 
@@ -383,6 +438,7 @@ def score_stance_row(
             "ticker_return": returns["ticker_return"],
             "benchmark_return": returns["benchmark_return"],
             "excess_return": returns["excess_return"],
+            "benchmark_symbol": benchmark_symbol,
         },
         None,
     )
@@ -429,7 +485,6 @@ def _run_stance_outcomes_job() -> None:
             )
 
         all_candidates = [c for rows in candidates_by_horizon.values() for c in rows]
-        bench_rows: list[dict[str, Any]] = []
         min_date = now.date()
         max_date = now.date()
         if all_candidates:
@@ -437,7 +492,33 @@ def _run_stance_outcomes_job() -> None:
                 (c["as_of"].date() if isinstance(c["as_of"], datetime) else date.today())
                 for c in all_candidates
             )
-            bench_rows = _fetch_benchmark_closes(supabase, min_date - timedelta(days=7), max_date)
+
+        # Benchmark inputs for every candidate ticker, fetched once.
+        sec_meta = load_securities_meta(postgres, [c.get("ticker") or "" for c in all_candidates])
+        # Benchmark closes are cached per symbol per run: a handful of symbols across
+        # hundreds of stances, so this is 2-3 fetches, not one per row.
+        bench_cache: dict[str, list[dict[str, Any]]] = {}
+        benchmark_counts: dict[str, int] = {}
+        fallback_benchmarks = 0
+
+        def _benchmark_for(ticker: str) -> tuple[str, list[dict[str, Any]]]:
+            meta = sec_meta.get(ticker.upper()) or {}
+            symbol, is_fallback = resolve_benchmark(
+                ticker,
+                market_cap=meta.get("market_cap"),
+                price_symbol=meta.get("price_symbol"),
+                currency=meta.get("currency"),
+                override=meta.get("benchmark_override"),
+            )
+            if is_fallback:
+                nonlocal fallback_benchmarks
+                fallback_benchmarks += 1
+            if symbol not in bench_cache:
+                bench_cache[symbol] = _fetch_benchmark_closes(
+                    supabase, min_date - timedelta(days=7), max_date, symbol
+                )
+            benchmark_counts[symbol] = benchmark_counts.get(symbol, 0) + 1
+            return symbol, bench_cache[symbol]
 
         # Pass 2: score. One price fetch per ticker per run, shared across horizons.
         ticker_cache: dict[str, list[dict[str, Any]]] = {}
@@ -455,12 +536,14 @@ def _run_stance_outcomes_job() -> None:
                             max_date,
                             resolved_symbols,
                         )
+                    bench_symbol, bench_rows = _benchmark_for(ticker)
                     result = score_stance_row(
                         row,
                         horizon_days=horizon,
                         now=now,
                         benchmark_rows=bench_rows,
                         ticker_rows=ticker_cache[ticker],
+                        benchmark_symbol=bench_symbol,
                     )
                     if result.payload is None:
                         reason = result.skip_reason or "unknown"
@@ -478,8 +561,9 @@ def _run_stance_outcomes_job() -> None:
                         """
                         INSERT INTO stance_outcomes (
                             stance_id, horizon_days, baseline_price, end_price,
-                            ticker_return, benchmark_return, excess_return
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ticker_return, benchmark_return, excess_return,
+                            benchmark_symbol, scoring_version
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (stance_id, horizon_days) DO NOTHING
                         """,
                         (
@@ -490,6 +574,8 @@ def _run_stance_outcomes_job() -> None:
                             payload["ticker_return"],
                             payload["benchmark_return"],
                             payload["excess_return"],
+                            payload["benchmark_symbol"],
+                            SCORING_VERSION,
                         ),
                     )
                     scored += 1
@@ -514,6 +600,13 @@ def _run_stance_outcomes_job() -> None:
             summary += f" [{reason_summary}]"
         if unpriced:
             summary += f" unpriced_tickers={len(unpriced)}"
+        if benchmark_counts:
+            bench_summary = " ".join(f"{k}={v}" for k, v in sorted(benchmark_counts.items()))
+            summary += f" bench[{bench_summary}]"
+        if fallback_benchmarks:
+            # Unknown market cap -> defaulted to the broad index. Visible so a large
+            # share of guessed benchmarks cannot quietly inflate confidence.
+            summary += f" bench_fallback={fallback_benchmarks}"
         log_job_execution(JOB_ID, True, summary, duration_ms)
         mark_job_completed(
             JOB_ID,
