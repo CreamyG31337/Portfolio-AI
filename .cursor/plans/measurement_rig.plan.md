@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: m5-baselines
     content: "Null models: always-bullish and shuffled-stance baselines scored through the same path"
-    status: pending
+    status: completed
   - id: m6-fund-benchmark
     content: "Fund primary benchmark: weekly LLM proposal from holdings, effective-dated, for portfolio reporting only"
     status: pending
@@ -354,6 +354,56 @@ stance miss at once). **Effective sample size is in the low hundreds, not 1,884.
 Minimum: show `n` next to every rate, and suppress rates where `scored < 30`. The live data
 already has `thesis_ai_review: 50.0% (1/2 scored)` and `confluence: 33.3% (1/3 scored)`
 displayed as if they were comparable to a 1,227-row source.
+
+### ✅ M5 SHIPPED 2026-07-27 — **the answer**
+
+Simpler than planned: **no new table, no re-scoring, no price fetches.** `excess_return` is
+already stored per row against the correct benchmark, so every null model is just a
+relabelling of existing outcomes. The shuffled figure is the *exact expectation* under
+permutation (within a day bucket of T rows, a bullish label lands on a winner with
+probability pos/T), so it is deterministic — no RNG, no seed, no flaky test.
+
+```
+                       7d                        30d
+actual             47.56%                    42.29%
+shuffled null      48.60%  edge -1.04pp      42.21%  edge +0.08pp
+always bullish     48.47%  edge -0.91pp      40.35%  edge +1.94pp
+always bearish     51.53%                    59.65%
+n                   1,991 over 37 day buckets   927 over 16 buckets
+```
+
+By direction, against each direction's own base rate:
+
+```
+7d   BULLISH n=1749  hit 47.9%  base 48.6%  edge -0.7%
+     BEARISH n= 287  hit 47.0%  base 51.4%  edge -4.3%
+30d  BULLISH n= 778  hit 40.1%  base 40.8%  edge -0.7%
+     BEARISH n= 167  hit 55.7%  base 59.2%  edge -3.5%
+```
+
+**Conclusion: no detectable directional edge, and no evidence of harm.** Every edge is
+inside the noise band for 37 correlated day buckets.
+
+Two things this settles:
+
+1. **The sub-50% hit rate was the market, not the model.** Always-bullish scores 48.5% (7d)
+   and 40.4% (30d) — this universe underperformed its own benchmarks most of the time
+   (always-bearish is 59.7% at 30d). A raw 42% looked damning; against the correct null it
+   is ordinary. At 30d the model is *marginally ahead* of buying everything (+1.94pp).
+2. **The headline metric must be the edge, not the rate.** The UI previously centred its
+   confidence band on **50%**, which is the wrong null for a mostly-long book and would have
+   reported "systematically wrong-way" for a system performing exactly at chance.
+
+#### ⚠️ Caveat: the shuffled null has limited power here
+
+The label mix is **86% bullish** (1,749 of 2,036 at 7d). Permuting a lopsided label set
+cannot differ much from always-bullish — note 48.60% vs 48.47%. So the shuffled test mostly
+probes whether the 14% bearish calls landed on the right rows. It is a valid null, but a
+weak instrument on this data. Reading it as "proven no edge" would overclaim; the honest
+statement is **"no edge detectable at this sample size and label balance."**
+
+The by-direction split above is the sharper cut and should be surfaced on the screen too
+(follow-up) — it is where a real edge would first appear.
 
 ## M6 — Fund primary benchmark (the user's ask, correctly scoped)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, datetime
 from decimal import Decimal
 from statistics import median
 from typing import Any
@@ -93,6 +94,88 @@ def _directional_excess(row: dict[str, Any]) -> float | None:
 def is_broad_index_etf(ticker: Any) -> bool:
     """True when a stance's excess return is ~0 by construction (see BROAD_INDEX_ETFS)."""
     return str(ticker or "").strip().upper() in BROAD_INDEX_ETFS
+
+
+def _date_key(as_of: Any) -> str:
+    """Day bucket for baseline permutation. Falls back to a single bucket if unparseable."""
+    if isinstance(as_of, datetime):
+        return as_of.date().isoformat()
+    if isinstance(as_of, date):
+        return as_of.isoformat()
+    return str(as_of or "")[:10]
+
+
+def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, Any]:
+    """Null models, so a hit rate can be interpreted instead of merely reported.
+
+    A hit rate on its own says nothing: the median individual stock underperforms an
+    index routinely, so a mostly-long book can print sub-50% with entirely ordinary
+    luck. The question is not "is it above 50%" but "is it above what no skill would
+    have produced on these same tickers over these same windows".
+
+    Three baselines, all computed from the SAME scored rows -- no re-scoring, no
+    price fetches, no extra table. ``excess_return`` is already stored per row against
+    the correct benchmark, so every null model is a relabelling of existing outcomes:
+
+    * ``always_bullish``  -- call everything BULLISH. The "why not just buy them all"
+      test.
+    * ``always_bearish``  -- the mirror, included because it makes an asymmetric
+      market obvious at a glance.
+    * ``shuffled``        -- keep the exact mix of bullish/bearish calls the system
+      actually made, but assign them to rows at random. This is the sharpest null:
+      it destroys only the pairing between label and outcome, so beating it means the
+      model's directional choices carried information.
+
+    The shuffled figure is the **exact expectation** under permutation, not a Monte
+    Carlo estimate: within a day bucket of T rows holding ``pos`` positive-excess and
+    ``neg`` negative-excess outcomes, a bullish label lands on a winner with
+    probability pos/T, so E[hits] = (b*pos + e*neg)/T. Deterministic, no RNG, no seed
+    to get wrong, no flaky tests.
+
+    Bucketing by day is deliberate: stances are strongly correlated within a session
+    (a market drop makes every bullish call miss at once), and permuting within the
+    day preserves that structure instead of pretending the rows are independent.
+    """
+    by_day: dict[str, list[tuple[str, float]]] = defaultdict(list)
+    for stance, excess, as_of in baseline_rows:
+        by_day[_date_key(as_of)].append((stance, excess))
+
+    n = 0
+    always_bullish_hits = 0
+    always_bearish_hits = 0
+    shuffled_hits = 0.0
+
+    for bucket in by_day.values():
+        total = len(bucket)
+        if not total:
+            continue
+        pos = sum(1 for _s, ex in bucket if ex > 0)
+        neg = sum(1 for _s, ex in bucket if ex < 0)
+        bullish = sum(1 for s, _ex in bucket if s.upper() in _BULLISH_STANCES)
+        bearish = sum(1 for s, _ex in bucket if s.upper() in _BEARISH_STANCES)
+
+        n += total
+        always_bullish_hits += pos
+        always_bearish_hits += neg
+        labelled = bullish + bearish
+        if labelled:
+            shuffled_hits += (bullish * pos + bearish * neg) / total
+
+    if n == 0:
+        return {
+            "n": 0,
+            "always_bullish_hit_rate": None,
+            "always_bearish_hit_rate": None,
+            "shuffled_hit_rate": None,
+        }
+
+    return {
+        "n": n,
+        "always_bullish_hit_rate": round(always_bullish_hits / n, 4),
+        "always_bearish_hit_rate": round(always_bearish_hits / n, 4),
+        "shuffled_hit_rate": round(shuffled_hits / n, 4),
+        "day_buckets": len(by_day),
+    }
 
 
 def _parse_metadata(raw: Any) -> dict[str, Any]:
@@ -228,6 +311,7 @@ def build_track_record_summary(
             bucket["misses"] += 1
 
     broad_index_etf_excluded = 0
+    baseline_rows: list[tuple[str, float, Any]] = []
 
     for row in rows:
         # Tautological rows are dropped before any aggregate touches them, so they
@@ -258,6 +342,15 @@ def build_track_record_summary(
         dir_ex = _directional_excess(row)
         if hit is not None and dir_ex is not None:
             excess_by_source[source].append(dir_ex)
+
+        # Baselines need the RAW excess (the market outcome) paired with the label,
+        # so a null model can reassign labels to the same outcomes. Directional
+        # excess would bake the label in and make every baseline trivially equal.
+        raw_ex = _finite_decimal(row.get("excess_return"))
+        if hit is not None and raw_ex is not None:
+            baseline_rows.append(
+                ((row.get("stance") or "").upper(), float(raw_ex), row.get("as_of"))
+            )
 
         cov = coverage_totals[source]
         cov["rows"] += 1
@@ -365,9 +458,31 @@ def build_track_record_summary(
             ),
         }
 
+    baselines = compute_baselines(baseline_rows)
+
+    # The headline number is the EDGE, not the raw rate. Reporting a bare hit rate
+    # invites comparison against 50%, which is the wrong null for a mostly-long book.
+    overall_scored = sum(b["scored"] for b in by_source.values())
+    overall_hits = sum(b["hits"] for b in by_source.values())
+    overall_rate = (overall_hits / overall_scored) if overall_scored else None
+    shuffled = baselines.get("shuffled_hit_rate")
+    always_bullish = baselines.get("always_bullish_hit_rate")
+    baselines["actual_hit_rate"] = round(overall_rate, 4) if overall_rate is not None else None
+    baselines["edge_vs_shuffled"] = (
+        round(overall_rate - shuffled, 4)
+        if overall_rate is not None and shuffled is not None
+        else None
+    )
+    baselines["edge_vs_always_bullish"] = (
+        round(overall_rate - always_bullish, 4)
+        if overall_rate is not None and always_bullish is not None
+        else None
+    )
+
     return {
         "horizon_days": horizon_days,
         "total_scored": len(rows),
+        "baselines": baselines,
         # Excess-return keys below are DIRECTIONAL: positive always means the call
         # was right, for bearish stances too. Declared in the payload so downstream
         # consumers (including the AI assistant, which reads this dict verbatim)

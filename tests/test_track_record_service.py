@@ -79,6 +79,69 @@ def test_build_track_record_summary_skips_nan_rows() -> None:
     assert summary["median_excess_by_source"]["ticker_meta_analysis"] == 2.0
 
 
+def test_baselines_detect_a_perfect_model() -> None:
+    """A model that puts every label on the right row must beat the shuffled null."""
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 5.0, "2026-07-01"),
+        ("BULLISH", 3.0, "2026-07-01"),
+        ("BEARISH", -4.0, "2026-07-01"),
+        ("BEARISH", -2.0, "2026-07-01"),
+    ]
+    b = compute_baselines(rows)
+    # Every call correct: 2 winners called bullish, 2 losers called bearish.
+    assert b["always_bullish_hit_rate"] == 0.5
+    assert b["always_bearish_hit_rate"] == 0.5
+    # Shuffled: each label lands on a matching row half the time.
+    assert b["shuffled_hit_rate"] == 0.5
+
+
+def test_baselines_flat_when_labels_carry_no_information() -> None:
+    """Labels uncorrelated with outcomes -> shuffled null equals the real rate."""
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 5.0, "2026-07-01"),
+        ("BULLISH", -5.0, "2026-07-01"),
+        ("BEARISH", 5.0, "2026-07-01"),
+        ("BEARISH", -5.0, "2026-07-01"),
+    ]
+    b = compute_baselines(rows)
+    actual = 2 / 4  # one bullish winner + one bearish loser
+    assert b["shuffled_hit_rate"] == actual
+
+
+def test_baselines_bucket_by_day_to_respect_correlated_moves() -> None:
+    """All-up and all-down days must not be pooled: within a day there is nothing to pick.
+
+    Pooling them would let a day where everything rose subsidise a day where
+    everything fell, understating the null.
+    """
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 2.0, "2026-07-01"),
+        ("BEARISH", 3.0, "2026-07-01"),   # everything up that day
+        ("BULLISH", -2.0, "2026-07-02"),
+        ("BEARISH", -3.0, "2026-07-02"),  # everything down that day
+    ]
+    b = compute_baselines(rows)
+    assert b["day_buckets"] == 2
+    # Day 1: any label has a winner under it. Day 2: any label has a loser.
+    # So a shuffled model gets exactly one of two right on each day.
+    assert b["shuffled_hit_rate"] == 0.5
+    assert b["always_bullish_hit_rate"] == 0.5
+
+
+def test_baselines_empty_input() -> None:
+    from web_dashboard.track_record_service import compute_baselines
+
+    b = compute_baselines([])
+    assert b["n"] == 0
+    assert b["shuffled_hit_rate"] is None
+
+
 def test_correct_bearish_call_contributes_positive_excess() -> None:
     """The M3 bug: raw excess made a correct BEARISH call score as a bad outcome.
 

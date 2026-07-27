@@ -44,7 +44,18 @@ interface Summary {
   avg_excess_by_source?: Record<string, number | null>;
   median_excess_by_source?: Record<string, number | null>;
   excess_metric?: string;
+  scoring_version?: number;
   broad_index_etf_excluded?: number;
+  baselines?: {
+    n?: number;
+    actual_hit_rate?: number | null;
+    always_bullish_hit_rate?: number | null;
+    always_bearish_hit_rate?: number | null;
+    shuffled_hit_rate?: number | null;
+    edge_vs_shuffled?: number | null;
+    edge_vs_always_bullish?: number | null;
+    day_buckets?: number;
+  };
   counts_by_source?: Record<string, CountBucket>;
   counts_by_confidence_band?: Record<string, CountBucket>;
   by_domain?: DomainRow[];
@@ -137,17 +148,30 @@ function renderHeadline(data: Summary): void {
   }
   const rate = total.hits / total.scored;
   const band = coinFlipBand(total.scored);
+  const base = data.baselines || {};
+  // The null is NOT 50%. The median stock underperforms its index routinely, so a
+  // mostly-long book prints sub-50% on ordinary luck. Compare against what no skill
+  // would have produced on these same rows.
+  const nullRate = num(base.shuffled_hit_rate);
   let verdict = "";
-  if (band != null) {
-    const lo = 0.5 - band;
-    const hi = 0.5 + band;
+  if (band != null && nullRate != null) {
+    const lo = nullRate - band;
+    const hi = nullRate + band;
+    const edge = rate - nullRate;
+    const bullBase = num(base.always_bullish_hit_rate);
+    const context =
+      bullBase != null
+        ? ` Calling everything bullish would have scored ${pct(bullBase)} over the same rows.`
+        : "";
     if (rate >= lo && rate <= hi) {
-      verdict = `With ${total.scored} calls, a no-edge coin flip would land anywhere between ${pct(lo)} and ${pct(hi)} — so this hit rate is <strong>statistically indistinguishable from chance</strong>. Watch the excess-return numbers below for the real profit signal.`;
+      verdict = `Randomly reassigning the same mix of calls would score ${pct(nullRate)}, and with ${total.scored} calls anything in ${pct(lo)}–${pct(hi)} is noise — so this is <strong>indistinguishable from no skill</strong> (edge ${pp(edge * 100)}).${context}`;
     } else if (rate > hi) {
-      verdict = `That is <strong>above</strong> the ${pct(lo)}–${pct(hi)} range a no-edge coin flip would produce with ${total.scored} calls — evidence of a real directional edge.`;
+      verdict = `That beats the ${pct(nullRate)} a random reassignment of the same calls would score, by more than the ${pct(lo)}–${pct(hi)} noise band — <strong>evidence of a real edge</strong>.${context}`;
     } else {
-      verdict = `That is <strong>below</strong> the ${pct(lo)}–${pct(hi)} range a no-edge coin flip would produce with ${total.scored} calls — the calls have been systematically wrong-way.`;
+      verdict = `That trails the ${pct(nullRate)} a random reassignment of the same calls would score — the calls have been <strong>systematically wrong-way</strong>.${context}`;
     }
+  } else if (band != null) {
+    verdict = `With ${total.scored} calls, the noise band is ±${pct(band).replace("%", "")}pp. No baseline available yet.`;
   }
   // Scored-call-weighted average of per-source means.
   let wsum = 0;
@@ -172,6 +196,18 @@ function renderHeadline(data: Summary): void {
         <p class="text-2xl font-semibold ${signClass(overallMean)}">${pp(overallMean)}</p>
         <p class="text-xs text-text-secondary">avg excess return per call, in the call's direction</p>
       </div>
+      ${
+        num(data.baselines?.shuffled_hit_rate) != null
+          ? `<div>
+        <p class="text-2xl font-semibold ${signClass(num(data.baselines?.edge_vs_shuffled))}">${pp(
+          (num(data.baselines?.edge_vs_shuffled) ?? 0) * 100
+        )}</p>
+        <p class="text-xs text-text-secondary">edge vs no-skill baseline (${pct(
+          num(data.baselines?.shuffled_hit_rate)
+        )})</p>
+      </div>`
+          : ""
+      }
     </div>
     <p class="text-sm text-text-secondary">${verdict}</p>
     ${
