@@ -192,5 +192,7 @@ def test_format_prior_stance_flip_and_track_record() -> None:
     assert "stance=BEARISH" in block
     assert "(FLIP)" in block
     assert "hit_rate=50.0%" in block
-    assert "mean_excess=-1.20" in block
+    # Labelled directional so the meta bundle cannot mislead the LLM into reading
+    # a correct bearish call's negative raw excess as a bad outcome.
+    assert "mean_directional_excess=-1.20" in block
     assert "source calibration" in block

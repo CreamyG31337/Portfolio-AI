@@ -10,7 +10,7 @@ todos:
     status: pending
   - id: m3-sign-adjusted-excess
     content: "Sign-adjust excess return by stance direction so mean_excess is comparable across bullish/bearish sources"
-    status: pending
+    status: completed
   - id: m4-rescore-backfill
     content: "One-shot re-score of existing outcomes under correct benchmarks, gated by scoring_version"
     status: pending
@@ -246,6 +246,37 @@ aggregate *that*. Report it as "mean return in the direction of the call." Keep 
 `excess_return` stored as-is; this is a presentation-layer fix in `track_record_service.py`
 plus the retro digest. Add a unit test with one bullish hit and one bearish hit asserting
 both contribute positively.
+
+### ✅ M3 SHIPPED 2026-07-27 — result
+
+Confirmed on prod data, exactly the predicted sign flip:
+
+```
+action_queue_ai_review   before: hit_rate=68.0%  mean_excess=-4.24
+                          after: hit_rate=68.0%  mean_excess=+4.24
+ticker_meta_analysis     -0.60 -> -0.33
+ticker_analysis          -0.38 -> -0.13
+```
+
+The SELL/RISK-heavy source was being reported as the **worst** performer in the book while
+actually being the best. The two large sources moved toward zero for the same reason (their
+correct bearish calls had been subtracting).
+
+Shipped alongside:
+- `_BULLISH_STANCES` / `_BEARISH_STANCES` extracted as shared constants so `_hit_from_row`
+  and `_directional_excess` can never disagree about what a directional call is.
+- **Best/worst calls sorting was wrong too** — it ranked by raw excess, so a correct bearish
+  call sorted as the worst call in the book. Now sorts directionally.
+- Broad-index ETF exclusion (below), user-approved.
+- `excess_metric: "directional"` in the API payload, since `ai_assistant_tools` passes this
+  dict to an LLM verbatim and needed the semantics stated inline.
+- Meta-bundle label renamed `mean_excess` → `mean_directional_excess` in
+  `stance_history.py` for the same reason.
+- UI labels/tooltips in `track_record.ts` updated; excluded-ETF count surfaced.
+
+⚠️ Still scored against `^RUT` — M2a/M2b outstanding. `ticker_meta_analysis` at 45.9% and
+`ticker_analysis` at 48.1% remain uninterpretable until the benchmark is right **and** M5
+baselines exist.
 
 ## Defect 4 — no baseline, so no hit rate is interpretable
 

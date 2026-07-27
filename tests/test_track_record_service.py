@@ -79,6 +79,81 @@ def test_build_track_record_summary_skips_nan_rows() -> None:
     assert summary["median_excess_by_source"]["ticker_meta_analysis"] == 2.0
 
 
+def test_correct_bearish_call_contributes_positive_excess() -> None:
+    """The M3 bug: raw excess made a correct BEARISH call score as a bad outcome.
+
+    Prod symptom before the fix: action_queue_ai_review showed hit_rate=68.0%
+    alongside mean_excess=-4.24.
+    """
+    pg = _FakePg(
+        [
+            {
+                "source": "action_queue_ai_review",
+                "stance": "SELL",
+                "confidence": 0.8,
+                "metadata": {},
+                # Stock fell 5pp vs benchmark. The SELL call was RIGHT.
+                "excess_return": Decimal("-5.0"),
+                "ticker_return": Decimal("-4.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "AAA",
+                "as_of": "2026-07-01",
+            },
+            {
+                "source": "action_queue_ai_review",
+                "stance": "BUY",
+                "confidence": 0.8,
+                "metadata": {},
+                "excess_return": Decimal("3.0"),
+                "ticker_return": Decimal("4.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "BBB",
+                "as_of": "2026-07-01",
+            },
+        ]
+    )
+    summary = build_track_record_summary(pg, horizon_days=30)
+    # Both calls were correct, so both must pull the mean UP: (5.0 + 3.0) / 2.
+    assert summary["hit_rate_by_source"]["action_queue_ai_review"] == 1.0
+    assert summary["avg_excess_by_source"]["action_queue_ai_review"] == 4.0
+    assert summary["excess_metric"] == "directional"
+    # The bearish winner is the better call and must rank first.
+    assert summary["best_calls"][0]["ticker"] == "AAA"
+
+
+def test_broad_index_etfs_excluded_from_aggregates() -> None:
+    pg = _FakePg(
+        [
+            {
+                "source": "ticker_meta_analysis",
+                "stance": "BULLISH",
+                "confidence": 0.8,
+                "metadata": {},
+                "excess_return": Decimal("0.01"),
+                "ticker_return": Decimal("1.01"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "VOO",  # tracks ^GSPC: excess ~0 by construction
+                "as_of": "2026-07-01",
+            },
+            {
+                "source": "ticker_meta_analysis",
+                "stance": "BULLISH",
+                "confidence": 0.8,
+                "metadata": {},
+                "excess_return": Decimal("6.0"),
+                "ticker_return": Decimal("7.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "ROBO",  # thematic ETF: a genuine call, must be kept
+                "as_of": "2026-07-01",
+            },
+        ]
+    )
+    summary = build_track_record_summary(pg, horizon_days=30)
+    assert summary["broad_index_etf_excluded"] == 1
+    assert summary["counts_by_source"]["ticker_meta_analysis"]["scored"] == 1
+    assert summary["avg_excess_by_source"]["ticker_meta_analysis"] == 6.0
+
+
 def test_mean_excess_by_source() -> None:
     pg = _FakePg(
         [

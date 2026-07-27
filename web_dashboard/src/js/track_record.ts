@@ -40,8 +40,11 @@ interface Summary {
   hit_rate_by_source: Record<string, number | null>;
   hit_rate_by_verdict: Record<string, number | null>;
   hit_rate_by_confidence_band?: Record<string, number | null>;
+  // Directional: positive always means the call was right, bearish calls included.
   avg_excess_by_source?: Record<string, number | null>;
   median_excess_by_source?: Record<string, number | null>;
+  excess_metric?: string;
+  broad_index_etf_excluded?: number;
   counts_by_source?: Record<string, CountBucket>;
   counts_by_confidence_band?: Record<string, CountBucket>;
   by_domain?: DomainRow[];
@@ -167,10 +170,17 @@ function renderHeadline(data: Summary): void {
       </div>
       <div>
         <p class="text-2xl font-semibold ${signClass(overallMean)}">${pp(overallMean)}</p>
-        <p class="text-xs text-text-secondary">avg excess return per call vs ^RUT</p>
+        <p class="text-xs text-text-secondary">avg excess return per call, in the call's direction</p>
       </div>
     </div>
-    <p class="text-sm text-text-secondary">${verdict}</p>`;
+    <p class="text-sm text-text-secondary">${verdict}</p>
+    ${
+      data.broad_index_etf_excluded
+        ? `<p class="text-xs text-text-secondary mt-2">${data.broad_index_etf_excluded} broad-index ETF call${
+            data.broad_index_etf_excluded === 1 ? "" : "s"
+          } excluded — tracking the benchmark itself gives ~0 excess by construction, so they dilute the rate without being predictions.</p>`
+        : ""
+    }`;
 }
 
 function renderSummaryCards(data: Summary): void {
@@ -215,7 +225,7 @@ function renderSourceTable(data: Summary): void {
     </tr>`;
   }).join("");
   el.innerHTML = `<h2 class="text-lg font-semibold mb-1">By source</h2>
-    <p class="text-xs text-text-secondary mb-2">Which pipeline the stance came from. A hit means the call was directionally right vs the Russell 2000 after ${data.horizon_days} days; excess return is in percentage points vs the index.</p>
+    <p class="text-xs text-text-secondary mb-2">Which pipeline the stance came from. A hit means the call was directionally right vs the benchmark after ${data.horizon_days} days. Excess return is in percentage points and is signed to the call's direction, so a correct bearish call counts as positive.</p>
     <table class="w-full text-left">
       <thead><tr class="text-xs text-text-secondary border-b border-border">
         <th class="py-1 pr-3">Source</th>
@@ -223,8 +233,8 @@ function renderSourceTable(data: Summary): void {
         <th class="py-1 pr-3 text-right">Hits</th>
         <th class="py-1 pr-3 text-right">Misses</th>
         <th class="py-1 pr-3 text-right" title="Hits / scored. ~50% = coin flip">Hit rate</th>
-        <th class="py-1 pr-3 text-right" title="Average excess return per call, percentage points vs ^RUT">Avg excess</th>
-        <th class="py-1 text-right" title="Median excess return per call — less sensitive to outliers">Median excess</th>
+        <th class="py-1 pr-3 text-right" title="Average excess return per call in percentage points, signed to the call's direction — a correct bearish call scores positive">Avg excess</th>
+        <th class="py-1 text-right" title="Median excess return per call, signed to the call's direction — less sensitive to outliers">Median excess</th>
       </tr></thead>
       <tbody>${rows || `<tr><td colspan="7" class="text-sm text-text-secondary py-2">No data.</td></tr>`}</tbody>
     </table>`;
@@ -345,7 +355,7 @@ function renderCalls(data: Summary): void {
     return;
   }
   el.innerHTML = `<h2 class="text-lg font-semibold mb-1">Best and worst calls</h2>
-    <p class="text-xs text-text-secondary mb-2">The biggest wins and losses among scored calls, ranked by excess return vs the index over the ${data.horizon_days}-day window.</p>
+    <p class="text-xs text-text-secondary mb-2">The biggest wins and losses among scored calls over the ${data.horizon_days}-day window, ranked by excess return in the call's own direction.</p>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div>
         <h3 class="text-sm font-medium mb-1 text-theme-success-text">Biggest wins</h3>

@@ -239,8 +239,9 @@ def format_prior_stance_for_meta_bundle(
             horizon = summary.get("horizon_days")
             lines.append(
                 f"- Global {source} track record ({horizon}d): "
-                f"hit_rate={rate_s} mean_excess={ex_s} scored={scored} "
-                f"(source calibration — not this ticker alone)"
+                f"hit_rate={rate_s} mean_directional_excess={ex_s} scored={scored} "
+                f"(source calibration — not this ticker alone; excess is signed to "
+                f"the call's direction, so positive means the call was right)"
             )
 
     return "\n".join(lines)

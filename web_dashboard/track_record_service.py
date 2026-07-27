@@ -15,6 +15,28 @@ _CONF_BAND_LOW = "lt_0.5"
 _CONF_BAND_MID = "0.5_to_0.75"
 _CONF_BAND_HIGH = "gte_0.75"
 
+# Shared by _hit_from_row and _directional_excess so the two can never disagree
+# about what counts as a directional call.
+_BULLISH_STANCES = frozenset({"BUY", "BULLISH", "VERY_BULLISH"})
+_BEARISH_STANCES = frozenset({"SELL", "BEARISH", "VERY_BEARISH", "AVOID"})
+
+# ETFs that track substantially the same index as the benchmark they are scored
+# against, making their excess return ~0 by construction. "BULLISH on VOO" vs the
+# S&P 500 is not a prediction -- it is the benchmark wearing a hat -- but it lands
+# in the hit rate as a coin flip and drags every aggregate toward 50%.
+#
+# Excluded from AGGREGATES ONLY. The stances stay in stance_history and are still
+# scored into stance_outcomes, so this is reversible and loses no data.
+#
+# Deliberately NOT listed (these are genuine directional calls with real tracking
+# error vs a broad benchmark): QQQ (Nasdaq-100 is a real tilt vs the S&P 500) and
+# every sector/thematic fund -- ROBO, BUG, CIBR, FTXL, URNJ, FXD, LIT, URA, HURA.TO.
+BROAD_INDEX_ETFS = frozenset({
+    "VOO", "VTI", "SPY", "IVV", "SPLG", "ITOT",      # US broad market -> ^GSPC
+    "IWM", "VTWO",                                    # US small cap    -> ^RUT
+    "XIC.TO", "XIU.TO", "ZCN.TO", "VCN.TO",           # Canada broad    -> ^GSPTSE
+})
+
 
 def _finite_decimal(value: Any) -> Decimal | None:
     """Parse a numeric DB value; reject None/NaN/Inf (yfinance gaps write Decimal('NaN'))."""
@@ -34,13 +56,42 @@ def _hit_from_row(row: dict[str, Any]) -> bool | None:
     ex = _finite_decimal(row.get("excess_return"))
     if ex is None:
         return None
-    bullish = stance in {"BUY", "BULLISH", "VERY_BULLISH"}
-    bearish = stance in {"SELL", "BEARISH", "VERY_BEARISH", "AVOID"}
-    if bullish:
+    if stance in _BULLISH_STANCES:
         return ex > 0
-    if bearish:
+    if stance in _BEARISH_STANCES:
         return ex < 0
     return None
+
+
+def _directional_excess(row: dict[str, Any]) -> float | None:
+    """Excess return signed so that **positive always means the call was right**.
+
+    Raw ``excess_return`` is measured against the benchmark, not against the call.
+    A correct BEARISH stance therefore carries a *negative* excess return, so
+    averaging raw excess across a mixed book cancels good bearish calls against
+    good bullish ones and reports skill as its own opposite.
+
+    Observed in prod before this fix: ``action_queue_ai_review`` (a SELL/RISK-heavy
+    source) showed **hit_rate=68.0% with mean_excess=-4.24** -- the source was right
+    about direction most of the time while its own quality metric ranked it worst.
+
+    Returns None for non-directional stances (RISK/WATCH/NEUTRAL), matching
+    :func:`_hit_from_row` so hit counts and excess aggregates stay on the same rows.
+    """
+    ex = _finite_decimal(row.get("excess_return"))
+    if ex is None:
+        return None
+    stance = (row.get("stance") or "").upper()
+    if stance in _BULLISH_STANCES:
+        return float(ex)
+    if stance in _BEARISH_STANCES:
+        return -float(ex)
+    return None
+
+
+def is_broad_index_etf(ticker: Any) -> bool:
+    """True when a stance's excess return is ~0 by construction (see BROAD_INDEX_ETFS)."""
+    return str(ticker or "").strip().upper() in BROAD_INDEX_ETFS
 
 
 def _parse_metadata(raw: Any) -> dict[str, Any]:
@@ -168,7 +219,15 @@ def build_track_record_summary(
         else:
             bucket["misses"] += 1
 
+    broad_index_etf_excluded = 0
+
     for row in rows:
+        # Tautological rows are dropped before any aggregate touches them, so they
+        # cannot land in hit rates, excess means, best/worst calls, or coverage.
+        if is_broad_index_etf(row.get("ticker")):
+            broad_index_etf_excluded += 1
+            continue
+
         source = row.get("source") or "unknown"
         bucket = by_source.setdefault(source, _empty_count_bucket())
         hit = _hit_from_row(row)
@@ -188,9 +247,9 @@ def build_track_record_summary(
             cb = by_conf_band.setdefault(band, _empty_count_bucket())
             _bump(cb, hit)
 
-        ex = _finite_decimal(row.get("excess_return"))
-        if hit is not None and ex is not None:
-            excess_by_source[source].append(float(ex))
+        dir_ex = _directional_excess(row)
+        if hit is not None and dir_ex is not None:
+            excess_by_source[source].append(dir_ex)
 
         cov = coverage_totals[source]
         cov["rows"] += 1
@@ -201,8 +260,8 @@ def build_track_record_summary(
         if article_ids:
             cov["with_article_ids"] += 1
             all_article_ids.extend(article_ids)
-            if hit is not None and ex is not None:
-                scoreable_for_domain.append((row, hit, float(ex), article_ids))
+            if hit is not None and dir_ex is not None:
+                scoreable_for_domain.append((row, hit, dir_ex, article_ids))
 
     id_to_domain = _fetch_article_domains(pg, all_article_ids)
 
@@ -241,10 +300,10 @@ def build_track_record_summary(
         return _rate_from_counts(bucket)
 
     def _excess_magnitude(row: dict[str, Any]) -> float:
-        ex = _finite_decimal(row.get("excess_return"))
-        if ex is None:
-            return 0.0
-        return float(ex)
+        # Directional, not raw: sorting best/worst by raw excess ranked a correct
+        # BEARISH call (negative excess) as the worst call in the book.
+        dir_ex = _directional_excess(row)
+        return dir_ex if dir_ex is not None else 0.0
 
     hits.sort(key=_excess_magnitude, reverse=True)
     misses.sort(key=_excess_magnitude)
@@ -301,6 +360,12 @@ def build_track_record_summary(
     return {
         "horizon_days": horizon_days,
         "total_scored": len(rows),
+        # Excess-return keys below are DIRECTIONAL: positive always means the call
+        # was right, for bearish stances too. Declared in the payload so downstream
+        # consumers (including the AI assistant, which reads this dict verbatim)
+        # cannot mistake it for raw benchmark-relative excess.
+        "excess_metric": "directional",
+        "broad_index_etf_excluded": broad_index_etf_excluded,
         "hit_rate_by_source": {k: _rate(v) for k, v in by_source.items()},
         "hit_rate_by_verdict": {k: _rate(v) for k, v in by_verdict.items()},
         "hit_rate_by_confidence_band": hit_rate_by_confidence_band,
