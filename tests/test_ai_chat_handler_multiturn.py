@@ -111,6 +111,7 @@ class TestWebAiContextInjection:
         assert "about AMD" in captured["full_prompt"]
 
     def test_follow_up_omits_portfolio_context(self) -> None:
+        """Client sends empty context_string on follow-ups; server must not invent it."""
         handler = self._make_webai_handler()
         captured: Dict[str, Any] = {}
 
@@ -119,8 +120,38 @@ class TestWebAiContextInjection:
             return MagicMock(status_code=200)
 
         prior = [
-            {"role": "user", "content": "about AMD"},
+            {"role": "user", "content": "PORTFOLIO_MARKER: AMD MCHP\n\nabout AMD"},
             {"role": "assistant", "content": "AMD looks fine"},
+        ]
+        with patch.object(handler, "_handle_webai", side_effect=_capture), patch(
+            "ai_prompts.get_system_prompt", return_value="sys"
+        ), patch(
+            "prompt_safety.prepare_untrusted_for_prompt",
+            side_effect=lambda text, **kwargs: text,
+        ):
+            handler.handle_chat(
+                query="about MCHP",
+                context_string="",
+                conversation_history=prior,
+            )
+
+        assert "PORTFOLIO_MARKER" not in captured["full_prompt"]
+        assert captured["full_prompt"] == "about MCHP"
+
+    def test_follow_up_with_stale_context_string_still_injects_when_provided(
+        self,
+    ) -> None:
+        """If the client re-injects (history window dropped the anchor), honor it."""
+        handler = self._make_webai_handler()
+        captured: Dict[str, Any] = {}
+
+        def _capture(full_prompt: str, system_prompt: str) -> Any:
+            captured["full_prompt"] = full_prompt
+            return MagicMock(status_code=200)
+
+        prior = [
+            {"role": "user", "content": "old q"},
+            {"role": "assistant", "content": "old a"},
         ]
         with patch.object(handler, "_handle_webai", side_effect=_capture), patch(
             "ai_prompts.get_system_prompt", return_value="sys"
@@ -134,8 +165,8 @@ class TestWebAiContextInjection:
                 conversation_history=prior,
             )
 
-        assert "PORTFOLIO_MARKER" not in captured["full_prompt"]
-        assert captured["full_prompt"] == "about MCHP"
+        assert "PORTFOLIO_MARKER" in captured["full_prompt"]
+        assert "about MCHP" in captured["full_prompt"]
 
 
 class TestOllamaMultiturn:
@@ -174,24 +205,24 @@ class TestOllamaMultiturn:
 
 
 class TestGlmMultiturnContext:
-    def test_follow_up_full_prompt_keeps_holdings_without_duplicating_query(
+    def test_follow_up_relies_on_history_anchor_not_current_prompt(
         self,
     ) -> None:
-        """GLM/Ollama path: holdings live on current full_prompt; history is prior-only."""
+        """After first turn, holdings live on the prior user turn; current prompt is bare query."""
         history = [
-            {"role": "user", "content": "Tell me about AMD"},
+            {
+                "role": "user",
+                "content": "Holdings include AMD and MCHP\n\nTell me about AMD",
+            },
             {"role": "assistant", "content": "AMD is in the portfolio"},
         ]
         query = "What about MCHP?"
-        context = "Holdings include AMD and MCHP"
-        full_prompt = f"{context}\n\n{query}"
+        full_prompt = query  # no re-attached holdings
         messages = ChatHandler.build_llm_messages(
             "sys", full_prompt, history, current_query=query
         )
-        assert "MCHP" in messages[-1]["content"]
-        assert "Holdings include" in messages[-1]["content"]
-        assert messages[1]["content"] == "Tell me about AMD"
-        # No bare duplicate of the current query before full_prompt
-        assert all(
-            m["content"] != query for m in messages[:-1]
-        )
+        assert messages[-1]["content"] == query
+        assert "Holdings include" in messages[1]["content"]
+        assert "MCHP" in messages[1]["content"]
+        user_contents = [m["content"] for m in messages if m["role"] == "user"]
+        assert user_contents.count(query) == 1

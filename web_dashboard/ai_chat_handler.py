@@ -210,12 +210,10 @@ class ChatHandler:
 
         use_tools = enable_tools if enable_tools is not None else (self.backend == "glm")
 
-        # WebAI keeps a persistent session: inject portfolio context only on the
-        # first UI turn so follow-ups do not re-append the full holdings blob.
-        prior = self.normalize_prior_history(conversation_history, query)
-        include_portfolio_context = True
-        if self.backend == "webai" and prior:
-            include_portfolio_context = False
+        # Portfolio context injection is client-controlled: send context_string only
+        # on the first turn (or when the UI history window dropped the anchor turn).
+        # Follow-ups expand the anchor user message in conversation_history instead.
+        include_portfolio_context = bool((context_string or "").strip())
 
         # Build full prompt with sanitized, delimited untrusted context blocks.
         # When GLM tools are enabled, skip stuffing prefetch search/RAG into the

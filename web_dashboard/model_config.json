@@ -73,23 +73,23 @@
         },
         "qwen3.6:27b-heretic": {
             "num_ctx": 20000,
-            "num_predict": 4096,
+            "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Prefer this for large-Qwen AI Assistant tests. think:false so chat gets an answer instead of a long reasoning burn. streaming_timeout 600s for slow first-token / long replies."
+            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt so long answers are not cut early when the window has room."
         },
         "batiai/qwen3.6-27b:iq3": {
             "num_ctx": 20000,
-            "num_predict": 4096,
+            "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Previously unconfigured → default_config 32k ctx + 90s idle + no think:false, which looked like mid-think freezes. Prefer qwen3.6:27b-heretic for 3090 tests."
+            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same chat predict/ctx-fit policy as heretic."
         },
         "phi4:14b": {
             "num_ctx": 8192,

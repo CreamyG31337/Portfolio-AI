@@ -128,6 +128,16 @@ class AIAssistant {
     private contextCache: Map<string, { context: string; charCount: number }> = new Map();
     /** User text awaiting a completed assistant reply (for persist / interrupt stub). */
     private pendingPersistUser: string | null = null;
+    /**
+     * Portfolio context is attached once per conversation window (like WebAI).
+     * Snapshot is expanded back onto the anchor user turn in API history so
+     * follow-ups still see holdings without re-sending the blob every request.
+     * Re-inject when Clear Chat / fund change / session restore resets the
+     * anchor, or when the 20-turn window drops the anchor turn.
+     */
+    private portfolioContextSnapshot: string | null = null;
+    private portfolioContextAnchorIndex: number | null = null;
+    private static readonly HISTORY_WINDOW = 20;
     /** Live "Generating…" indicator: elapsed timer + phase label while waiting on the model. */
     private loadingMessageId: string | null = null;
     private loadingPhase: string = 'Generating response…';
@@ -397,6 +407,7 @@ class AIAssistant {
                 this.contextReady = false;
                 this.pendingPersistUser = null;
                 this.isSending = false;
+                this.resetPortfolioContextInjection();
                 this.loadPortfolioTickers();
                 this.loadContext();
                 void this.loadSessionFromServer();
@@ -1317,12 +1328,10 @@ class AIAssistant {
         // Back to generating after any prefetch work
         this.setLiveLoadingPhase('Generating response…');
 
-        // Resend cached portfolio context every turn (stateless GLM/Ollama need it;
-        // WebAI backend only injects it on the first turn to avoid session bloat).
-        const isFirstMessage = this.conversationHistory.length === 1; // After adding user message
+        // Wait for portfolio context when this turn will attach it.
+        const needsContextAttach = this.shouldAttachPortfolioContext();
 
-        // If it's the first message, ensure context is ready
-        if (isFirstMessage && !this.contextReady && this.contextLoading) {
+        if (needsContextAttach && !this.contextReady && this.contextLoading) {
             // Wait for context to load (poll every 100ms for up to 10 seconds)
             this.setLiveLoadingPhase('Waiting for portfolio data…');
 
@@ -1339,15 +1348,26 @@ class AIAssistant {
             }
         }
 
-        const contextString = this.getCachedContext();
-        // Prior turns only — current user message is already in `query` / full_prompt
-        const priorHistory = this.conversationHistory.slice(0, -1).slice(-20);
+        // Portfolio context only on first turn (or when the history window dropped it).
+        // Follow-ups expand the anchor user turn with the snapshot instead of re-sending.
+        const attachContext = this.shouldAttachPortfolioContext();
+        const cachedContext = attachContext ? this.getCachedContext() : '';
+        const contextString = cachedContext;
+        if (attachContext && cachedContext) {
+            this.portfolioContextSnapshot = cachedContext;
+            this.portfolioContextAnchorIndex = this.conversationHistory.length - 1;
+        }
+        const priorHistory = this.buildPriorHistoryForApi();
 
         console.log(
             '[AIAssistant] Sending message with context length:',
             contextString?.length || 0,
+            'attachContext:',
+            attachContext,
             'prior history turns:',
-            priorHistory.length
+            priorHistory.length,
+            'contextAnchor:',
+            this.portfolioContextAnchorIndex
         );
 
         // Build request
@@ -1392,6 +1412,50 @@ class AIAssistant {
             return '';
         }
         return this.contextString || '';
+    }
+
+    /** Clear first-turn portfolio injection state (clear chat / fund / session restore). */
+    resetPortfolioContextInjection(): void {
+        this.portfolioContextSnapshot = null;
+        this.portfolioContextAnchorIndex = null;
+    }
+
+    /**
+     * True when we should attach the portfolio blob to the current user turn:
+     * never injected yet, or the 20-turn window dropped the anchor turn.
+     */
+    shouldAttachPortfolioContext(): boolean {
+        if (this.portfolioContextAnchorIndex === null) {
+            return true;
+        }
+        const priorAll = this.conversationHistory.slice(0, -1);
+        const windowStart = Math.max(0, priorAll.length - AIAssistant.HISTORY_WINDOW);
+        return this.portfolioContextAnchorIndex < windowStart;
+    }
+
+    /**
+     * Prior turns for the model API (last HISTORY_WINDOW). Expands the anchor
+     * user turn with the portfolio snapshot so follow-ups still see holdings.
+     */
+    buildPriorHistoryForApi(): Message[] {
+        const priorAll = this.conversationHistory.slice(0, -1);
+        const windowed = priorAll.slice(-AIAssistant.HISTORY_WINDOW);
+        const windowStart = priorAll.length - windowed.length;
+        const snapshot = this.portfolioContextSnapshot;
+        const anchor = this.portfolioContextAnchorIndex;
+
+        return windowed.map((msg, i) => {
+            const absIndex = windowStart + i;
+            if (
+                msg.role === 'user' &&
+                snapshot &&
+                anchor !== null &&
+                absIndex === anchor
+            ) {
+                return { role: 'user', content: `${snapshot}\n\n${msg.content}` };
+            }
+            return { role: msg.role, content: msg.content };
+        });
     }
 
     async performSearch(query: string): Promise<any> {
@@ -1806,6 +1870,7 @@ class AIAssistant {
         this.pendingPersistUser = null;
         this.messages = [];
         this.conversationHistory = [];
+        this.resetPortfolioContextInjection();
         const messagesDiv = document.getElementById('chat-messages');
         if (messagesDiv) messagesDiv.innerHTML = '';
         const retryButtonContainer = document.getElementById('retry-button-container');
@@ -1842,6 +1907,8 @@ class AIAssistant {
         this.messages = [];
         this.conversationHistory = [];
         this.pendingPersistUser = null;
+        // Session rows are bare turns (no portfolio blob). Next send re-injects context.
+        this.resetPortfolioContextInjection();
         const messagesDiv = document.getElementById('chat-messages');
         if (messagesDiv) messagesDiv.innerHTML = '';
 

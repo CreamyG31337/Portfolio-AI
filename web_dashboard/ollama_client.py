@@ -70,6 +70,62 @@ GLM_JSON_MODE_MIN_TIMEOUT = int(os.getenv("GLM_JSON_MODE_MIN_TIMEOUT", "360"))
 SUMMARY_MIN_PREDICT = 256
 SUMMARY_DEFAULT_PREDICT = 1024
 SUMMARY_CONTEXT_MARGIN = 256
+# Chat replies share num_ctx with the prompt (portfolio blob + history).
+CHAT_MIN_PREDICT = 512
+CHAT_CONTEXT_MARGIN = 512
+
+
+def _estimate_message_tokens(messages: List[Dict[str, Any]]) -> int:
+    """Rough token estimate for chat messages (chars/4). Good enough for ctx fitting."""
+    total_chars = 0
+    for msg in messages:
+        content = msg.get("content")
+        if content is None:
+            continue
+        total_chars += len(str(content))
+        for key in ("thinking", "think"):
+            extra = msg.get(key)
+            if extra:
+                total_chars += len(str(extra))
+    return max(1, total_chars // 4)
+
+
+def _fit_chat_num_predict(
+    *,
+    model: str,
+    effective_ctx: int,
+    prompt_tokens_est: int,
+    requested_num_predict: int,
+) -> int:
+    """Fit chat ``num_predict`` into leftover context after the prompt.
+
+    Input context (portfolio + history) and output length share one ``num_ctx``
+    window. A fixed low ``num_predict`` truncates long answers even when the
+    prompt left plenty of room; fitting uses that leftover up to the configured cap.
+    """
+    available = effective_ctx - prompt_tokens_est - CHAT_CONTEXT_MARGIN
+    if available < CHAT_MIN_PREDICT:
+        logger.warning(
+            "Tight chat context budget for model=%s: ctx=%d, prompt≈%d. "
+            "Forcing num_predict=%d.",
+            model,
+            effective_ctx,
+            prompt_tokens_est,
+            CHAT_MIN_PREDICT,
+        )
+        return CHAT_MIN_PREDICT
+
+    fitted = min(int(requested_num_predict), available)
+    if fitted < int(requested_num_predict):
+        logger.info(
+            "Adjusted chat num_predict for model=%s: %d -> %d (ctx fit, prompt≈%d/%d)",
+            model,
+            requested_num_predict,
+            fitted,
+            prompt_tokens_est,
+            effective_ctx,
+        )
+    return max(CHAT_MIN_PREDICT, fitted)
 
 
 class OllamaHostBusyError(RuntimeError):
@@ -1795,7 +1851,14 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         # num_ctx is intentionally NOT a parameter (see query_ollama for rationale).
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
         effective_ctx = model_settings.get('num_ctx', 4096)
-        effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
+        requested_predict = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
+        prompt_tokens_est = _estimate_message_tokens(messages)
+        effective_max_tokens = _fit_chat_num_predict(
+            model=str(model),
+            effective_ctx=int(effective_ctx),
+            prompt_tokens_est=prompt_tokens_est,
+            requested_num_predict=int(requested_predict),
+        )
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
         
