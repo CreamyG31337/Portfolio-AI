@@ -116,6 +116,10 @@ def benchmark_refresh_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('benchmark_refresh', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Initialize Supabase client (use service role for writing)
@@ -650,6 +654,13 @@ def populate_performance_metrics_job(
                 if rows_inserted == 0 and rows_skipped == 0:
                     # No data for this date
                     logger.info(f"ℹ️ No position data found for {process_date}")
+                    try:
+                        mark_job_completed(
+                            'performance_metrics', process_date, None, [],
+                            duration_ms=0, message="No position data found",
+                        )
+                    except Exception:
+                        pass
                     continue
                 
                 total_rows_inserted += rows_inserted

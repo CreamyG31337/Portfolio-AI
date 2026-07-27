@@ -1262,10 +1262,26 @@ def etf_watchtower_job():
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
-    
-    db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
-    pc = PostgresClient()  # Research DB for etf_holdings_log
-    repo = ResearchRepository()
+
+    try:
+        db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
+        pc = PostgresClient()  # Research DB for etf_holdings_log
+        repo = ResearchRepository()
+    except Exception as client_error:
+        duration_ms = int((__import__('time').time() - start_time) * 1000)
+        message = f"Failed to initialize clients: {client_error}"
+        logger.error(f"❌ {message}", exc_info=True)
+        try:
+            from scheduler.scheduler_core import log_job_execution
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        try:
+            from utils.job_tracking import mark_job_failed as _mark_job_failed
+            _mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        return
     
     total_changes = 0
     successful_etfs = []

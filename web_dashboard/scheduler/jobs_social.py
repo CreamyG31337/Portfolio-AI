@@ -441,6 +441,7 @@ def cleanup_social_metrics_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            mark_job_failed('social_metrics_cleanup', target_date, None, message, duration_ms=duration_ms)
             return
         
         # Initialize service
@@ -513,6 +514,7 @@ def social_sentiment_ai_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            mark_job_failed('social_sentiment_ai', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Initialize service
@@ -524,6 +526,7 @@ def social_sentiment_ai_job() -> None:
             message = "Ollama client unavailable - cannot perform AI analysis"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            mark_job_failed('social_sentiment_ai', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Step 1: Extract posts from raw_data

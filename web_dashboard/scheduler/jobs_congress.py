@@ -70,6 +70,10 @@ def fetch_congress_trades_job() -> None:
     
     job_id = 'congress_trades'
     start_time = time.time()
+    # Defined up front (before any early-exit path, e.g. the robots.txt check)
+    # so the outer except handler below never hits an UnboundLocalError trying
+    # to finalize the job.
+    target_date = datetime.now(timezone.utc).date()
     
     try:
         # Check robots.txt compliance (if enabled)
@@ -107,7 +111,6 @@ def fetch_congress_trades_job() -> None:
         logger.info("Starting congress trades job...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
         mark_job_started('congress_trades', target_date)
         
         # Import dependencies (lazy imports)
@@ -126,6 +129,10 @@ def fetch_congress_trades_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('congress_trades', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Get FMP API key
@@ -135,6 +142,10 @@ def fetch_congress_trades_job() -> None:
             message = "FMP_API_KEY not found in environment"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('congress_trades', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         supabase_client = SupabaseClient(use_service_role=True)
@@ -1040,6 +1051,10 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
     """
     job_id = 'scrape_congress_trades'
     start_time = time.time()
+    # Defined up front (before any early-exit path, e.g. the robots.txt check)
+    # so the outer except handler below never hits an UnboundLocalError trying
+    # to finalize the job.
+    target_date = datetime.now(timezone.utc).date()
     
     try:
         # Check robots.txt compliance (if enabled)
@@ -1078,7 +1093,6 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
         logger.info(f"Starting congress trades scraping job (months_back={months_back}, page_size={page_size}, max_pages={max_pages}, start_page={start_page}, skip_recent={skip_recent})...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
         mark_job_started('scrape_congress_trades', target_date)
         
         # Import dependencies
