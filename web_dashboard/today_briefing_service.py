@@ -85,9 +85,13 @@ def _fetch_alpha_ideas_fallback(
     limit: int,
     ticker_prefix: str | None,
 ) -> list[dict[str, Any]]:
+    # Keep this column list in sync with _fetch_alpha_ideas_query: this is the
+    # failure path (idea_triage missing), and a divergence here means the inbox
+    # silently degrades at exactly the moment nobody is watching it.
     sql = """
             SELECT id, title, article_type, source, fetched_at,
-                   relevance_score, tickers, summary
+                   relevance_score, tickers, summary,
+                   conclusion, url, logic_check, sentiment
             FROM research_articles
             WHERE article_type IN ('Alpha Research', 'Opportunity Discovery')
               AND fetched_at >= NOW() - INTERVAL '14 days'
@@ -112,7 +116,8 @@ def _fetch_alpha_ideas_query(
 ) -> list[dict[str, Any]]:
     sql = """
         SELECT ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
-               ra.relevance_score, ra.tickers, ra.summary
+               ra.relevance_score, ra.tickers, ra.summary,
+               ra.conclusion, ra.url, ra.logic_check, ra.sentiment
         FROM research_articles ra
         LEFT JOIN idea_triage it ON it.article_id = ra.id
         WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')

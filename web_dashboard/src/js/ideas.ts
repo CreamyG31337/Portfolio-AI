@@ -21,6 +21,10 @@ interface IdeaRow {
   relevance_score?: number;
   tickers?: string[];
   summary?: string;
+  conclusion?: string;
+  url?: string;
+  logic_check?: string;
+  sentiment?: string;
   thesis_attention?: ThesisAttentionFlag[];
 }
 
@@ -102,13 +106,23 @@ function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {
       const reasons =
         (f.attention_reasons || []).join(", ") || f.llm_verdict || f.review_status || "due";
       const href = `/insights?thesis=${encodeURIComponent(f.thesis_id)}`;
-      return `<a href="${href}" class="inline-block ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400 hover:underline" title="${escapeAttr(f.title || "")}">thesis: ${escapeAttr(String(reasons))}</a>`;
+      return `<a href="${href}" class="inline-block ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400 hover:underline" title="${esc(f.title || "")}">thesis: ${esc(String(reasons))}</a>`;
     })
     .join("");
 }
 
-function escapeAttr(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+/**
+ * Escape for both attribute values and text nodes.
+ *
+ * Every field on a card is untrusted: titles, summaries and conclusions are LLM
+ * output derived from scraped third-party pages. Escaping `&`, `"` and `<` is
+ * sufficient for both contexts, so one helper covers the whole card.
+ */
+function esc(text: unknown): string {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 function renderIdeas(rows: IdeaRow[], filter: string): void {
@@ -118,7 +132,7 @@ function renderIdeas(rows: IdeaRow[], filter: string): void {
   if (!list) return;
   if (!rows.length) {
     list.innerHTML = filter
-      ? `<p class="text-sm text-text-secondary">No open ideas matching ticker prefix “${escapeAttr(filter)}”.</p>`
+      ? `<p class="text-sm text-text-secondary">No open ideas matching ticker prefix “${esc(filter)}”.</p>`
       : `<p class="text-sm text-text-secondary">Inbox empty — check back after the next alpha run.</p>`;
     setFilterStatus(filter ? `0 matches for ${filter}` : "");
     return;
@@ -133,11 +147,32 @@ function renderIdeas(rows: IdeaRow[], filter: string): void {
       const tickers = (row.tickers || []).join(", ");
       const badges = thesisBadgeHtml(row.thesis_attention);
       const hasTickers = (row.tickers || []).length > 0;
+      // The conclusion is the model's own "so what" — it is the only field that
+      // answers why this row deserves attention. Summary falls back in when the
+      // conclusion is empty so a card is never left with nothing to say.
+      const whyCare = (row.conclusion || "").trim() || (row.summary || "").trim();
+      const hasSeparateSummary =
+        (row.conclusion || "").trim() && (row.summary || "").trim();
+      const titleHtml = row.url
+        ? `<a href="${esc(row.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(row.title)}</a>`
+        : esc(row.title);
       return `<article class="bg-dashboard-surface border border-border rounded-lg p-4">
-      <h3 class="font-medium text-text-primary">${row.title}</h3>
-      <p class="text-xs text-text-secondary mt-1">${row.article_type || ""} · ${row.source || ""} · score ${row.relevance_score ?? "—"}</p>
-      ${tickers ? `<p class="text-xs mt-1">Tickers: ${tickers}${badges}</p>` : badges ? `<p class="text-xs mt-1">${badges}</p>` : ""}
-      ${row.summary ? `<p class="text-sm mt-2 text-text-secondary line-clamp-3">${row.summary}</p>` : ""}
+      <h3 class="font-medium text-text-primary">${titleHtml}</h3>
+      <p class="text-xs text-text-secondary mt-1">${esc(row.article_type || "")} · ${esc(row.source || "")} · score ${row.relevance_score ?? "—"}</p>
+      ${tickers ? `<p class="text-xs mt-1">Tickers: ${esc(tickers)}${badges}</p>` : badges ? `<p class="text-xs mt-1">${badges}</p>` : ""}
+      ${
+        whyCare
+          ? `<p class="text-sm mt-2 text-text-primary whitespace-pre-line">${esc(whyCare)}</p>`
+          : ""
+      }
+      ${
+        hasSeparateSummary
+          ? `<details class="mt-2">
+        <summary class="text-xs text-text-secondary cursor-pointer hover:underline">Full summary</summary>
+        <p class="text-sm mt-1 text-text-secondary whitespace-pre-line">${esc(row.summary)}</p>
+      </details>`
+          : ""
+      }
       <div class="flex flex-wrap gap-2 mt-3">
         <button type="button" data-action="accepted" data-id="${row.id}" data-tickers='${JSON.stringify(row.tickers || [])}'
           class="btn-outline-sm">Accept</button>
