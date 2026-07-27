@@ -59,13 +59,62 @@ def fetch_alpha_ideas(
     *,
     limit: int = 15,
     ticker: str | None = None,
+    include_low_signal: bool = False,
 ) -> list[dict[str, Any]]:
+    """Ranked Ideas inbox rows, best first.
+
+    Ordered by the composite ``idea_score`` (see ``ideas_quality.idea_score_sql``),
+    NOT by ``relevance_score`` -- that score is derived from ``logic_check``, a genre
+    label that ranks ETF holdings tables above real theses. It survives only as a late
+    tiebreaker.
+
+    Low-signal rows are hidden by default rather than deleted: every row still carries
+    ``idea_score``/``low_signal``, and ``low_signal_total`` reports how many were
+    withheld so the count is visible in the UI instead of silently vanishing. Pass
+    ``include_low_signal=True`` to see them.
+    """
     ticker_prefix = _normalize_ideas_ticker_filter(ticker)
     try:
-        return _fetch_alpha_ideas_query(postgres, limit=limit, ticker_prefix=ticker_prefix)
+        return _fetch_alpha_ideas_query(
+            postgres, limit=limit, ticker_prefix=ticker_prefix,
+            include_low_signal=include_low_signal,
+        )
     except Exception as exc:
         logger.warning("fetch_alpha_ideas failed (idea_triage may be missing): %s", exc)
-        return _fetch_alpha_ideas_fallback(postgres, limit=limit, ticker_prefix=ticker_prefix)
+        return _fetch_alpha_ideas_fallback(
+            postgres, limit=limit, ticker_prefix=ticker_prefix,
+            include_low_signal=include_low_signal,
+        )
+
+
+# Columns both query paths return, before the ranking columns are added. Keeping
+# this in one place is what stops the fallback from silently drifting.
+_IDEA_COLUMNS = """ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
+               ra.relevance_score, ra.tickers, ra.summary,
+               ra.conclusion, ra.url, ra.logic_check, ra.sentiment"""
+
+
+def _rank_and_limit_sql() -> str:
+    """Wrap a ``scored`` CTE: flag low-signal rows, count them, then filter and order.
+
+    The count is a window function computed BEFORE the low-signal filter, so it
+    reports the size of the withheld set rather than zero.
+    """
+    from ideas_quality import LOW_SIGNAL_THRESHOLD
+
+    return f"""
+        ), flagged AS (
+            SELECT scored.*,
+                   (idea_score < {LOW_SIGNAL_THRESHOLD}) AS low_signal,
+                   COUNT(*) FILTER (WHERE idea_score < {LOW_SIGNAL_THRESHOLD})
+                       OVER () AS low_signal_total
+            FROM scored
+        )
+        SELECT * FROM flagged
+        WHERE %s OR NOT low_signal
+        ORDER BY idea_score DESC, relevance_score DESC NULLS LAST, fetched_at DESC
+        LIMIT %s
+    """
 
 
 def _ticker_prefix_clause(column_expr: str = "ra.tickers") -> str:
@@ -84,27 +133,33 @@ def _fetch_alpha_ideas_fallback(
     *,
     limit: int,
     ticker_prefix: str | None,
+    include_low_signal: bool = False,
 ) -> list[dict[str, Any]]:
-    # Keep this column list in sync with _fetch_alpha_ideas_query: this is the
-    # failure path (idea_triage missing), and a divergence here means the inbox
-    # silently degrades at exactly the moment nobody is watching it.
-    sql = """
-            SELECT id, title, article_type, source, fetched_at,
-                   relevance_score, tickers, summary,
-                   conclusion, url, logic_check, sentiment
-            FROM research_articles
-            WHERE article_type IN ('Alpha Research', 'Opportunity Discovery')
-              AND fetched_at >= NOW() - INTERVAL '14 days'
+    # This is the failure path (idea_triage missing). It shares _IDEA_COLUMNS,
+    # idea_score_sql() and _rank_and_limit_sql() with the primary query precisely so
+    # it cannot drift -- a divergence here means the inbox silently degrades at
+    # exactly the moment nobody is watching it. The ONLY difference is the missing
+    # triage join, so dismissed ideas reappear; that is the degradation, and it is
+    # visible rather than a reordering nobody would notice.
+    #
+    # research_articles is aliased `ra` here purely so the shared SQL fragments
+    # (which reference ra.*) apply unchanged.
+    from ideas_quality import idea_score_sql
+
+    sql = f"""
+        WITH scored AS (
+            SELECT {_IDEA_COLUMNS},
+                   {idea_score_sql()} AS idea_score
+            FROM research_articles ra
+            WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
+              AND ra.fetched_at >= NOW() - INTERVAL '14 days'
     """
     params: list[Any] = []
     if ticker_prefix:
-        sql += _ticker_prefix_clause("tickers")
+        sql += _ticker_prefix_clause("ra.tickers")
         params.append(f"{ticker_prefix}%")
-    sql += """
-            ORDER BY relevance_score DESC NULLS LAST, fetched_at DESC
-            LIMIT %s
-            """
-    params.append(limit)
+    sql += _rank_and_limit_sql()
+    params.extend([bool(include_low_signal), limit])
     return postgres.execute_query(sql, tuple(params))
 
 
@@ -113,26 +168,26 @@ def _fetch_alpha_ideas_query(
     *,
     limit: int = 15,
     ticker_prefix: str | None = None,
+    include_low_signal: bool = False,
 ) -> list[dict[str, Any]]:
-    sql = """
-        SELECT ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
-               ra.relevance_score, ra.tickers, ra.summary,
-               ra.conclusion, ra.url, ra.logic_check, ra.sentiment
-        FROM research_articles ra
-        LEFT JOIN idea_triage it ON it.article_id = ra.id
-        WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
-          AND ra.fetched_at >= NOW() - INTERVAL '14 days'
-          AND (it.id IS NULL OR (it.status = 'snoozed' AND it.snooze_until < NOW()))
+    from ideas_quality import idea_score_sql
+
+    sql = f"""
+        WITH scored AS (
+            SELECT {_IDEA_COLUMNS},
+                   {idea_score_sql()} AS idea_score
+            FROM research_articles ra
+            LEFT JOIN idea_triage it ON it.article_id = ra.id
+            WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
+              AND ra.fetched_at >= NOW() - INTERVAL '14 days'
+              AND (it.id IS NULL OR (it.status = 'snoozed' AND it.snooze_until < NOW()))
     """
     params: list[Any] = []
     if ticker_prefix:
         sql += _ticker_prefix_clause("ra.tickers")
         params.append(f"{ticker_prefix}%")
-    sql += """
-        ORDER BY ra.relevance_score DESC NULLS LAST, ra.fetched_at DESC
-        LIMIT %s
-        """
-    params.append(limit)
+    sql += _rank_and_limit_sql()
+    params.extend([bool(include_low_signal), limit])
     return postgres.execute_query(sql, tuple(params))
 
 

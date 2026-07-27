@@ -25,11 +25,16 @@ interface IdeaRow {
   url?: string;
   logic_check?: string;
   sentiment?: string;
+  /** Composite inbox rank (see ideas_quality.idea_score_sql). Drives ordering. */
+  idea_score?: number;
+  low_signal?: boolean;
   thesis_attention?: ThesisAttentionFlag[];
 }
 
 let loadSeq = 0;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+/** Sticky for the session only — the inbox should default to the good rows. */
+let includeLowSignal = false;
 
 function getSelectedFund(): string | null {
   const fromUi = (
@@ -125,24 +130,45 @@ function esc(text: unknown): string {
     .replace(/</g, "&lt;");
 }
 
-function renderIdeas(rows: IdeaRow[], filter: string): void {
+/** Banner for rows the ranking withheld. Never let a filter hide silently. */
+function lowSignalBannerHtml(hidden: number): string {
+  if (includeLowSignal) {
+    return `<p class="text-xs text-text-secondary mb-3">Showing low-signal ideas.
+      <button type="button" id="ideas-low-signal-toggle" class="underline">Hide them</button></p>`;
+  }
+  if (hidden <= 0) return "";
+  return `<p class="text-xs text-text-secondary mb-3">${hidden} low-signal idea${hidden === 1 ? "" : "s"} hidden.
+    <button type="button" id="ideas-low-signal-toggle" class="underline">Show anyway</button></p>`;
+}
+
+function bindLowSignalToggle(): void {
+  document.getElementById("ideas-low-signal-toggle")?.addEventListener("click", () => {
+    includeLowSignal = !includeLowSignal;
+    void loadIdeas();
+  });
+}
+
+function renderIdeas(rows: IdeaRow[], filter: string, hidden: number): void {
   const list = document.getElementById("ideas-list");
   const loading = document.getElementById("ideas-loading");
   if (loading) loading.classList.add("hidden");
   if (!list) return;
+  const banner = lowSignalBannerHtml(hidden);
   if (!rows.length) {
-    list.innerHTML = filter
+    const empty = filter
       ? `<p class="text-sm text-text-secondary">No open ideas matching ticker prefix “${esc(filter)}”.</p>`
       : `<p class="text-sm text-text-secondary">Inbox empty — check back after the next alpha run.</p>`;
+    list.innerHTML = banner + empty;
+    bindLowSignalToggle();
     setFilterStatus(filter ? `0 matches for ${filter}` : "");
     return;
   }
   setFilterStatus(
     filter
       ? `${rows.length} match${rows.length === 1 ? "" : "es"} for ${filter}${rows.length >= 100 ? " (capped)" : ""}`
-      : `${rows.length} idea${rows.length === 1 ? "" : "s"}${rows.length >= 50 ? " (top by relevance)" : ""}`
+      : `${rows.length} idea${rows.length === 1 ? "" : "s"}${rows.length >= 50 ? " (top ranked)" : ""}`
   );
-  list.innerHTML = rows
+  list.innerHTML = banner + rows
     .map((row) => {
       const tickers = (row.tickers || []).join(", ");
       const badges = thesisBadgeHtml(row.thesis_attention);
@@ -156,9 +182,16 @@ function renderIdeas(rows: IdeaRow[], filter: string): void {
       const titleHtml = row.url
         ? `<a href="${esc(row.url)}" target="_blank" rel="noopener noreferrer" class="hover:underline">${esc(row.title)}</a>`
         : esc(row.title);
-      return `<article class="bg-dashboard-surface border border-border rounded-lg p-4">
+      // relevance_score is deliberately NOT shown: it is derived from logic_check, a
+      // genre label that rates ETF holdings tables 0.9 and real analysis 0.7. Showing
+      // it next to a card invites trusting it. idea_score is what actually orders
+      // this list, so that is the number on screen.
+      const signal = `signal ${row.idea_score ?? "—"}/9`;
+      return `<article class="bg-dashboard-surface border border-border rounded-lg p-4${
+        row.low_signal ? " opacity-60" : ""
+      }">
       <h3 class="font-medium text-text-primary">${titleHtml}</h3>
-      <p class="text-xs text-text-secondary mt-1">${esc(row.article_type || "")} · ${esc(row.source || "")} · score ${row.relevance_score ?? "—"}</p>
+      <p class="text-xs text-text-secondary mt-1">${esc(row.article_type || "")} · ${esc(row.source || "")} · ${signal}</p>
       ${tickers ? `<p class="text-xs mt-1">Tickers: ${esc(tickers)}${badges}</p>` : badges ? `<p class="text-xs mt-1">${badges}</p>` : ""}
       ${
         whyCare
@@ -191,6 +224,7 @@ function renderIdeas(rows: IdeaRow[], filter: string): void {
     })
     .join("");
 
+  bindLowSignalToggle();
   list.querySelectorAll("button[data-action]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const b = btn as HTMLButtonElement;
@@ -221,11 +255,12 @@ async function loadIdeas(): Promise<void> {
     // Filtered queries use the API max so a deep ticker isn't lost to the top-50 default.
     params.set("limit", filter ? "100" : "50");
     if (filter) params.set("ticker", filter);
+    if (includeLowSignal) params.set("include_low_signal", "1");
     const resp = await fetch(`/api/ideas/inbox?${params.toString()}`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const body = (await resp.json()) as { data: IdeaRow[] };
+    const body = (await resp.json()) as { data: IdeaRow[]; low_signal_total?: number };
     if (seq !== loadSeq) return;
-    renderIdeas(body.data || [], filter);
+    renderIdeas(body.data || [], filter, Number(body.low_signal_total || 0));
   } catch (e) {
     if (seq !== loadSeq) return;
     if (loading) loading.classList.add("hidden");

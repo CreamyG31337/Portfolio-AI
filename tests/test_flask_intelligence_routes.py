@@ -205,7 +205,16 @@ def test_ideas_inbox_passes_ticker_filter(client, auth_ok):
     ) as mock_fetch:
         resp = client.get("/api/ideas/inbox?ticker=co&limit=100")
     assert resp.status_code == 200
-    mock_fetch.assert_called_once()
-    kwargs = mock_fetch.call_args.kwargs
+    kwargs = mock_fetch.call_args_list[0].kwargs
     assert kwargs.get("ticker") == "co"
     assert kwargs.get("limit") == 100
+    assert kwargs.get("include_low_signal") is False
+    # An empty page triggers a second, minimal call: the withheld-row count rides on
+    # the rows themselves, so with zero rows we must ask again to find out whether
+    # the result was genuinely empty or entirely filtered away.
+    assert len(mock_fetch.call_args_list) == 2
+    probe = mock_fetch.call_args_list[1].kwargs
+    assert probe.get("include_low_signal") is True
+    assert probe.get("limit") == 1
+    assert probe.get("ticker") == "co"
+    assert resp.get_json()["low_signal_total"] == 0

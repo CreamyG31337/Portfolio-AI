@@ -98,11 +98,21 @@ def ideas_inbox_api():
         pg = PostgresClient()
         limit = request.args.get("limit", default=50, type=int)
         ticker = request.args.get("ticker", default=None, type=str)
+        include_low_signal = request.args.get("include_low_signal", default="") in ("1", "true")
         rows = fetch_alpha_ideas(
             pg,
             limit=max(1, min(limit, 100)),
             ticker=ticker,
+            include_low_signal=include_low_signal,
         )
+        # Withheld rows are counted, never silently dropped -- the UI shows the count
+        # with a toggle, so a filter that is too aggressive is visible, not invisible.
+        # The count rides along on each row, so an empty page (everything filtered)
+        # would report 0 and hide exactly the case worth seeing: re-query for it.
+        low_signal_total = int(rows[0].get("low_signal_total") or 0) if rows else 0
+        if not rows and not include_low_signal:
+            probe = fetch_alpha_ideas(pg, limit=1, ticker=ticker, include_low_signal=True)
+            low_signal_total = int(probe[0].get("low_signal_total") or 0) if probe else 0
         serialized = _serialize_rows(rows)
         try:
             from user_insights_service import thesis_attention_by_ticker
@@ -126,7 +136,11 @@ def ideas_inbox_api():
                     row["thesis_attention"] = row_flags
         except Exception as att_exc:
             logger.debug("ideas thesis attention enrich skipped: %s", att_exc)
-        return jsonify({"data": serialized})
+        return jsonify({
+            "data": serialized,
+            "low_signal_total": low_signal_total,
+            "include_low_signal": include_low_signal,
+        })
     except Exception as exc:
         logger.error("ideas/inbox failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500

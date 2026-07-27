@@ -283,7 +283,58 @@ positive corpus and — more importantly — the **negative corpus**
 patterns could wrongly eat: a genuine dividend-thesis article, a real price-target upgrade
 note, an earnings-calendar *analysis* piece.
 
-### P4 — Inbox-only composite ranking
+### P4 — Inbox-only composite ranking — ✅ SHIPPED 2026-07-27
+
+Implemented as `ideas_quality.idea_score_sql()`, shared by `_fetch_alpha_ideas_query`
+and `_fetch_alpha_ideas_fallback` via `_IDEA_COLUMNS` + `_rank_and_limit_sql()`.
+
+**Validation — the auto-dismissed rows are a free labelled set.** Scoring the 30-day
+pool and checking against the 17 rows the cleanup passes had judged junk:
+
+| idea_score | rows | known junk |
+|---|---|---|
+| ≤ 0 | 22 | 15 |
+| 1–2 | 0 | 0 |
+| 3–4 | 20 | 2 |
+| ≥ 5 | 161 | 0 |
+
+15/17 caught with no pattern tuning, and **a natural empty gap at 1–2** — the
+`low_signal` threshold of 3 sits in it rather than cutting through a cluster, so the
+boundary is not a knob anyone has to defend. The two escapes are the ambiguous ones:
+`KRE ETF Stock Price & Overview` (boilerplate title, but BULLISH with claims — the
+Sinda shape, so scoring it 3 is arguably correct) and a Spanish-language quote page
+no rule matches. Both now sit at the bottom instead of the top, where `relevance_score`
+had them at 0.9.
+
+**Weights differ from the draft below** (3/2/3/1 and −6/−2/−3 rather than 2/1/1/1 and
+−3/−4/−3). The draft let a boilerplate match (−4) outweigh every structural signal
+combined (+5), which inverts the stated priority. The shipped ceiling is +9 structural
+against a −6 boilerplate demote, so a boilerplate title carrying real direction, tickers
+and claims still clears the bar — required by the Sinda case.
+
+**Deviation: low-signal rows ARE filtered by default.** The draft said soft-demote
+only, reasoning that "a filter bug looks identical to an empty queue." That risk is
+real but addressable, and demote-only did not deliver the actual ask (*"I want to see
+only good actionable ideas on that page"*) — with `LIMIT 50` a demoted row is still on
+screen. Shipped instead with the failure mode closed directly:
+
+- the API returns `low_signal_total`, and the UI always shows *"N low-signal ideas
+  hidden — Show anyway"*, so the filter announces itself;
+- the count is a window function computed **before** the filter, and an empty page
+  re-queries with `include_low_signal=1` — otherwise the one case worth seeing (page
+  empty because everything was filtered) would report zero;
+- `?include_low_signal=1` remains the escape hatch, and low-signal rows render dimmed
+  rather than hidden when shown.
+
+A filter bug is therefore visible as "94 hidden" on a blank page, which is the outcome
+the draft was protecting against.
+
+**Also:** the card meta line now shows `signal N/9` instead of `relevance_score`.
+Displaying the genre-derived score next to a card invites trusting it.
+
+---
+
+*Original spec, retained for the reasoning:*
 
 **Locked: inbox-only, soft demote.** Add an `idea_score` expression to
 `_fetch_alpha_ideas_query` and order by it. Structural signals lead; regexes are tiebreakers.
@@ -361,9 +412,13 @@ genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
 3. **Minimum bar for an "idea"?** No hard ticker requirement (macro/sector ideas are real).
    Ticker presence is a ranking bonus. A non-empty `conclusion` is effectively required to
    rank into the top section, since it is the card's why-care line.
-4. **Soft-hide vs. hard-exclude?** **Soft.** Demote via `ORDER BY` + `low_signal` flag +
-   `?include_low_signal=1` escape hatch. Hard exclusion makes false positives invisible and
-   indistinguishable from an empty queue.
+4. **Soft-hide vs. hard-exclude?** ~~**Soft.**~~ **Revised at implementation — hidden by
+   default, with the invisibility failure closed directly.** Demote-only does not achieve
+   the goal: at `LIMIT 50` a demoted row is still on the page. The original objection
+   (false positives become invisible and indistinguishable from an empty queue) is
+   answered by always reporting `low_signal_total` in the UI, computing that count
+   *before* the filter, and re-querying when the page comes back empty. See the P4
+   section.
 5. **Better signals than conclusion regexes?** **Yes** — `sentiment`, `claims` length,
    `conclusion` length, `tickers`. Use them first; regexes are tiebreakers only.
 
@@ -407,7 +462,7 @@ genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
 5. **P3** patterns + tests (`python -m pytest tests/test_alpha_helpers.py -v`), incl.
    negative corpus. Update the docstring and the tuning-guidance comment block.
 6. **P5.3** trigger one `alpha_research` run; audit every `low_value` skip. **Hard gate.**
-7. **P4** inbox ranking in *both* query paths + `low_signal` + `include_low_signal`.
+7. ~~**P4** inbox ranking in *both* query paths + `low_signal` + `include_low_signal`.~~ ✅ done
 8. **P5.4/5.5** diff top-20 vs baseline; record false-positive rate.
 9. **P6** ROADMAP note; Mandrel `context_store` completion when shipped.
 

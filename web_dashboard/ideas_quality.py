@@ -137,6 +137,70 @@ NO_CATALYST_CONCLUSION_RE = (
 #: SQL predicate: true when sentiment carries no direction.
 NEUTRAL_SENTIMENT_SQL = "(ra.sentiment IS NULL OR upper(ra.sentiment) = 'NEUTRAL')"
 
+# --- Inbox ranking --------------------------------------------------------
+# A composite score, not a filter. The inbox is ORDERed by this so junk sinks on
+# its own instead of needing a periodic cleanup sweep.
+#
+# STRUCTURAL SIGNALS LEAD, REGEXES ARE TIEBREAKERS. This ordering is deliberate and
+# is the whole lesson of the cleanup passes: `DATA_BACKED + NEUTRAL + no tickers`
+# identified junk in every single case across three passes with zero false positives
+# once the sentiment guard was in, while title/conclusion phrasing drifts silently
+# whenever the model or prompt version changes. Structural fields are emitted by the
+# summarizer schema and cannot drift without a schema change someone has to make.
+#
+# Note what is NOT in here: relevance_score. It is derived from `logic_check`, which
+# is a GENRE label (see module docstring) -- it ranks ETF holdings tables top. It stays
+# a late ORDER BY tiebreaker only, never a scoring term.
+#
+# `logic_check` DOES appear, but only its HYPE_DETECTED value. That one bucket is a
+# genuine quality judgement ("advertorial/clickbait"), unlike DATA_BACKED/NEUTRAL which
+# merely describe genre. Demoting on it is sound; ranking on the others is not.
+#
+# Weights are chosen so a boilerplate match cannot be outvoted by structure alone
+# (-6 vs a +9 ceiling), but a boilerplate title WITH direction, tickers and claims
+# still outranks a bare neutral row. That is intentional: the Sinda case proved that
+# a "price targets page" title can carry a real thesis.
+IDEA_SCORE_MAX = 9
+#: Rows scoring below this are flagged ``low_signal`` and hidden by default.
+#: 3 == "has no directional sentiment and at most a ticker list".
+LOW_SIGNAL_THRESHOLD = 3
+
+
+def _boilerplate_predicate() -> str:
+    """SQL: title matches a low-value rule, with the same sentiment guard as cleanup.
+
+    Sentiment-exempt rules fire on the title alone; the rest additionally require
+    neutral sentiment, so a Sinda-style row with a real directional call is not
+    demoted for its title. Patterns are module constants, never user input.
+    """
+    exempt = sql_alternation(SENTIMENT_EXEMPT_RULES)
+    guarded = sql_alternation(SENTIMENT_GUARDED_RULES)
+    return (
+        f"(ra.title ~* '{exempt}'"
+        f" OR (ra.title ~* '{guarded}' AND {NEUTRAL_SENTIMENT_SQL}))"
+    )
+
+
+def idea_score_sql() -> str:
+    """Composite inbox score as a SQL expression over alias ``ra``.
+
+    Both ``_fetch_alpha_ideas_query`` and its fallback use this, so the inbox cannot
+    rank one way normally and another way when ``idea_triage`` is unavailable.
+    """
+    return f"""(
+          (CASE WHEN NOT {NEUTRAL_SENTIMENT_SQL} THEN 3 ELSE 0 END)
+        + (CASE WHEN COALESCE(array_length(ra.tickers, 1), 0) > 0 THEN 2 ELSE 0 END)
+        + (CASE WHEN jsonb_typeof(ra.claims) = 'array'
+                THEN LEAST(jsonb_array_length(ra.claims), 3) ELSE 0 END)
+        + (CASE WHEN length(COALESCE(ra.conclusion, '')) >= 120 THEN 1 ELSE 0 END)
+        - (CASE WHEN {_boilerplate_predicate()} THEN 6 ELSE 0 END)
+        - (CASE WHEN COALESCE(ra.conclusion, '') ~* '{NO_CATALYST_CONCLUSION_RE}'
+                THEN 2 ELSE 0 END)
+        - (CASE WHEN upper(COALESCE(ra.logic_check, '')) = 'HYPE_DETECTED'
+                THEN 3 ELSE 0 END)
+    )"""
+
+
 # Domains that publish structured data rather than analysis. NOT auto-blocked:
 # measured 2026-07-27, stockanalysis.com was 43% junk but 57% useful, so filtering
 # beats banning. Surfaced for operator judgement in alpha_research_domains.
