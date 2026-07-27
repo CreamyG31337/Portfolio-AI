@@ -1580,6 +1580,18 @@ class AIAssistant {
                                             finishStream(fullResponse);
                                             return;
                                         }
+                                        if (data.status === 'thinking') {
+                                            const phase = (data as ChatResponse & { phase?: string }).phase;
+                                            if (phase === 'waiting_on_ollama' || phase === 'accepted') {
+                                                this.setLiveLoadingPhase('Waiting on Ollama…');
+                                            } else if (phase === 'waiting_on_model') {
+                                                this.setLiveLoadingPhase('Waiting on model…');
+                                            } else if (phase === 'synthesizing') {
+                                                this.setLiveLoadingPhase('Synthesizing answer…');
+                                            } else {
+                                                this.setLiveLoadingPhase('Generating response…');
+                                            }
+                                        }
                                         if (data.status === 'tool' && data.name) {
                                             const label = this.friendlyToolName(data.name);
                                             this.setLiveLoadingPhase(`Looking up ${label}…`);

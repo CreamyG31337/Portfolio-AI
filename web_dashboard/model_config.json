@@ -73,13 +73,23 @@
         },
         "qwen3.6:27b-heretic": {
             "num_ctx": 20000,
-            "num_predict": 2048,
+            "num_predict": 4096,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on a single 24GB-class GPU host (e.g. RTX 3090). num_ctx=20000 leaves ~13k tokens of slack above the current summary worst-case (~6.5k tokens) while keeping KV cache around 2.5GB so other GPU consumers (Plex transcode, browser, IDE) can coexist. Operators with dedicated VRAM can raise via system_settings.model_qwen3.6:27b-heretic_num_ctx. Primary host: OLLAMA_BASE_URL_NVIDIA (else legacy OLLAMA_BASE_URL_2). Failover host: AMD."
+            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Prefer this for large-Qwen AI Assistant tests. think:false so chat gets an answer instead of a long reasoning burn. streaming_timeout 600s for slow first-token / long replies."
+        },
+        "batiai/qwen3.6-27b:iq3": {
+            "num_ctx": 20000,
+            "num_predict": 4096,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_AMD",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Previously unconfigured → default_config 32k ctx + 90s idle + no think:false, which looked like mid-think freezes. Prefer qwen3.6:27b-heretic for 3090 tests."
         },
         "phi4:14b": {
             "num_ctx": 8192,

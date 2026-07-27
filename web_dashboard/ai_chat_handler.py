@@ -640,6 +640,20 @@ class ChatHandler:
             try:
                 from model_registry import get_primary_model
 
+                # Immediate SSE so the UI knows the request was accepted before first token.
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "status": "thinking",
+                            "phase": "waiting_on_ollama",
+                            "model": self.model,
+                            "done": False,
+                        }
+                    )
+                    + "\n\n"
+                )
+
                 for chunk in client.query_ollama_chat(
                     messages=messages,
                     model=self.model or get_primary_model(),

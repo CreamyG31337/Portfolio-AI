@@ -721,8 +721,18 @@ class OllamaClient:
                                         len(merged),
                                     )
                                     yield merged
+                                    yielded_content_text = True
+                            done_reason = str(chunk_data.get("done_reason") or "")
+                            if done_reason == "length":
+                                logger.warning(
+                                    "Ollama chat hit num_predict limit (done_reason=length) model stream"
+                                )
+                                yield (
+                                    "\n\n*(Stopped: model hit max output tokens. "
+                                    "Partial reply above — raise num_predict or ask a shorter question.)*"
+                                )
                             elapsed = time.time() - request_start_time
-                            logger.info(f"[OK] Ollama chat streaming completed in {elapsed:.2f}s")
+                            logger.info(f"[OK] Ollama chat streaming completed in {elapsed:.2f}s reason={done_reason or 'n/a'}")
                             break
                     except json.JSONDecodeError:
                         continue
@@ -795,30 +805,49 @@ class OllamaClient:
             return False
     
     def list_available_models(self) -> List[str]:
-        """List all available models in Ollama (unfiltered).
-        
-        Returns:
-            List of all model names from Ollama
+        """List available Ollama model names from the primary host and optional secondary.
+
+        Secondary is ``OLLAMA_BASE_URL_2`` / NVIDIA when set, so desktop-only models
+        (e.g. ``qwen3.6:27b-heretic`` on the 3090) appear in the AI Assistant picker
+        even when the default URL is the Ubuntu host.
         """
         if not self.enabled:
             logger.debug("Model listing skipped: Ollama disabled")
             return []
-        
-        try:
-            logger.debug(f"Fetching available models from {self.base_url}...")
-            response = self.session.get(
-                f"{self.base_url}/api/tags",
-                timeout=10
-            )
-            response.raise_for_status()
-            data = response.json()
-            models = [model.get("name", "") for model in data.get("models", [])]
-            models = [m for m in models if m]  # Filter out empty strings
-            logger.info(f"Found {len(models)} Ollama models: {', '.join(models) if models else 'none'}")
-            return models
-        except Exception as e:
-            logger.error(f"❌ Error listing Ollama models: {e}")
-            return []
+
+        urls: List[str] = []
+        primary = self.base_url.rstrip("/")
+        if primary:
+            urls.append(primary)
+        secondary = os.getenv("OLLAMA_BASE_URL_2", "").strip().rstrip("/")
+        nvidia = _resolve_ollama_host_env("OLLAMA_BASE_URL_NVIDIA")
+        for extra in (secondary, nvidia):
+            if extra and extra not in urls:
+                urls.append(extra)
+
+        seen: set[str] = set()
+        models: List[str] = []
+        for base in urls:
+            try:
+                logger.debug("Fetching available models from %s...", base)
+                response = self.session.get(f"{base}/api/tags", timeout=10)
+                response.raise_for_status()
+                data = response.json()
+                for model in data.get("models", []):
+                    name = (model.get("name") or "").strip()
+                    if name and name not in seen:
+                        seen.add(name)
+                        models.append(name)
+            except Exception as e:
+                logger.warning("Error listing Ollama models from %s: %s", base, e)
+
+        logger.info(
+            "Found %d Ollama models across %d host(s): %s",
+            len(models),
+            len(urls),
+            ", ".join(models) if models else "none",
+        )
+        return models
     
     def get_filtered_models(self, include_hidden: bool = False) -> List[str]:
         """Get list of available models, filtered by JSON config.
