@@ -55,6 +55,16 @@ interface Summary {
     edge_vs_shuffled?: number | null;
     edge_vs_always_bullish?: number | null;
     day_buckets?: number;
+    by_direction?: Record<
+      string,
+      {
+        n: number;
+        hits: number;
+        hit_rate: number | null;
+        expected_hit_rate: number | null;
+        edge: number | null;
+      }
+    >;
   };
   counts_by_source?: Record<string, CountBucket>;
   counts_by_confidence_band?: Record<string, CountBucket>;
@@ -137,6 +147,39 @@ function overallCounts(counts: Record<string, CountBucket>): CountBucket {
   return total;
 }
 
+function directionBreakdownHtml(data: Summary): string {
+  const dirs = data.baselines?.by_direction;
+  if (!dirs || !Object.keys(dirs).length) return "";
+  const label: Record<string, string> = { bullish: "Bullish calls", bearish: "Bearish calls" };
+  const rows = Object.entries(dirs)
+    .map(([name, d]) => {
+      const edge = num(d.edge);
+      return `<tr class="border-t border-border">
+        <td class="py-1 pr-3">${esc(label[name] || name)}</td>
+        <td class="py-1 pr-3 text-right">${d.n}</td>
+        <td class="py-1 pr-3 text-right">${pct(num(d.hit_rate))}</td>
+        <td class="py-1 pr-3 text-right text-text-secondary">${pct(num(d.expected_hit_rate))}</td>
+        <td class="py-1 text-right ${signClass(edge)}">${pp((edge ?? 0) * 100)}</td>
+      </tr>`;
+    })
+    .join("");
+  return `<div class="mt-3">
+    <p class="text-xs text-text-secondary mb-1">A lopsided call mix hides skill in the smaller bucket, so each direction is scored against its own no-skill expectation.</p>
+    <table class="w-full text-xs">
+      <thead class="text-text-secondary">
+        <tr>
+          <th class="py-1 pr-3 text-left font-medium">Direction</th>
+          <th class="py-1 pr-3 text-right font-medium">Calls</th>
+          <th class="py-1 pr-3 text-right font-medium">Hit rate</th>
+          <th class="py-1 pr-3 text-right font-medium" title="What randomly dealing this many calls across the same days would score">Expected</th>
+          <th class="py-1 text-right font-medium">Edge</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
 function renderHeadline(data: Summary): void {
   const el = document.getElementById("track-headline");
   if (!el) return;
@@ -210,6 +253,7 @@ function renderHeadline(data: Summary): void {
       }
     </div>
     <p class="text-sm text-text-secondary">${verdict}</p>
+    ${directionBreakdownHtml(data)}
     ${
       data.broad_index_etf_excluded
         ? `<p class="text-xs text-text-secondary mt-2">${data.broad_index_etf_excluded} broad-index ETF call${

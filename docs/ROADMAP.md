@@ -330,7 +330,7 @@ Deliberately out of the repair plan; each is worth doing once the rig is trustwo
 
 | Item | Why | Trigger |
 |------|-----|---------|
-| **Insider buy-vs-sell event study** | The strongest next test, and a **positive control for the rig itself**: buys informative / sells noisy is a well-documented prior, so failure to reproduce it means the measurement is broken, not the hypothesis. Needs no LLM, no `idea_triage` clicks, no stance ledger — event study straight off trades + prices. | After M1–M3 of the repair plan land |
+| ~~**Insider buy-vs-sell event study**~~ | ✅ **Shipped 2026-07-27 — the positive control PASSES.** See result below. | done |
 | **News-sentiment event study** | Answers "is trading on positive/negative news effective?" directly from `research_articles.sentiment` + tickers + forward returns. Also needs no clicks. | After the insider study validates the rig |
 | **Confidence intervals + clustered errors** | ~29 stances per ticker over 46 days are not independent, and stances correlate across tickers on market moves. Effective *n* is in the low hundreds, not 1,884. Point estimates invite over-reading. | Once baselines (M5) exist to compare against |
 | **Pre-registered primary metric per source** | 3 horizons × N sources × 3 confidence bands × ALIGNED/TENSION is dozens of rates; some look terrible by chance. Retiring a collector on its worst slice kills good collectors. | Before the first source-ROI retirement decision |
@@ -339,6 +339,39 @@ Deliberately out of the repair plan; each is worth doing once the rig is trustwo
 
 **Standing rule:** the headline number is `hit_rate − baseline_hit_rate`, never `hit_rate`
 alone, and every rate ships with its `n`.
+
+#### 2.4c Positive control — insider buy-vs-sell (shipped 2026-07-27)
+
+[`web_dashboard/scripts/insider_event_study.py`](../web_dashboard/scripts/insider_event_study.py).
+135,487 Form 4 filings → 27,734 company-day events, 900-ticker random sample.
+
+**Within-ticker paired test** (each stock its own control, so size/sector/benchmark cancel):
+
+```
+30d   purchase - sale  +2.03%   se 0.86   t +2.36   n=253 tickers   buys won 55.3%
+ 7d   purchase - sale  +0.27%   se 0.45   t +0.61   n=263 tickers
+```
+
+**The rig can detect a real effect at 30d.** That is what makes the stance track record's
+null result meaningful rather than merely uninformative. The 7d/30d pattern — near zero at a
+week, significant at a month — matches the post-event-drift shape in the insider literature,
+so the horizon scaling is corroborating rather than contradictory.
+
+##### ⚠️ Two methodology traps this exposed — read before any future event study
+
+1. **The cross-sectional spread has the WRONG SIGN** (−0.82% at 30d) while the paired test is
+   positive. Insider purchases concentrate in small caps and sales in large caps, so when
+   market cap is unknown both legs fall back to the broad index and the smaller-cap purchase
+   basket is penalised. That bias does **not** cancel in a naive spread. Always pair
+   within-ticker, or size-match, before comparing two baskets drawn from different parts of
+   the cap spectrum.
+2. **Event date must be `disclosure_date`, never `transaction_date`.** Filing lag here is a
+   median of 2 days, 28% beyond 2 days, max 68. Measuring from the trade date captures moves
+   nobody could have traded on and manufactures large fake alpha. Entry is the first close
+   *strictly after* disclosure, since `disclosure_date` carries no reliable intraday time.
+
+Events are deduped to (ticker, day, direction): a company-day with eight filers is one
+event, not eight, or clustered filings dominate the mean and effective *n* collapses.
 
 ### 2.5 Cross-cutting polish
 

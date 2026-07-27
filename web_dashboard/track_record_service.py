@@ -145,6 +145,16 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
     always_bearish_hits = 0
     shuffled_hits = 0.0
 
+    # Per-direction actual vs expected. This is the sharper cut: a lopsided label mix
+    # (this book is ~86% bullish) means the pooled shuffled null is dominated by the
+    # bullish side and can barely move, so a real edge in the minority class would be
+    # invisible in the aggregate. The two directions' expected hits sum to the pooled
+    # shuffled figure by construction, so the breakdown stays internally consistent.
+    dir_stats = {
+        "bullish": {"n": 0, "hits": 0, "expected": 0.0},
+        "bearish": {"n": 0, "hits": 0, "expected": 0.0},
+    }
+
     for bucket in by_day.values():
         total = len(bucket)
         if not total:
@@ -161,12 +171,40 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
         if labelled:
             shuffled_hits += (bullish * pos + bearish * neg) / total
 
+        dir_stats["bullish"]["n"] += bullish
+        dir_stats["bearish"]["n"] += bearish
+        dir_stats["bullish"]["hits"] += sum(
+            1 for s, ex in bucket if s.upper() in _BULLISH_STANCES and ex > 0
+        )
+        dir_stats["bearish"]["hits"] += sum(
+            1 for s, ex in bucket if s.upper() in _BEARISH_STANCES and ex < 0
+        )
+        # Expected hits if this bucket's labels were dealt out at random.
+        dir_stats["bullish"]["expected"] += bullish * pos / total
+        dir_stats["bearish"]["expected"] += bearish * neg / total
+
     if n == 0:
         return {
             "n": 0,
             "always_bullish_hit_rate": None,
             "always_bearish_hit_rate": None,
             "shuffled_hit_rate": None,
+            "by_direction": {},
+        }
+
+    by_direction: dict[str, dict[str, Any]] = {}
+    for name, stats in dir_stats.items():
+        count = stats["n"]
+        if not count:
+            continue
+        rate = stats["hits"] / count
+        expected = stats["expected"] / count
+        by_direction[name] = {
+            "n": count,
+            "hits": stats["hits"],
+            "hit_rate": round(rate, 4),
+            "expected_hit_rate": round(expected, 4),
+            "edge": round(rate - expected, 4),
         }
 
     return {
@@ -175,6 +213,7 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
         "always_bearish_hit_rate": round(always_bearish_hits / n, 4),
         "shuffled_hit_rate": round(shuffled_hits / n, 4),
         "day_buckets": len(by_day),
+        "by_direction": by_direction,
     }
 
 

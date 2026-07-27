@@ -372,14 +372,28 @@ always bearish     51.53%                    59.65%
 n                   1,991 over 37 day buckets   927 over 16 buckets
 ```
 
-By direction, against each direction's own base rate:
+By direction, each against its own day-bucketed no-skill expectation (shipped as
+`baselines.by_direction`, and surfaced on the screen):
 
 ```
-7d   BULLISH n=1749  hit 47.9%  base 48.6%  edge -0.7%
-     BEARISH n= 287  hit 47.0%  base 51.4%  edge -4.3%
-30d  BULLISH n= 778  hit 40.1%  base 40.8%  edge -0.7%
-     BEARISH n= 167  hit 55.7%  base 59.2%  edge -3.5%
+7d   bullish n=1707  hit 47.7%  expected 48.3%  edge -0.60pp
+     bearish n= 284  hit 46.8%  expected 50.5%  edge -3.63pp
+30d  bullish n= 763  hit 39.5%  expected 39.4%  edge +0.05pp
+     bearish n= 164  hit 55.5%  expected 55.3%  edge +0.23pp
 ```
+
+> **Superseded numbers.** A first pass compared each direction to a *pooled* base rate and
+> reported 30d bearish at **-3.5pp**. Day-bucketing moves it to **+0.23pp** — essentially
+> dead even. The pooled version ignores *when* the calls were made: if bearish calls cluster
+> on broadly-down days, a pooled base rate overstates what random would have achieved and
+> unfairly penalises them. The bucketed figure is the correct one, and the 30d book is now a
+> remarkably clean "no information" signature — within a quarter of a point of chance in
+> both directions.
+>
+> The per-direction expected hits **sum to the pooled shuffled null by construction**
+> (asserted in `test_by_direction_expected_hits_sum_to_pooled_shuffled_null`), so the
+> breakdown is a decomposition rather than a second, independent calculation that could
+> drift from it.
 
 **Conclusion: no detectable directional edge, and no evidence of harm.** Every edge is
 inside the noise band for 37 correlated day buckets.

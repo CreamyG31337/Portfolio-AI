@@ -134,6 +134,46 @@ def test_baselines_bucket_by_day_to_respect_correlated_moves() -> None:
     assert b["always_bullish_hit_rate"] == 0.5
 
 
+def test_by_direction_expected_hits_sum_to_pooled_shuffled_null() -> None:
+    """The breakdown must decompose the pooled null, not be a separate calculation."""
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 5.0, "2026-07-01"),
+        ("BULLISH", -1.0, "2026-07-01"),
+        ("BEARISH", -4.0, "2026-07-01"),
+        ("BULLISH", 2.0, "2026-07-02"),
+        ("BEARISH", -3.0, "2026-07-02"),
+    ]
+    b = compute_baselines(rows)
+    d = b["by_direction"]
+    pooled_expected_hits = b["shuffled_hit_rate"] * b["n"]
+    per_direction_hits = (
+        d["bullish"]["expected_hit_rate"] * d["bullish"]["n"]
+        + d["bearish"]["expected_hit_rate"] * d["bearish"]["n"]
+    )
+    # Rates are rounded to 4dp before being returned, so reconstructing counts from
+    # them carries up to 5e-5 of error per row. Budget for exactly that and no more.
+    assert abs(pooled_expected_hits - per_direction_hits) < 1e-4 * b["n"]
+
+
+def test_by_direction_isolates_a_minority_class_edge() -> None:
+    """A lopsided label mix hides minority-class skill in the pooled number.
+
+    Bearish calls here are perfect while bullish calls are coin flips; the pooled
+    edge is diluted but the bearish breakdown must show it clearly.
+    """
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [("BULLISH", 1.0, "2026-07-01"), ("BULLISH", -1.0, "2026-07-01")]
+    rows += [("BULLISH", 1.0, "2026-07-01"), ("BULLISH", -1.0, "2026-07-01")]
+    rows += [("BEARISH", -1.0, "2026-07-01")]  # correct bearish call
+    b = compute_baselines(rows)
+    assert b["by_direction"]["bearish"]["hit_rate"] == 1.0
+    assert b["by_direction"]["bearish"]["edge"] > 0
+    assert b["by_direction"]["bullish"]["n"] == 4
+
+
 def test_baselines_empty_input() -> None:
     from web_dashboard.track_record_service import compute_baselines
 
