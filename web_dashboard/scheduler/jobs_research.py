@@ -137,7 +137,9 @@ def market_research_job() -> None:
             message = "SearXNG is not available - skipping research job"
             log_job_step(job_id, "searxng_check", message, status="skipped")
             logger.info(f"ℹ️ {message}")
-            _finalize_failure(message)
+            # Intentional skip (usually test/config), not an execution failure.
+            # Matches alpha_research / opportunity_discovery / ticker_research.
+            _finalize_success(message)
             return
         log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
         

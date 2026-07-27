@@ -164,7 +164,11 @@ def test_newsletter_ai_processing_marks_failed_with_correct_signature():
     assert "boom" in args[3]
 
 
-def test_market_research_marks_failed_when_searxng_unavailable():
+def test_market_research_marks_completed_when_searxng_unavailable():
+    """SearXNG down is an intentional skip (usually test/config), not a failure.
+
+    Matches alpha_research / opportunity_discovery / ticker_research doctrine.
+    """
     from web_dashboard.scheduler.jobs_research import market_research_job
 
     with patch("utils.job_tracking.get_running_ai_job", return_value=None), patch(
@@ -183,5 +187,46 @@ def test_market_research_marks_failed_when_searxng_unavailable():
         market_research_job()
 
     mark_started.assert_called_once()
-    mark_failed.assert_called_once()
-    mark_completed.assert_not_called()
+    mark_completed.assert_called_once()
+    mark_failed.assert_not_called()
+
+
+def test_performance_metrics_completes_each_date_in_range():
+    """Multi-day backfill must pair mark_job_started per date.
+
+    A prior bug only completed dates_to_process[-1], leaving N-1 rows stuck
+    as status='running' after a range run.
+    """
+    from datetime import date
+
+    from web_dashboard.scheduler.jobs_metrics import populate_performance_metrics_job
+
+    d1 = date(2026, 7, 1)
+    d2 = date(2026, 7, 2)
+    d3 = date(2026, 7, 3)
+
+    with patch("utils.job_tracking.mark_job_started") as mark_started, patch(
+        "utils.job_tracking.mark_job_completed"
+    ) as mark_completed, patch(
+        "utils.job_tracking.mark_job_failed"
+    ) as mark_failed, patch(
+        "web_dashboard.scheduler.jobs_metrics.log_job_execution"
+    ), patch(
+        "supabase_client.SupabaseClient", return_value=MagicMock()
+    ), patch(
+        "web_dashboard.scheduler.jobs_metrics._process_performance_metrics_for_date",
+        return_value=(1, 0, ["TEST"]),
+    ), patch(
+        "cache_version.bump_cache_version"
+    ):
+        populate_performance_metrics_job(from_date=d1, to_date=d3)
+
+    assert mark_started.call_count == 3
+    started_dates = [c.args[1] for c in mark_started.call_args_list]
+    assert started_dates == [d1, d2, d3]
+
+    assert mark_completed.call_count == 3
+    completed_dates = [c.args[1] for c in mark_completed.call_args_list]
+    assert completed_dates == [d1, d2, d3]
+
+    mark_failed.assert_not_called()

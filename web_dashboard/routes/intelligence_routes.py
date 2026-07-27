@@ -146,6 +146,28 @@ def ideas_inbox_api():
         return jsonify({"error": str(exc)}), 500
 
 
+def _normalize_ideas_accept_funds(body: dict[str, Any]) -> list[str]:
+    """Resolve Accept target funds from ``funds`` (preferred) or legacy ``fund``."""
+    raw_funds = body.get("funds")
+    funds: list[str] = []
+    if isinstance(raw_funds, list):
+        funds = [str(f).strip() for f in raw_funds if str(f).strip()]
+    elif isinstance(raw_funds, str) and raw_funds.strip():
+        funds = [raw_funds.strip()]
+    single = body.get("fund")
+    if single and str(single).strip():
+        funds.append(str(single).strip())
+    # Preserve order, drop dupes / All Funds sentinel.
+    seen: set[str] = set()
+    out: list[str] = []
+    for name in funds:
+        if name.lower() == "all" or name in seen:
+            continue
+        seen.add(name)
+        out.append(name)
+    return out
+
+
 @intelligence_bp.route("/api/ideas/triage", methods=["POST"])
 @require_auth
 def ideas_triage_api():
@@ -154,16 +176,19 @@ def ideas_triage_api():
         article_id = body.get("article_id")
         status = (body.get("status") or "").strip().lower()
         notes = body.get("notes")
-        fund = body.get("fund")
         tickers = body.get("tickers") or []
+        funds = _normalize_ideas_accept_funds(body)
 
         if not article_id or status not in {"accepted", "dismissed", "snoozed"}:
             return jsonify({"error": "article_id and status required"}), 400
 
-        if status == "accepted" and fund and tickers:
+        if status == "accepted" and tickers:
+            if not funds:
+                return jsonify({"error": "Select at least one fund for Accept"}), 400
             allowed_funds = get_available_funds_flask()
-            if fund not in allowed_funds:
-                return jsonify({"error": f"No access to fund {fund}"}), 403
+            denied = [f for f in funds if f not in allowed_funds]
+            if denied:
+                return jsonify({"error": f"No access to fund(s): {', '.join(denied)}"}), 403
 
         email = get_effective_user_email_flask() or "unknown"
         snooze_until = None
@@ -186,9 +211,11 @@ def ideas_triage_api():
             (article_id, status, email, notes, snooze_until),
         )
 
+        # Per-fund map + flat ticker rollup (added if any fund succeeded).
+        watchlist_by_fund: dict[str, dict[str, str]] = {}
         watchlist_results: dict[str, str] = {}
         analysis_enqueue: dict[str, Any] | None = None
-        if status == "accepted" and fund and tickers:
+        if status == "accepted" and funds and tickers:
             from supabase_client import SupabaseClient
             from watchlist_access import (
                 request_manual_ticker_analysis,
@@ -197,24 +224,32 @@ def ideas_triage_api():
 
             write_client = SupabaseClient(use_service_role=True)
             accepted_tickers: list[str] = []
-            for t in tickers:
-                ticker = str(t).upper().strip()
-                if not ticker:
-                    continue
-                # Provenance for later expiry/audit: source=ideas_inbox on watched_tickers_v2.
-                # Do not re-upsert these tickers via watchlist UI/bulk with a different source
-                # until upsert preserves existing provenance (see watchlist_access warning).
-                outcome = upsert_watchlist_ticker(
-                    write_client,
-                    fund=str(fund),
-                    ticker=ticker,
-                    priority_tier="B",
-                    source="ideas_inbox",
-                    is_active=True,
-                )
-                watchlist_results[ticker] = "added" if outcome.get("ok") else "failed"
-                if outcome.get("ok"):
-                    accepted_tickers.append(ticker)
+            for fund_name in funds:
+                fund_results: dict[str, str] = {}
+                for t in tickers:
+                    ticker = str(t).upper().strip()
+                    if not ticker:
+                        continue
+                    # Provenance for later expiry/audit: source=ideas_inbox on watched_tickers_v2.
+                    # Do not re-upsert these tickers via watchlist UI/bulk with a different source
+                    # until upsert preserves existing provenance (see watchlist_access warning).
+                    outcome = upsert_watchlist_ticker(
+                        write_client,
+                        fund=str(fund_name),
+                        ticker=ticker,
+                        priority_tier="B",
+                        source="ideas_inbox",
+                        is_active=True,
+                    )
+                    ok = bool(outcome.get("ok"))
+                    fund_results[ticker] = "added" if ok else "failed"
+                    if ok:
+                        watchlist_results[ticker] = "added"
+                        if ticker not in accepted_tickers:
+                            accepted_tickers.append(ticker)
+                    elif ticker not in watchlist_results:
+                        watchlist_results[ticker] = "failed"
+                watchlist_by_fund[fund_name] = fund_results
 
             queue_analysis = body.get("queue_analysis", False)
             if not isinstance(queue_analysis, bool):
@@ -227,12 +262,21 @@ def ideas_triage_api():
                     include_meta=True,
                 )
 
+        failed_pairs = sorted(
+            f"{fund}/{ticker}"
+            for fund, results in watchlist_by_fund.items()
+            for ticker, result in results.items()
+            if result != "added"
+        )
         failed = sorted(t for t, r in watchlist_results.items() if r != "added")
         payload: dict[str, Any] = {
-            "ok": not failed,
+            "ok": not failed_pairs,
             "status": status,
+            "funds": funds,
+            "watchlist_by_fund": watchlist_by_fund,
             "watchlist_results": watchlist_results,
             "failed_tickers": failed,
+            "failed_fund_tickers": failed_pairs,
         }
         if analysis_enqueue is not None:
             payload["analysis_enqueue"] = analysis_enqueue

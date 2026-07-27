@@ -639,7 +639,6 @@ def populate_performance_metrics_job(
         total_rows_skipped = 0
         total_dates_processed = 0
         total_dates_failed = 0
-        all_funds_processed = set()
         
         for process_date in dates_to_process:
             try:
@@ -665,8 +664,19 @@ def populate_performance_metrics_job(
                 
                 total_rows_inserted += rows_inserted
                 total_rows_skipped += rows_skipped
-                all_funds_processed.update(funds)
                 total_dates_processed += 1
+
+                # Pair mark_job_started for this date (do not wait for post-loop
+                # dates_to_process[-1] — a multi-day backfill would leave prior
+                # dates stuck as status='running').
+                try:
+                    mark_job_completed(
+                        'performance_metrics', process_date, None, list(funds),
+                        duration_ms=int((time.time() - start_time) * 1000),
+                        message=f"{rows_inserted} inserted, {rows_skipped} skipped",
+                    )
+                except Exception:
+                    pass
                 
                 # Log progress for date ranges
                 if len(dates_to_process) > 1:
@@ -698,10 +708,6 @@ def populate_performance_metrics_job(
                 message = f"Populated {total_rows_inserted} fund(s) for {process_date}"
         
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        
-        # Mark completion for the last date processed (or first if none processed)
-        if dates_to_process:
-            mark_job_completed('performance_metrics', dates_to_process[-1], None, list(all_funds_processed), duration_ms=duration_ms)
         
         logger.info(f"✅ {message}")
 

@@ -230,9 +230,65 @@ def test_ideas_triage_accept_uses_upsert_helper(client, auth_ok):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["watchlist_results"]["CELH"] == "added"
+    assert body["funds"] == ["Project Chimera"]
+    assert body["watchlist_by_fund"]["Project Chimera"]["CELH"] == "added"
     assert "analysis_enqueue" not in body
     mock_upsert.assert_called_once()
     assert mock_upsert.call_args.kwargs["source"] == "ideas_inbox"
+
+
+@skip_without_plotly
+def test_ideas_triage_accept_multiple_funds(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch(
+        "routes.intelligence_routes.get_available_funds_flask",
+        return_value=["Project Chimera", "RRSP", "TFSA"],
+    ), patch(
+        "routes.intelligence_routes.PostgresClient",
+    ) as mock_pg, patch(
+        "supabase_client.SupabaseClient",
+        return_value=MagicMock(),
+    ), patch(
+        "watchlist_access.upsert_watchlist_ticker",
+        return_value={"ok": True, "ticker": "CELH"},
+    ) as mock_upsert:
+        mock_pg.return_value.execute_update.return_value = None
+        resp = client.post(
+            "/api/ideas/triage",
+            json={
+                "article_id": "00000000-0000-0000-0000-000000000099",
+                "status": "accepted",
+                "funds": ["Project Chimera", "RRSP"],
+                "tickers": ["CELH"],
+            },
+        )
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["ok"] is True
+    assert body["funds"] == ["Project Chimera", "RRSP"]
+    assert mock_upsert.call_count == 2
+    funds_called = {c.kwargs["fund"] for c in mock_upsert.call_args_list}
+    assert funds_called == {"Project Chimera", "RRSP"}
+
+
+@skip_without_plotly
+def test_ideas_triage_accept_requires_fund_when_tickers(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch(
+        "routes.intelligence_routes.PostgresClient",
+    ) as mock_pg:
+        mock_pg.return_value.execute_update.return_value = None
+        resp = client.post(
+            "/api/ideas/triage",
+            json={
+                "article_id": "00000000-0000-0000-0000-000000000098",
+                "status": "accepted",
+                "tickers": ["CELH"],
+            },
+        )
+    assert resp.status_code == 400
+    assert "fund" in resp.get_json()["error"].lower()
+    mock_pg.return_value.execute_update.assert_not_called()
 
 
 @skip_without_plotly

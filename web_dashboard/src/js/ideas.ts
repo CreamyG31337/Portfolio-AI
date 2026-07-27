@@ -36,6 +36,15 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 /** Sticky for the session only — the inbox should default to the good rows. */
 let includeLowSignal = false;
 
+interface AcceptPending {
+  articleId: string;
+  tickers: string[];
+  queueAnalysis: boolean;
+  articleEl: HTMLElement | null;
+}
+
+let acceptPending: AcceptPending | null = null;
+
 function getSelectedFund(): string | null {
   const fromUi = (
     window as unknown as { ui?: { getSelectedFund?: () => string | null } }
@@ -45,6 +54,21 @@ function getSelectedFund(): string | null {
   const v = (sel?.value || "").trim();
   if (!v || v.toLowerCase() === "all") return null;
   return v;
+}
+
+function listAvailableFunds(): string[] {
+  const boxes = document.querySelectorAll<HTMLInputElement>(".ideas-accept-fund");
+  if (boxes.length) {
+    return Array.from(boxes)
+      .map((b) => (b.value || "").trim())
+      .filter(Boolean);
+  }
+  // Fallback if the modal checkboxes were not rendered.
+  const sel = document.getElementById("global-fund-select") as HTMLSelectElement | null;
+  if (!sel) return [];
+  return Array.from(sel.options)
+    .map((o) => (o.value || "").trim())
+    .filter((v) => v && v.toLowerCase() !== "all");
 }
 
 function currentTickerFilter(): string {
@@ -57,28 +81,77 @@ function setFilterStatus(text: string): void {
   if (el) el.textContent = text;
 }
 
+function setAcceptError(text: string): void {
+  const el = document.getElementById("ideas-accept-error");
+  if (!el) return;
+  if (!text) {
+    el.textContent = "";
+    el.classList.add("hidden");
+    return;
+  }
+  el.textContent = text;
+  el.classList.remove("hidden");
+}
+
+function openAcceptModal(): void {
+  const modal = document.getElementById("ideas-accept-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeAcceptModal(): void {
+  const modal = document.getElementById("ideas-accept-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  modal.setAttribute("aria-hidden", "true");
+  acceptPending = null;
+  setAcceptError("");
+}
+
+function selectedAcceptFunds(): string[] {
+  return Array.from(document.querySelectorAll<HTMLInputElement>(".ideas-accept-fund:checked"))
+    .map((b) => (b.value || "").trim())
+    .filter(Boolean);
+}
+
+/** Prefill checkboxes: sidebar fund if set, else leave empty so the user must choose. */
+function prepAcceptFundChecks(): void {
+  const selected = getSelectedFund();
+  document.querySelectorAll<HTMLInputElement>(".ideas-accept-fund").forEach((box) => {
+    box.checked = Boolean(selected && box.value === selected);
+  });
+}
+
 async function triage(
   articleId: string,
   status: "accepted" | "dismissed" | "snoozed",
   tickers: string[],
-  queueAnalysis = false
+  queueAnalysis = false,
+  funds: string[] = []
 ): Promise<boolean> {
-  const fund = getSelectedFund();
-  if (status === "accepted" && tickers.length && !fund) {
-    alert("Select a fund in the sidebar before accepting into the watchlist.");
+  if (status === "accepted" && tickers.length && !funds.length) {
+    alert("Select at least one fund before accepting into the watchlist.");
     return false;
+  }
+  const payload: Record<string, unknown> = {
+    article_id: articleId,
+    status,
+    tickers,
+    queue_analysis: queueAnalysis,
+  };
+  if (funds.length === 1) {
+    // Keep legacy single-fund clients happy in network logs / older tooling.
+    payload.fund = funds[0];
+  }
+  if (funds.length) {
+    payload.funds = funds;
   }
   const resp = await fetch("/api/ideas/triage", {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
-    body: JSON.stringify({
-      article_id: articleId,
-      status,
-      fund,
-      tickers,
-      queue_analysis: queueAnalysis,
-    }),
+    body: JSON.stringify(payload),
   });
   if (!resp.ok) {
     const body = (await resp.json().catch(() => ({}))) as { error?: string };
@@ -87,11 +160,15 @@ async function triage(
   }
   const body = (await resp.json()) as {
     failed_tickers?: string[];
+    failed_fund_tickers?: string[];
     analysis_enqueue?: { enqueued?: number; ok?: boolean };
   };
-  if (body.failed_tickers?.length) {
+  const failedPairs = body.failed_fund_tickers?.length
+    ? body.failed_fund_tickers
+    : body.failed_tickers;
+  if (failedPairs?.length) {
     alert(
-      `Saved, but these tickers could not be added to the watchlist: ${body.failed_tickers.join(", ")}`
+      `Saved, but these watchlist adds failed: ${failedPairs.join(", ")}`
     );
   }
   if (queueAnalysis && body.analysis_enqueue?.ok) {
@@ -101,6 +178,68 @@ async function triage(
     );
   }
   return true;
+}
+
+async function promptAcceptFunds(
+  articleId: string,
+  tickers: string[],
+  queueAnalysis: boolean,
+  articleEl: HTMLElement | null
+): Promise<void> {
+  if (!tickers.length) {
+    // No tickers → triage-only Accept (no watchlist write).
+    if (await triage(articleId, "accepted", [], queueAnalysis, [])) {
+      articleEl?.remove();
+    }
+    return;
+  }
+  if (!listAvailableFunds().length) {
+    alert("No funds available for your account.");
+    return;
+  }
+  acceptPending = { articleId, tickers, queueAnalysis, articleEl };
+  const label = document.getElementById("ideas-accept-tickers");
+  if (label) {
+    label.textContent = `Tickers: ${tickers.join(", ")}${
+      queueAnalysis ? " · will queue ASAP analysis" : ""
+    }`;
+  }
+  prepAcceptFundChecks();
+  setAcceptError("");
+  openAcceptModal();
+}
+
+function setupAcceptModal(): void {
+  document.getElementById("ideas-accept-cancel")?.addEventListener("click", () => {
+    closeAcceptModal();
+  });
+  document.getElementById("ideas-accept-confirm")?.addEventListener("click", async () => {
+    if (!acceptPending) {
+      closeAcceptModal();
+      return;
+    }
+    const funds = selectedAcceptFunds();
+    if (!funds.length) {
+      setAcceptError("Pick at least one fund.");
+      return;
+    }
+    const pending = acceptPending;
+    const ok = await triage(
+      pending.articleId,
+      "accepted",
+      pending.tickers,
+      pending.queueAnalysis,
+      funds
+    );
+    if (ok) {
+      pending.articleEl?.remove();
+      closeAcceptModal();
+    }
+  });
+  // Backdrop click closes (modal root is the full-screen overlay).
+  document.getElementById("ideas-accept-modal")?.addEventListener("click", (ev) => {
+    if (ev.target === ev.currentTarget) closeAcceptModal();
+  });
 }
 
 function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {
@@ -232,8 +371,13 @@ function renderIdeas(rows: IdeaRow[], filter: string, hidden: number): void {
       const action = b.dataset.action as "accepted" | "dismissed" | "snoozed";
       const tickers = JSON.parse(b.dataset.tickers || "[]") as string[];
       const queueAnalysis = b.dataset.queueAnalysis === "1";
-      if (await triage(id, action, tickers, queueAnalysis)) {
-        b.closest("article")?.remove();
+      const articleEl = b.closest("article") as HTMLElement | null;
+      if (action === "accepted") {
+        await promptAcceptFunds(id, tickers, queueAnalysis, articleEl);
+        return;
+      }
+      if (await triage(id, action, tickers, false, [])) {
+        articleEl?.remove();
       }
     });
   });
@@ -282,5 +426,6 @@ function setupTickerFilter(): void {
 
 document.addEventListener("DOMContentLoaded", () => {
   setupTickerFilter();
+  setupAcceptModal();
   void loadIdeas();
 });

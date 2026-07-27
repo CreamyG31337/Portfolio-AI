@@ -7,7 +7,8 @@
 {% block content %}
 <div class="max-w-5xl mx-auto">
     <p class="text-sm text-text-secondary mb-4">
-        <strong>Accept</strong> adds tickers to the selected fund’s watchlist and removes the idea here.
+        <strong>Accept</strong> prompts for fund(s) (defaults to the sidebar selection), adds tickers
+        to those watchlists, and removes the idea here.
         The scheduled ticker-analysis job may research watchlist names later (lower priority than holdings;
         skips recently analyzed). Use <strong>Accept &amp; analyze now</strong> to jump the ASAP queue
         (same as Analyze on <a href="/watchlist" class="text-accent hover:underline">Watchlist</a>).
@@ -27,6 +28,35 @@
     <div id="ideas-loading" class="text-sm text-text-secondary">Loading ideas…</div>
     <div id="ideas-error" class="hidden text-sm text-theme-error-text mb-4"></div>
     <div id="ideas-list" class="space-y-3"></div>
+</div>
+
+{# Accept fund picker — open/close via classList (no Flowbite Modal ESM import). #}
+<div id="ideas-accept-modal" tabindex="-1" aria-hidden="true"
+    class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
+    <div class="relative w-full max-w-md mx-auto mt-16 bg-dashboard-surface border border-border rounded-lg shadow-lg p-6">
+        <h3 class="text-lg font-semibold text-text-primary mb-1">Accept into watchlist</h3>
+        <p id="ideas-accept-tickers" class="text-xs text-text-secondary mb-4"></p>
+        <p class="text-xs text-text-secondary mb-2">Choose one or more funds:</p>
+        <div id="ideas-accept-funds" class="space-y-2 max-h-64 overflow-y-auto mb-2">
+            {% if available_funds %}
+            {% for fund in available_funds %}
+            <label class="flex items-center gap-2 text-sm text-text-primary cursor-pointer">
+                <input type="checkbox" class="ideas-accept-fund rounded border-border text-accent focus:ring-accent/40"
+                    value="{{ fund }}">
+                <span>{{ fund }}</span>
+            </label>
+            {% endfor %}
+            {% else %}
+            <p class="text-sm text-theme-error-text">No funds available for your account.</p>
+            {% endif %}
+        </div>
+        <p id="ideas-accept-error" class="hidden text-xs text-theme-error-text mb-2"></p>
+        <div class="flex justify-end gap-2 pt-2">
+            <button type="button" id="ideas-accept-cancel" data-modal-hide="ideas-accept-modal"
+                class="px-3 py-1 text-sm border border-border rounded-lg text-text-primary hover:bg-dashboard-surface-alt">Cancel</button>
+            <button type="button" id="ideas-accept-confirm" class="btn-outline-sm">Accept</button>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
