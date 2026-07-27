@@ -371,6 +371,7 @@ def fetch_insider_trades_job() -> None:
 
             logger.info(f"Processing {len(trades_data)} insider trades...")
 
+            trades_to_upsert = []
             for trade_data in trades_data:
                 try:
                     total_trades_found += 1
@@ -501,29 +502,30 @@ def fetch_insider_trades_job() -> None:
                         'source': 'sec_form4',
                     }
 
-                    # Insert to Supabase (use upsert to handle duplicates)
-                    try:
-                        result = supabase_client.supabase.table("insider_trades")\
-                            .upsert(
-                                trade_record,
-                                on_conflict="ticker,insider_name,transaction_date,type,shares,price_per_share"
-                            )\
-                            .execute()
-
-                        if result.data:
-                            new_trades += 1
-                            logger.debug(f"✅ Saved trade: {insider_name} {trade_type} {shares} shares of {ticker} @ ${price_per_share}")
-                        else:
-                            skipped_duplicates += 1
-                    except Exception as insert_error:
-                        errors += 1
-                        logger.error(f"Failed to insert trade for {insider_name} {ticker}: {insert_error}")
-                        continue
+                    # ⚡ Bolt: Accumulate trades to perform a batched upsert, avoiding per-row queries
+                    trades_to_upsert.append(trade_record)
 
                 except Exception as trade_error:
                     errors += 1
                     logger.warning(f"Error processing trade: {trade_error}")
                     continue
+
+            # ⚡ Bolt: Perform batched upsert after loop finishes for this chunk
+            if trades_to_upsert:
+                try:
+                    result = supabase_client.supabase.table("insider_trades")\
+                        .upsert(
+                            trades_to_upsert,
+                            on_conflict="ticker,insider_name,transaction_date,type,shares,price_per_share"
+                        )\
+                        .execute()
+
+                    if result.data:
+                        new_trades += len(result.data)
+                        logger.debug(f"✅ Saved {len(result.data)} insider trades in batch")
+                except Exception as insert_error:
+                    errors += 1
+                    logger.error(f"Failed to batched insert insider trades: {insert_error}")
 
         except requests.exceptions.HTTPError as http_error:
             duration_ms = int((time.time() - start_time) * 1000)
