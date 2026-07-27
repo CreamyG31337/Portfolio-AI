@@ -32,6 +32,19 @@ _CANADIAN_SUFFIXES = (".TO", ".V", ".CN", ".NE")
 
 ALL_BENCHMARKS = frozenset({BENCHMARK_US_BROAD, BENCHMARK_US_SMALL, BENCHMARK_CANADA})
 
+# Scoring scheme version stamped on every stance_outcomes row.
+#   1 = legacy: every stance scored against a single hardcoded ^RUT
+#   2 = per-ticker benchmark (^GSPC / ^RUT / ^GSPTSE)
+#
+# Bump this when the benchmark RULES change, and re-score deliberately -- never
+# rewrite already-scored rows in place under a new scheme without a version bump.
+# Aggregates must filter to one version: mixing schemes averages numbers measured
+# against different yardsticks, which is the bug this whole exercise started from.
+#
+# Lives here rather than in the scheduler so both the scoring job and the
+# track-record aggregates can agree on it without a cross-package import.
+SCORING_VERSION = 2
+
 
 def is_canadian_listing(
     ticker: str,

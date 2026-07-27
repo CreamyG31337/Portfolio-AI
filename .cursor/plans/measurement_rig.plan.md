@@ -7,13 +7,13 @@ todos:
     status: completed
   - id: m2-per-stance-benchmark
     content: "Per-ticker benchmark (geography + cap band) stored on securities; record benchmark_symbol on every stance_outcomes row"
-    status: pending
+    status: completed
   - id: m3-sign-adjusted-excess
     content: "Sign-adjust excess return by stance direction so mean_excess is comparable across bullish/bearish sources"
     status: completed
   - id: m4-rescore-backfill
     content: "One-shot re-score of existing outcomes under correct benchmarks, gated by scoring_version"
-    status: pending
+    status: completed
   - id: m5-baselines
     content: "Null models: always-bullish and shuffled-stance baselines scored through the same path"
     status: pending
@@ -230,6 +230,54 @@ anything produced after M2a.
 - **Re-score exactly once, deliberately.** After this, benchmark assignment for a scored row
   is immutable. Any future benchmark change bumps `scoring_version` and applies to new rows
   only; the track-record screen filters to a single version.
+
+### ✅ M2a + M2b SHIPPED 2026-07-27 — result
+
+```
+113 tickers resolved:   ^GSPC=76   ^GSPTSE=32   ^RUT=5
+2,981 outcome rows re-scored to scoring_version=2, zero NULL benchmark_symbol
+       ^GSPC=2,072      ^GSPTSE=719      ^RUT=190
+
+verdict churn:  miss->hit 166 | hit->miss 165 | unchanged 2,650 | unscoreable 0
+```
+
+#### ⚠️ The benchmark mismatch did NOT explain the sub-50% hit rate
+
+**166 up against 165 down is a wash.** This retracts the claim made earlier in this plan
+("This alone can explain a sub-50% hit rate"). Hit/miss is a *sign test* on excess return —
+changing the benchmark shifts magnitude but rarely pushes a row across zero, and when it
+does it goes both ways in equal measure. Post-rescore 7d:
+
+```
+ticker_meta_analysis    46.0%   mean_excess -0.22   (1,304 scored)
+ticker_analysis         49.9%   mean_excess -0.37   (  657 scored)
+action_queue_ai_review  72.0%   mean_excess +2.97   (   25 scored)
+```
+
+The ~46% is **real**, not a benchmarking artifact. What the fix bought is a *trustworthy*
+number and a meaningful `mean_excess`, not a better one.
+
+**This promotes M5 (baselines) to the critical path.** It is now the only remaining thing
+that can say whether 46% is bad — if always-bullish on this universe also scores ~46%, the
+conclusion is "no edge either way", which is very different from "the model is wrong".
+
+#### Design notes worth keeping
+
+- `benchmark_symbol` is **derived at scoring time**, not stored on `securities`, so it cannot
+  go stale against the rule that produced it. Only `market_cap` (the input needing a network
+  fetch) is cached, plus a `benchmark_override` manual escape hatch.
+- Canadian detection reads **`price_symbol` before `ticker`**: `TECK.B` looks US-shaped but
+  resolves to `TECK-B.TO` via the M1 alias ladder. `securities.currency` is checked last
+  because 51 tickers have no securities row.
+- Unknown / NaN / zero market cap is treated as **unknown** (broad index, `fallback` flagged),
+  never as "tiny" — otherwise one bad data point silently moves a megacap onto ^RUT.
+- Benchmark fetching is **self-populating**: `^GSPTSE` was absent from `benchmark_data`, so a
+  cache miss falls through to the provider and writes back. No backfill job; future
+  benchmarks work the same way.
+- `SCORING_VERSION` lives in `benchmarks.py` (not the scheduler) so the scoring job and
+  `track_record_service` cannot drift on which scheme they mean.
+- `build_track_record_summary` now **filters to one `scoring_version`**. Mixing schemes
+  averages numbers measured against different yardsticks — the original bug, reintroduced.
 
 ## Defect 3 — `mean_excess` mixes sign conventions
 

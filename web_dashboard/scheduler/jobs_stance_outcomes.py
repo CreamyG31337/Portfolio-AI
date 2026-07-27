@@ -26,7 +26,7 @@ project_root = str(current_dir.parent.parent)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from benchmarks import resolve_benchmark
+from benchmarks import SCORING_VERSION, resolve_benchmark
 from scheduler.scheduler_core import log_job_execution
 from stance_history import DIRECTIONAL_STANCES, is_directional_stance
 
@@ -42,10 +42,8 @@ JOB_ID = "stance_outcomes"
 # the cause of the observed `scored=0 skipped=202` stall.
 MAX_SCORING_ATTEMPTS = 5
 
-# 1 = legacy (every stance vs ^RUT). 2 = per-ticker benchmark (M2a).
-# Track-record aggregates should filter to a single version; a future benchmark
-# change bumps this rather than rewriting already-scored rows.
-SCORING_VERSION = 2
+# SCORING_VERSION is defined in benchmarks.py so the scoring job and the
+# track-record aggregates cannot drift apart on which scheme they mean.
 
 # Skip reasons. These exist so the job summary can distinguish a transient,
 # system-wide fetch failure (provider rate-limiting -> no_ticker_price everywhere)

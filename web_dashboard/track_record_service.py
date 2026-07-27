@@ -7,6 +7,7 @@ from decimal import Decimal
 from statistics import median
 from typing import Any
 
+from benchmarks import SCORING_VERSION
 from postgres_client import PostgresClient
 
 _DOMAIN_TOP_N = 25
@@ -178,19 +179,26 @@ def build_track_record_summary(
     *,
     horizon_days: int = 30,
     domain_top_n: int = _DOMAIN_TOP_N,
+    scoring_version: int = SCORING_VERSION,
 ) -> dict[str, Any]:
     pg = postgres or PostgresClient()
+    # Filtered to one scoring_version on purpose: rows scored under different
+    # benchmark schemes were measured against different yardsticks, and averaging
+    # across them reintroduces exactly the apples-to-oranges problem the per-ticker
+    # benchmark work fixed. A future scheme change bumps the version and this query
+    # keeps returning a self-consistent set.
     rows = pg.execute_query(
         """
         SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
                so.excess_return, so.ticker_return, so.benchmark_return,
-               sh.ticker, sh.as_of
+               so.benchmark_symbol, sh.ticker, sh.as_of
         FROM stance_outcomes so
         JOIN stance_history sh ON sh.id = so.stance_id
         WHERE so.horizon_days = %s
+          AND COALESCE(so.scoring_version, 1) = %s
         ORDER BY so.scored_at DESC
         """,
-        (horizon_days,),
+        (horizon_days, scoring_version),
     )
 
     by_source: dict[str, dict[str, int]] = {}
@@ -365,6 +373,7 @@ def build_track_record_summary(
         # consumers (including the AI assistant, which reads this dict verbatim)
         # cannot mistake it for raw benchmark-relative excess.
         "excess_metric": "directional",
+        "scoring_version": scoring_version,
         "broad_index_etf_excluded": broad_index_etf_excluded,
         "hit_rate_by_source": {k: _rate(v) for k, v in by_source.items()},
         "hit_rate_by_verdict": {k: _rate(v) for k, v in by_verdict.items()},
