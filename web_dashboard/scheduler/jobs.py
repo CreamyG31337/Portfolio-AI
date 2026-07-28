@@ -1326,12 +1326,16 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: process_research_reports (every 60 minutes - 1 hour)")
 
-        # Opportunity Discovery: Daily at 9:30 PM PT
+        # Opportunity Discovery: Daily at 8:15 PM PT.
+        # Was 21:30 — sat 20 min after analyze_congress_trades (21:10) and fought
+        # the global AI/Ollama lock (silent skips + stale-lock false failures).
+        # 20:15 sits after evening ticker_research (19:15) and before congress
+        # fetch/analyze (21:00/21:10); 40-min budget still clears before Alpha.
         scheduler.add_job(
             opportunity_discovery_job,
             trigger=CronTrigger(
-                hour=21,
-                minute=30,
+                hour=20,
+                minute=15,
                 timezone='America/Los_Angeles'
             ),
             id='opportunity_discovery_scan',
@@ -1340,14 +1344,14 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: opportunity_discovery_scan (daily at 9:30 PM PT)")
+        logger.info("Registered job: opportunity_discovery_scan (daily at 8:15 PM PT)")
 
     # Alpha Research Job: Daily at 10:15 PM PT.
     # Runs INLINE (holds the global AI lock while extracting + summarizing, up to
     # its 40-min budget -> ~10:55 PM PT). Scheduled at 22:15 so its Ollama work
     # finishes before the queue-managed sector_meta (23:30) and ticker_meta
     # (23:45) enqueue their tasks into the AI worker pool, minimizing Ollama
-    # throughput contention. opportunity_discovery (21:30, also inline) finishes
+    # throughput contention. opportunity_discovery (20:15, also inline) finishes
     # well before this starts.
     if AVAILABLE_JOBS.get('alpha_research', {}).get('enabled_by_default'):
         from scheduler.jobs_alpha import alpha_research_job
