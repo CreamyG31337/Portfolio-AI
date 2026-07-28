@@ -6,8 +6,11 @@ Prefer ``youtube-transcript-api`` for timedtext; fall back to ``yt-dlp`` VTT
 Failure modes to expect (no Google OAuth / Data API key required for captions):
 
 - ``no_captions`` — disabled / none in preferred languages
-- ``blocked`` — ``RequestBlocked`` / ``IpBlocked`` (common on cloud IPs; rare on
-  residential). Mitigate later with rotating residential proxies.
+- ``blocked`` — ``RequestBlocked`` / ``IpBlocked``. **Triggered by request rate,
+  not by IP type.** A residential IP was blocked for hours after ~150 fetches in
+  15 minutes, while a Netherlands datacenter IP served the same videos fine.
+  Set ``YOUTUBE_PROXY_URL`` to route egress through a VPN/proxy, and pace
+  requests regardless — the yt-dlp fallback shares the IP and is blocked with it.
 - ``age_restricted`` — needs login; skip for v0
 - ``unavailable`` — private / removed / unplayable
 - ``dependency`` — package missing
@@ -22,6 +25,7 @@ from __future__ import annotations
 
 import html
 import logging
+import os
 import re
 import tempfile
 from dataclasses import dataclass, field
@@ -30,6 +34,18 @@ from typing import Iterable, Literal, Optional, Sequence
 from urllib.parse import parse_qs, urlparse
 
 logger = logging.getLogger(__name__)
+
+# Egress proxy for caption fetches. YouTube rate-limits the timedtext endpoint
+# per IP and blocks for hours once tripped; the yt-dlp fallback shares the same
+# IP, so it is no defence (see docs/PHASE_K_SOURCE_LIST.md §13). Point this at a
+# VPN/proxy egress to keep the block off the host address.
+_PROXY_ENV = "YOUTUBE_PROXY_URL"
+
+
+def caption_proxy_url() -> Optional[str]:
+    """Configured egress proxy, or ``None`` for a direct connection."""
+    value = (os.environ.get(_PROXY_ENV) or "").strip()
+    return value or None
 
 CaptionKind = Literal["manual", "auto", "vtt_manual", "vtt_auto"]
 FetchSource = Literal["youtube_transcript_api", "yt_dlp"]
@@ -319,6 +335,34 @@ def _overlap_suffix_addition(prev: str, current: str) -> Optional[str]:
     return None
 
 
+def _build_transcript_api(api_cls):
+    """``YouTubeTranscriptApi``, routed through the proxy when one is configured.
+
+    Falls back to a direct client if this version of the library predates
+    ``proxies`` support, so a missing feature degrades rather than breaking.
+    """
+    proxy = caption_proxy_url()
+    if not proxy:
+        return api_cls()
+    try:
+        from youtube_transcript_api.proxies import GenericProxyConfig
+    except ImportError:
+        logger.warning(
+            "%s is set but youtube_transcript_api.proxies is unavailable; "
+            "fetching directly", _PROXY_ENV
+        )
+        return api_cls()
+    return api_cls(proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy))
+
+
+def _apply_ytdlp_proxy(opts: dict) -> dict:
+    """Add the egress proxy to yt-dlp options when configured."""
+    proxy = caption_proxy_url()
+    if proxy:
+        opts["proxy"] = proxy
+    return opts
+
+
 def _fetch_via_transcript_api(video_id: str, languages: Sequence[str]) -> CaptionResult:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
@@ -338,7 +382,7 @@ def _fetch_via_transcript_api(video_id: str, languages: Sequence[str]) -> Captio
             video_id,
         ) from exc
 
-    api = YouTubeTranscriptApi()
+    api = _build_transcript_api(YouTubeTranscriptApi)
     try:
         listing = api.list(video_id)
         transcript = None
@@ -434,6 +478,7 @@ def _fetch_via_ytdlp(video_id: str, languages: Sequence[str]) -> CaptionResult:
             "quiet": True,
             "no_warnings": True,
         }
+        _apply_ytdlp_proxy(opts)
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -539,11 +584,11 @@ def _maybe_attach_ytdlp_metadata(result: CaptionResult) -> CaptionResult:
     except ImportError:
         return result
 
-    opts = {
+    opts = _apply_ytdlp_proxy({
         "skip_download": True,
         "quiet": True,
         "no_warnings": True,
-    }
+    })
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(result.watch_url, download=False)

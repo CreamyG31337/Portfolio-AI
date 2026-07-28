@@ -412,3 +412,6 @@ verification/quality/quality_*.csv
 verification/quality/quality_*.md
 verification/quality/quality_*_summaries.json
 verification/quality/run_subset_benchmark.log
+
+# Phase K Stage 0 caption cache
+.stage0_cache/

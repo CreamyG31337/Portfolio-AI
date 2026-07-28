@@ -6,6 +6,11 @@
 Companion to [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) Phase K. That doc owns the ingest
 pipeline; this doc owns the **config table + admin UI** that feeds it.
 
+> **Seed data lives in [`PHASE_K_SOURCE_LIST.md`](PHASE_K_SOURCE_LIST.md)** — 13
+> handle-and-`channel_id`-verified channels as a ready-to-paste bulk-import payload
+> matching §5.2, plus the duration guardrails that make `min_duration_s` /
+> `max_duration_s` load-bearing rather than cosmetic.
+
 ---
 
 ## 1. Goal
