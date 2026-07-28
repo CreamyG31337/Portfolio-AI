@@ -765,7 +765,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas triage still unused (product signal) |
 | **I** (backlog) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); gated new collector — **not started** |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); **K1 PoC done 2026-07-27** (no auth on residential; cloud blocks likely) — K2+ not started |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1020,11 +1020,13 @@ and treat fetch failures as skippable.
 
 #### K checklist (recommended order)
 
-- [ ] **K1 · PoC caption fetch** — script: video URL → cleaned plain text + metadata; prefer
+- [x] **K1 · PoC caption fetch** — **done 2026-07-27:** `web_dashboard/youtube_captions.py` +
+  `scripts/youtube_caption_poc.py`; prefer
   [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api) (official + auto
-  EN); fall back to `yt-dlp --write-auto-subs --skip-download` + VTT strip if timedtext fails.
-  Document failure modes (no subs, geo, login, `RequestBlocked`). No browser automation unless
-  both paths fail on allowlisted IR videos.
+  EN); fall back to `yt-dlp` VTT if timedtext fails. Live probe: public + NVDA earnings auto-caps
+  worked with **no auth/API key** on residential Windows; map `blocked` /
+  `age_restricted` / `no_captions` for soft-fail. Expect `RequestBlocked` on cloud IPs (proxies
+  later). Details in [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K1 probe notes.
 - [ ] **K2 · Normalize → `research_articles`** — upsert by watch URL; set
   `article_type` (e.g. `YouTube Transcript`), title from video title, `published_at` from
   upload time, body from captions; domain/source label distinct for source-ROI slicing.

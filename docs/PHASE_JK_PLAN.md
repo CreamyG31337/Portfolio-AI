@@ -237,15 +237,32 @@ allowlist poll (yt-dlp flat-playlist)
 
 ### Acceptance criteria (K)
 
-- [ ] PoC: given a known earnings video with captions, produce cleaned text without downloading media.
-- [ ] Upsert lands one `research_articles` row; re-run is idempotent on URL.
+- [x] PoC: given a known earnings video with captions, produce cleaned text without downloading media.
+  (**K1 done 2026-07-27** — see probe notes below; `web_dashboard/youtube_captions.py` +
+  `scripts/youtube_caption_poc.py`.)
+- [ ] Upsert lands one `research_articles` row; re-run is idempotent on URL. (**K2**)
 - [ ] Row has non-empty `conclusion` + `sentiment` after summarize.
 - [ ] Holding ticker appears in `tickers[]`; within 90d it can appear in a meta bundle spot-check.
 - [ ] Dossier evidence-timeline lists it with type `YouTube Transcript`.
 - [ ] Job registered in `scheduler/jobs.py` with cron that does **not** collide with
   `alpha_research` / `sector_meta` / `ticker_meta` heavy window (check ET vs PT mix in
   `AVAILABLE_JOBS` — same footgun as Phase G).
-- [ ] Tests: caption clean + save_article mock; no network in unit tests.
+- [x] Tests: caption clean + URL parse + mocked fetch/fallback; no network in unit tests
+  (`tests/test_youtube_captions.py`). save_article mock lands with K2.
+
+### K1 probe notes (2026-07-27)
+
+| Question | Result |
+|----------|--------|
+| Works at all from this Windows/residential IP? | **Yes** — `youtube-transcript-api` 1.2.4 `list`/`fetch`, no cookies, no API key |
+| Auth / Google account needed? | **No** for public videos with captions |
+| Earnings-length auto-captions? | **Yes** — NVDA Q4'25 call `LPEXkI_4qI4` (~61 min): auto EN, 1312 snippets, ~47k cleaned chars |
+| yt-dlp VTT fallback? | **Yes** on short public video (`jNQXAC9IVRw`); used when timedtext path fails |
+| Cloud / datacenter risk? | **Likely `RequestBlocked`/`IpBlocked`** on AWS/GCP/Azure per upstream README — expect proxies before deploying the job to the Ubuntu host; keep soft-fail |
+| Age-restricted / login-gated? | Mapped as `age_restricted`; **out of scope for K1** (no browser cookies) |
+| No EN captions? | Soft-fail `no_captions` (e.g. Gangnam-style KO-only auto) |
+
+Run: `python scripts/youtube_caption_poc.py <url-or-id> [--json] [--out file.txt]`
 
 ---
 
