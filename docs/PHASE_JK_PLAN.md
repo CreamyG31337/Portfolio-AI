@@ -179,6 +179,10 @@ Shared helpers: `research_utils.extract_article_content`, `scheduler/jobs_common
 2. **[`yt-dlp/yt-dlp`](https://github.com/yt-dlp/yt-dlp)** (Unlicense) — channel/playlist listing + metadata + VTT fallback.
 3. Thin local wrapper — do not vendor random &lt;20★ CLI wrappers.
 
+> **Source config + admin UI** (the `youtube_sources` table below, plus an
+> `/admin/sources` page that also finally gives `rss_feeds` a UI) is specced separately in
+> [`PHASE_K_SOURCES_UI_PLAN.md`](PHASE_K_SOURCES_UI_PLAN.md).
+
 ### Proposed modules / tables
 
 | Piece | Suggestion | Mirrors |
