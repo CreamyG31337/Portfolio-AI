@@ -35,6 +35,7 @@ from dotenv import load_dotenv  # noqa: E402
 _ENV = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(_ENV) if _ENV.exists() else load_dotenv()
 
+from proxy_rotation import RotatingBudget  # noqa: E402
 from youtube_captions import (  # noqa: E402
     CaptionFetchError,
     caption_proxy_url,
@@ -290,7 +291,12 @@ class Throttle:
 
 
 def process_source(
-    src: dict, args: argparse.Namespace, ollama, cache_dir: Path, throttle: Throttle
+    src: dict,
+    args: argparse.Namespace,
+    ollama,
+    cache_dir: Path,
+    throttle: Throttle,
+    budget: RotatingBudget,
 ) -> list[VideoResult]:
     results: list[VideoResult] = []
     try:
@@ -309,16 +315,31 @@ def process_source(
                 text = cap.text
                 store_caption(v["id"], text, cache_dir)
                 throttle.record(blocked=False)
+                budget.record_fetch()
             except CaptionFetchError as exc:
-                r.error = exc.reason
-                results.append(r)
-                print(f"  -- {v['id']} caption {exc.reason}")
-                try:
-                    throttle.record(blocked=(exc.reason == "blocked"))
-                except BlockedError as stop:
-                    stop.partial = results
-                    raise
-                continue
+                blocked = exc.reason == "blocked"
+                # A rotation gives a fresh IP quota, so one retry is worthwhile
+                # before counting this video as a failure.
+                if blocked and budget.on_blocked():
+                    try:
+                        cap = fetch_caption_text(v["id"], include_metadata=False)
+                        text = cap.text
+                        store_caption(v["id"], text, cache_dir)
+                        throttle.record(blocked=False)
+                        budget.record_fetch()
+                    except CaptionFetchError as retry_exc:
+                        exc, blocked = retry_exc, retry_exc.reason == "blocked"
+                        text = None
+                if text is None:
+                    r.error = exc.reason
+                    results.append(r)
+                    print(f"  -- {v['id']} caption {exc.reason}")
+                    try:
+                        throttle.record(blocked=blocked)
+                    except BlockedError as stop:
+                        stop.partial = results
+                        raise
+                    continue
             except Exception as exc:  # noqa: BLE001
                 r.error = "unexpected"
                 results.append(r)
@@ -416,6 +437,11 @@ def main() -> None:
                          "YouTube IP-blocks aggressive batching; cached videos are free.")
     ap.add_argument("--max-blocks", type=int, default=5,
                     help="abort after this many consecutive blocked fetches (default 5)")
+    ap.add_argument("--rotate-every", type=int, default=None,
+                    help="rotate the Gluetun exit IP after this many live fetches "
+                         "(default 80, or GLUETUN_ROTATE_EVERY). Needs GLUETUN_CONTROL_URL.")
+    ap.add_argument("--no-rotate", action="store_true",
+                    help="never rotate, even if the control API is configured")
     ap.add_argument("--out", type=Path, help="write JSON summary here")
     args = ap.parse_args()
 
@@ -441,8 +467,15 @@ def main() -> None:
     print(f"Stage 0: {len(sources)} sources x {args.limit} videos "
           f"({'DRY RUN, no LLM' if args.dry_run else 'with extraction'})")
     print(f"caption cache: {args.cache_dir}")
+    budget = RotatingBudget(rotate_every=args.rotate_every)
+    if args.no_rotate:
+        budget.enabled = False
+
     proxy = caption_proxy_url()
-    print(f"egress: {proxy or 'DIRECT (rate-limit risk — see §13)'}  delay={args.delay}s\n")
+    rot = (f"rotate every {budget.rotate_every}" if budget.enabled
+           else "rotation off (GLUETUN_CONTROL_URL unset)")
+    print(f"egress: {proxy or 'DIRECT (quota risk — see §13/§14)'}  "
+          f"delay={args.delay}s  {rot}\n")
 
     all_results: dict[str, list[VideoResult]] = {}
     throttle = Throttle(args.delay, args.max_blocks)
@@ -452,7 +485,7 @@ def main() -> None:
         print(f"[{s['label']}] ({s['sector']})")
         try:
             all_results[s["label"]] = process_source(
-                s, args, ollama, args.cache_dir, throttle
+                s, args, ollama, args.cache_dir, throttle, budget
             )
         except BlockedError as exc:
             aborted = str(exc)
