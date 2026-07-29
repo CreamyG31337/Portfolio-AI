@@ -214,6 +214,7 @@ def fetch_congress_trades_job() -> None:
                 logger.info(f"Found {len(trades)} trades for {chamber}")
                 
                 # Process each trade
+                trades_to_upsert = []
                 for trade_data in trades:
                         total_trades_found += 1
                         
@@ -460,33 +461,36 @@ def fetch_congress_trades_job() -> None:
                                 'notes': final_notes  # Includes description, capital gains, disclosure link
                             }
                             
-                            # Insert to Supabase (use upsert to handle duplicates)
-                            # Migration 36 created a proper unique constraint that supports ON CONFLICT
-                            try:
-                                result = supabase_client.supabase.table("congress_trades")\
-                                    .upsert(
-                                        trade_record,
-                                        on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
-                                    )\
-                                    .execute()
-                                
-                                if result.data:
-                                    new_trades += 1
-                                    logger.debug(f"✅ Saved trade: {politician} {trade_type} {ticker} on {transaction_date}")
-                                else:
-                                    skipped_duplicates += 1
-                                    
-                            except Exception as insert_error:
-                                error_insert_failed += 1
-                                errors += 1
-                                logger.error(f"Failed to insert trade for {politician} {ticker}: {insert_error}")
-                                continue
-                        
+                            # ⚡ Bolt: Accumulate trades to perform a batched upsert, avoiding per-row queries
+                            trades_to_upsert.append(trade_record)
+
                         except Exception as trade_error:
                             error_processing += 1
                             errors += 1
                             logger.warning(f"Error processing trade: {trade_error}, data: {trade_data}")
                             continue
+
+                # ⚡ Bolt: Perform batched upsert after loop finishes for this chamber
+                if trades_to_upsert:
+                    try:
+                        result = supabase_client.supabase.table("congress_trades")\
+                            .upsert(
+                                trades_to_upsert,
+                                on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
+                            )\
+                            .execute()
+
+                        if result.data:
+                            new_trades += len(result.data)
+                            logger.debug(f"✅ Saved {len(result.data)} trades in batch")
+                            # We can't know exactly how many were duplicates skipped vs new vs updated,
+                            # but we assume the difference between what we sent and what was returned
+                            # were either skipped or updated depending on Supabase version, but typically
+                            # len(result.data) represents the successful operations.
+                    except Exception as insert_error:
+                        error_insert_failed += len(trades_to_upsert)
+                        errors += 1
+                        logger.error(f"Failed to batched insert trades: {insert_error}")
                     
                 # Note: API is locked to page 0 only, so we don't paginate
                 # We only get the 10 most recent trades per chamber per run
