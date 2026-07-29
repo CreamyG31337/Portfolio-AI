@@ -246,9 +246,14 @@ def summarize_transcript(
     content: str,
     expected_tickers: Sequence[str] = (),
     owned_tickers: Sequence[str] | None = None,
+    duration_s: int | None = None,
     summarize_fn: Callable[..., Any] | None = None,
 ) -> EnrichmentResult:
     """Run the same summarize + ticker-extract path as ``symbol_article_scraper_job``.
+
+    Long transcripts (body longer than the Ollama-friendly budget, or duration ≥ 20 min)
+    are routed to Z.AI GLM by default — never WebAI/cookies. Short ones keep the normal
+    Ollama summary chain.
 
     ``claim_recent_summary_input`` (the 6h in-process summary-input hash guard
     other ingest paths use) is deliberately **not** applied: exact-URL dedup plus
@@ -261,9 +266,30 @@ def summarize_transcript(
 
         summarize_fn = _generate_summary
 
+    from summary_common import resolve_youtube_transcript_summary_model
+
+    model = resolve_youtube_transcript_summary_model(
+        len(content or ""),
+        duration_s=duration_s,
+    )
+    if model:
+        logger.info(
+            "YouTube transcript high-context summarize via model=%s (chars=%s duration_s=%s)",
+            model,
+            len(content or ""),
+            duration_s,
+        )
+
     result = EnrichmentResult()
     summary_input = f"Title: {title}\n\n{content}" if title else content
-    summary_data = summarize_fn(summary_input, article_type=ARTICLE_TYPE)
+    call_kwargs: dict[str, Any] = {"article_type": ARTICLE_TYPE}
+    if model:
+        call_kwargs["model"] = model
+    try:
+        summary_data = summarize_fn(summary_input, **call_kwargs)
+    except TypeError:
+        # Test doubles / older callables may not accept ``model=``.
+        summary_data = summarize_fn(summary_input, article_type=ARTICLE_TYPE)
 
     if isinstance(summary_data, str):
         result.summary = summary_data
@@ -469,6 +495,7 @@ def _ingest_inline(
         content=article.content,
         expected_tickers=article.expected_tickers,
         owned_tickers=owned_tickers,
+        duration_s=(article.source_metadata or {}).get("duration_s"),
         summarize_fn=summarize_fn,
     )
     if not enrichment.ok:
@@ -619,6 +646,7 @@ def enrich_saved_transcript(
     content: str,
     expected_tickers: Sequence[str] = (),
     owned_tickers: Sequence[str] | None = None,
+    duration_s: int | None = None,
     ollama_client: Any | None = None,
     summarize_fn: Callable[..., Any] | None = None,
 ) -> EnrichmentResult:
@@ -633,6 +661,7 @@ def enrich_saved_transcript(
         content=content,
         expected_tickers=expected_tickers,
         owned_tickers=owned_tickers,
+        duration_s=duration_s,
         summarize_fn=summarize_fn,
     )
     if not enrichment.ok:

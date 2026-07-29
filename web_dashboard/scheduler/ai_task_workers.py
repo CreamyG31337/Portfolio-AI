@@ -1570,12 +1570,12 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
     url = str(payload.get("url") or "") or watch_url_for(video_id)
     if article_id:
         rows = postgres.execute_query(
-            "SELECT id, title, content FROM research_articles WHERE id = %s",
+            "SELECT id, title, content, source_metadata FROM research_articles WHERE id = %s",
             (article_id,),
         )
     else:
         rows = postgres.execute_query(
-            "SELECT id, title, content FROM research_articles WHERE url = %s",
+            "SELECT id, title, content, source_metadata FROM research_articles WHERE url = %s",
             (url,),
         )
     if not rows:
@@ -1592,7 +1592,22 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
             f"youtube_transcript_summary: empty content for video {video_id}"
         )
 
-    model = model_for_backend(backend)
+    meta = row.get("source_metadata") or {}
+    if isinstance(meta, str):
+        try:
+            import json as _json
+
+            meta = _json.loads(meta)
+        except Exception:
+            meta = {}
+    duration_s = None
+    if isinstance(meta, dict) and meta.get("duration_s") is not None:
+        try:
+            duration_s = int(meta["duration_s"])
+        except (TypeError, ValueError):
+            duration_s = None
+
+    queue_model = model_for_backend(backend)
     if backend == BACKEND_GLM:
         ollama = OllamaClient(force_base_url_only=True)
     else:
@@ -1601,8 +1616,19 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
             raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
         ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
 
-    def _summarize(text: str, *, article_type: str = "") -> Any:
-        return ollama.generate_summary(text, model=model, article_type=article_type)
+    def _summarize(
+        text: str,
+        *,
+        article_type: str = "",
+        model: str | None = None,
+    ) -> Any:
+        # Prefer size-aware model from summarize_transcript (GLM for long bodies);
+        # fall back to the queue backend's assigned model for short transcripts.
+        return ollama.generate_summary(
+            text,
+            model=model if model is not None else queue_model,
+            article_type=article_type,
+        )
 
     enrich_saved_transcript(
         research_repo=repo,
@@ -1611,6 +1637,7 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
         content=content,
         expected_tickers=[str(t) for t in (payload.get("expected_tickers") or [])],
         owned_tickers=_production_holdings_tickers(),
+        duration_s=duration_s,
         ollama_client=ollama,
         summarize_fn=_summarize,
     )
@@ -1619,7 +1646,7 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
         video_id,
         row["id"],
         backend,
-        model,
+        queue_model,
     )
 
 

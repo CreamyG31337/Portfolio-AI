@@ -1082,7 +1082,9 @@ and treat fetch failures as skippable.
   summarizer overwrites. Summarize + ticker extraction reuse the
   `symbol_article_scraper_job` path, queue-managed via new AI-task-queue job
   `youtube_transcript_summary` when enabled (falls back to inline). Transcript summarizer
-  budget raised to 16k chars so an hour-long call keeps its Q&A. Retention/domain-health
+  budget raised to 16k chars so an hour-long call keeps its Q&A; bodies over that (or
+  duration ≥ 20 min) route to Z.AI GLM with a 48k high-context budget — never WebAI.
+  Retention/domain-health
   deferred with K3 (there is still no scheduled `delete_old_articles` caller for any type,
   and domain health is keyed on hosts, not channels).
 - [ ] **K3 · Allowlist job** — scheduler job: poll curated `youtube_sources` (channel id or

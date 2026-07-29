@@ -628,6 +628,7 @@ def test_transcript_summary_budget_beats_default() -> None:
     from summary_common import compute_summary_max_chars
 
     assert compute_summary_max_chars(ARTICLE_TYPE) == 16_000
+    assert compute_summary_max_chars(ARTICLE_TYPE, high_context=True) == 48_000
     assert compute_summary_max_chars("") == 6_000
 
 
@@ -636,3 +637,118 @@ def test_transcript_summary_budget_env_override(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setenv("AI_SUMMARY_MAX_CHARS_TRANSCRIPT", "24000")
     assert compute_summary_max_chars(ARTICLE_TYPE) == 24_000
+    monkeypatch.setenv("AI_SUMMARY_MAX_CHARS_TRANSCRIPT_LONG", "60000")
+    assert compute_summary_max_chars(ARTICLE_TYPE, high_context=True) == 60_000
+
+
+def test_short_transcript_does_not_force_model() -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_summarize(
+        text: str, *, article_type: str = "", model: str | None = None
+    ) -> dict[str, Any]:
+        seen["model"] = model
+        return _summary_payload()
+
+    summarize_transcript(
+        title="Short clip",
+        content="x" * 100,
+        summarize_fn=fake_summarize,
+    )
+    assert seen["model"] is None
+
+
+def test_long_transcript_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "settings.get_system_setting",
+        lambda key, default=None: None,
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_summarize(
+        text: str, *, article_type: str = "", model: str | None = None
+    ) -> dict[str, Any]:
+        seen["model"] = model
+        return _summary_payload()
+
+    summarize_transcript(
+        title="Earnings call",
+        content="x" * 16_001,
+        summarize_fn=fake_summarize,
+    )
+    assert seen["model"] == "glm-5.2"
+
+
+def test_long_duration_routes_to_glm_even_if_body_short(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "settings.get_system_setting",
+        lambda key, default=None: None,
+    )
+    seen: dict[str, Any] = {}
+
+    def fake_summarize(
+        text: str, *, article_type: str = "", model: str | None = None
+    ) -> dict[str, Any]:
+        seen["model"] = model
+        return _summary_payload()
+
+    summarize_transcript(
+        title="Hour-long AMA",
+        content="x" * 500,
+        duration_s=21 * 60,
+        summarize_fn=fake_summarize,
+    )
+    assert seen["model"] == "glm-5.2"
+
+
+def test_webai_never_auto_selected_for_long_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _setting(key: str, default: Any = None) -> Any:
+        if key == "ai_summarizing_model_youtube_transcript":
+            return "gemini-2.5-flash"
+        return default
+
+    monkeypatch.setattr("settings.get_system_setting", _setting)
+    seen: dict[str, Any] = {}
+
+    def fake_summarize(
+        text: str, *, article_type: str = "", model: str | None = None
+    ) -> dict[str, Any]:
+        seen["model"] = model
+        return _summary_payload()
+
+    summarize_transcript(
+        title="Earnings call",
+        content="x" * 16_001,
+        summarize_fn=fake_summarize,
+    )
+    assert seen["model"] == "glm-5.2"
+    assert not str(seen["model"]).startswith("gemini-")
+
+
+def test_scoped_glm_override_honored_for_long_transcript(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _setting(key: str, default: Any = None) -> Any:
+        if key == "ai_summarizing_model_youtube_transcript":
+            return "glm-4.7"
+        return default
+
+    monkeypatch.setattr("settings.get_system_setting", _setting)
+    seen: dict[str, Any] = {}
+
+    def fake_summarize(
+        text: str, *, article_type: str = "", model: str | None = None
+    ) -> dict[str, Any]:
+        seen["model"] = model
+        return _summary_payload()
+
+    summarize_transcript(
+        title="Earnings call",
+        content="x" * 16_001,
+        summarize_fn=fake_summarize,
+    )
+    assert seen["model"] == "glm-4.7"
