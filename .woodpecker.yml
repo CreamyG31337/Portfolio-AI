@@ -49,6 +49,13 @@
 # - ai_service_web_url: (optional) Web interface URL for AI service (obfuscated)
 #                       Only needed if default fallback URL doesn't work
 #                       Set via environment variable when generating ai_service.keys.json
+# - YOUTUBE_PROXY_URL: NOT a Woodpecker secret and needs no setup -- it is a plain
+#                      host:port, so the deploy step defaults it to
+#                      http://host.docker.internal:8888 (the Gluetun/PureVPN container on
+#                      the deploy host), the same way OLLAMA_BASE_URL is defaulted.
+#                      Routes Phase K YouTube caption fetches off the host's residential IP,
+#                      which YouTube rate-limits into multi-hour blocks after ~150 fetches.
+#                      Override only to repoint or disable it. See docs/PHASE_K_SOURCE_LIST.md §13.
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
 # - newsletter_email: (optional) Newsletter receiving email (default: e.g. noreply@example.com)
@@ -426,6 +433,10 @@ steps:
         [ -n "$SUPABASE_DATABASE_URL" ] && FLASK_CMD="$FLASK_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
         [ -n "$FMP_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
         [ -n "$ZHIPU_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
+        # Phase K: YouTube caption egress proxy (Gluetun on the deploy host). Not a secret
+        # -- host:port only -- so it is defaulted here like OLLAMA_BASE_URL rather than
+        # coming from Woodpecker. Direct egress gets rate-limited into multi-hour blocks.
+        FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_URL=\"${YOUTUBE_PROXY_URL:-http://host.docker.internal:8888}\""
         
         # Add WebAI cookies (same as Streamlit container)
         if [ -n "$WEBAI_COOKIES_JSON" ]; then

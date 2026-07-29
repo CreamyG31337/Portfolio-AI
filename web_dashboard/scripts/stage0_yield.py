@@ -243,7 +243,15 @@ def analyse(ollama, channel: str, title: str, text: str, max_chars: int) -> tupl
 
 
 class BlockedError(RuntimeError):
-    """YouTube is rate-limiting this IP; continuing only deepens the block."""
+    """YouTube is rate-limiting this IP; continuing only deepens the block.
+
+    Carries whatever the in-flight source managed to collect so an aborted run
+    still reports its partial work instead of discarding it.
+    """
+
+    def __init__(self, message: str, partial: list | None = None) -> None:
+        super().__init__(message)
+        self.partial = partial or []
 
 
 class Throttle:
@@ -305,7 +313,11 @@ def process_source(
                 r.error = exc.reason
                 results.append(r)
                 print(f"  -- {v['id']} caption {exc.reason}")
-                throttle.record(blocked=(exc.reason == "blocked"))
+                try:
+                    throttle.record(blocked=(exc.reason == "blocked"))
+                except BlockedError as stop:
+                    stop.partial = results
+                    raise
                 continue
             except Exception as exc:  # noqa: BLE001
                 r.error = "unexpected"
@@ -444,10 +456,13 @@ def main() -> None:
             )
         except BlockedError as exc:
             aborted = str(exc)
+            if exc.partial:
+                all_results[s["label"]] = exc.partial
             print(f"\n!! {exc}")
             break
 
-    summary = report(all_results, sources[: len(all_results)], args.dry_run)
+    done = [s for s in sources if s["label"] in all_results]
+    summary = report(all_results, done, args.dry_run)
     if aborted:
         summary["aborted"] = aborted
         print("\nPARTIAL RUN — yields above are not comparable across sources.")

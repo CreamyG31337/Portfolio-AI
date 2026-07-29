@@ -699,3 +699,87 @@ returned zero claims for a teardown of a *private* Chinese robotics company — 
 for the prompt, but not a yield measurement.
 
 Stage 0 must be re-run once the rate question is settled.
+
+---
+
+## 14. Stage 0 first real result + the quota finding (2026-07-28)
+
+Re-run through the Gluetun proxy (`YOUTUBE_PROXY_URL`), `--delay 8`. Completed 11 of 15
+sources — **108 videos with captions, 1 `no_captions`** — then hit the block again and
+aborted cleanly. The 3 automotive sources and der8auer never ran.
+
+### It is a per-IP quota, not a rate limit
+
+This is the important operational correction to §13.
+
+| | Direct (residential) | Proxy (NL datacenter) |
+|---|---|---|
+| Spacing | ~6s (≈10/min) | **8s (≈7.5/min)** |
+| Live fetches before block | ~12 | **~90** |
+
+Slowing down by 25% bought ~7× the volume, which is not what a rate limit looks like.
+Roughly **90-110 caption fetches per IP** trips a multi-hour block regardless of pacing.
+Treat it as a **daily quota per egress IP**, not something politeness alone solves.
+
+Consequences for K3:
+
+- Budget **~90 fetches/IP/day** and design the job to stop at its budget rather than
+  discover the ceiling. `max_videos_per_poll` on `youtube_sources` is the right lever.
+- 15 sources × 3-5 videos/day ≈ 45-75 fetches — **comfortably inside one IP's budget.**
+  Phase K does not need more egress capacity in steady state; it needed it for backfill.
+- Backfill is the expensive phase. Spread it over days, or rotate Gluetun's exit country
+  between runs (a config change, not new infrastructure).
+- **Never re-fetch.** Captions are immutable; `research_articles` should be the permanent
+  store, exactly as the on-disk cache is for Stage 0.
+
+### The yield result
+
+First measurement worth quoting. Definition: a video counts if it produced ≥1 claim naming
+a publicly traded ticker at non-LOW materiality.
+
+| Source | Yield | Claims | Median kchars | Tech density |
+|---|---|---|---|---|
+| Geekerwan | **44%** | 7 | 24.2 | 1.2 |
+| Moore's Law Is Dead | 40% | 10 | 101.6 | 0.1 |
+| ServeTheHome | 40% | 7 | 24.8 | 0.7 |
+| Level1Techs | 40% | 7 | 21.0 | 0.6 |
+| Hardware Unboxed | 30% | 7 | 24.2 | 1.0 |
+| TechTechPotato | 30% | 7 | 21.1 | 0.6 |
+| Gamers Nexus | 20% | 8 | 30.9 | 0.6 |
+| High Yield | 20% | 5 | 16.7 | 3.8 |
+| Asianometry | 10% | 2 | 21.7 | 1.8 |
+| Buildzoid | 10% | 1 | 25.6 | 2.6 |
+| The Signal Path | 11% | 1 | 27.7 | 4.2 |
+
+**Tech overall: 27% (29/108 videos).** Comfortably above the ~10% viability floor set in §7,
+so the corpus is not obviously worthless — the mechanism has something in it.
+
+Tickers: AMD 20, INTC 10, NVDA 7, MU 6, AAPL 5, then a long tail.
+Categories: COMPETITIVE 20, PRODUCT_LAUNCH 18, SUPPLY_CHAIN 10, DEMAND 9, MA_LEGAL 2,
+**PRICING 1**.
+
+### Three things this result does not say
+
+1. **No auto comparison.** The run aborted before the automotive sources. The tech-vs-auto
+   question from §12 is still open and is the single most useful follow-up.
+2. **PRICING got 1 hit.** §3 called component pricing the most promising thread; this run
+   contradicts that, and the disagreement matters. Most likely the extraction prompt buckets
+   pricing claims as COMPETITIVE or SUPPLY_CHAIN rather than pricing genuinely being absent —
+   the §5 sample had *"GPU Prices To Rise By Another 40%"* sitting right there. Needs a
+   prompt fix and a re-run before §3's conclusion is either trusted or withdrawn.
+3. **Yield ≠ alpha.** This counts claims the model judged material. Whether they *predict
+   returns* is Stage 1/2 and is untouched. A 27% yield of worthless claims is still worthless.
+
+### Signal-quality note
+
+The two highest tech-density channels — The Signal Path (4.2) and Buildzoid (2.6) — have the
+*lowest* yields (11%, 10%). Deep technical content is not the same as tradeable content, and
+the density heuristic should not be used as a quality proxy for source selection. Note also
+that the low-yield channels are largely the ones covering *untradeable* subjects
+(oscilloscopes, VRM design), which is §10's inverse-correlation pattern showing up inside a
+single sector.
+
+### Harness fix
+
+The abort discarded the in-flight source's partial results. `BlockedError` now carries them
+and the report includes them, so an aborted run reports everything it actually did.
