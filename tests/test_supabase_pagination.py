@@ -28,6 +28,55 @@ def test_clamp_page_size_and_page_ranges() -> None:
         assert c == b + 1
 
 
+def test_fetch_all_rows_pages_and_clamps_oversized_page_size() -> None:
+    """Oversized page_size must still step by SUPABASE_MAX_ROWS (no silent gaps)."""
+    import sys
+    from unittest.mock import MagicMock
+
+    sys.path.insert(0, str(WEB_DASHBOARD))
+    from supabase_pagination import SUPABASE_MAX_ROWS, fetch_all_rows
+
+    page1 = [{"id": i} for i in range(SUPABASE_MAX_ROWS)]
+    page2 = [{"id": SUPABASE_MAX_ROWS + i} for i in range(50)]
+    execute = MagicMock(
+        side_effect=[
+            MagicMock(data=page1),
+            MagicMock(data=page2),
+        ]
+    )
+    recorder: list[tuple[int, int]] = []
+
+    def _table(_name: str) -> MagicMock:
+        chain = MagicMock()
+        chain.select.return_value = chain
+        chain.eq.return_value = chain
+        chain.order.return_value = chain
+
+        def _range(start: int, end: int) -> MagicMock:
+            recorder.append((start, end))
+            return chain
+
+        chain.range.side_effect = _range
+        chain.execute = execute
+        return chain
+
+    client = MagicMock()
+    client.supabase.table.side_effect = _table
+
+    rows = fetch_all_rows(
+        client,
+        "trade_log",
+        filters=[("fund", "eq", "TEST")],
+        order="date",
+        order_desc=True,
+        page_size=5000,  # would silently truncate without clamping
+    )
+
+    assert len(rows) == SUPABASE_MAX_ROWS + 50
+    assert execute.call_count == 2
+    assert recorder == [(0, 999), (1000, 1999)]
+
+
 def test_no_oversized_supabase_chunks_in_web_dashboard() -> None:
     """Fail if production code asks PostgREST for more than 1000 rows per page.
 

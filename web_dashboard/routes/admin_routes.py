@@ -2775,24 +2775,16 @@ def _trade_entry_display_action(trade_row: dict) -> str:
 
 def _fetch_trade_log_batches(client, fund: str, batch_size: int = 1000) -> list:
     """All non-DRIP trade_log rows for a fund, newest first (paginated Supabase reads)."""
-    rows: list = []
-    offset = 0
-    while True:
-        data_res = (
-            client.supabase.table("trade_log")
-            .select("*")
-            .eq("fund", fund)
-            .neq("reason", "DRIP")
-            .order("date", desc=True)
-            .range(offset, offset + batch_size - 1)
-            .execute()
-        )
-        batch = data_res.data or []
-        rows.extend(batch)
-        if len(batch) < batch_size:
-            break
-        offset += batch_size
-    return rows
+    from supabase_pagination import fetch_all_rows
+
+    return fetch_all_rows(
+        client,
+        "trade_log",
+        filters=[("fund", "eq", fund), ("reason", "neq", "DRIP")],
+        order="date",
+        order_desc=True,
+        page_size=batch_size,
+    )
 
 
 @admin_bp.route('/api/admin/trades/recent')
@@ -3326,34 +3318,11 @@ def _get_cached_etf_tickers():
 def _get_portfolio_tickers():
     """Get distinct tickers from portfolio positions (cached, handles pagination)."""
     try:
+        from supabase_pagination import fetch_all_rows
+
         client = SupabaseClient(use_service_role=True)
-        tickers = set()
-        offset = 0
-        page_size = 1000
-
-        while True:
-            result = client.supabase.table("portfolio_positions") \
-                .select("ticker") \
-                .range(offset, offset + page_size - 1) \
-                .execute()
-
-            if not result.data:
-                break
-
-            for row in result.data:
-                ticker = row.get("ticker")
-                if ticker:
-                    tickers.add(ticker)
-
-            if len(result.data) < page_size:
-                break
-
-            offset += page_size
-            if offset > 50000:
-                logger.warning("Reached 50,000 row safety limit in _get_portfolio_tickers")
-                break
-
-        return tickers
+        rows = fetch_all_rows(client, "portfolio_positions", select="ticker")
+        return {row["ticker"] for row in rows if row.get("ticker")}
     except Exception as e:
         logger.error(f"Error fetching portfolio tickers: {e}", exc_info=True)
         return set()
@@ -3466,28 +3435,31 @@ def api_get_security_metadata():
                     ticker_order = {t: i for i, t in enumerate(page_tickers)}
                     securities = sorted(securities, key=lambda s: ticker_order.get(s.get("ticker"), 999))
 
-        else:  # stock mode - more complex pagination
-            # For stock mode, we need to filter out ETF tickers which is harder to paginate
-            # Use a larger fetch and filter approach
-            query_builder = _build_securities_query(client, query_text).order("ticker")
-            page_size = 500
-            db_offset = 0
-            all_filtered = []
+        else:  # stock mode — exclude ETF tickers; need full filtered set for accurate totals
+            from supabase_pagination import fetch_all_rows
 
-            # Fetch enough to get the requested page
-            target_count = offset + limit + 1  # +1 to check if there's more
-            while len(all_filtered) < target_count and db_offset < 50000:
-                result = query_builder.range(db_offset, db_offset + page_size - 1).execute()
-                if not result.data:
-                    break
-                filtered = [row for row in result.data if row.get("ticker") not in etf_tickers]
-                all_filtered.extend(filtered)
-                if len(result.data) < page_size:
-                    break
-                db_offset += page_size
+            def _apply_stock_search(q):
+                # Same search fields as _build_securities_query (ticker/name/description)
+                if not query_text:
+                    return q
+                safe_query = query_text.replace("%", "").replace(",", "")
+                ilike = f"%{safe_query}%"
+                return q.or_(
+                    f"ticker.ilike.{ilike},company_name.ilike.{ilike},description.ilike.{ilike}"
+                )
 
-            total = len(all_filtered)  # Approximate - may be more if we hit limit
-            has_more = len(all_filtered) > offset + limit
+            all_rows = fetch_all_rows(
+                client,
+                "securities",
+                select="ticker, company_name, description",
+                order="ticker",
+                apply_query=_apply_stock_search if query_text else None,
+            )
+            all_filtered = [
+                row for row in all_rows if row.get("ticker") not in etf_tickers
+            ]
+            total = len(all_filtered)
+            has_more = total > offset + limit
             securities = all_filtered[offset:offset + limit]
 
         return jsonify({
