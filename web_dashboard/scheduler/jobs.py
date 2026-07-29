@@ -193,6 +193,20 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '⚡',
     },
+    'insights_thesis_evaluation': {
+        'name': 'Insights Thesis Evaluation',
+        'description': (
+            'Advisory llm_reply on due/stale human ticker theses '
+            '(not fund thesis_update_job; no disposition flips)'
+        ),
+        'default_interval_minutes': 1440,
+        # Low frequency until trusted; admin can still run manually.
+        'enabled_by_default': True,
+        'icon': '🧵',
+        'cron_triggers': [
+            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
     'stance_outcomes': {
         'name': 'Stance Outcomes Scoring',
         'description': 'Nightly no-LLM scoring of stance_history rows at 7/30/90d vs ^RUT',
@@ -262,6 +276,17 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'icon': '🔗',
         'cron_triggers': [
             {'hour': 22, 'minute': 30, 'timezone': 'America/New_York'},
+        ],
+    },
+    'congress_herd': {
+        'name': 'Congress Herd Ledger',
+        'description': 'Nightly no-LLM write of congress herd buys into stance_history (ROADMAP H5)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        # After confluence (22:30 ET); independent of FMP congress fetch success.
+        'cron_triggers': [
+            {'hour': 22, 'minute': 45, 'timezone': 'America/New_York'},
         ],
     },
     'weekly_stance_retro': {
@@ -337,7 +362,7 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     },
     'congress_trades': {
         'name': '🏛️ Congress Trade Fetch',
-        'description': 'Fetch and analyze congressional stock trades from FMP API',
+        'description': 'Fetch congressional stock trades from FMP API (scoring handled by Congress Trade Analysis job)',
         'default_interval_minutes': 360,  # 6 hours (but uses cron triggers)
         'enabled_by_default': True,
         'icon': '🏛️',
@@ -358,9 +383,23 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
     'analyze_congress_trades': {
         'name': '🏛️ Congress Trade Analysis',
         'description': 'Calculate conflict scores for unscored congress trades using committee data',
-        'default_interval_minutes': 30,  # Every 30 minutes
-        'enabled_by_default': False,  # DISABLED during session backfill - re-enable after
-        'icon': '🏛️'
+        'default_interval_minutes': 30,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        'cron_triggers': [
+            # ~10 min after each fetch window (fetch usually finishes in ~5 min)
+            {'hour': '19,21,23,1', 'minute': 10, 'timezone': 'America/Los_Angeles'}
+        ]
+    },
+    'executive_trades': {
+        'name': '🏛️ Executive Trade Fetch',
+        'description': 'Fetch presidential executive branch trades from Open Cabinet (ticker-resolved)',
+        'default_interval_minutes': 10080,
+        'enabled_by_default': True,
+        'icon': '🏛️',
+        'cron_triggers': [
+            {'day_of_week': 'sun', 'hour': 6, 'minute': 0, 'timezone': 'America/Los_Angeles'}
+        ]
     },
     'archive_retry': {
         'name': '📚 Archive Retry',
@@ -706,12 +745,14 @@ from scheduler.jobs_dashboard_research import (
     action_queue_ai_review_job,
     market_daily_brief_job,
 )
+from scheduler.jobs_insights_thesis_evaluation import insights_thesis_evaluation_job
 from scheduler.jobs_stance_outcomes import stance_outcomes_job
 from scheduler.jobs_contradiction_drilldown import contradiction_drilldown_job
 from scheduler.jobs_dilution_watch import dilution_watch_job
 from scheduler.jobs_yahoo_sedi_insiders import yahoo_sedi_insiders_job
 from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_confluence import confluence_job
+from scheduler.jobs_congress_herd import congress_herd_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -744,6 +785,9 @@ from scheduler.jobs_congress import (
     rescore_congress_sessions_job,
     scrape_congress_trades_job
 )
+
+# Import executive trades jobs
+from scheduler.jobs_executive import fetch_executive_trades_job
 
 # Import insider trades jobs
 from scheduler.jobs_insiders import (
@@ -808,12 +852,14 @@ __all__ = [
     'populate_performance_metrics_job',
     'market_daily_brief_job',
     'action_queue_ai_review_job',
+    'insights_thesis_evaluation_job',
     'stance_outcomes_job',
     'contradiction_drilldown_job',
     'dilution_watch_job',
     'yahoo_sedi_insiders_job',
     'sec_filings_job',
     'confluence_job',
+    'congress_herd_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -833,6 +879,8 @@ __all__ = [
     'analyze_congress_trades_job',
     'rescore_congress_sessions_job',
     'scrape_congress_trades_job',
+    # Executive trades jobs
+    'fetch_executive_trades_job',
     # Insider trades jobs
     'fetch_insider_trades_job',
     # Opportunity discovery
@@ -1278,12 +1326,16 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: process_research_reports (every 60 minutes - 1 hour)")
 
-        # Opportunity Discovery: Daily at 9:30 PM PT
+        # Opportunity Discovery: Daily at 8:15 PM PT.
+        # Was 21:30 — sat 20 min after analyze_congress_trades (21:10) and fought
+        # the global AI/Ollama lock (silent skips + stale-lock false failures).
+        # 20:15 sits after evening ticker_research (19:15) and before congress
+        # fetch/analyze (21:00/21:10); 40-min budget still clears before Alpha.
         scheduler.add_job(
             opportunity_discovery_job,
             trigger=CronTrigger(
-                hour=21,
-                minute=30,
+                hour=20,
+                minute=15,
                 timezone='America/Los_Angeles'
             ),
             id='opportunity_discovery_scan',
@@ -1292,14 +1344,14 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: opportunity_discovery_scan (daily at 9:30 PM PT)")
+        logger.info("Registered job: opportunity_discovery_scan (daily at 8:15 PM PT)")
 
     # Alpha Research Job: Daily at 10:15 PM PT.
     # Runs INLINE (holds the global AI lock while extracting + summarizing, up to
     # its 40-min budget -> ~10:55 PM PT). Scheduled at 22:15 so its Ollama work
     # finishes before the queue-managed sector_meta (23:30) and ticker_meta
     # (23:45) enqueue their tasks into the AI worker pool, minimizing Ollama
-    # throughput contention. opportunity_discovery (21:30, also inline) finishes
+    # throughput contention. opportunity_discovery (20:15, also inline) finishes
     # well before this starts.
     if AVAILABLE_JOBS.get('alpha_research', {}).get('enabled_by_default'):
         from scheduler.jobs_alpha import alpha_research_job
@@ -1536,6 +1588,29 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: confluence (nightly after stance_outcomes + sec_filings)")
 
+    if AVAILABLE_JOBS.get('congress_herd', {}).get('enabled_by_default', True):
+        ch_cfg = AVAILABLE_JOBS['congress_herd']
+        ch_triggers = ch_cfg.get(
+            'cron_triggers',
+            [{'hour': 22, 'minute': 45, 'timezone': 'America/New_York'}],
+        )
+        ch_trigger = ch_triggers[0]
+        scheduler.add_job(
+            congress_herd_job,
+            trigger=CronTrigger(
+                hour=ch_trigger.get('hour', 22),
+                minute=ch_trigger.get('minute', 45),
+                timezone=ch_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='congress_herd',
+            name=f"{get_job_icon('congress_herd')} Congress Herd Ledger",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: congress_herd (nightly stance_history writes)")
+
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']
         wr_triggers = wr_cfg.get(
@@ -1609,6 +1684,27 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: action_queue_ai_review (weekdays 7:00 PM ET)")
+
+    insights_cfg = AVAILABLE_JOBS.get('insights_thesis_evaluation', {})
+    if insights_cfg.get('enabled_by_default', True):
+        insights_triggers = insights_cfg.get('cron_triggers') or [
+            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+        ]
+        for i, trigger_kwargs in enumerate(insights_triggers):
+            job_suffix = '' if i == 0 else f'_{i}'
+            scheduler.add_job(
+                insights_thesis_evaluation_job,
+                trigger=CronTrigger(**trigger_kwargs),
+                id=f'insights_thesis_evaluation{job_suffix}',
+                name=f"{get_job_icon('insights_thesis_evaluation')} Insights Thesis Evaluation",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+        logger.info(
+            "Registered job: insights_thesis_evaluation (%s)",
+            insights_triggers,
+        )
 
     if AVAILABLE_JOBS.get('ui_ai_summaries', {}).get('enabled_by_default', True):
         scheduler.add_job(
@@ -1864,22 +1960,57 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: congress_trades_fetch (every 12 minutes - 120 runs/day, 240 API calls/day)")
     
-    # Analyze congress trades job - nightly after fetch batches (Pacific time)
+    # Analyze congress trades job - after each fetch window (Pacific time)
     if AVAILABLE_JOBS['analyze_congress_trades']['enabled_by_default']:
-        scheduler.add_job(
-            analyze_congress_trades_job,
-            trigger=CronTrigger(
-                hour=2,
-                minute=0,
-                timezone='America/Los_Angeles'
-            ),
-            id='analyze_congress_trades',
-            name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
-        )
-        logger.info("Registered job: analyze_congress_trades (daily at 2:00 AM PT)")
+        analyze_triggers = AVAILABLE_JOBS['analyze_congress_trades'].get('cron_triggers', [])
+        if analyze_triggers:
+            trigger_config = analyze_triggers[0]
+            scheduler.add_job(
+                analyze_congress_trades_job,
+                trigger=CronTrigger(
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles')
+                ),
+                id='analyze_congress_trades',
+                name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: analyze_congress_trades (10 min after each fetch: 7:10/9:10/11:10 PM and 1:10 AM PT)")
+        else:
+            scheduler.add_job(
+                analyze_congress_trades_job,
+                trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['analyze_congress_trades']['default_interval_minutes']),
+                id='analyze_congress_trades',
+                name=f"{get_job_icon('analyze_congress_trades')} Congress Trade Analysis",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True
+            )
+            logger.info("Registered job: analyze_congress_trades (every 30 minutes)")
+
+    # Executive trades - weekly Open Cabinet poll
+    if AVAILABLE_JOBS.get('executive_trades', {}).get('enabled_by_default', True):
+        executive_triggers = AVAILABLE_JOBS['executive_trades'].get('cron_triggers', [])
+        if executive_triggers:
+            trigger_config = executive_triggers[0]
+            scheduler.add_job(
+                fetch_executive_trades_job,
+                trigger=CronTrigger(
+                    day_of_week=trigger_config.get('day_of_week', 'sun'),
+                    hour=trigger_config['hour'],
+                    minute=trigger_config['minute'],
+                    timezone=trigger_config.get('timezone', 'America/Los_Angeles'),
+                ),
+                id='executive_trades_fetch',
+                name=f"{get_job_icon('executive_trades')} Executive Trade Fetch",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            logger.info("Registered job: executive_trades_fetch (weekly Sunday 6:00 AM PT)")
 
     # Congress trade returns - daily (Eastern time, after market data settles)
     if AVAILABLE_JOBS.get('congress_trade_returns', {}).get('enabled_by_default', True):

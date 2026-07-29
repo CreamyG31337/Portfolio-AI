@@ -41,3 +41,11 @@ python web_dashboard\scripts\analyze_congress_trades_batch.py --sessions --resco
 
 - **Scheduler job (UI):** `rescore_congress_sessions_job` in `jobs_congress.py` runs the same batch script via subprocess; starting it from the UI ties it to the app process.
 - **Batch script:** `web_dashboard/scripts/analyze_congress_trades_batch.py` (session-based analysis with `--sessions`).
+- **AI task queue catch-up:** When `analyze_congress_trades` is in `AI_QUEUE_JOBS`, the cron enqueues tasks and queue workers score in parallel (primary Ollama; secondary Ollama / GLM only if configured). Bulk backlog:
+
+```powershell
+python web_dashboard\scripts\enqueue_congress_trade_analysis.py --priority 0
+# Optional: --limit 500 --dry-run first
+```
+
+Re-runnable / resumable. Missing `OLLAMA_BASE_URL_2` or ZHIPU key simply means fewer workers — primary Ollama still runs. Deploy default includes the job in `.woodpecker.yml` `AI_QUEUE_JOBS`.

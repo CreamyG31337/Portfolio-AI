@@ -191,6 +191,7 @@ def _fetch_congress_purchase_tickers(
                 supabase_client.supabase.table("congress_trades_enriched")
                 .select("ticker")
                 .eq("type", "Purchase")
+                .neq("quality_status", "garbage")
                 .gte("transaction_date", cutoff)
                 .in_("ticker", batch)
                 .execute()
@@ -276,20 +277,24 @@ def _fetch_signal_hits(
         # signal_analysis holds ~1 row/ticker/day, so a 10d window is ~10 rows/ticker.
         # Keep batch_size * window_rows under the 1000-row REST cap or later tickers in
         # the batch get truncated away and silently miss the signals family.
-        # TODO(confluence): If the window widens or signal cadence increases (>20 rows/ticker
-        # per 50-ticker batch), paginate or tighten the per-batch .limit(1000) — see PR #393 review.
+        # We now use fetch_all_rows to safely paginate avoiding the 1000 limit hard limit.
+        from supabase_pagination import fetch_all_rows
         for i in range(0, len(ticker_list), 50):
             batch = ticker_list[i : i + 50]
-            res = (
-                supabase_client.supabase.table("signal_analysis")
-                .select("ticker,analysis_date,structure_signal,overall_signal,confidence_score")
-                .in_("ticker", batch)
-                .gte("analysis_date", cutoff)
-                .order("analysis_date", desc=True)
-                .limit(1000)
-                .execute()
+
+            def apply_q(q, b=batch):
+                return q.in_("ticker", b)
+
+            rows = fetch_all_rows(
+                supabase_client,
+                "signal_analysis",
+                "ticker,analysis_date,structure_signal,overall_signal,confidence_score",
+                filters=[("analysis_date", "gte", cutoff)],
+                order="analysis_date",
+                order_desc=True,
+                apply_query=apply_q
             )
-            for row in res.data or []:
+            for row in rows:
                 t = str(row.get("ticker") or "").upper()
                 if t and t not in latest_by_ticker:
                     latest_by_ticker[t] = row

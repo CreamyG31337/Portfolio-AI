@@ -46,6 +46,42 @@ def subreddit_scanner_job() -> None:
         # Mark job as started
         target_date = datetime.now(timezone.utc).date()
         mark_job_started(job_id, target_date)
+
+        from reddit_client import check_reddit_connectivity_with_retry
+
+        reddit_status = check_reddit_connectivity_with_retry()
+        if not reddit_status.ok:
+            duration_ms = int((time.time() - start_time) * 1000)
+            if reddit_status.rate_limited:
+                message = (
+                    f"Reddit rate limited — subreddit scanner skipped: {reddit_status.message} "
+                    f"(status={reddit_status.status_code})"
+                )
+                logger.warning(message)
+                log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+                mark_job_completed(
+                    job_id, target_date, None, [], duration_ms=duration_ms, message=message
+                )
+                return
+            if reddit_status.auth_failed and reddit_status.oauth_configured:
+                message = (
+                    f"Reddit OAuth failed — subreddit scanner skipped: {reddit_status.message} "
+                    f"(status={reddit_status.status_code})"
+                )
+            elif reddit_status.auth_failed and reddit_status.cookie_configured:
+                message = (
+                    f"Reddit session expired — subreddit scanner skipped: {reddit_status.message} "
+                    f"(status={reddit_status.status_code})"
+                )
+            else:
+                message = (
+                    f"Reddit unavailable — subreddit scanner skipped: {reddit_status.message} "
+                    f"(status={reddit_status.status_code})"
+                )
+            logger.error(message)
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+            return
         
         # Initialize services
         social_service = SocialSentimentService() # Requires env vars setup (Ollama, etc)
@@ -103,8 +139,9 @@ def subreddit_scanner_job() -> None:
                     logger.info(f"r/{sub}: No opportunities found")
                     summary_msg.append(f"r/{sub}: 0")
                     
-                # Sleep between subreddits to be nice
-                time.sleep(5)
+                # Shared RSS rate limiter spaces requests; no extra sleep needed in RSS mode.
+                if social_service.reddit.oauth_enabled or social_service.reddit.cookie_enabled:
+                    time.sleep(5)
                 
             except Exception as e:
                 logger.error(f"Error processing r/{sub}: {e}")

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, List, Optional
 
 import requests
@@ -25,6 +26,21 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_GLM_TIMEOUT = int(os.getenv("GLM_TIMEOUT", "180"))
 _DEFAULT_GLM_JSON_MIN = int(os.getenv("GLM_JSON_MODE_MIN_TIMEOUT", "360"))
+
+
+@dataclass
+class GlmMessageResult:
+    """Structured non-stream GLM chat result (supports tool_calls)."""
+
+    content: str = ""
+    tool_calls: List[Dict[str, Any]] = field(default_factory=list)
+    finish_reason: Optional[str] = None
+    error: Optional[str] = None
+    model_used: Optional[str] = None
+
+    @property
+    def has_tool_calls(self) -> bool:
+        return bool(self.tool_calls)
 
 
 def _effective_timeout(*, json_mode: bool, timeout: Optional[float]) -> float:
@@ -389,4 +405,227 @@ def glm_chat_completion_text(
             timeout=timeout,
             allow_cheap_fallback=allow_cheap_fallback,
         )
+    )
+
+
+def _normalize_tool_calls(raw_calls: Any) -> List[Dict[str, Any]]:
+    """Normalize OpenAI-style tool_calls into plain dicts for message replay."""
+    out: List[Dict[str, Any]] = []
+    if not raw_calls:
+        return out
+    for i, tc in enumerate(raw_calls):
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function") or {}
+        if not isinstance(fn, dict):
+            fn = {}
+        name = fn.get("name") or tc.get("name") or ""
+        arguments = fn.get("arguments")
+        if arguments is not None and not isinstance(arguments, str):
+            try:
+                arguments = json.dumps(arguments)
+            except (TypeError, ValueError):
+                arguments = str(arguments)
+        out.append(
+            {
+                "id": tc.get("id") or f"call_{i}",
+                "type": tc.get("type") or "function",
+                "function": {
+                    "name": name,
+                    "arguments": arguments or "{}",
+                },
+            }
+        )
+    return out
+
+
+def glm_chat_completion_message(
+    messages: List[Dict[str, Any]],
+    *,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[str | Dict[str, Any]] = None,
+    timeout: Optional[float] = None,
+    allow_cheap_fallback: bool = True,
+    _cheap_fallback_done: bool = False,
+) -> GlmMessageResult:
+    """Non-stream chat/completions supporting OpenAI-style tools / tool_calls."""
+    try:
+        from glm_config import get_zhipu_api_key
+        from model_registry import get_glm_base_urls, zai_http_status_retryable
+    except ImportError as e:
+        logger.error("GLM config unavailable: %s", e)
+        return GlmMessageResult(error="GLM backend is not available.")
+
+    key = get_zhipu_api_key()
+    if not key:
+        return GlmMessageResult(error="GLM API key is not configured.")
+
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+
+    glm_http_timeout = _effective_timeout(json_mode=False, timeout=timeout)
+    bases = get_glm_base_urls()
+    last_error: Optional[str] = None
+
+    for bi, z_base in enumerate(bases):
+        url = f"{z_base.rstrip('/')}/chat/completions"
+        request_start = time.time()
+        try:
+            response = requests.post(
+                url,
+                json=payload,
+                headers=headers,
+                stream=False,
+                timeout=glm_http_timeout,
+            )
+            sc = int(response.status_code)
+            if zai_http_status_retryable(sc) and bi < len(bases) - 1:
+                logger.info(
+                    "GLM host %s returned HTTP %s; retrying next base URL (%s/%s)",
+                    z_base,
+                    sc,
+                    bi + 2,
+                    len(bases),
+                )
+                continue
+            response.raise_for_status()
+            data = response.json()
+            choice = (data.get("choices") or [{}])[0]
+            msg = choice.get("message") or {}
+            content = str(msg.get("content") or "").strip()
+            if not content:
+                reasoning = str(
+                    msg.get("reasoning_content") or msg.get("reasoning") or ""
+                ).strip()
+                content = reasoning
+            tool_calls = _normalize_tool_calls(msg.get("tool_calls"))
+            finish_reason = choice.get("finish_reason")
+            if not content and not tool_calls:
+                if allow_cheap_fallback and glm_should_try_cheap_fallback(
+                    model=model,
+                    cheap_fallback_done=_cheap_fallback_done,
+                    http_status=None,
+                ):
+                    from model_registry import get_cheap_model
+
+                    cheap = (get_cheap_model() or "").strip()
+                    logger.warning(
+                        "GLM empty for model=%s; retrying with cheap model=%s",
+                        model,
+                        cheap,
+                    )
+                    return glm_chat_completion_message(
+                        messages,
+                        model=cheap,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        timeout=timeout,
+                        allow_cheap_fallback=allow_cheap_fallback,
+                        _cheap_fallback_done=True,
+                    )
+                return GlmMessageResult(
+                    error="GLM returned an empty response.",
+                    model_used=model,
+                )
+            return GlmMessageResult(
+                content=content,
+                tool_calls=tool_calls,
+                finish_reason=str(finish_reason) if finish_reason else None,
+                model_used=model,
+            )
+        except requests.exceptions.Timeout:
+            elapsed = time.time() - request_start
+            last_error = "GLM request timed out. Please try again."
+            if bi < len(bases) - 1:
+                logger.info(
+                    "GLM tools request timed out after %.2fs on %s; trying next base",
+                    elapsed,
+                    z_base,
+                )
+                continue
+            break
+        except requests.exceptions.ConnectionError as e:
+            elapsed = time.time() - request_start
+            last_error = "Cannot connect to GLM API."
+            if bi < len(bases) - 1:
+                logger.info(
+                    "GLM tools connection error after %.2fs on %s (%s); next base",
+                    elapsed,
+                    z_base,
+                    e,
+                )
+                continue
+            break
+        except requests.exceptions.HTTPError as e:
+            elapsed = time.time() - request_start
+            resp_sc = (
+                int(e.response.status_code)
+                if getattr(e, "response", None) is not None
+                else 0
+            )
+            last_error = f"GLM API error: {str(e)}"
+            if resp_sc and zai_http_status_retryable(resp_sc) and bi < len(bases) - 1:
+                continue
+            if allow_cheap_fallback and glm_should_try_cheap_fallback(
+                model=model,
+                cheap_fallback_done=_cheap_fallback_done,
+                http_status=resp_sc or None,
+            ):
+                from model_registry import get_cheap_model
+
+                cheap = (get_cheap_model() or "").strip()
+                return glm_chat_completion_message(
+                    messages,
+                    model=cheap,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    timeout=timeout,
+                    allow_cheap_fallback=allow_cheap_fallback,
+                    _cheap_fallback_done=True,
+                )
+            logger.error("GLM tools HTTP error after %.2fs: %s", elapsed, e)
+            return GlmMessageResult(error=last_error, model_used=model)
+        except Exception as e:
+            logger.error("Unexpected GLM tools error: %s", e, exc_info=True)
+            last_error = f"GLM error: {str(e)}"
+            break
+
+    if allow_cheap_fallback and glm_should_try_cheap_fallback(
+        model=model,
+        cheap_fallback_done=_cheap_fallback_done,
+        http_status=None,
+    ):
+        from model_registry import get_cheap_model
+
+        cheap = (get_cheap_model() or "").strip()
+        return glm_chat_completion_message(
+            messages,
+            model=cheap,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
+            timeout=timeout,
+            allow_cheap_fallback=allow_cheap_fallback,
+            _cheap_fallback_done=True,
+        )
+    return GlmMessageResult(
+        error=last_error or "GLM error: all configured Z.AI base URLs failed.",
+        model_used=model,
     )

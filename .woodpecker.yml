@@ -49,6 +49,13 @@
 # - ai_service_web_url: (optional) Web interface URL for AI service (obfuscated)
 #                       Only needed if default fallback URL doesn't work
 #                       Set via environment variable when generating ai_service.keys.json
+# - YOUTUBE_PROXY_URL: NOT a Woodpecker secret and needs no setup -- it is a plain
+#                      host:port, so the deploy step defaults it to
+#                      http://host.docker.internal:8888 (the Gluetun/PureVPN container on
+#                      the deploy host), the same way OLLAMA_BASE_URL is defaulted.
+#                      Routes Phase K YouTube caption fetches off the host's residential IP,
+#                      which YouTube rate-limits into multi-hour blocks after ~150 fetches.
+#                      Override only to repoint or disable it. See docs/PHASE_K_SOURCE_LIST.md §13.
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
 # - newsletter_email: (optional) Newsletter receiving email (default: e.g. noreply@example.com)
@@ -426,6 +433,10 @@ steps:
         [ -n "$SUPABASE_DATABASE_URL" ] && FLASK_CMD="$FLASK_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
         [ -n "$FMP_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
         [ -n "$ZHIPU_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
+        # Phase K: YouTube caption egress proxy (Gluetun on the deploy host). Not a secret
+        # -- host:port only -- so it is defaulted here like OLLAMA_BASE_URL rather than
+        # coming from Woodpecker. Direct egress gets rate-limited into multi-hour blocks.
+        FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_URL=\"${YOUTUBE_PROXY_URL:-http://host.docker.internal:8888}\""
         
         # Add WebAI cookies (same as Streamlit container)
         if [ -n "$WEBAI_COOKIES_JSON" ]; then
@@ -439,6 +450,11 @@ steps:
         [ -n "$NEWSLETTER_EMAIL" ] && FLASK_CMD="$FLASK_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
         [ -n "$MAILGUN_SEND_DOMAIN" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_SEND_DOMAIN=\"$MAILGUN_SEND_DOMAIN\""
         [ -n "$MAILGUN_FROM" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_FROM=\"$MAILGUN_FROM\""
+        # Weekly stance retro: resolve the current email from the dashboard account.
+        # Host optional env may override this default or add direct email recipients.
+        FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_RECIPIENT_ACCOUNTS=\"${RETRO_DIGEST_RECIPIENT_ACCOUNTS:-Lance Colton}\""
+        [ -n "$RETRO_DIGEST_RECIPIENTS" ] && FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_RECIPIENTS=\"$RETRO_DIGEST_RECIPIENTS\""
+        [ -n "$RETRO_DIGEST_ENABLED" ] && FLASK_CMD="$FLASK_CMD -e RETRO_DIGEST_ENABLED=\"$RETRO_DIGEST_ENABLED\""
         if [ -n "$APP_DOMAIN" ]; then
           FLASK_CMD="$FLASK_CMD -e PUBLIC_BASE_URL=\"https://$APP_DOMAIN\""
         fi
@@ -455,9 +471,9 @@ steps:
         # any of these by setting the same name in
         # /home/lance/trading-dashboard-optional.env on the host, then redeploy.
         # To temporarily disable, set AI_QUEUE_ENABLED=false in that file.
-        # Migrated jobs (Q2 ticker_analysis, Q4a ticker_meta_analysis, Q4b sector_meta_analysis, Q4c etf_group_analysis) are queue-managed by default.
+        # Migrated jobs (Q2 ticker_analysis, Q4a–c meta/ETF, congress catch-up) are queue-managed by default.
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_ENABLED=\"${AI_QUEUE_ENABLED:-true}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_PRIMARY=\"${AI_QUEUE_WORKERS_OLLAMA_PRIMARY:-1}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"${AI_QUEUE_WORKERS_GLM:-1}\""

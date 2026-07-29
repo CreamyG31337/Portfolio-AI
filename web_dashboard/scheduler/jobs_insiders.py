@@ -272,6 +272,10 @@ def fetch_insider_trades_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('insider_trades', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
 
         # Initialize client

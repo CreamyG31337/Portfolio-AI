@@ -1,25 +1,29 @@
 # Supabase Production Database Schema
 
-**Generated:** 2026-02-09 18:51:48
+**Generated:** 2026-07-13 14:11:58
 
-**Total Tables:** 32
+**Total Tables:** 40
 
 ---
 
 ## Table of Contents
 
+- [_deprecated_ui_ai_rollup_fund_20260520](#-deprecated-ui-ai-rollup-fund-20260520)
+- [_deprecated_ui_ai_summary_20260520](#-deprecated-ui-ai-summary-20260520)
 - [ai_analysis_queue](#ai-analysis-queue)
 - [ai_analysis_skip_list](#ai-analysis-skip-list)
+- [ai_task_queue](#ai-task-queue)
 - [apscheduler_jobs](#apscheduler-jobs)
 - [benchmark_data](#benchmark-data)
 - [cash_balances](#cash-balances)
 - [committee_assignments](#committee-assignments)
 - [committees](#committees)
+- [congress_positions](#congress-positions)
+- [congress_trade_returns](#congress-trade-returns)
 - [congress_trades](#congress-trades)
 - [contributor_access](#contributor-access)
 - [contributors](#contributors)
 - [dividend_log](#dividend-log)
-- [etf_holdings_log](#etf-holdings-log)
 - [exchange_rates](#exchange-rates)
 - [fund_contributions](#fund-contributions)
 - [fund_thesis](#fund-thesis)
@@ -28,6 +32,8 @@
 - [insider_trades](#insider-trades)
 - [job_executions](#job-executions)
 - [job_retry_queue](#job-retry-queue)
+- [job_steps](#job-steps)
+- [og_asset_ticker_map](#og-asset-ticker-map)
 - [performance_metrics](#performance-metrics)
 - [politicians](#politicians)
 - [portfolio_positions](#portfolio-positions)
@@ -36,10 +42,69 @@
 - [securities](#securities)
 - [signal_analysis](#signal-analysis)
 - [system_settings](#system-settings)
+- [ticker_state_snapshots](#ticker-state-snapshots)
 - [trade_log](#trade-log)
 - [user_funds](#user-funds)
 - [user_profiles](#user-profiles)
 - [watched_tickers](#watched-tickers)
+- [watched_tickers_v2](#watched-tickers-v2)
+
+---
+
+## _deprecated_ui_ai_rollup_fund_20260520
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `fund` | VARCHAR(200) | ✗ | - |
+| `headline` | VARCHAR(300) | ✓ | - |
+| `narrative` | TEXT | ✓ | - |
+| `sources_used` | JSONB | ✓ | - |
+| `inputs_digest` | VARCHAR(64) | ✗ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `fund`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ui_ai_rollup_fund_updated` | `updated_at` | ✗ |
+
+---
+
+## _deprecated_ui_ai_summary_20260520
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `scope` | VARCHAR(80) | ✗ | - |
+| `scope_key` | VARCHAR(256) | ✗ | - |
+| `content_class` | VARCHAR(20) | ✗ | 'price_linked'::character varying |
+| `summary_json` | JSONB | ✗ | '{}'::jsonb |
+| `inputs_digest` | VARCHAR(64) | ✗ | - |
+| `model_used` | VARCHAR(100) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `updated_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ui_ai_summary_content_class` | `content_class`, `updated_at` | ✗ |
+| `idx_ui_ai_summary_scope_updated` | `scope`, `updated_at` | ✗ |
+| `ui_ai_summary_scope_key_unique` | `scope`, `scope_key` | ✓ |
 
 ---
 
@@ -102,6 +167,47 @@
 | `ai_analysis_skip_list_ticker_key` | `ticker` | ✓ |
 | `idx_skip_list_last_failed` | `last_failed_at` | ✗ |
 | `idx_skip_list_ticker` | `ticker` | ✗ |
+
+---
+
+## ai_task_queue
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `analysis_type` | VARCHAR(40) | ✗ | - |
+| `target_key` | VARCHAR(100) | ✗ | - |
+| `payload` | JSONB | ✓ | - |
+| `priority` | INTEGER | ✗ | 0 |
+| `status` | VARCHAR(20) | ✗ | 'pending'::character varying |
+| `attempts` | INTEGER | ✗ | 0 |
+| `max_attempts` | INTEGER | ✗ | 3 |
+| `last_error` | TEXT | ✓ | - |
+| `last_error_class` | VARCHAR(40) | ✓ | - |
+| `leased_by` | VARCHAR(120) | ✓ | - |
+| `leased_backend` | VARCHAR(40) | ✓ | - |
+| `leased_until` | TIMESTAMP | ✓ | - |
+| `available_at` | TIMESTAMP | ✗ | now() |
+| `enqueued_by` | VARCHAR(40) | ✓ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+| `completed_at` | TIMESTAMP | ✓ | - |
+| `attempted_backends` | ARRAY | ✗ | '{}'::character varying[] |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `ai_task_queue_active_dedupe_idx` | `analysis_type`, `target_key` | ✓ |
+| `ai_task_queue_lease_recovery_idx` | `status`, `leased_until` | ✗ |
+| `ai_task_queue_pending_idx` | `status`, `priority`, `created_at` | ✗ |
+| `ai_task_queue_type_status_idx` | `analysis_type`, `status`, `target_key` | ✗ |
 
 ---
 
@@ -249,6 +355,85 @@
 
 ---
 
+## congress_positions
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | INTEGER | ✗ | nextval('congress_positions_id_seq'::regclass) |
+| `politician_id` | INTEGER | ✗ | - |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `status` | VARCHAR(10) | ✗ | 'closed'::character varying |
+| `buy_count` | INTEGER | ✗ | 0 |
+| `sell_count` | INTEGER | ✗ | 0 |
+| `first_buy_date` | DATE | ✓ | - |
+| `last_sell_date` | DATE | ✓ | - |
+| `avg_buy_price` | NUMERIC(12, 4) | ✓ | - |
+| `avg_sell_price` | NUMERIC(12, 4) | ✓ | - |
+| `pct_return` | NUMERIC(10, 2) | ✓ | - |
+| `est_invested` | NUMERIC(14, 2) | ✓ | - |
+| `est_pnl` | NUMERIC(14, 2) | ✓ | - |
+| `days_held` | INTEGER | ✓ | - |
+| `spy_pct_change` | NUMERIC(10, 2) | ✓ | - |
+| `last_computed` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `politician_id` | `politicians`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `congress_positions_politician_id_ticker_key` | `politician_id`, `ticker` | ✓ |
+| `idx_cp_est_pnl` | `est_pnl` | ✗ |
+| `idx_cp_first_buy` | `first_buy_date` | ✗ |
+| `idx_cp_pct_return` | `pct_return` | ✗ |
+| `idx_cp_politician` | `politician_id` | ✗ |
+| `idx_cp_status` | `status` | ✗ |
+
+---
+
+## congress_trade_returns
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `trade_id` | INTEGER | ✗ | - |
+| `entry_price_adj` | NUMERIC(12, 4) | ✓ | - |
+| `current_price` | NUMERIC(12, 4) | ✓ | - |
+| `pct_change` | NUMERIC(8, 2) | ✓ | - |
+| `midpoint_est` | NUMERIC(12, 2) | ✓ | - |
+| `last_updated` | TIMESTAMP | ✓ | now() |
+| `price_source` | VARCHAR(20) | ✓ | 'yfinance'::character varying |
+
+### Primary Key
+
+- `trade_id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `trade_id` | `congress_trades`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ctr_last_updated` | `last_updated` | ✗ |
+| `idx_ctr_pct_change` | `pct_change` | ✗ |
+
+---
+
 ## congress_trades
 
 ### Columns
@@ -271,6 +456,7 @@
 | `state` | VARCHAR(2) | ✓ | - |
 | `owner` | VARCHAR(100) | ✗ | 'Unknown'::character varying |
 | `politician_id` | INTEGER | ✓ | - |
+| `asset_description` | TEXT | ✓ | - |
 
 ### Primary Key
 
@@ -411,36 +597,6 @@
 | `idx_dividend_log_ticker` | `ticker` | ✗ |
 | `idx_dividend_log_ticker_fk` | `ticker` | ✗ |
 | `idx_dividend_log_trade_log_id` | `trade_log_id` | ✗ |
-
----
-
-## etf_holdings_log
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `date` | DATE | ✗ | - |
-| `etf_ticker` | VARCHAR(10) | ✗ | - |
-| `holding_ticker` | VARCHAR(50) | ✗ | - |
-| `holding_name` | TEXT | ✓ | - |
-| `shares_held` | NUMERIC | ✓ | - |
-| `weight_percent` | NUMERIC | ✓ | - |
-| `market_value` | NUMERIC | ✓ | - |
-| `created_at` | TIMESTAMP | ✓ | now() |
-
-### Primary Key
-
-- `date`, `etf_ticker`, `holding_ticker`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `idx_ehl_holding_date` | `holding_ticker`, `date` | ✗ |
-| `idx_etf_holdings_date` | `date` | ✗ |
-| `idx_etf_holdings_etf` | `etf_ticker`, `date` | ✗ |
-| `idx_etf_holdings_ticker` | `holding_ticker` | ✗ |
 
 ---
 
@@ -594,6 +750,7 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `base_currency` | VARCHAR(3) | ✓ | 'CAD'::character varying |
 | `is_production` | BOOLEAN | ✓ | false |
+| `dividend_mode` | VARCHAR(20) | ✗ | 'reinvest'::character varying |
 
 ### Primary Key
 
@@ -630,6 +787,7 @@
 | `notes` | TEXT | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
+| `source` | TEXT | ✗ | 'sec_form4'::text |
 
 ### Primary Key
 
@@ -715,6 +873,58 @@
 | `idx_retry_queue_pending` | `target_date` | ✗ |
 | `idx_retry_queue_status` | `status`, `target_date` | ✗ |
 | `unique_retry_entry` | `job_name`, `target_date`, `entity_id`, `entity_type` | ✓ |
+
+---
+
+## job_steps
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | BIGINT | ✗ | - |
+| `job_name` | VARCHAR(100) | ✗ | - |
+| `run_date` | DATE | ✗ | CURRENT_DATE |
+| `step_name` | VARCHAR(100) | ✗ | - |
+| `message` | TEXT | ✗ | - |
+| `status` | VARCHAR(20) | ✗ | 'running'::character varying |
+| `metadata` | JSONB | ✓ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_job_steps_lookup` | `job_name`, `run_date`, `created_at` | ✗ |
+
+---
+
+## og_asset_ticker_map
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `canonical_description` | TEXT | ✗ | - |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `source` | TEXT | ✗ | - |
+| `confidence` | DOUBLE PRECISION | ✗ | 1.0 |
+| `asset_type` | VARCHAR(20) | ✗ | 'Stock'::character varying |
+| `resolved_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `canonical_description`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_og_asset_ticker_map_ticker` | `ticker` | ✗ |
 
 ---
 
@@ -924,6 +1134,26 @@
 | `fifty_two_week_high` | NUMERIC | ✓ | - |
 | `fifty_two_week_low` | NUMERIC | ✓ | - |
 | `description` | TEXT | ✓ | - |
+| `forward_pe` | NUMERIC | ✓ | - |
+| `price_to_book` | NUMERIC | ✓ | - |
+| `price_to_sales` | NUMERIC | ✓ | - |
+| `peg_ratio` | NUMERIC | ✓ | - |
+| `return_on_equity` | NUMERIC | ✓ | - |
+| `net_margin` | NUMERIC | ✓ | - |
+| `operating_margin` | NUMERIC | ✓ | - |
+| `gross_margin` | NUMERIC | ✓ | - |
+| `revenue_growth` | NUMERIC | ✓ | - |
+| `earnings_growth` | NUMERIC | ✓ | - |
+| `current_ratio` | NUMERIC | ✓ | - |
+| `debt_to_equity` | NUMERIC | ✓ | - |
+| `free_cash_flow` | NUMERIC | ✓ | - |
+| `short_ratio` | NUMERIC | ✓ | - |
+| `short_percent_of_float` | NUMERIC | ✓ | - |
+| `ebitda` | NUMERIC | ✓ | - |
+| `trailing_eps` | NUMERIC | ✓ | - |
+| `forward_eps` | NUMERIC | ✓ | - |
+| `use_alt_logo` | BOOLEAN | ✓ | false |
+| `website` | TEXT | ✓ | - |
 
 ### Primary Key
 
@@ -957,6 +1187,8 @@
 | `confidence_score` | DOUBLE PRECISION | ✓ | - |
 | `explanation` | TEXT | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
+| `momentum_signal` | JSONB | ✓ | - |
+| `fundamental_signal` | JSONB | ✓ | - |
 
 ### Primary Key
 
@@ -1003,6 +1235,30 @@
 
 ---
 
+## ticker_state_snapshots
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `ticker` | TEXT | ✗ | - |
+| `snapshot_date` | TIMESTAMP | ✗ | now() |
+| `state` | JSONB | ✗ | - |
+| `summary` | TEXT | ✓ | - |
+
+### Primary Key
+
+- `ticker`, `snapshot_date`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ticker_state_snapshots_date` | `snapshot_date` | ✗ |
+| `idx_ticker_state_snapshots_ticker_date` | `ticker`, `snapshot_date` | ✗ |
+
+---
+
 ## trade_log
 
 ### Columns
@@ -1020,6 +1276,7 @@
 | `reason` | TEXT | ✗ | - |
 | `currency` | VARCHAR(10) | ✗ | 'USD'::character varying |
 | `created_at` | TIMESTAMP | ✓ | now() |
+| `action` | TEXT | ✗ | 'BUY'::text |
 
 ### Primary Key
 
@@ -1134,6 +1391,40 @@
 |------|---------|--------|
 | `idx_watched_tickers_active` | `is_active` | ✗ |
 | `idx_watched_tickers_priority` | `priority_tier` | ✗ |
+
+---
+
+## watched_tickers_v2
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `fund` | VARCHAR(50) | ✗ | - |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `priority_tier` | VARCHAR(10) | ✓ | 'B'::character varying |
+| `is_active` | BOOLEAN | ✓ | true |
+| `source` | VARCHAR(50) | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `fund`, `ticker`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `fund` | `funds`.`name` | NO ACTION | NO ACTION |
+| `ticker` | `securities`.`ticker` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_watched_tickers_v2_fund_active` | `fund`, `is_active` | ✗ |
+| `idx_watched_tickers_v2_priority` | `priority_tier` | ✗ |
+| `idx_watched_tickers_v2_ticker` | `ticker` | ✗ |
 
 ---
 

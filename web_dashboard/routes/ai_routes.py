@@ -22,7 +22,8 @@ from flask_data_utils import (
 from ai_context_builder import (
     format_holdings, format_thesis, format_trades,
     format_performance_metrics, format_cash_balances,
-    format_insider_trades, format_congress_trades, format_etf_trades
+    format_insider_trades, format_congress_trades, format_etf_context,
+    aggregate_etf_changes, parse_etf_ticker_from_article_url,
 )
 from ollama_client import load_model_config, check_ollama_health, list_available_models
 from searxng_client import check_searxng_health, get_searxng_client
@@ -58,21 +59,69 @@ def _get_ai_context_cache_ttl() -> int:
 # Cached Helper Functions
 # ============================================================================
 
+def _coerce_bool_flag(value: Any, default: bool = True) -> bool:
+    """Parse JSON/form booleans reliably (avoids truthy string \"false\")."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in ("0", "false", "no", "off"):
+            return False
+        if lowered in ("1", "true", "yes", "on"):
+            return True
+    return bool(value)
+
+
+def _portfolio_ticker_list(positions_df: Any) -> List[str]:
+    """Unique uppercased tickers from a positions DataFrame."""
+    if positions_df is None or getattr(positions_df, "empty", True):
+        return []
+    ticker_col = "ticker" if "ticker" in positions_df.columns else "symbol"
+    return [
+        str(t).strip().upper()
+        for t in positions_df[ticker_col].dropna().unique().tolist()
+        if str(t).strip()
+    ]
+
+
+def _congress_lookup_tickers(portfolio_tickers: List[str]) -> List[str]:
+    """Expand portfolio tickers for US congress_trades (strip exchange suffixes)."""
+    lookup: set[str] = set()
+    for raw in portfolio_tickers:
+        upper = str(raw).strip().upper()
+        if not upper:
+            continue
+        lookup.add(upper)
+        if "." in upper:
+            lookup.add(upper.split(".", 1)[0])
+    return sorted(lookup)
+
+
+def _get_reference_data_supabase_client():
+    """Supabase client for global reference tables (congress/insider trades).
+
+    Congress and insider data are not fund-scoped; service role avoids empty
+    results when the browser JWT is missing or stale for RLS.
+    """
+    try:
+        from supabase_client import SupabaseClient
+        return SupabaseClient(use_service_role=True)
+    except Exception as e:
+        logger.warning(f"Error creating service-role Supabase client: {e}")
+        return get_supabase_client_flask()
+
+
 def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
     """Get insider trades for portfolio tickers from last N days."""
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
-        if positions_df.empty:
-            return []
-        
-        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
-        
-        # Get Supabase client
-        client = get_supabase_client_flask()
+
+        client = _get_reference_data_supabase_client()
         if not client:
             return []
         
@@ -83,7 +132,7 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         # Query insider trades
         result = client.supabase.table("insider_trades")\
             .select("ticker, insider_name, insider_title, transaction_date, disclosure_date, type, shares, price_per_share, value")\
-            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .in_("ticker", portfolio_tickers)\
             .gte("transaction_date", start_date.isoformat())\
             .lte("transaction_date", end_date.isoformat())\
             .order("transaction_date", desc=True)\
@@ -96,139 +145,201 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         return []
 
 
-def _get_congress_trades_for_portfolio(fund: str, days: Optional[int] = None) -> List[Dict]:
-    """Get the most recent congress trades for portfolio tickers."""
+def _get_congress_trades_for_portfolio(fund: str, days: int = 30) -> List[Dict]:
+    """Get recent congress trades for portfolio tickers (default 30d — disclosure lag)."""
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
-        if positions_df.empty:
-            return []
-        
-        ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
-        
-        # Get Supabase client
-        client = get_supabase_client_flask()
+
+        lookup_tickers = _congress_lookup_tickers(portfolio_tickers)
+        if not lookup_tickers:
+            return []
+
+        client = _get_reference_data_supabase_client()
         if not client:
             return []
-        
-        # Query congress trades
-        # TODO(perf): If this grows large, consider a SQL function/view with ticker array + limit,
-        # plus a composite index on (ticker, transaction_date DESC) in congress_trades_enriched.
+
+        end_date = datetime.now(timezone.utc).date()
+        start_date = end_date - timedelta(days=days)
+
         query = client.supabase.table("congress_trades_enriched")\
             .select("ticker, politician, chamber, party, state, transaction_date, type, amount, owner")\
-            .in_("ticker", [t.upper() for t in portfolio_tickers])\
+            .in_("ticker", lookup_tickers)\
+            .neq("quality_status", "garbage")\
+            .gte("transaction_date", start_date.isoformat())\
+            .lte("transaction_date", end_date.isoformat())\
             .order("transaction_date", desc=True)
 
-        if days is not None:
-            end_date = datetime.now(timezone.utc).date()
-            start_date = end_date - timedelta(days=days)
-            query = query.gte("transaction_date", start_date.isoformat())\
-                .lte("transaction_date", end_date.isoformat())
+        result = query.limit(50).execute()
 
-        result = query.limit(10).execute()
-        
         return result.data if result.data else []
     except Exception as e:
         logger.warning(f"Error fetching congress trades: {e}")
         return []
 
 
-def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
-    """Get ETF trades for portfolio tickers from last N days.
+def _empty_etf_context(days: int = 7) -> Dict[str, Any]:
+    return {
+        "etf_summary": [],
+        "ticker_summary": [],
+        "recent_trades": [],
+        "etf_articles": [],
+        "days": days,
+    }
 
-    Uses batch SQL function to fetch all tickers in a single query (vs N queries before).
-    """
+
+def _filter_etf_analysis_articles(
+    articles: List[Dict[str, Any]],
+    portfolio_tickers: List[str],
+    active_etfs: set[str],
+    max_articles: int = 8,
+) -> List[Dict[str, Any]]:
+    """Keep ETF Analysis articles relevant to portfolio holdings or active ETFs."""
+    portfolio_set = {t.strip().upper() for t in portfolio_tickers if t}
+    if not portfolio_set:
+        return []
+
+    def _article_sort_key(article: Dict[str, Any]) -> str:
+        fetched = article.get("fetched_at") or article.get("published_at") or ""
+        return str(fetched)
+
+    matched: List[Dict[str, Any]] = []
+    seen_etfs: set[str] = set()
+
+    for article in sorted(articles, key=_article_sort_key, reverse=True):
+        raw_tickers = article.get("tickers") or []
+        if isinstance(raw_tickers, str):
+            raw_tickers = [raw_tickers]
+        art_ticker_set = {str(t).strip().upper() for t in raw_tickers if t}
+        overlap = sorted(art_ticker_set.intersection(portfolio_set))
+
+        etf_from_url = parse_etf_ticker_from_article_url(str(article.get("url") or ""))
+        url_relevant = bool(etf_from_url and etf_from_url in active_etfs)
+
+        if not overlap and not url_relevant:
+            continue
+
+        etf_ticker = etf_from_url
+        if not etf_ticker and article.get("title"):
+            title = str(article["title"])
+            if " Holdings Analysis" in title:
+                etf_ticker = title.split(" Holdings Analysis", 1)[0].strip().upper()
+
+        dedupe_key = etf_ticker or str(article.get("title") or article.get("id") or "")
+        if dedupe_key in seen_etfs:
+            continue
+        seen_etfs.add(dedupe_key)
+
+        matched.append({
+            "etf_ticker": etf_ticker,
+            "title": article.get("title"),
+            "summary": article.get("summary"),
+            "sentiment": article.get("sentiment"),
+            "matched_holdings": overlap,
+            "published_at": article.get("published_at"),
+            "fetched_at": article.get("fetched_at"),
+        })
+        if len(matched) >= max_articles:
+            break
+
+    return matched
+
+
+def _get_etf_context_for_portfolio(fund: str, days: int = 7) -> Dict[str, Any]:
+    """Fetch ETF activity summaries, notable trades, and nightly ETF Analysis articles."""
+    empty = _empty_etf_context(days)
     try:
-        # Get portfolio tickers
         positions_df = get_current_positions_flask(fund)
         if positions_df.empty:
-            return []
+            return empty
 
         ticker_col = 'ticker' if 'ticker' in positions_df.columns else 'symbol'
-        portfolio_tickers = positions_df[ticker_col].dropna().unique().tolist()
+        portfolio_tickers = [
+            str(t).strip().upper()
+            for t in positions_df[ticker_col].dropna().unique().tolist()
+            if str(t).strip()
+        ]
         if not portfolio_tickers:
-            return []
+            return empty
 
-        # Get Postgres client for Research DB
         try:
             from postgres_client import PostgresClient
+            from research_repository import ResearchRepository
+
             pc = PostgresClient()
         except Exception as e:
-            logger.warning(f"Error creating Postgres client: {e}")
-            return []
+            logger.warning(f"Error creating Postgres client for ETF context: {e}")
+            return empty
 
-        # Calculate date range
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
-        # Batch fetch: single SQL query for all tickers (vs N queries before)
-        # The function returns results sorted by date DESC and limited to 15 rows
+        changes: List[Dict[str, Any]] = []
         try:
-            # Convert tickers to uppercase for consistency
-            tickers_upper = [t.upper() for t in portfolio_tickers]
-            result = pc.execute_query("""
-                SELECT * FROM get_etf_holding_trades_batch(%s, %s::date, %s::date, %s)
-            """, (tickers_upper, start_date.isoformat(), end_date.isoformat(), 15))
-
-            if not result:
-                return []
-
-            # Convert to list of dicts
-            all_trades = []
-            for row in result:
-                all_trades.append({
-                    'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
-                    'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
-                    'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
-                    'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
-                    'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
-                    'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
-                })
-            return all_trades
+            rows = pc.execute_query(
+                """
+                SELECT date, etf_ticker, holding_ticker, share_change, percent_change,
+                       action, shares_before, shares_after
+                FROM etf_holdings_changes
+                WHERE holding_ticker = ANY(%s)
+                  AND date >= %s AND date <= %s
+                ORDER BY ABS(share_change) DESC
+                """,
+                (portfolio_tickers, start_date.isoformat(), end_date.isoformat()),
+            )
+            changes = list(rows or [])
         except Exception as e:
-            logger.warning(f"Error in batch ETF query: {e}. Falling back to per-ticker queries.")
-            # Fallback to per-ticker queries if batch function doesn't exist yet
-            return _get_etf_trades_for_portfolio_fallback(portfolio_tickers, start_date, end_date, pc)
+            logger.warning(f"Error fetching ETF holdings changes: {e}")
 
+        aggregates = aggregate_etf_changes(changes)
+        active_etfs = {row["etf_ticker"] for row in aggregates.get("etf_summary", [])}
+
+        recent_trades: List[Dict[str, Any]] = []
+        for row in changes[:50]:
+            recent_trades.append({
+                "trade_date": row.get("date"),
+                "etf_ticker": row.get("etf_ticker"),
+                "holding_ticker": row.get("holding_ticker"),
+                "trade_type": row.get("action"),
+                "shares_change": row.get("share_change"),
+                "shares_after": row.get("shares_after"),
+                "percent_change": row.get("percent_change"),
+            })
+
+        etf_articles: List[Dict[str, Any]] = []
+        try:
+            repo = ResearchRepository(postgres_client=pc)
+            raw_articles = repo.get_recent_articles(
+                limit=30,
+                days=days,
+                article_type="ETF Analysis",
+            )
+            etf_articles = _filter_etf_analysis_articles(
+                raw_articles,
+                portfolio_tickers,
+                active_etfs,
+            )
+        except Exception as e:
+            logger.warning(f"Error fetching ETF Analysis articles: {e}")
+
+        return {
+            "etf_summary": aggregates.get("etf_summary", []),
+            "ticker_summary": aggregates.get("ticker_summary", []),
+            "recent_trades": recent_trades,
+            "etf_articles": etf_articles,
+            "days": days,
+        }
     except Exception as e:
-        logger.warning(f"Error fetching ETF trades: {e}")
-        return []
+        logger.warning(f"Error fetching ETF context: {e}")
+        return empty
 
 
-def _get_etf_trades_for_portfolio_fallback(
-    portfolio_tickers: List[str],
-    start_date: date,
-    end_date: date,
-    pc: Any
-) -> List[Dict]:
-    """Fallback: fetch ETF trades one ticker at a time (for when batch function unavailable)."""
-    all_trades = []
-    for ticker in portfolio_tickers:
-        try:
-            result = pc.execute_query("""
-                SELECT * FROM get_etf_holding_trades(%s, %s::date, %s::date)
-            """, (ticker.upper(), start_date.isoformat(), end_date.isoformat()))
-
-            if result:
-                for row in result:
-                    all_trades.append({
-                        'trade_date': row[0] if isinstance(row, tuple) else row.get('trade_date'),
-                        'etf_ticker': row[1] if isinstance(row, tuple) else row.get('etf_ticker'),
-                        'holding_ticker': row[2] if isinstance(row, tuple) else row.get('holding_ticker'),
-                        'trade_type': row[3] if isinstance(row, tuple) else row.get('trade_type'),
-                        'shares_change': row[4] if isinstance(row, tuple) else row.get('shares_change'),
-                        'shares_after': row[5] if isinstance(row, tuple) else row.get('shares_after')
-                    })
-        except Exception as e:
-            logger.warning(f"Error fetching ETF trades for {ticker}: {e}")
-            continue
-
-    # Sort by date descending
-    all_trades.sort(key=lambda x: x.get('trade_date') or date.min, reverse=True)
-    return all_trades[:15]
+def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+    """Backward-compatible wrapper: returns detail trade rows from ETF context."""
+    ctx = _get_etf_context_for_portfolio(fund, days=days)
+    return ctx.get("recent_trades", [])
 
 
 @cache_data(ttl=300)
@@ -289,7 +400,7 @@ def _get_context_data_packet(user_id: str, fund: str):
     
     try:
         t0 = time.time()
-        congress_trades = _get_congress_trades_for_portfolio(fund, days=7)
+        congress_trades = _get_congress_trades_for_portfolio(fund, days=30)
         timings['congress_trades'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
         logger.warning(f"Error loading congress trades: {e}")
@@ -298,12 +409,12 @@ def _get_context_data_packet(user_id: str, fund: str):
     
     try:
         t0 = time.time()
-        etf_trades = _get_etf_trades_for_portfolio(fund, days=7)
-        timings['etf_trades'] = round((time.time() - t0) * 1000, 1)
+        etf_context = _get_etf_context_for_portfolio(fund, days=7)
+        timings['etf_context'] = round((time.time() - t0) * 1000, 1)
     except Exception as e:
-        logger.warning(f"Error loading ETF trades: {e}")
-        etf_trades = []
-        timings['etf_trades'] = 'error'
+        logger.warning(f"Error loading ETF context: {e}")
+        etf_context = _empty_etf_context(7)
+        timings['etf_context'] = 'error'
     
     timings['total_data_fetch'] = round((time.time() - total_start) * 1000, 1)
     logger.info(f"[PERF] Context data fetch timings (ms): {timings}")
@@ -317,7 +428,8 @@ def _get_context_data_packet(user_id: str, fund: str):
         'thesis_data': thesis_data,
         'insider_trades': insider_trades,
         'congress_trades': congress_trades,
-        'etf_trades': etf_trades,
+        'congress_trades_days': 30,
+        'etf_context': etf_context,
         '_timings': timings
     }
 
@@ -331,7 +443,8 @@ def _build_context_from_packet(
     include_fundamentals: bool,
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
-    include_etf_trades: bool = True
+    include_etf_trades: bool = True,
+    include_intelligence_pulse: bool = True,
 ) -> tuple:
     """Build context string from a pre-fetched data packet.
     
@@ -361,9 +474,21 @@ def _build_context_from_packet(
     thesis_data = data_packet['thesis_data']
     insider_trades = data_packet.get('insider_trades', [])
     congress_trades = data_packet.get('congress_trades', [])
-    etf_trades = data_packet.get('etf_trades', [])
+    etf_context = data_packet.get('etf_context') or _empty_etf_context()
 
     context_parts = []
+
+    if include_intelligence_pulse:
+        t0 = time.time()
+        try:
+            from ai_intelligence_pulse import build_and_format_intelligence_pulse
+
+            pulse_text = build_and_format_intelligence_pulse(fund)
+            if pulse_text:
+                context_parts.append(pulse_text)
+        except Exception as e:
+            logger.warning(f"Error building intelligence pulse: {e}")
+        format_timings['format_intelligence_pulse'] = round((time.time() - t0) * 1000, 1)
 
     if not positions_df.empty:
         t0 = time.time()
@@ -397,20 +522,21 @@ def _build_context_from_packet(
         context_parts.append(format_trades(trades_df, limit=100))
         format_timings['format_trades'] = round((time.time() - t0) * 1000, 1)
 
-    if include_insider_trades:
+    if include_insider_trades and insider_trades:
         t0 = time.time()
         context_parts.append(format_insider_trades(insider_trades, limit=50))
         format_timings['format_insider_trades'] = round((time.time() - t0) * 1000, 1)
 
-    if include_congress_trades:
+    if include_congress_trades and congress_trades:
         t0 = time.time()
-        context_parts.append(format_congress_trades(congress_trades, limit=50))
+        congress_days = int(data_packet.get('congress_trades_days') or 30)
+        context_parts.append(format_congress_trades(congress_trades, limit=50, days=congress_days))
         format_timings['format_congress_trades'] = round((time.time() - t0) * 1000, 1)
 
     if include_etf_trades:
         t0 = time.time()
-        context_parts.append(format_etf_trades(etf_trades, limit=50))
-        format_timings['format_etf_trades'] = round((time.time() - t0) * 1000, 1)
+        context_parts.append(format_etf_context(etf_context, detail_limit=50))
+        format_timings['format_etf_context'] = round((time.time() - t0) * 1000, 1)
 
     format_timings['total_format'] = round((time.time() - total_format_start) * 1000, 1)
     
@@ -427,7 +553,8 @@ def _get_preview_context_string(
     include_fundamentals: bool,
     include_insider_trades: bool = True,
     include_congress_trades: bool = True,
-    include_etf_trades: bool = True
+    include_etf_trades: bool = True,
+    include_intelligence_pulse: bool = True,
 ) -> tuple:
     """Build preview context string with market-hours-aware caching.
 
@@ -448,7 +575,7 @@ def _get_preview_context_string(
         '_get_preview_context_string',
         (user_id, fund, include_thesis, include_trades, include_price_volume,
          include_fundamentals, include_insider_trades, include_congress_trades,
-         include_etf_trades),
+         include_etf_trades, include_intelligence_pulse),
         {}
     )
 
@@ -477,7 +604,8 @@ def _get_preview_context_string(
         include_fundamentals=include_fundamentals,
         include_insider_trades=include_insider_trades,
         include_congress_trades=include_congress_trades,
-        include_etf_trades=include_etf_trades
+        include_etf_trades=include_etf_trades,
+        include_intelligence_pulse=include_intelligence_pulse,
     )
 
     # Combine all timings
@@ -489,8 +617,16 @@ def _get_preview_context_string(
 
     result = (context_string, all_timings)
 
-    # Cache with dynamic TTL based on market hours
+    # Cache with dynamic TTL based on market hours.
+    # Degraded pulse (research DB down / empty candidates) must not stick for 6h
+    # after the cash session closes — that masked Chimera empties while an older
+    # Webull cache still looked fine.
     ttl = _get_ai_context_cache_ttl()
+    if include_intelligence_pulse and (
+        "Market: (unavailable" in context_string
+        or "Top candidates (0)" in context_string
+    ):
+        ttl = min(ttl, 90)
     try:
         cache.set(cache_key, result, timeout=ttl)
         logger.debug(f"[PERF] AI context cached for {fund} with TTL={ttl}s")
@@ -700,9 +836,12 @@ def api_ai_preview_context():
         include_fund = data.get('include_fundamentals', True)
         include_thesis = data.get('include_thesis', False)
         include_trades = data.get('include_trades', False)
-        include_insider_trades = data.get('include_insider_trades', True)
-        include_congress_trades = data.get('include_congress_trades', True)
-        include_etf_trades = data.get('include_etf_trades', True)
+        include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
+        include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
+        include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
+        include_intelligence_pulse = _coerce_bool_flag(
+            data.get('include_intelligence_pulse'), True
+        )
 
         context_string, timings = _get_preview_context_string(
             user_id=user_id,
@@ -713,7 +852,8 @@ def api_ai_preview_context():
             include_fundamentals=include_fund,
             include_insider_trades=include_insider_trades,
             include_congress_trades=include_congress_trades,
-            include_etf_trades=include_etf_trades
+            include_etf_trades=include_etf_trades,
+            include_intelligence_pulse=include_intelligence_pulse,
         )
         # #region agent log
         _debug_log_preview("ai_routes:api_ai_preview_context:after_build", "context_string result", {"type": type(context_string).__name__ if context_string is not None else "NoneType", "len": len(context_string) if context_string is not None else None, "hypothesisId": "A"})
@@ -772,6 +912,11 @@ def api_ai_models():
             "details": errors,
         }), 503
 
+    model_ids = [m["id"] for m in formatted_models if m.get("id")]
+    if default_model and model_ids and default_model not in model_ids:
+        from model_registry import resolve_ai_model_preference
+        default_model = resolve_ai_model_preference(default_model, model_ids)
+
     payload: dict[str, object] = {
         "models": formatted_models,
         "default_model": default_model,
@@ -804,9 +949,12 @@ def api_ai_context_build():
 
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
-        include_insider_trades = data.get('include_insider_trades', True)
-        include_congress_trades = data.get('include_congress_trades', True)
-        include_etf_trades = data.get('include_etf_trades', True)
+        include_insider_trades = _coerce_bool_flag(data.get('include_insider_trades'), True)
+        include_congress_trades = _coerce_bool_flag(data.get('include_congress_trades'), True)
+        include_etf_trades = _coerce_bool_flag(data.get('include_etf_trades'), True)
+        include_intelligence_pulse = _coerce_bool_flag(
+            data.get('include_intelligence_pulse'), True
+        )
 
         context_string, _format_timings = _build_context_from_packet(
             fund=fund,
@@ -817,7 +965,8 @@ def api_ai_context_build():
             include_fundamentals=include_fund,
             include_insider_trades=include_insider_trades,
             include_congress_trades=include_congress_trades,
-            include_etf_trades=include_etf_trades
+            include_etf_trades=include_etf_trades,
+            include_intelligence_pulse=include_intelligence_pulse,
         )
         context_parts = context_string.split("\n\n---\n\n") if context_string else []
         
@@ -1019,6 +1168,102 @@ def api_ai_portfolio_intelligence():
     except Exception as e:
         logger.error(f"Error checking portfolio news: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@ai_bp.route('/api/v2/ai/chat/session', methods=['GET'])
+@require_auth
+def api_ai_chat_session():
+    """Load persisted AI Assistant transcript for the current user + fund."""
+    try:
+        from ai_assistant_session import load_chat
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        fund = (request.args.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            # Fall through — service still scopes by user_id.
+            pass
+        data = load_chat(user_id, fund)
+        return jsonify({"ok": True, **data})
+    except Exception as e:
+        logger.error("api_ai_chat_session failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@ai_bp.route('/api/v2/ai/chat/append', methods=['POST'])
+@require_auth
+def api_ai_chat_append():
+    """Append completed turns (or replace with a capped full list) for user+fund."""
+    try:
+        from ai_assistant_session import append_turns, replace_messages
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        data = request.get_json(silent=True) or {}
+        fund = str(data.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            pass
+        model = data.get("model")
+        # Prefer append of new turns; accept full messages[] replace from client.
+        if isinstance(data.get("turns"), list) and data.get("turns"):
+            out = append_turns(user_id, fund, data["turns"], model=model)
+        elif isinstance(data.get("messages"), list):
+            out = replace_messages(user_id, fund, data["messages"], model=model)
+        else:
+            return jsonify({"error": "turns or messages required"}), 400
+        return jsonify({"ok": True, **out})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_ai_chat_append failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@ai_bp.route('/api/v2/ai/chat/clear', methods=['POST'])
+@require_auth
+def api_ai_chat_clear():
+    """Clear persisted transcript for user+fund and reset WebAI disk session."""
+    try:
+        from ai_assistant_session import clear_chat, reset_webai_session
+
+        user_id = get_user_id_flask()
+        if not user_id:
+            return jsonify({"error": "User not authenticated"}), 401
+        data = request.get_json(silent=True) or {}
+        fund = str(data.get("fund") or request.args.get("fund") or "").strip()
+        if not fund:
+            return jsonify({"error": "fund is required"}), 400
+        try:
+            from ai_assistant_clients import user_can_access_fund
+
+            if not user_can_access_fund(fund):
+                return jsonify({"error": "Fund not accessible"}), 403
+        except Exception:
+            pass
+        clear_chat(user_id, fund)
+        reset_webai_session(user_id)
+        return jsonify({"ok": True, "fund": fund, "messages": []})
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.error("api_ai_chat_clear failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @ai_bp.route('/api/v2/ai/chat', methods=['POST'])
 @require_auth

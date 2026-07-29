@@ -137,7 +137,9 @@ def market_research_job() -> None:
             message = "SearXNG is not available - skipping research job"
             log_job_step(job_id, "searxng_check", message, status="skipped")
             logger.info(f"ℹ️ {message}")
-            _finalize_failure(message)
+            # Intentional skip (usually test/config), not an execution failure.
+            # Matches alpha_research / opportunity_discovery / ticker_research.
+            _finalize_success(message)
             return
         log_job_step(job_id, "searxng_check", "SearXNG is healthy", status="success")
         
@@ -314,6 +316,10 @@ def rss_feed_ingest_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('rss_feed_ingest', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Get clients
@@ -332,12 +338,20 @@ def rss_feed_ingest_job() -> None:
             message = f"Error fetching RSS feeds from database: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('rss_feed_ingest', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         if not feeds_result:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No enabled RSS feeds found"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            try:
+                mark_job_completed('rss_feed_ingest', target_date, None, [], duration_ms=duration_ms, message=message)
+            except Exception:
+                pass
             logger.info(f"ℹ️ {message}")
             return
         
@@ -507,6 +521,7 @@ def ticker_research_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            mark_job_failed('ticker_research', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Check SearXNG health
@@ -514,6 +529,7 @@ def ticker_research_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "SearXNG is not available - skipping ticker research"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
             
@@ -526,6 +542,7 @@ def ticker_research_job() -> None:
             message = "SearXNG client not initialized"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            mark_job_failed('ticker_research', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Load domain blacklist
@@ -545,6 +562,7 @@ def ticker_research_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No production funds found"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
             
@@ -565,6 +583,7 @@ def ticker_research_job() -> None:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "No active positions found in production funds"
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed('ticker_research', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"ℹ️ {message}")
             return
         
@@ -832,6 +851,10 @@ def archive_retry_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('archive_retry', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Get clients
@@ -1088,6 +1111,10 @@ def process_research_reports_job() -> None:
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('process_research_reports', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Initialize clients

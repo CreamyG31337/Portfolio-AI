@@ -237,6 +237,6 @@ def newsletter_ai_processing_job() -> None:
         log_job_execution(job_id, success=False, message=str(e), duration_ms=duration_ms)
         try:
             from utils.job_tracking import mark_job_failed
-            mark_job_failed(job_id, target_date, message=str(e), duration_ms=duration_ms)
+            mark_job_failed(job_id, target_date, None, str(e), duration_ms=duration_ms)
         except Exception:
             pass

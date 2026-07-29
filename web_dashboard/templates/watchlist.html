@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Watchlist - Portfolio Dashboard{% endblock %}
+{% block page_title %}Watchlist{% endblock %}
+{% block page_subtitle %}Manage fund-scoped watched tickers{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+    <p class="text-sm text-text-secondary">
+        Add friend tips or names here. The scheduled ticker-analysis job may pick up active
+        watchlist names later (after holdings / manual requests; skips recently analyzed).
+        Use <strong>Analyze</strong> to jump the ASAP queue. When done, open the ticker dossier —
+        full write-up lives on <code class="text-xs">/ticker?ticker=…</code> under AI Analysis.
+    </p>
+
+    <section class="bg-dashboard-surface border border-border rounded-lg p-4">
+        <h2 class="text-lg font-semibold text-text-primary mb-2">Add ticker</h2>
+        <p class="text-xs text-text-secondary mb-3">
+            Fund: <span id="watchlist-fund-label" class="font-semibold">—</span>
+            · search by ticker or company name, Enter to search
+        </p>
+        <div class="relative w-full md:w-1/2 mb-3">
+            <div class="relative">
+                <input type="text" id="watchlist-search-input"
+                    inputmode="text"
+                    autocomplete="off"
+                    placeholder="Search by ticker or company name..."
+                    class="w-full px-4 py-2 pr-10 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary text-sm">
+                <div id="watchlist-search-spinner" class="hidden absolute right-3 top-1/2 -translate-y-1/2">
+                    <div class="animate-spin h-5 w-5 border-2 border-accent border-t-transparent rounded-full"></div>
+                </div>
+            </div>
+            <p class="text-xs text-text-secondary mt-1">Press Enter to search · select a row to add</p>
+            <div id="watchlist-search-results"
+                class="hidden absolute z-50 w-full mt-1 max-h-80 overflow-y-auto bg-dashboard-surface border border-border rounded-lg shadow-lg">
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+            <label class="text-sm text-text-secondary flex items-center gap-2">
+                Tier
+                <select id="watchlist-add-tier"
+                    class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
+                    <option value="A">A</option>
+                    <option value="B" selected>B</option>
+                    <option value="C">C</option>
+                </select>
+            </label>
+            <label class="text-sm text-text-secondary flex items-center gap-2">
+                <input id="watchlist-show-inactive" type="checkbox" class="rounded border-border" />
+                Show inactive
+            </label>
+        </div>
+        <p id="watchlist-add-msg" class="text-sm mt-2 hidden"></p>
+    </section>
+
+    <section class="bg-dashboard-surface border border-border rounded-lg p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h2 class="text-lg font-semibold text-text-primary">
+                Active watchlist
+                <span id="watchlist-count" class="text-sm font-normal text-text-secondary"></span>
+            </h2>
+            <button id="watchlist-analyze-all" type="button" class="btn-outline">
+                Analyze all active
+            </button>
+        </div>
+        <div id="watchlist-loading" class="text-sm text-text-secondary">Loading…</div>
+        <div id="watchlist-error" class="hidden text-sm text-theme-error-text mb-2"></div>
+        <div id="watchlist-empty" class="hidden text-sm text-text-secondary">
+            No tickers yet. Search above or open a ticker page to add one.
+        </div>
+        <div id="watchlist-table-wrap" class="hidden overflow-x-auto">
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border text-left text-text-secondary">
+                        <th class="py-2 pr-3">Ticker</th>
+                        <th class="py-2 pr-3">Tier</th>
+                        <th class="py-2 pr-3">AI analysis</th>
+                        <th class="py-2 pr-3">Meta</th>
+                        <th class="py-2 pr-3">Preview</th>
+                        <th class="py-2 pr-3">Watch</th>
+                        <th class="py-2 pr-3">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="watchlist-tbody"></tbody>
+            </table>
+        </div>
+        <p id="watchlist-analyze-msg" class="text-sm mt-2 hidden"></p>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/watchlist.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

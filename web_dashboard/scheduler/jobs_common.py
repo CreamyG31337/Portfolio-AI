@@ -124,17 +124,30 @@ def has_strong_market_signal(
 # Alpha Hunter helpers (pure, testable)
 # --------------------------------------------------------------------------- #
 
-# Low-value SearXNG result patterns, as (reason_label, compiled_regex) pairs.
+# Low-value SearXNG result patterns, as (reason_label, title_regex, url_regex|None).
 #
-# The reason_label is logged in the `low_value` job step (see the alpha worker)
-# so we can audit WHICH rule dropped a result and tune these later if they are
-# too aggressive (eating real articles) or not aggressive enough (junk slips
-# through). Patterns are matched against the result TITLE only.
+# The reason_label is logged in the `low_value` job step (see the alpha worker) so we
+# can audit WHICH rule dropped a result and tune it later if it is too aggressive
+# (eating real articles) or not aggressive enough (junk slips through).
+#
+# Patterns are matched against the result TITLE, and -- for rules carrying a
+# url_regex -- against the URL as well. BOTH must match for those. This is the only
+# information available at this stage: sentiment, conclusion and claims do not exist
+# until after extraction and summarization.
+#
+# Rules live in web_dashboard/ideas_quality.py, shared with the inbox cleanup script
+# and the ranking SQL so all three tune in one place.
 #
 # IMPORTANT - tuning guidance:
 #   * Keep patterns NARROW and anchored. A false positive silently drops a real
 #     article before it is ever extracted, and we only see it as a `low_value`
 #     skip in the logs.
+#   * Add a url_regex whenever the title text could plausibly appear in genuine
+#     analysis ("X's dividend history suggests...", "...Event Calendar shows...").
+#   * Some rules are deliberately NOT applied here at all (price_targets_page,
+#     insider_activity_page). Their titles match real Benzinga upgrade notes and
+#     cluster-buy stories; they are only safe once sentiment exists, so they are
+#     demote-only. See the Sinda case in ideas_quality.
 #   * The "listing_index" rule is anchored to a leading "Latest" because genuine
 #     analysis pieces almost never start with that word, whereas auto-generated
 #     index/aggregator pages do (e.g. Benzinga
@@ -143,16 +156,40 @@ def has_strong_market_signal(
 #   * The "quote_overview"/"price_history"/"ticker_price" rules catch
 #     auto-generated quote pages (e.g. stockanalysis.com
 #     "INVA Stock Price & Overview", "AAPL stock quote").
-_LOW_VALUE_ALPHA_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
-    ("quote_overview", re.compile(r"stock\s+price\s*&\s*overview", re.IGNORECASE)),
-    ("quote_overview", re.compile(r"\bstock\s+quote\b", re.IGNORECASE)),
-    ("price_history", re.compile(r"stock\s+price\s+history", re.IGNORECASE)),
-    ("ticker_price", re.compile(r"\([A-Z]{1,5}\)\s+stock\s+price\b", re.IGNORECASE)),
-    (
-        "listing_index",
-        re.compile(r"^\s*latest\b.*\b(?:news|articles?|analysis)\b", re.IGNORECASE),
-    ),
-)
+def _build_low_value_patterns() -> tuple[tuple[str, "re.Pattern[str]", "re.Pattern[str] | None"], ...]:
+    """Compile the pre-extraction subset of the shared rule table.
+
+    Only rules flagged ``prefilter`` are used here. The rest are demote-only: they
+    need the sentiment field to be safe, and sentiment does not exist until after the
+    article has been extracted and summarized. See ``ideas_quality`` for the Sinda
+    case that motivated the split.
+    """
+    from ideas_quality import (
+        LISTING_INDEX_RULE,
+        PREFILTER_RULES,
+        python_pattern,
+    )
+
+    built: list[tuple[str, "re.Pattern[str]", "re.Pattern[str] | None"]] = []
+    for rule in PREFILTER_RULES:
+        built.append(
+            (
+                rule.reason,
+                re.compile(python_pattern(rule), re.IGNORECASE),
+                re.compile(rule.url, re.IGNORECASE) if rule.url else None,
+            )
+        )
+    # Anchored to the start of the title, so it cannot share the generic builder.
+    built.append(
+        ("listing_index", re.compile(rf"^\s*{LISTING_INDEX_RULE.core}", re.IGNORECASE), None)
+    )
+    built.append(
+        ("ticker_price", re.compile(r"\([A-Z]{1,5}\)\s+stock\s+price\b", re.IGNORECASE), None)
+    )
+    return tuple(built)
+
+
+_LOW_VALUE_ALPHA_PATTERNS = _build_low_value_patterns()
 
 
 def select_alpha_queries(
@@ -209,18 +246,35 @@ def low_value_alpha_reason(title: str, url: str = "") -> Optional[str]:
     Cheap pre-extraction guard that skips pages which waste FlareSolverr/Ollama
     budget: auto-generated quote/overview/price pages and index/listing/
     aggregator pages ("Latest ... News/Articles/Analysis") that are not real
-    analysis. Matches against ``title`` only (see ``_LOW_VALUE_ALPHA_PATTERNS``).
+    analysis. Rules come from :mod:`ideas_quality` (shared with the inbox cleanup and
+    ranking so there is one place to tune them).
 
-    The returned label (e.g. ``"listing_index"``, ``"quote_overview"``) is logged
-    by the caller so we can audit and tune the patterns. ``url`` is accepted for
-    signature stability / future use but is not currently matched.
+    Matching is against ``title``, and additionally against ``url`` for rules whose
+    title text is ambiguous on its own -- "Dividend History" appears in real analysis
+    ("X's dividend history suggests..."), so it only counts as boilerplate when the
+    URL also looks like a generated ``/dividend`` page. Both must match.
+
+    Only rules marked ``prefilter`` are applied here. Rules that need the sentiment
+    field to be safe (``price_targets_page``, ``insider_activity_page``) are
+    deliberately excluded: sentiment does not exist before extraction, and dropping
+    on those titles alone would silently discard real articles -- see the Sinda case
+    documented in :mod:`ideas_quality`.
+
+    The returned label (e.g. ``"listing_index"``, ``"quote_overview"``) is logged by
+    the caller so drops can be audited and the patterns tuned.
     """
     text = (title or "").strip()
     if not text:
         return None
-    for reason, pat in _LOW_VALUE_ALPHA_PATTERNS:
-        if pat.search(text):
-            return reason
+    url_text = (url or "").strip()
+    for reason, pat, url_pat in _LOW_VALUE_ALPHA_PATTERNS:
+        if not pat.search(text):
+            continue
+        if url_pat is not None and not url_pat.search(url_text):
+            # Title looked like boilerplate but the URL does not corroborate it.
+            # Keep the article: a false negative here is a silent data loss.
+            continue
+        return reason
     return None
 
 

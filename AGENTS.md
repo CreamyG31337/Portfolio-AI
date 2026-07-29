@@ -12,6 +12,8 @@
 
 ## Environment Setup
 
+- **Repo path (local, not OneDrive):** `C:\Projects\LLM-Micro-Cap-trading-bot`
+- **Migrate from OneDrive:** `.\scripts\migrate_off_onedrive.ps1 -SetupDeps`
 - **Always activate venv first**: `.\venv\Scripts\activate`
 - **Use TEST fund for development**: `trading_data/funds/TEST` (NOT `trading_data/funds/Project Chimera` — that's production)
 - Copy CSVs from Project Chimera → TEST anytime for testing
@@ -61,6 +63,7 @@ Run the right test suite based on what you're changing (both suites use the root
 - **Package manager is pnpm** (not npm). Lockfiles `pnpm-lock.yaml` committed at repo root AND `web_dashboard/` (two Node projects). CI/Docker use `pnpm install --frozen-lockfile`. See `docs/frontend_dependencies.md`.
 - Build: `pnpm run build:ts` (TS), `pnpm run build:css` (Tailwind), `pnpm run build` (both), `pnpm run watch:css` (watch)
 - **Use Tailwind CSS** (v4) for all styling. **Use Flowbite** (v4) for UI components (modals, dropdowns, drawers, etc.)
+- **Buttons:** use shared classes from `web_dashboard/static/css/input.css` — `btn-outline` (default) or `btn-outline-sm` (dense). Avoid solid `bg-accent text-white` fills for page actions (harsh in both themes). Secondary/cancel: muted `border border-border`. Settings page is the reference.
 - **Use Font Awesome** (v6) for icons (`fas fa-...`)
 - Page-specific: AG Grid (complex tables), Plotly (interactive charts), Chart.js (simple charts), Marked + DOMPurify (markdown)
 - Only write custom CSS for: webkit scrollbars, complex keyframe animations, CSS variables for theming, third-party overrides (AG Grid, Plotly dark mode). Document why Tailwind can't be used.
@@ -103,6 +106,8 @@ Run the right test suite based on what you're changing (both suites use the root
 ## Meta Analysis (market → sector → ticker)
 
 - **North star:** human-in-the-loop buy/sell *ideas* from layered evidence (not auto-trading). Phased — see `docs/meta_analysis_roadmap.md`
+- **Human theses:** Insights (`/insights`, Research `ticker_theses`) — see `docs/INSIGHTS.md` (Decide-layer job map: meta vs thesis eval vs queue review). Do not confuse with Sector Insights (`/sector_insights`) or fund `fund_thesis`.
+- **Watchlist:** `/watchlist` + ticker Add/Remove write `watched_tickers_v2` (service role after fund ACL). Ideas Accept adds discovery tickers only — do not stuff friend tips into Ideas.
 - Pipeline: `etf_watchtower → etf_holdings_log (Research)` → `etf_group_analysis → research_articles` → `sector_meta_analysis → /sector_insights` → `ticker_meta_analysis`
 - **Do not** read Supabase `etf_holdings_log` (dropped May 2026 — holdings live in Research DB)
 - Catch-up after outage: `python web_dashboard/scripts/backfill_etf_sector_meta.py` — see `docs/ETF_SECTOR_META_OPS.md`
@@ -111,7 +116,7 @@ Run the right test suite based on what you're changing (both suites use the root
 ## Database Schema
 
 - **Source of truth:** SQL files at `database/schema/supabase/` and `database/schema/research/` (`_init_schema.sql` ties each together). `database/archive/` is historical context only.
-- Docs (markdown + JSON) at `docs/database/` — Supabase prod (29 tables) and Research/AI DB (13 tables)
+- Docs (markdown + JSON) at `docs/database/` — Supabase prod (~40 tables) and Research/AI DB (~30 tables, includes Insights `ticker_theses` / `thesis_entries` / `thesis_evidence`). Regenerate after DB changes.
 - Generate docs: `.\web_dashboard\venv\Scripts\python.exe scripts\generate_schema_docs.py`
 - Export SQL: `.\web_dashboard\venv\Scripts\python.exe scripts\export_clean_schema.py` — **always run after production DB changes**
 
@@ -128,13 +133,15 @@ cp .env.test.template .env
 
 ## Mandrel MCP Server (Persistent AI Memory)
 
+Shared memory across agents/sessions (not a code graph — use Graphify for that).
+
 - Runs on Ubuntu server, MCP HTTP Bridge at port **8082** (not 8081 = direct REST API)
 - Configure URL in `mcps/mandrel/SERVER_METADATA.json` (gitignored; copy from `.example`)
-- **Start every session**: `mandrel_ping` → `project_current` → `context_get_recent` → `task_list`
-- **During work**: `context_store` for learnings/decisions, `task_update` for progress
-- **End session**: `context_store` (type `completion`), update task statuses
+- **Session start (light)**: `project_current` once if unsure of project; `context_get_recent` or `task_list` only when continuing prior work
+- **Before repeating known pain**: `context_search` (semantic) — older bug/architecture notes live here, not in `context_get_recent`
+- **During / end of work**: `context_store` handoffs agents can pick up; `task_create` / `task_update` for multi-agent coordination; `decision_record` for durable architecture choices
 - `context_store` type must be one of: code, decision, error, discussion, planning, completion, reflections, handoff (NOTE: `milestone` is documented but rejected by the DB constraint — use `completion`)
-- Call `mandrel_help` to discover all tools
+- Prefer targeted search/store over dumping `mandrel_help` every session
 
 ## Supabase MCP Server
 
@@ -142,6 +149,15 @@ cp .env.test.template .env
 - Use for: schema queries, SQL execution (`execute_sql`), migrations (`apply_migration`), TS type generation, logs (`get_logs`), advisors (`get_advisors`)
 - Workflow: `list_tables` → `execute_sql` / `apply_migration` for DB work
 - **Never use for production data access** — development/test projects only. Does NOT expose Storage admin tools.
+
+## Graphify (code graph MCP)
+
+- **MCP reads from a fixed path outside OneDrive** — never point MCP at `graphify-out/` inside the synced repo (OneDrive conflicts + agents overwrite it).
+- Install path: `%USERPROFILE%\graphify\LLM-Micro-Cap-trading-bot\graph.json`
+- Build locally: `graphify update .` (writes to repo `graphify-out/` only)
+- **Share between PCs:** `.\scripts\graphify_export.ps1` → transfer zip (USB/email) → `.\scripts\graphify_import.ps1 -ZipPath ...`
+- **Do NOT** run `graphify extract` on the receiving PC unless explicitly rebuilding the graph.
+- Check: `.\scripts\graphify_status.ps1`
 
 ## Test Accounts
 

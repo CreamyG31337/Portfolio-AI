@@ -14,19 +14,107 @@ from track_record_service import build_track_record_summary
 logger = logging.getLogger(__name__)
 
 
-def get_retro_digest_recipients() -> list[str]:
-    """Admin/owner list from RETRO_DIGEST_RECIPIENTS (comma-separated emails)."""
-    raw = (os.getenv("RETRO_DIGEST_RECIPIENTS") or "").strip()
-    if not raw:
+def _configured_recipient_accounts() -> list[str]:
+    raw = (os.getenv("RETRO_DIGEST_RECIPIENT_ACCOUNTS") or "").strip()
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
+
+def _emails_for_accounts(
+    account_names: list[str],
+    *,
+    supabase_client: Any | None = None,
+) -> list[str]:
+    """Resolve exact, case-insensitive full names to profile emails.
+
+    Ambiguous names are skipped rather than emailing multiple accounts.
+    """
+    if not account_names:
         return []
-    return [e.strip() for e in raw.split(",") if e.strip() and "@" in e]
+    try:
+        if supabase_client is None:
+            from supabase_client import SupabaseClient
+
+            supabase_client = SupabaseClient(use_service_role=True)
+    except Exception as exc:
+        logger.warning("retro digest account lookup unavailable: %s", exc)
+        return []
+
+    emails: list[str] = []
+    for account_name in account_names:
+        try:
+            result = (
+                supabase_client.supabase.table("user_profiles")
+                .select("email,full_name")
+                .ilike("full_name", account_name)
+                .limit(2)
+                .execute()
+            )
+            rows = [
+                row
+                for row in (result.data or [])
+                if str(row.get("full_name") or "").strip().casefold()
+                == account_name.casefold()
+            ]
+            if len(rows) != 1:
+                logger.warning(
+                    "retro digest account '%s' resolved to %d profiles; skipping",
+                    account_name,
+                    len(rows),
+                )
+                continue
+            email = str(rows[0].get("email") or "").strip()
+            if "@" in email:
+                emails.append(email)
+        except Exception as exc:
+            logger.warning(
+                "retro digest account lookup failed for '%s': %s",
+                account_name,
+                exc,
+            )
+    return emails
 
 
-def retro_digest_enabled() -> bool:
+def get_retro_digest_recipients(
+    *,
+    supabase_client: Any | None = None,
+) -> list[str]:
+    """Resolve recipients from direct emails and/or dashboard account names.
+
+    ``RETRO_DIGEST_RECIPIENTS`` remains supported for direct comma-separated
+    emails. ``RETRO_DIGEST_RECIPIENT_ACCOUNTS`` resolves comma-separated
+    ``user_profiles.full_name`` values to their current profile email.
+    """
+    raw = (os.getenv("RETRO_DIGEST_RECIPIENTS") or "").strip()
+    direct = [e.strip() for e in raw.split(",") if e.strip() and "@" in e]
+    accounts = _configured_recipient_accounts()
+    resolved = _emails_for_accounts(accounts, supabase_client=supabase_client)
+
+    # Preserve configuration order while avoiding case-insensitive duplicate sends.
+    seen = set()
+    deduped = []
+    for email in [*direct, *resolved]:
+        lower = email.casefold()
+        if lower not in seen:
+            seen.add(lower)
+            deduped.append(email)
+
+    return deduped
+
+
+def retro_digest_enabled(
+    *,
+    supabase_client: Any | None = None,
+    recipients: list[str] | None = None,
+) -> bool:
     raw = (os.getenv("RETRO_DIGEST_ENABLED") or "").strip().lower()
     if raw in {"0", "false", "no", "off"}:
         return False
-    if not get_retro_digest_recipients():
+    recipient_list = (
+        recipients
+        if recipients is not None
+        else get_retro_digest_recipients(supabase_client=supabase_client)
+    )
+    if not recipient_list:
         return False
     try:
         from mailgun_outbound import get_mailgun_outbound_params
@@ -160,7 +248,8 @@ def build_weekly_retro_digest_html(
     parts.append(
         "<hr><p style=\"color:#666;font-size:12px;\">"
         "System self-review digest — not investment advice. "
-        "Disable: unset RETRO_DIGEST_RECIPIENTS or set RETRO_DIGEST_ENABLED=false."
+        "Disable: unset RETRO_DIGEST_RECIPIENTS and RETRO_DIGEST_RECIPIENT_ACCOUNTS, "
+        "or set RETRO_DIGEST_ENABLED=false."
         "</p></body></html>"
     )
     return "".join(parts)
@@ -172,13 +261,13 @@ def send_weekly_retro_digest(
     flip_days: int = 7,
     horizon_days: int = 30,
 ) -> dict[str, Any]:
-    """Build and send the retro digest to RETRO_DIGEST_RECIPIENTS. No-op when disabled."""
-    if not retro_digest_enabled():
+    """Build and send the retro digest to configured recipients. No-op when disabled."""
+    recipients = get_retro_digest_recipients()
+    if not recipients or not retro_digest_enabled(recipients=recipients):
         return {"sent": 0, "skipped": True, "reason": "retro_digest_disabled"}
 
     from mailgun_outbound import send_mailgun_message
 
-    recipients = get_retro_digest_recipients()
     pg = postgres or PostgresClient()
     body = build_weekly_retro_digest_html(pg, flip_days=flip_days, horizon_days=horizon_days)
     subject = f"Weekly stance retro — {datetime.now(UTC).strftime('%Y-%m-%d')}"

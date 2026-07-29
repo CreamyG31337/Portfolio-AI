@@ -25,17 +25,10 @@ from env_loader import load_project_dotenv
 load_project_dotenv()
 
 # Allowlist: order = rough preference for UI; only ids also returned by GET /models are shown.
-# GLM-5.x / 4.6 availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
-GLM_ALLOWED: List[str] = [
-    "glm-5.2",
-    "glm-5.1",
-    "glm-5-turbo",
-    "glm-5",
-    "glm-4.7",
-    "glm-4.6",
-    "glm-4.5",
-    "glm-4.5-air",
-]
+# GLM-5.x / 4.5-air availability depends on Z.AI plan; keys that recently lacked 5.x may need cache refresh.
+from model_registry import SUPPORTED_GLM_MODELS
+
+GLM_ALLOWED: List[str] = list(SUPPORTED_GLM_MODELS)
 # Static list when API is unavailable
 GLM_MODELS: List[str] = ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.5-air"]
 

@@ -9,10 +9,14 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from market_regime_normalization import invalid_regime_enum_fields, merge_regime_for_storage
+from market_regime_normalization import (
+    invalid_regime_enum_fields,
+    merge_regime_for_storage,
+    normalize_market_regime,
+)
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
-from settings import get_summarizing_model
+from settings import get_summarizing_model, is_meta_analysis_trend_memory_enabled
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 
@@ -20,10 +24,81 @@ logger = logging.getLogger(__name__)
 
 # Subset aligned with benchmark_refresh_job (indices first for macro tone)
 BRIEF_BENCHMARK_TICKERS = ["^GSPC", "QQQ", "^RUT", "VTI"]
+_REGIME_HISTORY_LIMIT = 10
 
 
 def _ny_today() -> date:
     return datetime.now(ZoneInfo("America/New_York")).date()
+
+
+def _parse_regime_json(raw: Any) -> dict[str, Any] | None:
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def fetch_recent_regime_history(
+    postgres: PostgresClient,
+    *,
+    before_date: date,
+    limit: int = _REGIME_HISTORY_LIMIT,
+) -> list[dict[str, Any]]:
+    """Prior market_daily_brief rows (newest first), excluding ``before_date``."""
+    if limit < 1:
+        return []
+    try:
+        rows = postgres.execute_query(
+            """
+            SELECT brief_date, regime_json
+            FROM market_daily_brief
+            WHERE brief_date < %s
+            ORDER BY brief_date DESC
+            LIMIT %s
+            """,
+            (before_date, limit),
+        )
+    except Exception as exc:
+        logger.warning("fetch_recent_regime_history failed: %s", exc)
+        return []
+
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        bday = row.get("brief_date")
+        regime_raw = _parse_regime_json(row.get("regime_json"))
+        canon = normalize_market_regime(regime_raw, brief_date=bday)
+        out.append({"brief_date": bday, "regime": canon})
+    return out
+
+
+def format_regime_history_block(rows: list[dict[str, Any]]) -> str:
+    """Markdown block: oldest → newest. Empty input → ``\"\"``."""
+    if not rows:
+        return ""
+    # Caller may pass newest-first; render chronological for the LLM.
+    chronological = list(reversed(rows))
+    n = len(chronological)
+    lines = [f"### Regime - last {n} sessions (oldest to newest)"]
+    for item in chronological:
+        bday = item.get("brief_date")
+        regime = item.get("regime") if isinstance(item.get("regime"), dict) else {}
+        conf = regime.get("regime_confidence")
+        try:
+            conf_s = f"{float(conf):.2f}" if conf is not None else "—"
+        except (TypeError, ValueError):
+            conf_s = "—"
+        lines.append(
+            f"- {bday}: {regime.get('risk_regime', 'NEUTRAL')} | "
+            f"{regime.get('breadth_proxy', 'UNCLEAR')} | "
+            f"{regime.get('volatility_state', 'UNKNOWN')} | "
+            f"confidence={conf_s}"
+        )
+    return "\n".join(lines)
 
 
 def fetch_benchmark_snapshot(supabase: SupabaseClient) -> tuple[str, dict[str, Any]]:
@@ -95,7 +170,17 @@ def run_market_daily_brief(
 
     from ai_prompts import MARKET_DAILY_BRIEF_PROMPT
 
-    prompt = MARKET_DAILY_BRIEF_PROMPT.format(benchmark_stats=stats_text)
+    history_text = ""
+    if is_meta_analysis_trend_memory_enabled():
+        history_rows = fetch_recent_regime_history(
+            postgres, before_date=bdate, limit=_REGIME_HISTORY_LIMIT
+        )
+        history_text = format_regime_history_block(history_rows)
+
+    prompt = MARKET_DAILY_BRIEF_PROMPT.format(
+        benchmark_stats=stats_text,
+        regime_history=history_text or "(none)",
+    )
     model = (model_override or "").strip() or get_summarizing_model("market_brief")
     system_prompt = (
         "You are a macro commentator. Return ONLY valid JSON matching the headline, narrative, "

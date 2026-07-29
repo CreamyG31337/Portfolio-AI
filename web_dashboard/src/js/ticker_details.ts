@@ -1,8 +1,10 @@
 export { }; // Ensure file is treated as a module
 
-// ticker_autocomplete import removed -- ticker details now uses search-on-Enter via /api/v2/ticker/search
+// Ticker search via shared setupTickerSearch (/api/v2/ticker/search)
 import { getCsrfHeaders } from './csrf.js';
 import { showToast as showToastBase } from './toast.js';
+import { setupTickerSearch } from './ticker_search.js';
+import { sentimentBadgeClasses } from './sentiment_badges.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -134,9 +136,12 @@ interface EtfHoldingTrade {
 }
 
 interface WatchlistStatus {
+    fund?: string | null;
+    ticker?: string;
     is_active?: boolean;
     priority_tier?: string;
-    source?: string;
+    source?: string | null;
+    in_watchlist?: boolean;
 }
 
 interface TickerAnalysis {
@@ -493,7 +498,24 @@ document.addEventListener('DOMContentLoaded', function (): void {
     }
 
     // Set up ticker search (Enter to search by company name or symbol)
-    setupTickerSearch();
+    const searchInput = document.getElementById('ticker-search-input') as HTMLInputElement | null;
+    if (searchInput && tickerParam) {
+        searchInput.value = tickerParam.toUpperCase();
+    }
+    setupTickerSearch({
+        inputId: 'ticker-search-input',
+        resultsId: 'ticker-search-results',
+        spinnerId: 'ticker-search-spinner',
+        appendFundParam,
+        clearInputOnSelect: false,
+        onSelect: (symbol) => {
+            const url = new URL(window.location.href);
+            url.searchParams.set('ticker', symbol);
+            window.history.pushState({}, '', url);
+            currentTicker = symbol;
+            loadTickerData(symbol);
+        },
+    });
 
     // Set up chart controls
     const checkbox = document.getElementById('solid-lines-checkbox') as HTMLInputElement | null;
@@ -563,214 +585,6 @@ document.addEventListener('DOMContentLoaded', function (): void {
         }
     });
 });
-
-// Search result interface
-interface TickerSearchResult {
-    symbol: string;
-    name: string;
-    exchange: string;
-    type: string;
-}
-
-interface TickerSearchResponse {
-    results: TickerSearchResult[];
-    exact_match: boolean;
-    error?: string;
-}
-
-// Set up ticker search with Enter-to-search (company name or symbol via yfinance)
-function setupTickerSearch(): void {
-    const input = document.getElementById('ticker-search-input') as HTMLInputElement | null;
-    const resultsPanel = document.getElementById('ticker-search-results') as HTMLDivElement | null;
-    const spinner = document.getElementById('ticker-search-spinner') as HTMLDivElement | null;
-
-    if (!input || !resultsPanel) {
-        console.error('Ticker search: could not find input or results panel');
-        return;
-    }
-
-    // Set initial value from URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const tickerParam = urlParams.get('ticker');
-    if (tickerParam) {
-        input.value = tickerParam.toUpperCase();
-    }
-
-    // Select a ticker from search results
-    function selectTicker(symbol: string): void {
-        input!.value = symbol;
-        hideResults();
-
-        // Update URL without reload
-        const url = new URL(window.location.href);
-        url.searchParams.set('ticker', symbol);
-        window.history.pushState({}, '', url);
-
-        currentTicker = symbol;
-        loadTickerData(symbol);
-    }
-
-    function hideResults(): void {
-        resultsPanel!.classList.add('hidden');
-        resultsPanel!.innerHTML = '';
-    }
-
-    function showResults(results: TickerSearchResult[]): void {
-        resultsPanel!.innerHTML = '';
-
-        if (results.length === 0) {
-            const noResults = document.createElement('div');
-            noResults.className = 'px-4 py-3 text-text-secondary text-sm';
-            noResults.textContent = 'No results found. Try a different search term.';
-            resultsPanel!.appendChild(noResults);
-            resultsPanel!.classList.remove('hidden');
-            return;
-        }
-
-        results.forEach((result, idx) => {
-            const item = document.createElement('div');
-            item.className = 'px-4 py-3 cursor-pointer hover:bg-dashboard-background border-b border-border last:border-b-0 flex items-center gap-3';
-            item.dataset.symbol = result.symbol;
-
-            // Symbol badge
-            const symbolSpan = document.createElement('span');
-            symbolSpan.className = 'font-semibold text-accent bg-accent/10 px-2 py-0.5 rounded text-sm min-w-[60px] text-center';
-            symbolSpan.textContent = result.symbol;
-            item.appendChild(symbolSpan);
-
-            // Name and exchange wrapper
-            const infoDiv = document.createElement('div');
-            infoDiv.className = 'flex flex-col min-w-0';
-
-            const nameSpan = document.createElement('span');
-            nameSpan.className = 'text-text-primary text-sm truncate';
-            nameSpan.textContent = result.name || result.symbol;
-            infoDiv.appendChild(nameSpan);
-
-            if (result.exchange || result.type) {
-                const metaSpan = document.createElement('span');
-                metaSpan.className = 'text-text-secondary text-xs';
-                const parts: string[] = [];
-                if (result.exchange) parts.push(result.exchange);
-                if (result.type) parts.push(result.type);
-                metaSpan.textContent = parts.join(' \u00b7 ');
-                infoDiv.appendChild(metaSpan);
-            }
-
-            item.appendChild(infoDiv);
-
-            item.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                selectTicker(result.symbol);
-            });
-
-            // Keyboard highlight support
-            item.dataset.idx = String(idx);
-            resultsPanel!.appendChild(item);
-        });
-
-        resultsPanel!.classList.remove('hidden');
-    }
-
-    // Perform search via API
-    async function performSearch(query: string): Promise<void> {
-        if (!query) return;
-
-        // Show spinner
-        if (spinner) spinner.classList.remove('hidden');
-
-        try {
-            let searchUrl = `/api/v2/ticker/search?q=${encodeURIComponent(query)}`;
-            searchUrl = appendFundParam(searchUrl);
-
-            const response = await fetch(searchUrl, { credentials: 'include' });
-            if (!response.ok) {
-                throw new Error(`Search failed: ${response.status}`);
-            }
-
-            const data: TickerSearchResponse = await response.json();
-
-            // If exact match, go directly to that ticker
-            if (data.exact_match && data.results.length > 0) {
-                selectTicker(data.results[0].symbol);
-                return;
-            }
-
-            // Show results panel
-            showResults(data.results);
-        } catch (error) {
-            console.error('Ticker search error:', error);
-            resultsPanel!.innerHTML = '';
-            const errDiv = document.createElement('div');
-            errDiv.className = 'px-4 py-3 text-theme-error-text text-sm';
-            errDiv.textContent = 'Search failed. Please try again.';
-            resultsPanel!.appendChild(errDiv);
-            resultsPanel!.classList.remove('hidden');
-        } finally {
-            if (spinner) spinner.classList.add('hidden');
-        }
-    }
-
-    // Keyboard navigation state
-    let selectedIdx = -1;
-
-    // Handle Enter and keyboard nav
-    input.addEventListener('keydown', (e) => {
-        const items = resultsPanel!.querySelectorAll('[data-symbol]');
-
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            if (!resultsPanel!.classList.contains('hidden') && items.length > 0) {
-                selectedIdx = Math.min(selectedIdx + 1, items.length - 1);
-                updateHighlight(items);
-            }
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (!resultsPanel!.classList.contains('hidden') && items.length > 0) {
-                selectedIdx = Math.max(selectedIdx - 1, -1);
-                updateHighlight(items);
-            }
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            // If an item is highlighted in results, select it
-            if (selectedIdx >= 0 && items[selectedIdx]) {
-                const sym = (items[selectedIdx] as HTMLElement).dataset.symbol || '';
-                selectTicker(sym);
-            } else {
-                // Perform search
-                const query = input.value.trim();
-                if (query) {
-                    selectedIdx = -1;
-                    performSearch(query);
-                }
-            }
-        } else if (e.key === 'Escape') {
-            hideResults();
-            selectedIdx = -1;
-        }
-    });
-
-    function updateHighlight(items: NodeListOf<Element>): void {
-        items.forEach((item, idx) => {
-            if (idx === selectedIdx) {
-                item.classList.add('bg-dashboard-background');
-            } else {
-                item.classList.remove('bg-dashboard-background');
-            }
-        });
-        if (selectedIdx >= 0 && items[selectedIdx]) {
-            items[selectedIdx].scrollIntoView({ block: 'nearest' });
-        }
-    }
-
-    // Hide results when clicking outside
-    document.addEventListener('click', (e) => {
-        if (!input.contains(e.target as Node) && !resultsPanel!.contains(e.target as Node)) {
-            hideResults();
-            selectedIdx = -1;
-        }
-    });
-}
 
 function initModelSelect(): void {
     const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
@@ -887,6 +701,49 @@ async function loadModelOptions(): Promise<void> {
 
 
 // Load all ticker data
+async function loadTickerInsights(ticker: string, seq?: number): Promise<void> {
+    const section = document.getElementById('insights-section');
+    const list = document.getElementById('ticker-insights-list');
+    const empty = document.getElementById('ticker-insights-empty');
+    const viewAll = document.getElementById('insights-view-all-link') as HTMLAnchorElement | null;
+    if (!section || !list) return;
+    if (viewAll) {
+        viewAll.href = `/insights?ticker=${encodeURIComponent(ticker)}`;
+    }
+    try {
+        const resp = await fetch(`/api/ticker/${encodeURIComponent(ticker)}/insights`, {
+            credentials: 'include',
+        });
+        if (seq !== undefined && isStaleLoad(seq, ticker)) return;
+        if (!resp.ok) {
+            section.classList.add('hidden');
+            return;
+        }
+        const body = await resp.json() as { data?: Array<Record<string, unknown>> };
+        const rows = body.data || [];
+        if (!rows.length) {
+            list.innerHTML = '';
+            empty?.classList.remove('hidden');
+            section.classList.remove('hidden');
+            return;
+        }
+        empty?.classList.add('hidden');
+        list.innerHTML = rows.slice(0, 8).map((row) => {
+            const id = String(row.id || '');
+            const title = String(row.title || 'Untitled');
+            const disp = String(row.disposition || 'neutral');
+            const intent = String(row.intent || 'monitor');
+            return `<a href="/insights#${encodeURIComponent(id)}" class="block border border-border rounded-lg p-3 hover:border-accent/50">
+                <span class="text-xs uppercase text-text-tertiary">${disp} · ${intent}</span>
+                <span class="block font-medium text-text-primary mt-1">${title}</span>
+            </a>`;
+        }).join('');
+        section.classList.remove('hidden');
+    } catch {
+        section.classList.add('hidden');
+    }
+}
+
 async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void> {
     const section = document.getElementById('evidence-timeline-section');
     const list = document.getElementById('evidence-timeline-list');
@@ -965,9 +822,16 @@ async function loadTickerData(ticker: string): Promise<void> {
         }
         renderCongressTickerTrades(data.congress_trades ?? []);
         renderInsiderTrades(data.insider_trades ?? []);
-        if (data.watchlist_status) {
-            renderWatchlistStatus(data.watchlist_status);
-        }
+        renderWatchlistStatus(
+            data.watchlist_status || {
+                fund: getSelectedFund(),
+                ticker,
+                is_active: false,
+                in_watchlist: false,
+                priority_tier: "B",
+                source: null,
+            }
+        );
 
         // Load signals
         await loadSignals(ticker, false, seq);
@@ -977,6 +841,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         await loadTickerAnalysis(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
         await loadTickerAnalysisContext(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
+
+        await loadTickerInsights(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
 
         await loadEvidenceTimeline(ticker, seq);
@@ -1679,22 +1546,17 @@ async function loadPriceHistoryMetrics(
     }
 }
 
-// Helper: format a sentiment value into a colored badge HTML string
+// Helper: format a sentiment value into a colored badge HTML string (Insights palette)
 function sentimentBadge(sentiment: string | undefined): string {
     if (!sentiment) return '';
     const s = sentiment.toLowerCase();
-    if (['positive', 'bullish', 'very_bullish'].includes(s)) {
-        const label = s === 'very_bullish' ? 'Very Bullish' : 'Bullish';
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-success-bg text-theme-success-text border border-theme-success-text"><i class="fas fa-arrow-up mr-0.5 text-[9px]"></i>${label}</span>`;
-    }
-    if (['negative', 'bearish', 'very_bearish'].includes(s)) {
-        const label = s === 'very_bearish' ? 'Very Bearish' : 'Bearish';
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-error-bg text-theme-error-text border border-theme-error-text"><i class="fas fa-arrow-down mr-0.5 text-[9px]"></i>${label}</span>`;
-    }
-    if (['neutral', 'mixed'].includes(s)) {
-        return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-warning-bg text-theme-warning-text border border-theme-warning-text">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
-    }
-    return `<span class="inline-flex items-center text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-primary border border-border">${escapeHtml(sentiment.charAt(0).toUpperCase() + sentiment.slice(1))}</span>`;
+    let label = sentiment.charAt(0).toUpperCase() + sentiment.slice(1);
+    if (s === 'very_bullish') label = 'Very Bullish';
+    else if (s === 'bullish' || s === 'positive') label = 'Bullish';
+    else if (s === 'very_bearish') label = 'Very Bearish';
+    else if (s === 'bearish' || s === 'negative') label = 'Bearish';
+    else if (s === 'neutral' || s === 'mixed') label = s === 'mixed' ? 'Mixed' : 'Neutral';
+    return `<span class="${sentimentBadgeClasses(sentiment)}">${escapeHtml(label)}</span>`;
 }
 
 // Helper: relative time string (e.g. "2d ago", "5h ago")
@@ -1783,7 +1645,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             </div>
         `;
 
-        // Toggle row details and keep chevron aligned with final state.
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         row.querySelector('.research-row-toggle')?.addEventListener('click', () => {
             const chevron = document.getElementById(`${rowId}-chevron`);
             const detail = document.getElementById(rowId);
@@ -2295,24 +2157,130 @@ function renderInsiderTradesPagination(): void {
     container.appendChild(nextLi);
 }
 
-// Render watchlist status
+// Render watchlist status + wire add/remove for the selected fund
 function renderWatchlistStatus(status: WatchlistStatus): void {
-    if (!status) {
-        return;
-    }
-
     const section = document.getElementById('watchlist-section');
     if (!section) return;
 
     section.classList.remove('hidden');
 
+    const inList = !!(status.in_watchlist ?? status.is_active);
     const statusEl = document.getElementById('watchlist-status');
     const tierEl = document.getElementById('watchlist-tier');
     const sourceEl = document.getElementById('watchlist-source');
+    const tierSelect = document.getElementById('watchlist-tier-select') as HTMLSelectElement | null;
+    const addBtn = document.getElementById('watchlist-add-btn') as HTMLButtonElement | null;
+    const removeBtn = document.getElementById('watchlist-remove-btn') as HTMLButtonElement | null;
 
-    if (statusEl) statusEl.textContent = status.is_active ? '✅ In Watchlist' : '❌ Not Active';
-    if (tierEl) tierEl.textContent = status.priority_tier || 'N/A';
-    if (sourceEl) sourceEl.textContent = status.source || 'N/A';
+    const fund = getSelectedFund();
+    if (statusEl) {
+        statusEl.textContent = !fund
+            ? 'Select a fund'
+            : inList
+              ? 'In Watchlist'
+              : 'Not on watchlist';
+    }
+    if (tierEl) tierEl.textContent = status.priority_tier || 'B';
+    if (sourceEl) sourceEl.textContent = status.source || '—';
+    if (tierSelect && status.priority_tier) {
+        tierSelect.value = status.priority_tier;
+    }
+    if (addBtn) {
+        addBtn.classList.toggle('hidden', inList || !fund);
+        addBtn.disabled = !fund || !currentTicker;
+        addBtn.onclick = () => void watchlistAddCurrent();
+    }
+    if (removeBtn) {
+        removeBtn.classList.toggle('hidden', !inList || !fund);
+        removeBtn.disabled = !fund || !currentTicker;
+        removeBtn.onclick = () => void watchlistRemoveCurrent();
+    }
+    if (tierSelect) {
+        tierSelect.onchange = () => {
+            if (inList) void watchlistPatchTier(tierSelect.value);
+        };
+    }
+}
+
+async function watchlistAddCurrent(): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) {
+        showToast('Select a fund before adding to the watchlist', 'error');
+        return;
+    }
+    const tierSelect = document.getElementById('watchlist-tier-select') as HTMLSelectElement | null;
+    try {
+        const resp = await fetch('/api/watchlist', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({
+                fund,
+                tickers: [currentTicker],
+                priority_tier: tierSelect?.value || 'B',
+                source: 'ticker_ui',
+            }),
+        });
+        const body = await resp.json().catch(() => ({})) as {
+            error?: string;
+            failed_tickers?: string[];
+        };
+        if (!resp.ok) {
+            showToast(body.error || 'Failed to add to watchlist', 'error');
+            return;
+        }
+        if (body.failed_tickers?.length) {
+            showToast(`Failed: ${body.failed_tickers.join(', ')}`, 'error');
+            return;
+        }
+        showToast(`${currentTicker} added to watchlist`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to add to watchlist', 'error');
+    }
+}
+
+async function watchlistRemoveCurrent(): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) return;
+    try {
+        const resp = await fetch('/api/watchlist/item', {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ fund, ticker: currentTicker, is_active: false }),
+        });
+        if (!resp.ok) {
+            const body = await resp.json().catch(() => ({})) as { error?: string };
+            showToast(body.error || 'Failed to remove', 'error');
+            return;
+        }
+        showToast(`${currentTicker} removed from watchlist`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to remove from watchlist', 'error');
+    }
+}
+
+async function watchlistPatchTier(tier: string): Promise<void> {
+    const fund = getSelectedFund();
+    if (!fund || !currentTicker) return;
+    try {
+        const resp = await fetch('/api/watchlist/item', {
+            method: 'PATCH',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ fund, ticker: currentTicker, priority_tier: tier }),
+        });
+        if (!resp.ok) {
+            showToast('Failed to update tier', 'error');
+            return;
+        }
+        showToast(`Tier set to ${tier}`, 'success');
+        await loadTickerData(currentTicker);
+    } catch {
+        showToast('Failed to update tier', 'error');
+    }
 }
 
 // Load signals for ticker
@@ -2546,21 +2514,7 @@ function renderMomentumSignal(momentum: any): void {
     const biasBadge = document.getElementById('momentum-bias-badge');
     if (biasBadge) {
         const bias = momentum.bias || 'N/A';
-        let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
-        switch (bias) {
-            case 'BULLISH':
-                badgeClass += 'bg-theme-success-bg text-theme-success-text border-theme-success-text';
-                break;
-            case 'BEARISH':
-                badgeClass += 'bg-theme-error-bg text-theme-error-text border-theme-error-text';
-                break;
-            case 'NEUTRAL':
-                badgeClass += 'bg-theme-warning-bg text-theme-warning-text border-theme-warning-text';
-                break;
-            default:
-                badgeClass += 'bg-dashboard-surface-alt text-text-secondary border-border';
-        }
-        biasBadge.className = badgeClass;
+        biasBadge.className = sentimentBadgeClasses(bias);
         biasBadge.textContent = bias;
     }
 
@@ -2976,27 +2930,10 @@ function setupMetaRebuildHandler(ticker: string): void {
 
 /**
  * Tailwind chip classes for ticker meta ``stance`` enum values.
- * Mirrors the Phase 1 contract in ``ai_prompts.py::TICKER_META_ANALYSIS_PROMPT``:
- *   STRONG_BULLISH | BULLISH | NEUTRAL | BEARISH | STRONG_BEARISH | INSUFFICIENT_DATA
+ * Uses Insights sentiment palette (soft tint + border) for bullish/bearish/neutral.
  */
 function stanceChipClasses(stance: string | undefined): string {
-    const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold';
-    switch ((stance || '').toUpperCase()) {
-        case 'STRONG_BULLISH':
-            return `${base} bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300`;
-        case 'BULLISH':
-            return `${base} bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300`;
-        case 'NEUTRAL':
-            return `${base} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200`;
-        case 'BEARISH':
-            return `${base} bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300`;
-        case 'STRONG_BEARISH':
-            return `${base} bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300`;
-        case 'INSUFFICIENT_DATA':
-            return `${base} bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300`;
-        default:
-            return `${base} bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300`;
-    }
+    return sentimentBadgeClasses(stance);
 }
 
 /** Tailwind chip classes for the ``horizon`` enum (INTRADAY/SWING/POSITION/UNKNOWN). */
@@ -3362,12 +3299,9 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
     const dataStart = formatDate(analysis.data_start_date);
     const dataEnd = formatDate(analysis.data_end_date);
 
-    // Sentiment badge color
+    // Sentiment badge — Insights palette (soft tint, not solid fill)
     const sentiment = analysis.sentiment || 'NEUTRAL';
-    let sentimentColor = 'bg-gray-500';
-    if (sentiment === 'BULLISH') sentimentColor = 'bg-green-500';
-    else if (sentiment === 'BEARISH') sentimentColor = 'bg-red-500';
-    else if (sentiment === 'MIXED') sentimentColor = 'bg-yellow-500';
+    const sentimentColor = sentimentBadgeClasses(sentiment);
 
     // Themes
     const themes = analysis.themes || [];
@@ -3398,7 +3332,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
                 <div>
                     <div class="text-text-secondary">Sentiment</div>
                     <div class="flex items-center gap-2 mt-1">
-                        <span class="px-2 py-1 ${sentimentColor} text-white rounded text-xs">${sentiment}</span>
+                        <span class="${sentimentColor}">${escapeHtml(sentiment)}</span>
                         ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
             ? `<span class="text-text-primary">${(analysis.sentiment_score * 100).toFixed(0)}%</span>`
             : ''}
@@ -3579,6 +3513,8 @@ function hideAllSections(): void {
         'congress-section',
         'insider-trades-section',
         'watchlist-section',
+        'insights-section',
+        'evidence-timeline-section',
         'signals-section',
         'ai-analysis-section'
     ];

@@ -15,8 +15,10 @@ if str(web_dashboard) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Phase 3c bundle block is tested explicitly; keep legacy tests stable."""
+    """Phase 3c / H2 / R1 bundle blocks are tested explicitly; keep legacy tests stable."""
     monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "false")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "false")
+    monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "false")
 
 from meta_analysis_service import (  # noqa: E402
     TickerMetaAnalysisService,
@@ -400,3 +402,160 @@ def test_build_artifact_bundle_includes_sector_prior(monkeypatch: pytest.MonkeyP
     assert "sector_stance: MIXED" in bundle
     assert "rotation_rank: 2" in bundle
     assert "ETF flows mixed" in bundle
+
+
+def test_build_artifact_bundle_includes_human_thesis(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "true")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS_SCOPE", "all")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],  # standard
+        [],  # market brief (phase1)
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+
+    fake_block = (
+        "### Human ticker thesis threads (Insights — not fund_thesis)\n"
+        "- COST | bullish/monitor | Moat [WEAK CONTEXT]\n"
+        "  opening: membership fees"
+    )
+    monkeypatch.setattr(svc, "_fetch_human_thesis_block", lambda _t: fake_block)
+
+    bundle, primary, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert primary is not None
+    assert "Human ticker thesis threads" in bundle
+    assert "WEAK CONTEXT" in bundle
+    assert "human_thesis" in evidence["artifact_types"]
+
+
+def test_build_artifact_bundle_skips_human_thesis_when_not_held(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "true")
+    monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS_SCOPE", "holdings")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],
+        [],  # market brief
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+    svc._held_tickers_cache = {"MSFT"}  # COST not held
+    called = {"n": 0}
+
+    def _fetch(_t: str) -> str | None:
+        called["n"] += 1
+        return "### Human ticker thesis threads\n- should not appear"
+
+    monkeypatch.setattr(svc, "_fetch_human_thesis_block", _fetch)
+    bundle, _, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert called["n"] == 0
+    assert "Human ticker thesis" not in bundle
+    assert "human_thesis" not in evidence["artifact_types"]
+
+
+_H2_FAMILIES = (
+    "insider_cluster",
+    "dilution",
+    "filing",
+    "confluence",
+    "prior_stance",
+)
+
+
+def test_build_artifact_bundle_includes_phase_h2_families(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "true")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [_STD_ROW],  # standard
+        [],  # market brief
+        [],  # social
+        [],  # articles
+    ]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+
+    stubs = {
+        "insider_cluster": "### Insider cluster buys\n- 3 distinct insiders",
+        "dilution": "### Dilution / shares-outstanding flags\n- window=90d pct_change=25%",
+        "filing": "### SEC filing-risk alerts\n- S-3 category=dilution",
+        "confluence": "### Confluence events\n- score=3 direction=bullish",
+        "prior_stance": "### Prior stance and track record\n- Latest: BULLISH",
+    }
+    monkeypatch.setattr(
+        svc, "_fetch_insider_cluster_block", lambda _t: stubs["insider_cluster"]
+    )
+    monkeypatch.setattr(svc, "_fetch_dilution_block", lambda _t: stubs["dilution"])
+    monkeypatch.setattr(svc, "_fetch_filing_block", lambda _t: stubs["filing"])
+    monkeypatch.setattr(svc, "_fetch_confluence_block", lambda _t: stubs["confluence"])
+    monkeypatch.setattr(svc, "_fetch_prior_stance_block", lambda _t: stubs["prior_stance"])
+
+    bundle, primary, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert primary is not None
+    for family, text in stubs.items():
+        assert family in evidence["artifact_types"]
+        assert text.split("\n", 1)[0] in bundle
+    # H2 comes before human_thesis when both present
+    assert evidence["artifact_types"].index("insider_cluster") < len(
+        evidence["artifact_types"]
+    )
+
+
+def test_build_artifact_bundle_omits_phase_h2_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "false")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+    called = {"n": 0}
+
+    def _bump(_t: str) -> str | None:
+        called["n"] += 1
+        return "### Insider cluster buys\n- should not appear"
+
+    monkeypatch.setattr(svc, "_fetch_insider_cluster_block", _bump)
+    monkeypatch.setattr(svc, "_fetch_dilution_block", _bump)
+    monkeypatch.setattr(svc, "_fetch_filing_block", _bump)
+    monkeypatch.setattr(svc, "_fetch_confluence_block", _bump)
+    monkeypatch.setattr(svc, "_fetch_prior_stance_block", _bump)
+
+    bundle, _, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    assert called["n"] == 0
+    for family in _H2_FAMILIES:
+        assert family not in evidence["artifact_types"]
+    assert "Insider cluster buys" not in bundle
+
+
+def test_build_artifact_bundle_skips_empty_phase_h2_blocks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "true")
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    svc = _svc(pg, sb)
+    monkeypatch.setattr(svc, "_fetch_insider_cluster_block", lambda _t: None)
+    monkeypatch.setattr(svc, "_fetch_dilution_block", lambda _t: None)
+    monkeypatch.setattr(svc, "_fetch_filing_block", lambda _t: None)
+    monkeypatch.setattr(svc, "_fetch_confluence_block", lambda _t: None)
+    monkeypatch.setattr(svc, "_fetch_prior_stance_block", lambda _t: None)
+
+    bundle, _, evidence = svc.build_artifact_bundle_with_evidence("COST")
+    for family in _H2_FAMILIES:
+        assert family not in evidence["artifact_types"]
+    assert "Prior stance" not in bundle
+    assert "Dilution" not in bundle

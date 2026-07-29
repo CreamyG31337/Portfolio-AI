@@ -236,24 +236,10 @@
 
                     <hr class="border-border my-6">
 
-                    <!-- Fund Selection -->
-                    <div>
-                        <h3 class="font-semibold mb-2 text-text-primary">🗄️ Data Source</h3>
-                        <select id="fund-select"
-                            class="w-full p-2 border border-border rounded-lg bg-dashboard-surface text-text-primary focus:ring-2 focus:ring-accent">
-                            {% for fund in available_funds %}
-                            <option value="{{ fund }}">{{ fund }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <hr class="border-border my-6">
-
                     <!-- Portfolio Data -->
                     <div>
                         <h3 class="font-semibold mb-2 text-text-primary">📊 Portfolio Data</h3>
-                        <p class="text-xs text-text-secondary mb-2">ℹ️ Always Included: Holdings, Performance Metrics,
-                            Cash Balances</p>
+                        <p class="text-xs text-text-secondary mb-2">Fund follows the left sidebar selector. Always included: Holdings, Performance Metrics, Cash Balances</p>
                         <p class="text-xs font-semibold mb-2 text-text-primary">Optional:</p>
 
                         <label class="flex items-center mb-2 cursor-pointer">
@@ -287,6 +273,19 @@
 
                     <hr class="border-border my-6">
 
+                    <!-- Intelligence Pulse -->
+                    <div>
+                        <h4 class="font-semibold mb-2 text-sm text-text-primary">Today Intelligence Pulse</h4>
+                        <label class="flex items-center mb-2 cursor-pointer">
+                            <input type="checkbox" id="toggle-intelligence-pulse" checked
+                                class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
+                            <span class="text-sm text-text-primary">Market brief + ranked entry candidates</span>
+                        </label>
+                        <p class="text-xs text-text-muted mb-2">Lean digest (~few hundred tokens). The model can still call tools for more detail.</p>
+                    </div>
+
+                    <hr class="border-border my-6">
+
                     <!-- Trade Data Options -->
                     <div>
                         <h4 class="font-semibold mb-2 text-sm text-text-primary">📊 Trade Data (Last 7 Days)</h4>
@@ -306,7 +305,7 @@
                         <label class="flex items-center mb-2 cursor-pointer">
                             <input type="checkbox" id="toggle-etf-trades" checked
                                 class="mr-2 w-4 h-4 text-accent bg-dashboard-surface-alt border-border rounded focus:ring-accent focus:ring-2">
-                            <span class="text-sm text-text-primary">ETF Trades</span>
+                            <span class="text-sm text-text-primary">ETF Activity</span>
                         </label>
                     </div>
 
@@ -352,7 +351,7 @@
                     <div>
                         <p class="text-xs text-text-secondary mb-2" id="context-summary">No context items selected</p>
                         <button id="clear-context-btn"
-                            class="w-full px-3 py-2 text-theme-error-text bg-transparent border border-theme-error-text rounded-lg text-sm mb-4 transition-colors hover:bg-theme-error-bg/10 focus:ring-2 focus:ring-theme-error-bg/30 focus:ring-offset-2">
+                            class="w-full btn-outline-danger mb-4">
                             🧹 Clear All
                         </button>
                     </div>

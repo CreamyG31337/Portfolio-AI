@@ -26,20 +26,16 @@ if current_dir.name == 'scheduler':
 else:
     project_root = current_dir.parent.parent
 
-# Also ensure web_dashboard is in path for supabase_client imports
-web_dashboard_path = str(Path(__file__).resolve().parent.parent)
-if web_dashboard_path not in sys.path:
-    sys.path.insert(0, web_dashboard_path)
+# Pin project root first so web_dashboard/utils does not shadow root utils.
+_project_root = str(project_root)
+_web_dashboard_path = str(Path(__file__).resolve().parent.parent)
+for _path in (_web_dashboard_path, _project_root):
+    while _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, _project_root)
+sys.path.insert(1, _web_dashboard_path)
 
-# CRITICAL: Project root must be inserted LAST (at index 0) to ensure it comes
-# BEFORE web_dashboard in sys.path. This prevents web_dashboard/utils from
-# shadowing the project root's utils package.
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-elif sys.path[0] != str(project_root):
-    # If it is in path but not first, move it to front
-    sys.path.remove(str(project_root))
-    sys.path.insert(0, str(project_root))
+from utils.trade_reason import is_trade_sell
 
 from scheduler.scheduler_core import log_job_execution
 
@@ -59,6 +55,47 @@ def _get_exchange_rate_for_date(date_obj, from_curr, to_curr):
 # Thread-safe lock to prevent concurrent execution
 # A simple boolean was causing race conditions when backfill and scheduled jobs ran simultaneously
 _update_prices_lock = threading.Lock()
+_update_prices_lock_acquired_at: float | None = None
+_UPDATE_PRICES_LOCK_STALE_SECONDS = 45 * 60  # hung run recovery threshold
+
+
+def _try_acquire_update_prices_lock() -> bool:
+    """Acquire portfolio update lock; reset if a prior holder appears hung."""
+    global _update_prices_lock_acquired_at
+
+    if _update_prices_lock.acquire(blocking=False):
+        _update_prices_lock_acquired_at = time.time()
+        return True
+
+    acquired_at = _update_prices_lock_acquired_at
+    if acquired_at is not None and (time.time() - acquired_at) > _UPDATE_PRICES_LOCK_STALE_SECONDS:
+        logger.warning(
+            "Portfolio price update lock held >%ss — resetting lock (prior run may be hung)",
+            _UPDATE_PRICES_LOCK_STALE_SECONDS,
+        )
+        _reset_update_prices_lock()
+        if _update_prices_lock.acquire(blocking=False):
+            _update_prices_lock_acquired_at = time.time()
+            return True
+    return False
+
+
+def _reset_update_prices_lock() -> None:
+    """Replace the lock so a hung thread cannot block all future runs forever."""
+    global _update_prices_lock, _update_prices_lock_acquired_at
+    _update_prices_lock = threading.Lock()
+    _update_prices_lock_acquired_at = None
+
+
+def _release_update_prices_lock() -> None:
+    """Release the portfolio update lock when owned by this thread."""
+    global _update_prices_lock_acquired_at
+    try:
+        if _update_prices_lock.locked():
+            _update_prices_lock.release()
+    except RuntimeError:
+        pass  # Lock was reset while another thread still held the old object
+    _update_prices_lock_acquired_at = None
 
 
 def _log_portfolio_job_progress(fund_name: str, message: str, success: bool = True):
@@ -239,7 +276,7 @@ def update_portfolio_prices_job(
         # Acquire lock with non-blocking check - if another thread is already running, skip
         # Skip lock for date range mode since backfill_portfolio_prices_range has its own lock
         if not is_date_range_mode:
-            acquired = _update_prices_lock.acquire(blocking=False)
+            acquired = _try_acquire_update_prices_lock()
             lock_acquired = acquired
             if not acquired:
                 duration_ms = int((time.time() - start_time) * 1000)
@@ -536,32 +573,16 @@ def update_portfolio_prices_job(
                         logger.warning(f"Found missing trading days for {len(funds_needing_backfill)} fund(s): {backfill_start} to {backfill_end}")
                         logger.info(f"Total missing days: {len(sorted_missing)}")
                         logger.info("Auto-backfilling missing dates...")
-                        
-                        # Release lock temporarily to allow backfill to acquire it
-                        _update_prices_lock.release()
-                        
+
                         try:
-                            # Call backfill for the missing date range
-                            backfill_portfolio_prices_range(backfill_start, backfill_end)
+                            # Caller already holds the lock — do not release/re-acquire.
+                            backfill_portfolio_prices_range(
+                                backfill_start, backfill_end, skip_lock=True
+                            )
                             logger.info(f"Auto-backfill completed for {len(sorted_missing)} days")
                         except Exception as backfill_error:
                             logger.error(f"Auto-backfill failed: {backfill_error}", exc_info=True)
                             # Continue with regular update anyway
-                    
-                        # Re-acquire lock for the regular update
-                        acquired = _update_prices_lock.acquire(blocking=False)
-                        if not acquired:
-                            # Another process got the lock - that's okay, we already backfilled
-                            duration_ms = int((time.time() - start_time) * 1000)
-                            message = "Lock not available after backfill - another process may be updating"
-                            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-                            try:
-                                from utils.job_tracking import mark_job_failed
-                                mark_job_failed('update_portfolio_prices', target_date, None, message, duration_ms=duration_ms)
-                            except Exception:
-                                pass
-                            logger.warning(f"⚠️ {message}")
-                            return
                     else:
                         logger.info("No missing dates found - data is continuous")
                 else:
@@ -609,9 +630,8 @@ def update_portfolio_prices_job(
                         shares = Decimal(str(trade.get('shares', 0) or 0))
                         price = Decimal(str(trade.get('price', 0) or 0))
                         cost = shares * price
-                        reason = str(trade.get('reason', '')).upper()
-                        
-                        if 'SELL' in reason:
+
+                        if is_trade_sell(trade):
                             # Simple FIFO: reduce shares and cost proportionally
                             if running_positions[ticker]['shares'] > 0:
                                 cost_per_share = running_positions[ticker]['cost'] / running_positions[ticker]['shares']
@@ -841,7 +861,37 @@ def update_portfolio_prices_job(
                         if len(failed_tickers) == len(current_holdings):
                             logger.warning(f"  All tickers failed for {fund_name} - skipping update")
                             continue
-                    
+
+                        # Carry forward the last known snapshot price for tickers we could not
+                        # fetch, so a transient failure doesn't drop a real holding. The
+                        # latest_positions view anchors every ticker on the fund's max snapshot
+                        # date, so a missing row would hide the position from holdings entirely
+                        # until the next successful fetch.
+                        try:
+                            prior_bound = datetime.combine(target_date, dt_time(0, 0, 0)).isoformat()
+                            prev_rows = client.supabase.table("portfolio_positions")\
+                                .select("ticker,price,date")\
+                                .eq("fund", fund_name)\
+                                .in_("ticker", failed_tickers)\
+                                .lt("date", prior_bound)\
+                                .order("date", desc=True)\
+                                .execute()
+                            last_price_by_ticker = {}
+                            for row in prev_rows.data or []:
+                                t = row.get('ticker')
+                                if t and t not in last_price_by_ticker and row.get('price') is not None:
+                                    last_price_by_ticker[t] = Decimal(str(row['price']))
+                            recovered = []
+                            for t in list(failed_tickers):
+                                if t in last_price_by_ticker:
+                                    current_prices[t] = last_price_by_ticker[t]
+                                    failed_tickers.remove(t)
+                                    recovered.append(t)
+                            if recovered:
+                                logger.warning(f"  Carried forward last snapshot price for {len(recovered)} unfetchable ticker(s): {recovered}")
+                        except Exception as carry_e:
+                            logger.warning(f"  Could not carry forward prices for failed tickers: {carry_e}")
+
                     # Create updated positions for target date
                     # Only include positions where we successfully fetched prices
                     updated_positions = []
@@ -1051,9 +1101,8 @@ def update_portfolio_prices_job(
                     logger.warning(f"⚠️  Failed to bump cache version: {cache_error}")
             # Always release the lock, even if job fails (only if we actually acquired it)
             try:
-                # Only release if we actually acquired the lock (not date range mode, and lock was acquired)
-                if not is_date_range_mode and lock_acquired and _update_prices_lock.locked():
-                    _update_prices_lock.release()
+                if not is_date_range_mode and lock_acquired:
+                    _release_update_prices_lock()
                     print(f"[{__name__}] Lock released", file=sys.stderr, flush=True)
             except Exception as lock_error:
                 # Don't let lock release errors crash the scheduler
@@ -1078,9 +1127,16 @@ def update_portfolio_prices_job(
             log_job_execution('update_portfolio_prices', success=False, message=f"Critical error: {str(outer_error)}", duration_ms=0)
         except Exception as log_err:
             print(f"[{__name__}] Failed to log job execution: {log_err}", file=sys.stderr, flush=True)
+        if lock_acquired and not is_date_range_mode:
+            _release_update_prices_lock()
 
 
-def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
+def backfill_portfolio_prices_range(
+    start_date: date,
+    end_date: date,
+    *,
+    skip_lock: bool = False,
+) -> None:
     """Backfill portfolio positions for a date range efficiently.
     
     This is a batch-optimized version of update_portfolio_prices_job that:
@@ -1103,6 +1159,7 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
     except:
         pass  # Logger might not be ready yet
     
+    lock_acquired = False
     # Wrap everything in try/except to prevent scheduler crashes
     try:
         print(f"[{__name__}] Setting up sys.path...", file=sys.stderr, flush=True)
@@ -1113,17 +1170,15 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
         job_id = 'backfill_portfolio_prices_range'
         start_time = time.time()
         print(f"[{__name__}] Job ID: {job_id}, start_time: {start_time}", file=sys.stderr, flush=True)
-        
-        # Acquire lock with non-blocking check - if another thread is already running, skip
-        # This prevents backfill from running effectively concurrently with scheduled updates
-        acquired = _update_prices_lock.acquire(blocking=False)
-        if not acquired:
-            duration_ms = int((time.time() - start_time) * 1000)
-            message = "Job already running - skipped (lock not acquired)"
-            # Log as failed to indicate this was a skipped execution
-            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
-            logger.warning(f"⚠️ {message}")
-            return
+
+        if not skip_lock:
+            if not _try_acquire_update_prices_lock():
+                duration_ms = int((time.time() - start_time) * 1000)
+                message = "Job already running - skipped (lock not acquired)"
+                log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+                logger.warning(f"⚠️ {message}")
+                return
+            lock_acquired = True
 
         try:
             logger.info(f"Starting batch backfill for date range: {start_date} to {end_date}")
@@ -1466,7 +1521,12 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                     
                     logger.info(f"  Processing {len(trading_days)} trading days to build position snapshots...")
                     process_start = time.time()
-                    
+
+                    # Carry-forward cache: most recent known price per ticker across days
+                    # (days are processed chronologically). Lets a single missing day reuse
+                    # the prior price instead of dropping the holding from that snapshot.
+                    last_price_by_ticker = {}
+
                     for day_idx, target_date in enumerate(trading_days, 1):
                         # Progress update every 10 days or on last day
                         if day_idx % 10 == 0 or day_idx == len(trading_days):
@@ -1486,9 +1546,8 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                             shares = Decimal(str(trade.get('shares', 0) or 0))
                             price = Decimal(str(trade.get('price', 0) or 0))
                             cost = shares * price
-                            reason = str(trade.get('reason', '')).upper()
                             
-                            if 'SELL' in reason:
+                            if is_trade_sell(trade):
                                 if running_positions[ticker]['shares'] > 0:
                                     cost_per_share = running_positions[ticker]['cost'] / running_positions[ticker]['shares']
                                     running_positions[ticker]['shares'] -= shares
@@ -1529,14 +1588,20 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                         
                         for ticker, holding in current_holdings.items():
                             if ticker in failed_tickers:
-                                continue  # Skip tickers with no price data
-                            
+                                continue  # No price data anywhere in range - skip entirely
+
                             # OPTIMIZATION: O(1) dict lookup instead of DataFrame operations
                             current_price = price_cache_dict.get((ticker, target_date))
                             if current_price is None:
+                                # Carry forward the most recent known price so a single missing
+                                # day doesn't drop a held position. latest_positions anchors on
+                                # the fund's max snapshot date, so a gap would hide the holding.
+                                current_price = last_price_by_ticker.get(ticker)
+                            if current_price is None:
                                 # ISSUE #3: Better logging - track why day was skipped
-                                logger.debug(f"  {target_date} {ticker}: No price data available in cache (skipping)")
+                                logger.debug(f"  {target_date} {ticker}: No price data available (skipping)")
                                 continue
+                            last_price_by_ticker[ticker] = current_price
                             
                             shares = holding['shares']
                             cost_basis = holding['cost']
@@ -2207,10 +2272,9 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
                 mark_job_failed('backfill_portfolio_prices_range', start_date, None, str(e), duration_ms=duration_ms)
             except Exception as tracking_error:
                 logger.error(f"Failed to mark backfill job as failed in database: {tracking_error}", exc_info=True)
-            finally:
-                # Always release the lock (only if we acquired it)
-                if _update_prices_lock.locked():
-                    _update_prices_lock.release()
+        finally:
+            if lock_acquired:
+                _release_update_prices_lock()
     
     except Exception as outer_error:
         # Catch any errors that happen before the inner try block (path setup, etc.)
@@ -2227,4 +2291,6 @@ def backfill_portfolio_prices_range(start_date: date, end_date: date) -> None:
             log_job_execution('backfill_portfolio_prices_range', success=False, message=f"Critical error: {str(outer_error)}", duration_ms=0)
         except Exception as log_err:
             print(f"[{__name__}] Failed to log job execution: {log_err}", file=sys.stderr, flush=True)
+        if lock_acquired:
+            _release_update_prices_lock()
 

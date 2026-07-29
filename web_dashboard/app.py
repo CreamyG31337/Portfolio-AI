@@ -43,12 +43,17 @@ from urllib.parse import urlencode
 from flask_cors import CORS
 
 # Ensure repo-level modules (e.g., utils.*) are importable before route imports.
+# Running `python web_dashboard/app.py` puts web_dashboard on sys.path[0], which
+# shadows project-root `utils` with web_dashboard/utils (incomplete shims).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 WEB_DASHBOARD_ROOT = Path(__file__).resolve().parent
-if str(WEB_DASHBOARD_ROOT) not in sys.path:
-    sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+_project_root = str(PROJECT_ROOT)
+_web_dashboard_root = str(WEB_DASHBOARD_ROOT)
+for _path in (_web_dashboard_root, _project_root):
+    while _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, _project_root)
+sys.path.insert(1, _web_dashboard_root)
 
 from flask_cache_utils import cache_data, cache_resource
 from rate_limiter import rate_limit
@@ -108,6 +113,10 @@ try:
     @app.before_request
     def csrf_protect_routes():
         """Apply CSRF protection to all routes (except external webhooks)"""
+        # Skip CSRF when testing if WTF_CSRF_ENABLED is False
+        if not app.config.get('WTF_CSRF_ENABLED', True):
+            return
+
         # Only check CSRF for state-changing methods
         if request.method in app.config.get('WTF_CSRF_METHODS', ['POST', 'PUT', 'PATCH', 'DELETE']):
             # Skip CSRF for external webhook endpoints (they use their own signature verification)
@@ -758,6 +767,20 @@ try:
     logger.info("✅ Registered Intelligence Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Intelligence Blueprint: {e}", exc_info=True)
+
+try:
+    from routes.insights_routes import insights_bp
+    app.register_blueprint(insights_bp)
+    logger.info("✅ Registered Insights Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Insights Blueprint: {e}", exc_info=True)
+
+try:
+    from routes.sources_routes import sources_bp
+    app.register_blueprint(sources_bp)
+    logger.info("✅ Registered Sources Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Sources Blueprint: {e}", exc_info=True)
 
 try:
     from routes.research_routes import research_bp
@@ -3502,6 +3525,37 @@ def update_ai_include_etf_trades():
         logger.error(f"Error updating AI include_etf_trades: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
 
+
+@app.route('/api/settings/ai_include_intelligence_pulse', methods=['POST'])
+@require_auth
+def update_ai_include_intelligence_pulse():
+    """Update user AI include Today intelligence pulse preference"""
+    try:
+        from user_preferences import set_user_preference
+        from flask_auth_utils import get_user_id_flask
+
+        data = request.get_json()
+        include_pulse = data.get('include_intelligence_pulse')
+
+        if include_pulse is None:
+            return jsonify({"success": False, "error": "include_intelligence_pulse is required"}), 400
+
+        user_id = get_user_id_flask()
+        logger.debug(
+            "Updating AI include_intelligence_pulse for user %s to %s",
+            user_id,
+            include_pulse,
+        )
+
+        result = set_user_preference('ai_include_intelligence_pulse', include_pulse)
+        if result:
+            return jsonify({"success": True})
+        return jsonify({"success": False, "error": "Failed to save preference"}), 500
+
+    except Exception as e:
+        logger.error(f"Error updating AI include_intelligence_pulse: {e}", exc_info=True)
+        return jsonify({"success": False, "error": f"Server error: {str(e)}"}), 500
+
 @app.route('/api/settings/debug', methods=['GET'])
 @require_auth
 def settings_debug():
@@ -4154,10 +4208,10 @@ def api_ticker_price_history():
         if price_df.empty:
             return jsonify({"data": []})
 
-        # Convert dates to ISO strings
+        # Convert dates to ISO strings (vectorized; avoid per-row .apply isoformat)
         price_df = price_df.copy()
         if 'date' in price_df.columns:
-            price_df['date'] = price_df['date'].apply(lambda x: x.isoformat() if hasattr(x, 'isoformat') else str(x))
+            price_df['date'] = price_df['date'].astype(str).str.replace(' ', 'T', n=1, regex=False)
 
         return jsonify({"data": price_df.to_dict('records')})
     except Exception as e:
@@ -4670,6 +4724,8 @@ def get_congress_trades_cached(
 
         # Build base filter function for reuse
         def apply_filters(q):
+            # Default UI/API: hide quarantined garbage; corrected siblings stay visible
+            q = q.neq("quality_status", "garbage")
             if ticker_filter:
                 q = q.eq("ticker", ticker_filter)
             if politician_filter:
@@ -5312,18 +5368,22 @@ def _get_congress_trades_stats_cached(
 
             # B. Parallel Data Fetch (IDs + Tickers + optional columns)
             # If we can't use fast counts, we need chamber/type to count in Python
+            # PostgREST hard-caps each response at 1000 rows, so chunk at that size.
             cols = "id, ticker" if use_fast_counts else "id, ticker, chamber, type"
+            chunk_size = 1000
 
-            def _fetch_chunk(offset, chunk_size):
+            def _fetch_chunk(offset: int, size: int):
                 q = _supabase_client.supabase.table("congress_trades_enriched").select(cols)
                 q = _apply_filters_to_query(q)
                 # Order by ID to ensure stable pagination
                 q = q.order("id")
-                return q.range(offset, offset + chunk_size - 1).execute().data
+                return q.range(offset, offset + size - 1).execute().data
 
-            chunk_size = 5000
-            num_chunks = (total_filtered_rows // chunk_size) + 1
-            fetch_futures = [executor.submit(_fetch_chunk, i * chunk_size, chunk_size) for i in range(num_chunks)]
+            num_chunks = max(1, (total_filtered_rows + chunk_size - 1) // chunk_size)
+            fetch_futures = [
+                executor.submit(_fetch_chunk, i * chunk_size, chunk_size)
+                for i in range(num_chunks)
+            ]
 
             # C. Most Active (Last 31 Days)
             def _get_most_active():
@@ -5416,8 +5476,14 @@ def _get_congress_trades_stats_cached(
             if row.get('ticker'):
                 unique_tickers.add(row['ticker'])
 
-        # Recalculate stats based on final filtered set
-        total_trades = len(final_trades)
+        # Recalculate stats based on final filtered set.
+        # Prefer the exact PostgREST count when we did a full fetch without
+        # analysis/score post-filters — len(final_trades) used to be wrong when
+        # a single "chunk" request was silently truncated at the 1000-row cap.
+        if use_fast_counts and len(fetched_rows) >= total_filtered_rows:
+            total_trades = total_filtered_rows
+        else:
+            total_trades = len(final_trades)
         analyzed_count = sum(1 for r in final_trades if r.get('id') in pg_analysis_map)
         high_risk_count = sum(1 for r in final_trades if r.get('id') in pg_analysis_map and pg_analysis_map[r['id']] >= 0.7)
 

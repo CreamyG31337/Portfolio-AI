@@ -83,6 +83,8 @@ def _build_social_sentiment_summary(
     no_data_count: int,
     per_ticker_timeout_count: int,
     skipped_count: int,
+    reddit_429_count: int,
+    reddit_auth_fail_count: int,
     duration_min: float,
 ) -> str:
     """Build a precise social sentiment completion message."""
@@ -90,8 +92,13 @@ def _build_social_sentiment_summary(
     message = (
         f"Social sentiment: {attempted_count}/{total_tickers} attempted in {duration_min:.1f}m "
         f"({success_count} ok, {error_count} errors, {no_data_count} no-data, "
-        f"{per_ticker_timeout_count} per-ticker-timeouts)"
+        f"{per_ticker_timeout_count} per-ticker-timeouts"
     )
+    if reddit_429_count or reddit_auth_fail_count:
+        message = (
+            f"{message}; reddit 429={reddit_429_count}, reddit auth_fail={reddit_auth_fail_count}"
+        )
+    message = f"{message})"
     if skipped_count:
         message = f"{message}. Job cap reached - {skipped_count} tickers deferred to next run"
     return message
@@ -183,6 +190,28 @@ def fetch_social_sentiment_job() -> None:
             logger.info("✅ FlareSolverr is available")
         else:
             logger.warning("⚠️  FlareSolverr unavailable - will fallback to direct requests")
+
+        from reddit_client import check_reddit_connectivity
+
+        reddit_status = check_reddit_connectivity()
+        if reddit_status.ok:
+            logger.info("✅ %s", reddit_status.message)
+        else:
+            logger.error(
+                "❌ Reddit unavailable: %s (status=%s)",
+                reddit_status.message,
+                reddit_status.status_code,
+            )
+
+        if not service.reddit.oauth_enabled:
+            warm_stats = service.reddit.warm_sentiment_feed_cache()
+            logger.info(
+                "Reddit RSS cache: %s/%s subs warmed, %s posts cached (%s rate-limited)",
+                warm_stats.subs_fetched,
+                warm_stats.subs_requested,
+                warm_stats.posts_cached,
+                warm_stats.subs_rate_limited,
+            )
         
         # Check Ollama availability
         if not service.ollama:
@@ -234,6 +263,8 @@ def fetch_social_sentiment_job() -> None:
         ticker_timeout_tickers: list[str] = []
         skipped_tickers: list[str] = []
         attempted_count = 0
+        reddit_429_count = 0
+        reddit_auth_fail_count = 0
         
         # Overall job timeout: 50 minutes (leave 10 min buffer before next run)
         MAX_JOB_DURATION = 50 * 60  # 50 minutes in seconds
@@ -295,6 +326,11 @@ def fetch_social_sentiment_job() -> None:
                     try:
                         reddit_data = service.fetch_reddit_sentiment(ticker, max_duration=remaining_time)
                         if reddit_data:
+                            error_codes = reddit_data.get("reddit_error_codes") or []
+                            if "429" in error_codes:
+                                reddit_429_count += 1
+                            if "auth_failed" in error_codes:
+                                reddit_auth_fail_count += 1
                             service.save_metrics(
                                 ticker=ticker,
                                 platform='reddit',
@@ -335,6 +371,8 @@ def fetch_social_sentiment_job() -> None:
             no_data_count=no_data_count,
             per_ticker_timeout_count=per_ticker_timeout_count,
             skipped_count=skipped_count,
+            reddit_429_count=reddit_429_count,
+            reddit_auth_fail_count=reddit_auth_fail_count,
             duration_min=duration_min,
         )
 
@@ -403,6 +441,7 @@ def cleanup_social_metrics_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            mark_job_failed('social_metrics_cleanup', target_date, None, message, duration_ms=duration_ms)
             return
         
         # Initialize service
@@ -475,6 +514,7 @@ def social_sentiment_ai_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            mark_job_failed('social_sentiment_ai', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Initialize service
@@ -486,6 +526,7 @@ def social_sentiment_ai_job() -> None:
             message = "Ollama client unavailable - cannot perform AI analysis"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            mark_job_failed('social_sentiment_ai', target_date, None, message, duration_ms=duration_ms)
             return
 
         # Step 1: Extract posts from raw_data

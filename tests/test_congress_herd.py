@@ -1,10 +1,12 @@
-"""Tests for congress herd-buy detection (ROADMAP Pillar 5.1a)."""
+"""Tests for congress herd-buy detection (ROADMAP Pillar 5.1a / H5)."""
 
 import types
+from unittest.mock import MagicMock, patch
 
 from web_dashboard.congress_herd_service import (
     detect_herd_buys,
     fetch_recent_congress_buys,
+    record_congress_herd_stances,
 )
 
 
@@ -75,6 +77,9 @@ class _PagedQuery:
     def eq(self, *_a, **_k):
         return self
 
+    def neq(self, *_a, **_k):
+        return self
+
     def gte(self, *_a, **_k):
         return self
 
@@ -102,3 +107,52 @@ def test_fetch_recent_congress_buys_paginates_past_1000():
     rows = [_buy(f"T{i:05d}", f"p{i}") for i in range(2300)]
     fetched = fetch_recent_congress_buys(_PagedSupabase(rows), days=30)
     assert len(fetched) == 2300
+
+
+@patch("web_dashboard.congress_herd_service.record_stance_safe")
+@patch("web_dashboard.congress_herd_service.build_congress_herd_buys")
+def test_record_congress_herd_stances_writes_bullish(
+    mock_build: MagicMock, mock_stance: MagicMock
+) -> None:
+    mock_build.return_value = [
+        {
+            "ticker": "NVDA",
+            "politician_count": 3,
+            "buy_count": 4,
+            "latest_buy": "2026-06-10",
+            "held": True,
+            "watched": False,
+        },
+        {
+            "ticker": "AAPL",
+            "politician_count": 2,
+            "buy_count": 2,
+            "latest_buy": "2026-06-09",
+            "held": False,
+            "watched": True,
+        },
+    ]
+    mock_stance.return_value = True
+
+    stats = record_congress_herd_stances(MagicMock(), MagicMock(), days=30)
+
+    assert stats == {"herds": 2, "stances_written": 2}
+    assert mock_stance.call_count == 2
+    first = mock_stance.call_args_list[0].kwargs
+    assert first["source"] == "congress_herd"
+    assert first["stance"] == "BULLISH"
+    assert first["confidence"] is None
+    assert first["fund_key"] == ""
+    assert first["metadata"]["politician_count"] == 3
+    assert first["metadata"]["window_days"] == 30
+
+
+@patch("web_dashboard.congress_herd_service.record_stance_safe")
+@patch("web_dashboard.congress_herd_service.build_congress_herd_buys")
+def test_record_congress_herd_stances_empty(
+    mock_build: MagicMock, mock_stance: MagicMock
+) -> None:
+    mock_build.return_value = []
+    stats = record_congress_herd_stances(MagicMock(), MagicMock())
+    assert stats == {"herds": 0, "stances_written": 0}
+    mock_stance.assert_not_called()

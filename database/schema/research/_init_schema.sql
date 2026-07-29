@@ -25,6 +25,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/post_summaries.sql
 \i tables/research_articles.sql
 \i tables/rss_feeds.sql
+\i tables/youtube_sources.sql
 \i tables/securities.sql
 \i tables/sentiment_sessions.sql
 \i tables/social_metrics.sql
@@ -39,10 +40,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/action_queue_ai_review.sql
 \i tables/stance_history.sql
 \i tables/stance_outcomes.sql
+\i tables/stance_outcome_attempts.sql
 \i tables/idea_triage.sql
 \i tables/dilution_observations.sql
 \i tables/filing_events.sql
 \i tables/confluence_events.sql
+\i tables/ticker_theses.sql
+\i tables/thesis_entries.sql
+\i tables/thesis_evidence.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql

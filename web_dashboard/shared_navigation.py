@@ -8,6 +8,8 @@ Shared navigation configuration for both Streamlit and Flask.
 MIGRATED_PAGES = {
     'today': '/today',
     'ideas': '/ideas',
+    'watchlist': '/watchlist',
+    'insights': '/insights',
     'track_record': '/track-record',
     'dashboard': '/dashboard',
     'settings': '/settings',  # Routed to Flask via Caddy /v2/* handler
@@ -64,6 +66,20 @@ def ensure_flask_sidebar_navigation_links(links: list[dict]) -> list[dict]:
                 "url": get_page_url("sector_insights"),
             },
         )
+    if "watchlist" not in pages and "watchlist" in MIGRATED_PAGES:
+        insert_at = next(
+            (i + 1 for i, row in enumerate(out) if row.get("page") == "ideas"),
+            len(out),
+        )
+        out.insert(
+            insert_at,
+            {
+                "name": "Watchlist",
+                "page": "watchlist",
+                "icon": "👀",
+                "url": get_page_url("watchlist"),
+            },
+        )
     return out
 
 
@@ -76,6 +92,8 @@ def get_navigation_links() -> list:
     links = [
         {'name': 'Today', 'page': 'today', 'icon': '📋'},
         {'name': 'Ideas', 'page': 'ideas', 'icon': '💡'},
+        {'name': 'Watchlist', 'page': 'watchlist', 'icon': '👀'},
+        {'name': 'Insights', 'page': 'insights', 'icon': '📝'},
         {'name': 'Track record', 'page': 'track_record', 'icon': '🎯'},
         {'name': 'Research Repository', 'page': 'research', 'icon': '📚'},
         {'name': 'Newsletters', 'page': 'newsletters', 'icon': '📧'},

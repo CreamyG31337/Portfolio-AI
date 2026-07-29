@@ -1,0 +1,162 @@
+{
+  "fund": "Project Chimera",
+  "pulse_candidate_count": 8,
+  "market": {
+    "brief_date": "2026-07-24",
+    "headline": "Equities trade flat; growth and small caps lag broad market in quiet session",
+    "risk_regime": "MIXED",
+    "breadth_proxy": "LEADERSHIP_NARROW",
+    "volatility_state": "CALM",
+    "regime_confidence": 0.7,
+    "macro_themes": [
+      "Growth rotation",
+      "Small-cap weakness",
+      "Low volatility environment",
+      "Broad market stability"
+    ]
+  },
+  "candidates": [
+    {
+      "ticker": "GLCC.TO",
+      "advise": "WATCH",
+      "confidence": 0.5,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Materials",
+      "entry_zone": "$45-47",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "TSM",
+      "advise": "WATCH",
+      "confidence": 0.5,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$410-$420",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "URNM",
+      "advise": "WATCH",
+      "confidence": 0.49,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Energy",
+      "entry_zone": "$48.00-$49.50",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "HURA.TO",
+      "advise": "WATCH",
+      "confidence": 0.49,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Energy",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "AEM.TO",
+      "advise": "WATCH",
+      "confidence": 0.49,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Basic Materials",
+      "entry_zone": "$192 - $195",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "AKAM",
+      "advise": "WATCH",
+      "confidence": 0.48,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$114-117",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "XGD.TO",
+      "advise": "WATCH",
+      "confidence": 0.48,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Materials",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "AVGO",
+      "advise": "WATCH",
+      "confidence": 0.48,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$375-$385",
+      "stance": "HOLD"
+    }
+  ],
+  "chat": [
+    {
+      "family": "track_record",
+      "query": "Which of our stance sources or verdicts have actually been right over the last 30 days? Use the track record; note small samples.",
+      "tools": [
+        "get_track_record({\"horizon_days\":30})"
+      ],
+      "answer": "## 30-Day Track Record \u2014 Source / Verdict / Domain ROI\n\n**Total stances scored: 850** (vs benchmark). *Caveat: hit-rate doesn't mean return \u2014 all sources show negative avg excess, i.e. stances have broadly lagged the market over this window.*\n\n---\n\n### By Stance Source\n\n| Source | Scored | Hit Rate | Avg Excess Return |\n|---|---|---|---|\n| `action_queue_ai_review` | **17** \u26a0\ufe0f | **58.8%** | \u22124.43% |\n| `ticker_analysis` | 302 | 47.0% | \u22122.74% |\n| `ticker_meta_analysis` | 531 | 45.0% | \u22122.30% |\n\n- **action_queue_ai_review** has the highest hit rate (58.8%), but n=17 is a *very small sample* \u2014 treat as directional, not reliable.\n- The two bulk sources (~83% of all scores) are sub-50% and both meaningfully negative on excess return. Over the last 30 days, stances have broadly *underperformed* their benchmarks.\n\n---\n\n### By LLM Verdict\n\n| Verdict | Scored | Hit Rate |\n|---|---|---|\n| `TENSION` | **14** \u26a0\ufe0f | **71.4%** \u2705 |\n| `UNKNOWN` | 833 | 45.7% |\n| `ALIGNED` | **3** \u26a0\ufe0f | **0.0%** \u274c |\n\n- **TENSION calls actually did best** (71% hit rate) \u2014 cases where the live signal conflicted with stored research were *more* likely to beat benchmark. Small sample (14), but suggestive.\n- **ALIGNED is at 0% on 3 calls** \u2014 too tiny to draw conclusions, but worth flagging as counterintuitive.\n\n---\n\n### By Evidence Domain (source-ROI)\n\n| Domain | Scored | Hit Rate | Avg Excess |\n|---|---|---|---|\n| seekingalpha.com | 27.5 | **50.0%** | \u22121.66% |\n| theglobeandmail.com | 81.4 | 43.1% | \u22121.70% |\n| finance.yahoo.com | 175.3 | 42.2% | \u22123.31% |\n| aol.com | 31.7 | 39.4% | \u22123.44% |\n| 247wallst.com | 24.0 | 38.9% | \u22123.44% |\n\n- **Seeking Alpha** edges out on hit rate and excess (least negative), though still ~50/50.\n- **Yahoo Finance and 247WallSt** are the weakest \u2014 lowest hit rates and worst excess drag.\n\n---\n\n### Best & Worst Individual Calls\n\n| | Ticker | Source | Excess Return |\n|---|---|---|---|\n| \u2705 Best | **PANW** (\u00d72) | ticker_meta_analysis | **+25.6%, +25.3%** |\n| \u2705 | **DRX.TO** | ticker_analysis | **+24.9%** |\n| \u274c Worst | **CRWD** (\u00d72) | ticker_analysis | **\u221274.1%, \u221271.0%** |\n| \u274c | **WDC** | ticker_meta_analysis | **\u221235.5%** |\n\n---\n\n### Key Takeaways\n\n1. **No source has been reliably right** this window \u2014 every category shows negative average excess return. The 30-day period has been tough for stances vs. the broad market (consistent with today's NARROW_LEADERSHIP regime).\n2. **The AI review and TENSION verdict** stand out *directionally* but on tiny samples (17 and 14). Don't overweight yet \u2014 but if TENSION keeps hitting, it's worth re-examining whether our \"demote conflicts\" rule is too conservative.\n3. **Seeking Alpha is the least-bad evidence domain**; Yahoo/247WallSt have been drag.\n4. **CRWD is the clear cautionary tale** \u2014 two large negative calls from ticker_analysis, dragging that source's average.\n\n**Bottom line:** Treat all stance sources as roughly neutral-to-skeptical right now. The 30-day window is a hard environment (narrow leadership), so this isn't necessarily predictive \u2014 but I'd lean on `action_queue_ai_review` and TENSION-flagged items slightly more, and discount Yahoo/247WallSt-sourced stances until they improve.",
+      "elapsed_s": 22.1
+    },
+    {
+      "family": "thesis_attention",
+      "query": "Which of my thesis threads need attention right now (due, stale, or in tension)? Use tools; don't invent.",
+      "tools": [
+        "get_theses_attention({\"limit\":25})"
+      ],
+      "answer": "Here's your thesis review queue \u2014 **25 threads** flagged for attention, prioritized by urgency:\n\n---\n\n## \ud83d\udd34 Highest Priority: TENSION / Weak Context\n\nThese have the most serious flags \u2014 a live-signal vs stored-research conflict, weak evidence base, or both.\n\n| Ticker | Title | Flags | Age | Verdict |\n|--------|-------|-------|-----|---------|\n| **WEB.V** | Westbridge Renewable's Moat: Mixed Signals on Competitive Advantage | `weak` \u00b7 `due` \u00b7 `tension` | 12d | \u26a0\ufe0f TENSION |\n| **CGL.TO** | CGL.TO Moat Assessment: Gold ETF Market | `weak` \u00b7 `due` | 12d | \u2014 |\n| **GLCC.TO** | GLCC.TO Moat Assessment: Mixed Evidence | `weak` \u00b7 `due` | 12d | \u2014 |\n| **GLO.TO** | Global Atomic's Dasa Project Moat | `weak` \u00b7 `due` | 12d | \u2014 |\n\n**WEB.V** is the standout \u2014 it's the only one with an explicit **TENSION** verdict, meaning the stored stance conflicts with current signals. All four above carry a **WEAK CONTEXT** label, suggesting the underlying evidence is thin. These deserve a closer look first.\n\n---\n\n## \ud83d\udfe1 Routine Review: Due for Refresh (~15 days old)\n\nThese are bullish thesis threads that have simply aged past their review window. No tension or weakness flagged \u2014 they just need a refresh to confirm the thesis still holds:\n\n**Nuclear / Energy:** CEG, CCO.TO, OKLO\n**AI / Tech:** CRWD, PLTR, QCOM, SMH, VRT, LTRX\n**Defense / Industrials:** GD, STLD, CNR.TO, DRX.TO, TECK.B\n**Healthcare:** GANX, MRK\n**Gold / Mining:** GMIN.TO\n**Utilities / Pipelines:** FTS.TO, TRP.TO\n**Consumer:** DOL.TO\n**Other:** VEE.TO\n\n---\n\n## Recommended Action\n\n1. **Start with WEB.V** \u2014 the TENSION flag means your stored research and live signals disagree. Worth reconciling before any action.\n2. **Revisit the 4 weak-context threads** (WEB.V, CGL.TO, GLCC.TO, GLO.TO) \u2014 these were drafted with limited evidence; consider whether fresh data has emerged to strengthen or invalidate them.\n3. **Batch-refresh the ~15-day-old bullish threads** \u2014 a quick check on price action and any news since drafting would clear the bulk of the queue.\n\nWant me to pull the stored setup or recent price history for any of these tickers?",
+      "elapsed_s": 18.8
+    },
+    {
+      "family": "confluence",
+      "query": "Are there any tickers where multiple independent signals are stacking up recently? Use the confluence tool.",
+      "tools": [
+        "get_confluence({\"limit\":15})"
+      ],
+      "answer": "Here's what the confluence tool surfaced over the **last 7 days** (all 15 hits are bullish, score=2 each \u2014 meaning two independent signal families aligned):\n\n---\n\n### \ud83d\udd25 Most Distinctive (filing-positive + stance flip)\nThese carry a fundamentally different signal type \u2014 a **regulatory/filing catalyst** \u2014 not just two correlated quant signals:\n\n| Ticker | Signal Families | As Of |\n|--------|----------------|-------|\n| **LEU** | `filing_positive` + `stance_flip_bullish` | Jul 23 |\n| **QCOM** | `filing_positive` + `stance_flip_bullish` | Jul 23 |\n| **NVDA** | `filing_positive` + `stance_flip_bullish` | Jul 23 |\n\n### \ud83d\udcc8 Signals + Stance Flip (quant + positioning alignment)\n| Ticker | As Of | Sector Theme |\n|--------|-------|-------------|\n| **GD** | Jul 25 | Defense |\n| **JNJ** | Jul 25 | Healthcare |\n| **FTS.TO** | Jul 25 | Canadian Telecom/Defensive |\n| **MU** | Jul 24 | Semiconductor |\n| **AMD** | Jul 23 | Semiconductor |\n| **ASML** | Jul 23 | Semiconductor (EUV) |\n| **DE** | Jul 23 | Industrials/Ag |\n| **PAYX** | Jul 23 | Financials/Payroll |\n| **SNA** | Jul 23 | Industrials/Tools |\n| **VTI** | Jul 23 | Broad market |\n| **SHOP.TO** | Jul 21 | Canadian Tech |\n| **MNST** | Jul 21 | Beverages/Defensive |\n\n---\n\n### Key Takeaways\n\n1. **Semiconductor cluster stands out.** MU, AMD, ASML, NVDA, and QCOM all flashed confluence this week \u2014 a notable sector-wide alignment despite today's \"growth lagging\" pulse.\n\n2. **Filing-positive trio (LEU/QCOM/NVDA) is the highest-conviction type.** Unlike the `signals + stance_flip` pairs (which are both quantitative), these combine a **fundamental filing event** with a stance flip \u2014 a more orthogonal signal combination.\n\n3. **Defensive rotation signals.** GD, JNJ, FTS.TO, MNST all turning bullish in confluence aligns with today's narrow-leadership / growth-rotation regime.\n\n4. **No risk-direction confluence events** in the last week \u2014 nothing is flagging bearish confluence right now.\n\n---\n\n**Next steps I'd suggest:**\n- Pull `get_ticker_setup` on **LEU, NVDA, or QCOM** to check stored entry zones/targets for the filing-positive names.\n- Check `get_sector_rotation` for \"Technology\" or \"Semiconductor\" to see if the sector rotation meta confirms the chip cluster.\n- Investigate the specific filing events behind LEU/QCOM/NVDA with `search_web`.\n\nWant me to drill into any of these?",
+      "elapsed_s": 16.8
+    },
+    {
+      "family": "ideas_triage",
+      "query": "What new discovery ideas came in that I haven't triaged yet? List the top few with tickers.",
+      "tools": [
+        "get_ideas_triage({\"limit\":10})"
+      ],
+      "answer": "Here are your **top untriaged discovery ideas** from the last 14 days (all relevance 0.90):\n\n| # | Title / Theme | Tickers | Type | Source |\n|---|---------------|---------|------|--------|\n| 1 | Micro-cap / small-cap value focus | **RMT**, SHOP.TO, MELI | Alpha Research | Motley Fool |\n| 2 | iShares MSCI Europe Small-Cap ETF | **IEUS**, IMI | Alpha Research | stockanalysis.com |\n| 3 | Sinda (NYSE:SIND) analyst ratings | **SIND**, C | Alpha Research | Benzinga |\n| 4 | Avantis Global Small Cap Value holdings | **MATX, VSAT, LNTH, SNEX**, M | Alpha Research | stockanalysis.com |\n| 5 | WisdomTree U.S. SmallCap holdings | **VIRT, GTX, VG, WT, OGN**, MATX | Alpha Research | stockanalysis.com |\n| 6 | American Funds SmallCap World holdings | **BLD, FIX, LITE**, SMCWX | Alpha Research | stockanalysis.com |\n| 7 | iShares S&P/TSX SmallCap ETF | **XCS, BB** | Alpha Research | stockanalysis.com |\n| 8 | Packaging Corp of America Q2 transcript | **PKG** | Alpha Research | Benzinga |\n| 9 | First Industrial Realty Q2 transcript | **FR** | Alpha Research | Benzinga |\n| 10 | Schwab Small-Cap ETF dividend data | **SCHA** | Alpha Research | stockanalysis.com |\n\n### Quick takeaways\n\n- **Theme skew:** Heavily **small-cap oriented** \u2014 several ETF holdings-list scrapes surfaced a recurring basket of names (MATX appears in multiple funds). This aligns with the pulse's \"small-cap weakness\" theme, but note the regime is **MIXED / leadership narrow**, so these are raw leads, not green-lit entries.\n- **Single-name research:** PKG and FR are Q2 earnings call transcripts \u2014 actionable if you want to dig into fundamentals.\n- **New names outside your watchlist:** SIND, BLD, FIX, VIRT, GTX, OGN, LITE, SNETH, VSAT, BB \u2014 none appear in today's pulse, so they'd be fresh additions to evaluate.\n\n\u26a0\ufe0f These are **raw discovery ideas**, not vetted candidates. Before acting on any, run `get_ticker_setup` to check for stored entry zones, targets, and stops. Want me to pull setups on any of these?",
+      "elapsed_s": 15.5
+    },
+    {
+      "family": "earnings",
+      "query": "Do any of my current holdings report earnings soon? Check holdings, then their earnings dates.",
+      "tools": [
+        "get_holdings_snapshot({})",
+        "get_holdings_snapshot({})"
+      ],
+      "answer": "The holdings snapshot tool is returning an error on my end (`query_failed`) even on retry. That means I can't retrieve your current positions right now, so I can't automatically pull their earnings dates.\n\nHere are a couple of options:\n\n1. **If you can paste your held tickers** (or even a few you're unsure about), I'll immediately check earnings dates via the calendar tool for all of them.\n2. The pulse shows all eight top candidates as **Held = N**, which suggests none of them are current positions \u2014 but the full holdings list isn't visible to me right now.\n\nWould you like to share your tickers so I can run the earnings check?",
+      "elapsed_s": 17.1
+    }
+  ]
+}

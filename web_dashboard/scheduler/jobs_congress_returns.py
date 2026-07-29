@@ -361,6 +361,7 @@ def compute_congress_trade_returns_job() -> None:
         while True:
             resp = client.supabase.table("congress_trades") \
                 .select("id, ticker, transaction_date, amount") \
+                .neq("quality_status", "garbage") \
                 .range(offset, offset + page_size - 1) \
                 .execute()
             batch = resp.data or []

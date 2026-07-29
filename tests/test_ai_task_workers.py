@@ -5,6 +5,7 @@ import pytest
 from web_dashboard.scheduler.ai_task_workers import (
     AIQueueConfig,
     AIQueueWorkerPool,
+    QUEUE_JOB_ANALYZE_CONGRESS_TRADES,
     QUEUE_JOB_ETF_GROUP_ANALYSIS,
     QUEUE_JOB_SECTOR_META_ANALYSIS,
     QUEUE_JOB_TICKER_ANALYSIS,
@@ -14,8 +15,11 @@ from web_dashboard.scheduler.ai_task_workers import (
     ERROR_TIMEOUT_GLM,
     ERROR_UNSUPPORTED_TASK,
     UnsupportedTaskError,
+    backend_is_configured,
     build_task_handlers,
     classify_error,
+    congress_trade_analysis_task_handler,
+    enqueue_congress_trade_analysis_tasks,
     enqueue_etf_group_analysis_tasks,
     enqueue_sector_meta_analysis_tasks,
     enqueue_ticker_analysis_tasks,
@@ -23,6 +27,7 @@ from web_dashboard.scheduler.ai_task_workers import (
     etf_group_analysis_task_handler,
     model_for_backend,
     ollama_base_url_for_backend,
+    resolve_effective_worker_counts,
     retry_delay_seconds,
     sector_meta_analysis_task_handler,
     should_increment_attempts,
@@ -78,6 +83,106 @@ def test_worker_pool_does_not_start_without_registered_handlers():
 
     assert pool.start() is False
     assert pool.running is False
+
+
+def test_resolve_effective_worker_counts_skips_unconfigured_backends(monkeypatch):
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_PRIMARY_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_2", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
+    monkeypatch.delenv("AI_QUEUE_OLLAMA_SECONDARY_BASE_URL", raising=False)
+    monkeypatch.delenv("ZHIPU_API_KEY", raising=False)
+    monkeypatch.delenv("GLM_4_API_KEY", raising=False)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setattr(
+        "web_dashboard.scheduler.ai_task_workers.backend_is_configured",
+        lambda backend: backend == "ollama_primary",
+    )
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "3",
+        }
+    )
+    effective = resolve_effective_worker_counts(
+        config,
+        strict_health=False,
+        probe=lambda _b: (True, "ok"),
+    )
+    assert effective["ollama_primary"] == 1
+    assert effective["ollama_secondary"] == 0
+    assert effective["glm"] == 0
+
+
+def test_backend_is_configured_ollama_requires_base_url(monkeypatch):
+    monkeypatch.setattr(
+        "web_dashboard.scheduler.ai_task_workers.ollama_base_url_for_backend",
+        lambda backend: "http://x:11434" if backend == "ollama_primary" else None,
+    )
+    assert backend_is_configured("ollama_primary") is True
+    assert backend_is_configured("ollama_secondary") is False
+
+
+def test_resolve_effective_worker_counts_strict_health_zeros_unhealthy(monkeypatch):
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://secondary:11434")
+    monkeypatch.setenv("ZHIPU_API_KEY", "test-key")
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "2",
+        }
+    )
+
+    def probe(backend: str):
+        if backend == "ollama_secondary":
+            return False, "unreachable"
+        return True, "ok"
+
+    effective = resolve_effective_worker_counts(config, strict_health=True, probe=probe)
+    assert effective == {
+        "ollama_primary": 1,
+        "ollama_secondary": 0,
+        "glm": 2,
+    }
+
+
+def test_resolve_effective_worker_counts_non_strict_keeps_unhealthy_configured(
+    monkeypatch,
+):
+    """Production default: warn on probe failure but still start configured workers."""
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://primary:11434")
+    monkeypatch.setenv("OLLAMA_BASE_URL_2", "http://secondary:11434")
+    monkeypatch.setenv("ZHIPU_API_KEY", "test-key")
+
+    config = AIQueueConfig.from_env(
+        {
+            "AI_QUEUE_ENABLED": "true",
+            "AI_QUEUE_JOBS": "ticker_analysis",
+            "AI_QUEUE_WORKERS_OLLAMA_PRIMARY": "1",
+            "AI_QUEUE_WORKERS_OLLAMA_SECONDARY": "1",
+            "AI_QUEUE_WORKERS_GLM": "3",
+        }
+    )
+    effective = resolve_effective_worker_counts(
+        config,
+        strict_health=False,
+        probe=lambda _b: (False, "boot blip"),
+    )
+    assert effective == {
+        "ollama_primary": 1,
+        "ollama_secondary": 1,
+        "glm": 3,
+    }
 
 
 def test_lease_one_uses_backend_and_enabled_analysis_types():
@@ -921,3 +1026,89 @@ def test_etf_group_analysis_task_handler_invalid_date_raises(monkeypatch):
     }
     with pytest.raises(ValueError, match="invalid date"):
         etf_group_analysis_task_handler(task, "glm")
+
+
+def test_build_task_handlers_registers_analyze_congress_trades_when_enabled():
+    handlers = build_task_handlers([QUEUE_JOB_ANALYZE_CONGRESS_TRADES])
+    assert list(handlers) == [QUEUE_JOB_ANALYZE_CONGRESS_TRADES]
+    assert handlers[QUEUE_JOB_ANALYZE_CONGRESS_TRADES] is congress_trade_analysis_task_handler
+
+
+def test_enqueue_congress_trade_analysis_tasks_uses_enqueue_rpc_payload():
+    fake = SimpleNamespace(supabase=FakeSupabase())
+
+    stats = enqueue_congress_trade_analysis_tasks(
+        fake,
+        [180719, "180725", "bad", 0, -1],
+        priority=0,
+        enqueued_by="manual_catchup",
+        max_attempts=3,
+    )
+
+    assert stats == {"attempted": 5, "enqueued": 2, "failed": 3}
+    assert [call[0] for call in fake.supabase.calls] == [
+        "enqueue_ai_task",
+        "enqueue_ai_task",
+    ]
+    assert fake.supabase.calls[0][1] == {
+        "p_analysis_type": "analyze_congress_trades",
+        "p_target_key": "180719",
+        "p_payload": {"trade_id": 180719, "priority": 0},
+        "p_priority": 0,
+        "p_enqueued_by": "manual_catchup",
+        "p_max_attempts": 3,
+    }
+    assert fake.supabase.calls[1][1]["p_target_key"] == "180725"
+    assert fake.supabase.calls[1][1]["p_priority"] == 0
+
+
+def test_congress_trade_analysis_task_handler_skips_when_already_scored(monkeypatch):
+    """Resume-safe: if Supabase conflict_score is set, do not call LLM or write."""
+    import sys
+    import types
+
+    class _Table:
+        def select(self, *_a, **_k):
+            return self
+
+        def eq(self, *_a, **_k):
+            return self
+
+        def limit(self, *_a, **_k):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[{"id": 180719, "conflict_score": 0.55}])
+
+    class _FakeSupabaseClient:
+        def __init__(self, use_service_role=False):
+            self.supabase = SimpleNamespace(table=lambda _name: _Table())
+
+    called = {"analyze": False}
+
+    def _boom(*_a, **_k):
+        called["analyze"] = True
+        raise AssertionError("analyze_trade should not run when already scored")
+
+    fake_supabase = types.ModuleType("supabase_client")
+    fake_supabase.SupabaseClient = _FakeSupabaseClient
+    fake_pg = types.ModuleType("postgres_client")
+    fake_pg.PostgresClient = lambda: SimpleNamespace()
+    fake_ollama = types.ModuleType("ollama_client")
+    fake_ollama.OllamaClient = lambda **_k: SimpleNamespace()
+    fake_batch = types.ModuleType("scripts.analyze_congress_trades_batch")
+    fake_batch.analyze_trade = _boom
+    fake_batch.get_trade_context = _boom
+    fake_batch.is_low_risk_asset = _boom
+    fake_batch.sync_supabase_conflict_score = _boom
+
+    monkeypatch.setitem(sys.modules, "supabase_client", fake_supabase)
+    monkeypatch.setitem(sys.modules, "postgres_client", fake_pg)
+    monkeypatch.setitem(sys.modules, "ollama_client", fake_ollama)
+    monkeypatch.setitem(sys.modules, "scripts.analyze_congress_trades_batch", fake_batch)
+
+    congress_trade_analysis_task_handler(
+        {"target_key": "180719", "payload": {"trade_id": 180719}},
+        "ollama_primary",
+    )
+    assert called["analyze"] is False

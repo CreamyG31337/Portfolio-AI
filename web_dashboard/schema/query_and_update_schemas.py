@@ -565,10 +565,11 @@ def main():
         'committees', 'watchlist', 'politicians'
     }
     
-    # Tables in Postgres
+    # Tables in Postgres (Research DB)
     postgres_tables = {
         'research_articles', 'congress_trades_analysis', 'social_sentiment_analysis',
-        'extracted_tickers', 'post_summaries', 'market_relationships'
+        'extracted_tickers', 'post_summaries', 'market_relationships',
+        'youtube_sources', 'rss_feeds',
     }
     
     table_mapping = {}

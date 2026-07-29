@@ -1,62 +1,79 @@
-import requests
-import time
-from datetime import datetime, timezone, timedelta
+#!/usr/bin/env python3
+"""Manual Reddit search smoke test (RSS by default, OAuth if configured)."""
 
-def test_reddit_search(ticker):
-    print(f"\n{'='*50}")
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+current_dir = Path(__file__).resolve().parent
+web_dashboard = current_dir.parent
+if str(web_dashboard) not in sys.path:
+    sys.path.insert(0, str(web_dashboard))
+
+from reddit_client import check_reddit_connectivity, get_reddit_client, reset_reddit_client
+
+
+def test_reddit_search(ticker: str) -> None:
+    print(f"\n{'=' * 50}")
     print(f"Testing Reddit Search for: {ticker}")
-    print(f"{'='*50}")
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    
-    # Test both query types
+    print(f"{'=' * 50}")
+
+    client = get_reddit_client()
     queries = [f"${ticker}", ticker]
-    
+
     for query in queries:
-        print(f"\n🔎 Query: '{query}'")
-        print(f"{'-'*30}")
-        
-        try:
-            url = f"https://www.reddit.com/search.json?q={query}&sort=new&t=day&limit=5"
-            response = requests.get(url, headers=headers, timeout=10)
-            
-            if response.status_code != 200:
-                print(f"❌ Error: {response.status_code}")
+        print(f"\nQuery: '{query}'")
+        print("-" * 30)
+
+        result = client.get_json(
+            "/search",
+            params={"q": query, "sort": "new", "t": "day", "limit": 5},
+        )
+
+        transport = "rss" if result.used_rss else "oauth"
+        if result.rate_limited or result.status_code == 429:
+            print("Error: 429 rate limited")
+            continue
+        if result.payload is None:
+            print(f"Error: HTTP {result.status_code} (transport={transport})")
+            continue
+
+        posts = []
+        children = (result.payload.get("data") or {}).get("children") or []
+        for child in children:
+            post = child.get("data", {})
+            if not post:
                 continue
-                
-            data = response.json()
-            posts = []
-            
-            if 'data' in data and 'children' in data['data']:
-                for child in data['data']['children']:
-                    post = child.get('data', {})
-                    if not post: continue
-                    
-                    posts.append({
-                        'title': post.get('title', 'N/A')[:80], # Truncate for display
-                        'subreddit': post.get('subreddit', 'N/A'),
-                        'score': post.get('score', 0),
-                        'created': datetime.fromtimestamp(post.get('created_utc', 0)).strftime('%H:%M:%S'),
-                        'url': post.get('url', '')
-                    })
-            
-            if not posts:
-                print("   (No results found)")
-            else:
-                for p in posts:
-                    print(f"   [{p['subreddit']}] {p['title']}...")
-                    print(f"    ↳ Score: {p['score']} | Time: {p['created']}")
-            
-            time.sleep(2) # Respect rate limits between queries
-            
-        except Exception as e:
-            print(f"❌ Exception: {e}")
+            posts.append(
+                {
+                    "title": post.get("title", "N/A")[:80],
+                    "subreddit": post.get("subreddit", "N/A"),
+                    "score": post.get("score", 0),
+                    "created": datetime.fromtimestamp(post.get("created_utc", 0)).strftime(
+                        "%H:%M:%S"
+                    ),
+                    "url": post.get("url", ""),
+                }
+            )
+
+        if not posts:
+            print("   (No results found)")
+        else:
+            for post in posts:
+                print(f"   [r/{post['subreddit']}] {post['title']}...")
+                print(f"    Score: {post['score']} | Time: {post['created']} | via {transport}")
+
+        time.sleep(2)
+
 
 if __name__ == "__main__":
-    # Test a mix of distinct and common-word tickers
-    test_tickers = ["LUNR", "NVDA", "CAT", "AI", "GOOD"]
-    
-    for t in test_tickers:
-        test_reddit_search(t)
+    reset_reddit_client()
+    status = check_reddit_connectivity()
+    if not status.ok:
+        print(f"Reddit connectivity failed: {status.message}")
+        sys.exit(1)
+
+    print(f"Reddit OK: {status.message}")
+    for ticker in ["LUNR", "NVDA", "CAT", "AI", "GOOD"]:
+        test_reddit_search(ticker)

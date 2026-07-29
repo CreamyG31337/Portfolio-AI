@@ -64,9 +64,44 @@ interface CongressHerd {
   watched?: boolean;
 }
 
+interface ThesisAttention {
+  id: string;
+  ticker: string;
+  title?: string;
+  disposition?: string;
+  intent?: string;
+  review_status?: string | null;
+  llm_verdict?: string | null;
+  is_weak?: boolean;
+  age_days?: number | null;
+  attention_reasons?: string[];
+}
+
+interface AdviseRow {
+  ticker: string;
+  advise: string;
+  score?: number;
+  reasons?: string[];
+  queue_verdict?: string | null;
+  thesis_verdict?: string | null;
+  thesis_id?: string | null;
+  dual_tension?: boolean;
+  meta_conviction?: string | null;
+  // Signal-fallback rows (A3): shown when queue + Insights are empty.
+  reason?: string;
+  confidence?: number | null;
+  fear_level?: string | null;
+  source?: string;
+  // A2 tension (live-signal vs stored-research conflict), annotated upstream.
+  tension?: boolean;
+  tension_reason?: string | null;
+}
+
 interface Briefing {
   market_regime?: { risk_regime?: string; as_of?: string };
   market_brief_headline?: string;
+  advise_pack?: AdviseRow[];
+  advise_source?: string;
   stance_flips?: Array<Record<string, unknown>>;
   action_queue?: Array<Record<string, unknown>>;
   alpha_articles?: Array<Record<string, unknown>>;
@@ -75,6 +110,7 @@ interface Briefing {
   dilution_alerts?: DilutionAlert[];
   filing_alerts?: FilingAlert[];
   confluence_events?: ConfluenceEvent[];
+  theses_attention?: ThesisAttention[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
 }
@@ -160,6 +196,105 @@ async function loadBriefing(): Promise<void> {
       `<h2 class="text-lg font-semibold mb-2">Market regime</h2>
        <p class="text-sm">${data.market_brief_headline || "No brief yet"}</p>
        <p class="text-xs text-text-secondary mt-1">Regime: <strong>${regime}</strong></p>`
+    );
+
+    const advise = data.advise_pack || [];
+    const adviseBadge = (a: string): string => {
+      const u = a.toUpperCase();
+      if (u === "SELL" || u === "RISK") {
+        return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+      }
+      if (u === "BUY") {
+        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      }
+      return "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200";
+    };
+    const fromSignals = (data.advise_source || "advise") === "signal_fallback";
+    const adviseSourceNote = fromSignals
+      ? `<span class="text-xs font-normal text-text-secondary">(no queue/Insights items — ranked from watchlist signals; not auto-trade)</span>`
+      : `<span class="text-xs font-normal text-text-secondary">(ranked from queue + Insights — not auto-trade)</span>`;
+    showSection(
+      "today-advise",
+      `<h2 class="text-lg font-semibold mb-2">Advise ${adviseSourceNote}</h2>
+       ${
+         advise.length
+           ? advise
+               .slice(0, 12)
+               .map((row) => {
+                 // Advise rows carry reasons[]; signal-fallback rows carry a
+                 // single reason string + fear level.
+                 const chips = (row.reasons && row.reasons.length
+                   ? row.reasons.slice(0, 5)
+                   : [row.reason, row.fear_level ? `fear ${row.fear_level}` : ""].filter(
+                       Boolean
+                     ) as string[]
+                 )
+                   .map(
+                     (r) =>
+                       `<span class="text-xs px-1.5 py-0.5 rounded border border-border text-text-secondary">${r}</span>`
+                   )
+                   .join(" ");
+                 const thesisLink = row.thesis_id
+                   ? ` <a href="/insights?thesis=${encodeURIComponent(row.thesis_id)}" class="text-xs text-accent hover:underline">thesis</a>`
+                   : "";
+                 const dual = row.dual_tension
+                   ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400">dual tension</span>`
+                   : "";
+                 const tension = row.tension
+                   ? `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400" title="${
+                       row.tension_reason || "live signal vs stored research"
+                     }">tension</span>`
+                   : "";
+                 const metric =
+                   typeof row.score === "number"
+                     ? `score ${row.score}`
+                     : typeof row.confidence === "number"
+                       ? `conf ${row.confidence.toFixed(2)}`
+                       : "";
+                 return `<div class="text-sm py-1.5 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(row.ticker)}" class="text-accent hover:underline font-semibold">${row.ticker}</a>
+            <span class="ml-1 text-xs px-1.5 py-0.5 rounded ${adviseBadge(row.advise)}">${row.advise}</span>
+            ${metric ? `<span class="ml-1 text-xs text-text-secondary">${metric}</span>` : ""}
+            ${tension}${dual}${thesisLink}
+            <div class="mt-1 flex flex-wrap gap-1">${chips}</div>
+          </div>`;
+               })
+               .join("")
+           : `<p class="text-sm text-text-secondary">No ranked advise items yet (need Action Queue, Insights tension, or active watchlist signals).</p>`
+       }`
+    );
+
+    const theses = data.theses_attention || [];
+    const reasonChip = (r: string): string => {
+      const k = r.toLowerCase();
+      if (k === "tension" || k === "stale_thesis") {
+        return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-700 dark:text-amber-400">${k}</span>`;
+      }
+      if (k === "stale" || k === "weak") {
+        return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-red-500/40 text-red-600">${k}</span>`;
+      }
+      return `<span class="ml-1 text-xs px-1.5 py-0.5 rounded border border-border text-text-secondary">${k}</span>`;
+    };
+    showSection(
+      "today-theses",
+      `<h2 class="text-lg font-semibold mb-2">Theses due / in tension <span class="text-xs font-normal text-text-secondary">(Insights)</span></h2>
+       ${
+         theses.length
+           ? theses
+               .slice(0, 12)
+               .map((t) => {
+                 const reasons = (t.attention_reasons || []).map(reasonChip).join("");
+                 const href = `/insights?thesis=${encodeURIComponent(t.id)}`;
+                 return `<div class="text-sm py-1 border-b border-border last:border-0">
+            <a href="${href}" class="text-accent hover:underline font-semibold">${t.ticker}</a>
+            <span class="text-xs text-text-secondary ml-1">${t.disposition || ""} · ${t.intent || ""}</span>
+            ${reasons}
+            <span class="block text-xs text-text-secondary mt-0.5">${t.title || ""}</span>
+          </div>`;
+               })
+               .join("")
+           : `<p class="text-sm text-text-secondary">Nothing due or in tension. <a href="/insights" class="text-accent underline">Open Insights</a></p>`
+       }`
     );
 
     const flips = data.stance_flips || [];

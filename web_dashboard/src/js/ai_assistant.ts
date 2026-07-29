@@ -42,6 +42,7 @@ interface ContextPreviewResponse {
 
 interface ModelsResponse {
     models?: Array<{ id: string; name: string }>;
+    default_model?: string;
 }
 
 interface ContextResponse {
@@ -73,6 +74,7 @@ interface ChatRequest {
     include_insider_trades?: boolean;
     include_congress_trades?: boolean;
     include_etf_trades?: boolean;
+    include_intelligence_pulse?: boolean;
     search_results: any;
     repository_articles: any;
 }
@@ -82,6 +84,8 @@ interface ChatResponse {
     chunk?: string;
     done?: boolean;
     error?: string;
+    status?: string;
+    name?: string;
 }
 
 interface PortfolioIntelligenceResponse {
@@ -113,6 +117,7 @@ class AIAssistant {
     private includeInsiderTrades: boolean;
     private includeCongressTrades: boolean;
     private includeEtfTrades: boolean;
+    private includeIntelligencePulse: boolean;
 
     // Context caching - calculate once, use for all messages
     private contextString: string | null = null;  // The actual context text to send to LLM
@@ -121,6 +126,23 @@ class AIAssistant {
     private isSending: boolean = false; // True while a message is being sent (prevent duplicate sends)
     private contextReloadQueued: boolean = false; // True when a refresh is requested during loading
     private contextCache: Map<string, { context: string; charCount: number }> = new Map();
+    /** User text awaiting a completed assistant reply (for persist / interrupt stub). */
+    private pendingPersistUser: string | null = null;
+    /**
+     * Portfolio context is attached once per conversation window (like WebAI).
+     * Snapshot is expanded back onto the anchor user turn in API history so
+     * follow-ups still see holdings without re-sending the blob every request.
+     * Re-inject when Clear Chat / fund change / session restore resets the
+     * anchor, or when the 20-turn window drops the anchor turn.
+     */
+    private portfolioContextSnapshot: string | null = null;
+    private portfolioContextAnchorIndex: number | null = null;
+    private static readonly HISTORY_WINDOW = 20;
+    /** Live "Generating…" indicator: elapsed timer + phase label while waiting on the model. */
+    private loadingMessageId: string | null = null;
+    private loadingPhase: string = 'Generating response…';
+    private loadingStartedAt: number = 0;
+    private loadingTickTimer: ReturnType<typeof setInterval> | null = null;
     // TODO(perf): Optionally persist cache to localStorage or add a backend cache key
     // to reuse across sessions if context generation becomes expensive.
 
@@ -138,6 +160,7 @@ class AIAssistant {
         this.includeInsiderTrades = true;
         this.includeCongressTrades = true;
         this.includeEtfTrades = true;
+        this.includeIntelligencePulse = true;
     }
 
     async init(): Promise<void> {
@@ -151,14 +174,16 @@ class AIAssistant {
             this.setupEventListeners();
             console.log('[AIAssistant] Event listeners attached');
             this.loadModels();
-            this.loadFunds();
             this.loadPortfolioTickers();
             this.loadContextItems();
-            this.loadUserPreferences(); // Load user preferences (including includeSearch)
+            await this.loadUserPreferences();
             this.updateUI();
 
-            // Eagerly load context - this enables the send button when done
+            // Load context after preferences so trade toggles are correct
             this.loadContext();
+
+            // Restore server-side transcript for the current fund
+            await this.loadSessionFromServer();
 
             // Initialize display
             this.updateModelDisplay();
@@ -235,6 +260,85 @@ class AIAssistant {
         return webaiModels.includes(model);
     }
 
+    private formatElapsed(ms: number): string {
+        const totalSec = Math.floor(ms / 1000);
+        const m = Math.floor(totalSec / 60);
+        const s = totalSec % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    private friendlyToolName(toolName: string): string {
+        const map: Record<string, string> = {
+            get_holdings_snapshot: 'portfolio holdings',
+            get_trade_history: 'trade history',
+            get_track_record: 'track record',
+            get_theses_attention: 'theses needing attention',
+            get_confluence: 'confluence signals',
+            get_ideas_triage: 'ideas queue',
+            get_earnings_calendar: 'earnings calendar',
+            search_web: 'web search',
+            search_research: 'research library',
+            get_ticker_snapshot: 'ticker snapshot',
+            get_price_history: 'price history',
+        };
+        return map[toolName] || toolName.replace(/_/g, ' ');
+    }
+
+    private loadingHint(elapsedMs: number): string {
+        if (elapsedMs < 15000) return '';
+        if (elapsedMs < 45000) {
+            return 'Still working — first tokens can take a bit…';
+        }
+        if (elapsedMs < 90000) {
+            return 'Still going — tool lookups and cloud models often take 1–2 minutes.';
+        }
+        return 'Taking longer than usual — connection is open; hang tight.';
+    }
+
+    private renderLiveLoadingHtml(): string {
+        const elapsed = this.formatElapsed(Date.now() - this.loadingStartedAt);
+        const hint = this.loadingHint(Date.now() - this.loadingStartedAt);
+        const hintHtml = hint
+            ? `<div class="text-xs text-text-secondary mt-1">${hint}</div>`
+            : '';
+        return (
+            `<div class="flex flex-col gap-1">` +
+            `<div class="flex items-center gap-2">` +
+            `<div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div>` +
+            `<span>${this.loadingPhase}</span>` +
+            `<span class="text-xs text-text-secondary tabular-nums" data-loading-elapsed>${elapsed}</span>` +
+            `</div>${hintHtml}</div>`
+        );
+    }
+
+    private startLiveLoading(messageId: string, phase: string = 'Generating response…'): void {
+        this.stopLiveLoading(false);
+        this.loadingMessageId = messageId;
+        this.loadingPhase = phase;
+        this.loadingStartedAt = Date.now();
+        this.updateMessage(messageId, 'assistant', this.renderLiveLoadingHtml(), true);
+        this.loadingTickTimer = setInterval(() => {
+            if (!this.loadingMessageId) return;
+            this.updateMessage(this.loadingMessageId, 'assistant', this.renderLiveLoadingHtml(), true);
+        }, 1000);
+    }
+
+    private setLiveLoadingPhase(phase: string): void {
+        if (!this.loadingMessageId) return;
+        this.loadingPhase = phase;
+        this.updateMessage(this.loadingMessageId, 'assistant', this.renderLiveLoadingHtml(), true);
+    }
+
+    private stopLiveLoading(clearId: boolean = true): void {
+        if (this.loadingTickTimer !== null) {
+            clearInterval(this.loadingTickTimer);
+            this.loadingTickTimer = null;
+        }
+        if (clearId) {
+            this.loadingMessageId = null;
+        }
+    }
+
     setupEventListeners(): void {
         // Send button
         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
@@ -287,47 +391,33 @@ class AIAssistant {
             });
         }
 
-        // Fund selection - use global selector from left nav (or fallback to right sidebar)
+        // Fund selection: left-nav global selector only (no duplicate settings dropdown).
         const globalFundSelect = document.getElementById('global-fund-select') as HTMLSelectElement | null;
-        const rightSidebarFundSelect = document.getElementById('fund-select') as HTMLSelectElement | null;
 
-        // Read initial fund from global selector
         if (globalFundSelect && globalFundSelect.value) {
             this.selectedFund = globalFundSelect.value;
             console.log('[AIAssistant] Initial fund from global selector:', this.selectedFund);
         }
 
-        // Listen to global fund selector (left nav)
         if (globalFundSelect) {
             globalFundSelect.addEventListener('change', (e: Event) => {
                 const target = e.target as HTMLSelectElement;
                 this.selectedFund = target.value;
                 console.log('[AIAssistant] Fund changed to:', this.selectedFund);
-                this.contextReady = false; // Reset context state
-                this.loadPortfolioTickers(); // Reload tickers for new fund
-                this.loadContext(); // Reload context for new fund
-                // Sync right sidebar selector if exists
-                if (rightSidebarFundSelect) {
-                    rightSidebarFundSelect.value = target.value;
-                }
+                this.contextReady = false;
+                this.pendingPersistUser = null;
+                this.isSending = false;
+                this.resetPortfolioContextInjection();
+                this.loadPortfolioTickers();
+                this.loadContext();
+                void this.loadSessionFromServer();
             });
         }
 
-        // Also listen to right sidebar fund selector (for backwards compat)
-        if (rightSidebarFundSelect) {
-            rightSidebarFundSelect.addEventListener('change', (e: Event) => {
-                const target = e.target as HTMLSelectElement;
-                this.selectedFund = target.value;
-                console.log('[AIAssistant] Fund changed (sidebar) to:', this.selectedFund);
-                this.contextReady = false;
-                this.loadPortfolioTickers();
-                this.loadContext();
-                // Sync global selector if exists
-                if (globalFundSelect) {
-                    globalFundSelect.value = target.value;
-                }
-            });
-        }
+        // Persist an interrupted stub if the user navigates away mid-response.
+        window.addEventListener('pagehide', () => {
+            this.persistInterruptedIfNeeded();
+        });
 
         // Context toggles
         const toggleThesis = document.getElementById('toggle-thesis') as HTMLInputElement | null;
@@ -339,6 +429,7 @@ class AIAssistant {
         const toggleInsiderTrades = document.getElementById('toggle-insider-trades') as HTMLInputElement | null;
         const toggleCongressTrades = document.getElementById('toggle-congress-trades') as HTMLInputElement | null;
         const toggleEtfTrades = document.getElementById('toggle-etf-trades') as HTMLInputElement | null;
+        const toggleIntelligencePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
 
         if (toggleThesis) {
             toggleThesis.addEventListener('change', (e: Event) => {
@@ -400,6 +491,14 @@ class AIAssistant {
                 this.includeEtfTrades = target.checked;
                 this.saveEtfTradesPreference(target.checked);
                 this.loadContext(); // Reload context when toggle changes
+            });
+        }
+        if (toggleIntelligencePulse) {
+            toggleIntelligencePulse.addEventListener('change', (e: Event) => {
+                const target = e.target as HTMLInputElement;
+                this.includeIntelligencePulse = target.checked;
+                this.saveIntelligencePulsePreference(target.checked);
+                this.loadContext();
             });
         }
 
@@ -725,6 +824,7 @@ class AIAssistant {
             const includeInsiderTrades = this.includeInsiderTrades;
             const includeCongressTrades = this.includeCongressTrades;
             const includeEtfTrades = this.includeEtfTrades;
+            const includeIntelligencePulse = this.includeIntelligencePulse;
 
             const cacheKey = [
                 this.selectedFund,
@@ -734,7 +834,8 @@ class AIAssistant {
                 includeFundamentals,
                 includeInsiderTrades,
                 includeCongressTrades,
-                includeEtfTrades
+                includeEtfTrades,
+                includeIntelligencePulse
             ].join('|');
 
             const cached = this.contextCache.get(cacheKey);
@@ -767,7 +868,8 @@ class AIAssistant {
                     include_fundamentals: includeFundamentals,
                     include_insider_trades: includeInsiderTrades,
                     include_congress_trades: includeCongressTrades,
-                    include_etf_trades: includeEtfTrades
+                    include_etf_trades: includeEtfTrades,
+                    include_intelligence_pulse: includeIntelligencePulse
                 }),
                 signal: controller.signal
             });
@@ -795,7 +897,7 @@ class AIAssistant {
   - thesis: ${df.thesis ?? 'N/A'}ms
   - insider_trades: ${df.insider_trades ?? 'N/A'}ms
   - congress_trades: ${df.congress_trades ?? 'N/A'}ms
-  - etf_trades: ${df.etf_trades ?? 'N/A'}ms
+  - etf_context: ${df.etf_context ?? df.etf_trades ?? 'N/A'}ms
   → TOTAL DATA FETCH: ${df.total_data_fetch ?? 'N/A'}ms`);
                     console.log(`[AIAssistant] ⏱️ FORMATTING BREAKDOWN:
   - format_holdings: ${ft.format_holdings ?? 'N/A'}ms
@@ -805,7 +907,7 @@ class AIAssistant {
   - format_trades: ${ft.format_trades ?? 'N/A'}ms
   - format_insider_trades: ${ft.format_insider_trades ?? 'N/A'}ms
   - format_congress_trades: ${ft.format_congress_trades ?? 'N/A'}ms
-  - format_etf_trades: ${ft.format_etf_trades ?? 'N/A'}ms
+  - format_etf_context: ${ft.format_etf_context ?? ft.format_etf_trades ?? 'N/A'}ms
   → TOTAL FORMAT: ${ft.total_format ?? 'N/A'}ms`);
                 }
                 
@@ -933,11 +1035,26 @@ class AIAssistant {
                         const option = document.createElement('option');
                         option.value = model.id;
                         option.textContent = model.name; // API handles display names
-                        if (model.id === this.selectedModel) {
-                            option.selected = true;
-                        }
                         select.appendChild(option);
                     });
+
+                    const preferredId = this.selectedModel || data.default_model || this.config.defaultModel;
+                    const preferredOption = preferredId
+                        ? Array.from(select.options).find((option) => option.value === preferredId)
+                        : null;
+                    if (preferredOption) {
+                        select.value = preferredOption.value;
+                    } else if (select.options.length > 0) {
+                        select.value = select.options[0].value;
+                    }
+
+                    const previousModel = this.selectedModel;
+                    this.selectedModel = select.value;
+                    if (previousModel !== this.selectedModel) {
+                        this.updateModelDisplay();
+                        this.saveModelPreference();
+                    }
+
                     this.updateModelDescription();
                 } else {
                     console.error('Invalid models format received:', data);
@@ -949,24 +1066,6 @@ class AIAssistant {
                 // Don't clear existing options on error - keep fallback
                 this.showError('Failed to load AI models. Using cached models if available.');
             });
-    }
-
-    loadFunds(): void {
-        const select = document.getElementById('fund-select') as HTMLSelectElement | null;
-        if (!select || !this.config.availableFunds) return;
-
-        // Skip if already populated by template
-        if (select.options.length > 0) return;
-
-        this.config.availableFunds.forEach(fund => {
-            const option = document.createElement('option');
-            option.value = fund;
-            option.textContent = fund;
-            if (fund === this.selectedFund) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
     }
 
     loadContextItems(): void {
@@ -1088,6 +1187,7 @@ class AIAssistant {
         const toggleInsiderTrades = document.getElementById('toggle-insider-trades') as HTMLInputElement | null;
         const toggleCongressTrades = document.getElementById('toggle-congress-trades') as HTMLInputElement | null;
         const toggleEtfTrades = document.getElementById('toggle-etf-trades') as HTMLInputElement | null;
+        const toggleIntelligencePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
 
         let enabledCount = 0;
         if (toggleThesis?.checked) enabledCount++;
@@ -1097,6 +1197,7 @@ class AIAssistant {
         if (toggleInsiderTrades?.checked) enabledCount++;
         if (toggleCongressTrades?.checked) enabledCount++;
         if (toggleEtfTrades?.checked) enabledCount++;
+        if (toggleIntelligencePulse?.checked) enabledCount++;
 
         if (summary) {
             if (enabledCount === 0) {
@@ -1180,6 +1281,7 @@ class AIAssistant {
         // Add user message
         this.addMessage('user', query);
         this.conversationHistory.push({ role: 'user', content: query });
+        this.pendingPersistUser = query;
 
         // Hide start analysis area and retry button
         const startAnalysisArea = document.getElementById('start-analysis-area');
@@ -1187,15 +1289,19 @@ class AIAssistant {
         if (startAnalysisArea) startAnalysisArea.classList.add('hidden');
         if (retryButtonContainer) retryButtonContainer.classList.add('hidden');
 
-        // Show loading indicator with Tailwind spinner
-        const loadingId = this.addMessage('assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
+        // Live loading indicator (elapsed timer + phase updates while waiting)
+        const loadingId = this.addMessage('assistant', '', true);
+        this.startLiveLoading(loadingId, 'Generating response…');
 
-        // Perform search if enabled
+        // Perform search if enabled (legacy prefetch for non-GLM models).
+        // GLM uses on-demand search_web / search_research tools instead.
         let searchResults: any = null;
         let repositoryArticles: any = null;
+        const modelUsesTools = (this.selectedModel || '').toLowerCase().startsWith('glm-');
 
-        if (this.includeSearch && this.config.searxngAvailable) {
+        if (!modelUsesTools && this.includeSearch && this.config.searxngAvailable) {
             try {
+                this.setLiveLoadingPhase('Searching the web…');
                 searchResults = await this.performSearch(query);
                 // Display search results if any
                 if (searchResults && searchResults.results && searchResults.results.length > 0) {
@@ -1206,8 +1312,9 @@ class AIAssistant {
             }
         }
 
-        if (this.includeRepository && this.config.ollamaAvailable) {
+        if (!modelUsesTools && this.includeRepository && this.config.ollamaAvailable) {
             try {
+                this.setLiveLoadingPhase('Searching research library…');
                 repositoryArticles = await this.performRepositorySearch(query);
                 // Display repository articles if any
                 if (repositoryArticles && repositoryArticles.length > 0) {
@@ -1218,14 +1325,15 @@ class AIAssistant {
             }
         }
 
-        // Get pre-loaded context (synchronous - no API call)
-        // Only send context with the FIRST message of a conversation
-        const isFirstMessage = this.conversationHistory.length === 1; // After adding user message
+        // Back to generating after any prefetch work
+        this.setLiveLoadingPhase('Generating response…');
 
-        // If it's the first message, ensure context is ready
-        if (isFirstMessage && !this.contextReady && this.contextLoading) {
+        // Wait for portfolio context when this turn will attach it.
+        const needsContextAttach = this.shouldAttachPortfolioContext();
+
+        if (needsContextAttach && !this.contextReady && this.contextLoading) {
             // Wait for context to load (poll every 100ms for up to 10 seconds)
-            this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Waiting for portfolio data...</span></div>', true);
+            this.setLiveLoadingPhase('Waiting for portfolio data…');
 
             let attempts = 0;
             while (!this.contextReady && attempts < 100) {
@@ -1236,19 +1344,31 @@ class AIAssistant {
             if (!this.contextReady) {
                 console.warn('[AIAssistant] Context load timed out, sending partial/empty context');
             } else {
-                // Update loading message
-                this.updateMessage(loadingId, 'assistant', '<div class="flex items-center gap-2"><div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div><span>Generating response...</span></div>', true);
+                this.setLiveLoadingPhase('Generating response…');
             }
         }
 
-        const contextString = isFirstMessage ? this.getCachedContext() : null;
-
-        // Debug logging
-        if (isFirstMessage) {
-            console.log('[AIAssistant] First message - including context, length:', contextString?.length || 0);
-        } else {
-            console.log('[AIAssistant] Subsequent message - context already in conversation history');
+        // Portfolio context only on first turn (or when the history window dropped it).
+        // Follow-ups expand the anchor user turn with the snapshot instead of re-sending.
+        const attachContext = this.shouldAttachPortfolioContext();
+        const cachedContext = attachContext ? this.getCachedContext() : '';
+        const contextString = cachedContext;
+        if (attachContext && cachedContext) {
+            this.portfolioContextSnapshot = cachedContext;
+            this.portfolioContextAnchorIndex = this.conversationHistory.length - 1;
         }
+        const priorHistory = this.buildPriorHistoryForApi();
+
+        console.log(
+            '[AIAssistant] Sending message with context length:',
+            contextString?.length || 0,
+            'attachContext:',
+            attachContext,
+            'prior history turns:',
+            priorHistory.length,
+            'contextAnchor:',
+            this.portfolioContextAnchorIndex
+        );
 
         // Build request
         const requestData: ChatRequest = {
@@ -1256,8 +1376,8 @@ class AIAssistant {
             model: this.selectedModel,
             fund: this.selectedFund,
             context_items: this.contextItems,
-            context_string: contextString, // Only sent with first message
-            conversation_history: this.conversationHistory.slice(-20), // Last 20 messages
+            context_string: contextString,
+            conversation_history: priorHistory,
             include_search: this.includeSearch,
             include_repository: this.includeRepository,
             include_price_volume: this.includePriceVolume,
@@ -1265,6 +1385,7 @@ class AIAssistant {
             include_insider_trades: this.includeInsiderTrades,
             include_congress_trades: this.includeCongressTrades,
             include_etf_trades: this.includeEtfTrades,
+            include_intelligence_pulse: this.includeIntelligencePulse,
             search_results: searchResults,
             repository_articles: repositoryArticles
         };
@@ -1291,6 +1412,50 @@ class AIAssistant {
             return '';
         }
         return this.contextString || '';
+    }
+
+    /** Clear first-turn portfolio injection state (clear chat / fund / session restore). */
+    resetPortfolioContextInjection(): void {
+        this.portfolioContextSnapshot = null;
+        this.portfolioContextAnchorIndex = null;
+    }
+
+    /**
+     * True when we should attach the portfolio blob to the current user turn:
+     * never injected yet, or the 20-turn window dropped the anchor turn.
+     */
+    shouldAttachPortfolioContext(): boolean {
+        if (this.portfolioContextAnchorIndex === null) {
+            return true;
+        }
+        const priorAll = this.conversationHistory.slice(0, -1);
+        const windowStart = Math.max(0, priorAll.length - AIAssistant.HISTORY_WINDOW);
+        return this.portfolioContextAnchorIndex < windowStart;
+    }
+
+    /**
+     * Prior turns for the model API (last HISTORY_WINDOW). Expands the anchor
+     * user turn with the portfolio snapshot so follow-ups still see holdings.
+     */
+    buildPriorHistoryForApi(): Message[] {
+        const priorAll = this.conversationHistory.slice(0, -1);
+        const windowed = priorAll.slice(-AIAssistant.HISTORY_WINDOW);
+        const windowStart = priorAll.length - windowed.length;
+        const snapshot = this.portfolioContextSnapshot;
+        const anchor = this.portfolioContextAnchorIndex;
+
+        return windowed.map((msg, i) => {
+            const absIndex = windowStart + i;
+            if (
+                msg.role === 'user' &&
+                snapshot &&
+                anchor !== null &&
+                absIndex === anchor
+            ) {
+                return { role: 'user', content: `${snapshot}\n\n${msg.content}` };
+            }
+            return { role: msg.role, content: msg.content };
+        });
     }
 
     async performSearch(query: string): Promise<any> {
@@ -1367,11 +1532,13 @@ class AIAssistant {
                 const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
                 const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
 
+                this.stopLiveLoading();
                 if (data.error) {
                     this.updateMessage(loadingId, 'assistant', `Error: ${data.error}`);
+                    this.pendingPersistUser = null;
                 } else {
                     this.updateMessage(loadingId, 'assistant', data.response || '');
-                    this.conversationHistory.push({ role: 'assistant', content: data.response || '' });
+                    this.recordAssistantReply(data.response || '');
                 }
                 // Re-enable send button and input
                 this.isSending = false;
@@ -1380,6 +1547,7 @@ class AIAssistant {
             })
             .catch((err: Error) => {
                 console.error('Chat error:', err);
+                this.stopLiveLoading();
                 this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
                 // Re-enable send button and input
                 this.isSending = false;
@@ -1423,19 +1591,43 @@ class AIAssistant {
                     let buffer = '';
                     let fullResponse = '';
 
+                    const finishStream = (text: string): void => {
+                        this.stopLiveLoading();
+                        this.updateMessage(loadingId, 'assistant', text);
+                        this.recordAssistantReply(text);
+                        this.updateRetryButton();
+                        this.isSending = false;
+                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+                        if (sendBtn) sendBtn.disabled = false;
+                        if (chatInput) chatInput.disabled = false;
+                    };
+
+                    const failStream = (message: string): void => {
+                        this.stopLiveLoading();
+                        const partial = fullResponse.trim();
+                        if (partial) {
+                            // Keep what already streamed — late proxy/network drops are common on long Ollama replies.
+                            const kept =
+                                `${partial}\n\n---\n*(Stream interrupted: ${message}. Partial reply kept above.)*`;
+                            this.updateMessage(loadingId, 'assistant', kept);
+                            this.recordAssistantReply(kept);
+                        } else {
+                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${message}`);
+                            this.pendingPersistUser = null;
+                        }
+                        this.updateRetryButton();
+                        this.isSending = false;
+                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+                        if (sendBtn) sendBtn.disabled = false;
+                        if (chatInput) chatInput.disabled = false;
+                    };
+
                     const readChunk = (): void => {
                         reader.read().then(({ done, value }) => {
                             if (done) {
-                                // Remove streaming indicator and finalize
-                                this.updateMessage(loadingId, 'assistant', fullResponse);
-                                this.conversationHistory.push({ role: 'assistant', content: fullResponse });
-                                this.updateRetryButton();
-                                // Re-enable send button and input
-                                this.isSending = false;
-                                const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                if (sendBtn) sendBtn.disabled = false;
-                                if (chatInput) chatInput.disabled = false;
+                                finishStream(fullResponse);
                                 return;
                             }
 
@@ -1449,30 +1641,33 @@ class AIAssistant {
                                     try {
                                         const data: ChatResponse = JSON.parse(line.slice(6));
                                         if (data.done) {
-                                            this.updateMessage(loadingId, 'assistant', fullResponse);
-                                            this.conversationHistory.push({ role: 'assistant', content: fullResponse });
-                                            this.updateRetryButton();
-                                            // Re-enable send button and input
-                                            this.isSending = false;
-                                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                            if (sendBtn) sendBtn.disabled = false;
-                                            if (chatInput) chatInput.disabled = false;
+                                            finishStream(fullResponse);
                                             return;
                                         }
+                                        if (data.status === 'thinking') {
+                                            const phase = (data as ChatResponse & { phase?: string }).phase;
+                                            if (phase === 'waiting_on_ollama' || phase === 'accepted') {
+                                                this.setLiveLoadingPhase('Waiting on Ollama…');
+                                            } else if (phase === 'waiting_on_model') {
+                                                this.setLiveLoadingPhase('Waiting on model…');
+                                            } else if (phase === 'synthesizing') {
+                                                this.setLiveLoadingPhase('Synthesizing answer…');
+                                            } else {
+                                                this.setLiveLoadingPhase('Generating response…');
+                                            }
+                                        }
+                                        if (data.status === 'tool' && data.name) {
+                                            const label = this.friendlyToolName(data.name);
+                                            this.setLiveLoadingPhase(`Looking up ${label}…`);
+                                        }
                                         if (data.chunk) {
+                                            // First token: stop the waiting chrome, show live text
+                                            this.stopLiveLoading();
                                             fullResponse += data.chunk;
                                             this.updateMessage(loadingId, 'assistant', fullResponse + '<span class="inline-block w-2 h-4 bg-gray-500 dark:bg-gray-400 ml-1 animate-pulse">▌</span>');
                                         }
                                         if (data.error) {
-                                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
-                                            this.updateRetryButton();
-                                            // Re-enable send button and input
-                                            this.isSending = false;
-                                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                                            if (sendBtn) sendBtn.disabled = false;
-                                            if (chatInput) chatInput.disabled = false;
+                                            failStream(data.error);
                                             return;
                                         }
                                     } catch (e) {
@@ -1483,14 +1678,7 @@ class AIAssistant {
 
                             readChunk();
                         }).catch((err: Error) => {
-                            this.updateMessage(loadingId, 'assistant', `❌ Error: ${err.message}`);
-                            this.updateRetryButton();
-                            // Re-enable send button and input
-                            this.isSending = false;
-                            const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                            const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                            if (sendBtn) sendBtn.disabled = false;
-                            if (chatInput) chatInput.disabled = false;
+                            failStream(err.message);
                         });
                     };
 
@@ -1501,12 +1689,14 @@ class AIAssistant {
                         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
                         const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
 
+                        this.stopLiveLoading();
                         if (data.error) {
                             this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
                             this.updateRetryButton();
+                            this.pendingPersistUser = null;
                         } else {
                             this.updateMessage(loadingId, 'assistant', data.response || data.chunk || '');
-                            this.conversationHistory.push({ role: 'assistant', content: data.response || data.chunk || '' });
+                            this.recordAssistantReply(data.response || data.chunk || '');
                             this.updateRetryButton();
                         }
                         // Re-enable send button and input
@@ -1518,6 +1708,7 @@ class AIAssistant {
             })
             .catch((err: Error) => {
                 console.error('Chat error:', err);
+                this.stopLiveLoading();
                 this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
                 // Re-enable send button and input
                 this.isSending = false;
@@ -1592,7 +1783,8 @@ class AIAssistant {
         }
 
         messagesDiv.appendChild(messageDiv);
-        this.scrollToBottom();
+        // Stick to bottom for new user turns / loading bubble; streaming updates stay sticky-only.
+        this.scrollToBottom(role === 'user' || isLoading);
 
         return messageId;
     }
@@ -1644,16 +1836,41 @@ class AIAssistant {
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
     }
 
-    scrollToBottom(): void {
+    /** True when the chat viewport is already near the bottom (sticky-follow zone). */
+    private isChatNearBottom(thresholdPx: number = 120): boolean {
         const container = document.getElementById('chat-container');
-        if (container) {
-            container.scrollTop = container.scrollHeight;
-        }
+        if (!container) return true;
+        const distance =
+            container.scrollHeight - container.scrollTop - container.clientHeight;
+        return distance <= thresholdPx;
+    }
+
+    /**
+     * Scroll chat to bottom. By default only if the user is already near the bottom,
+     * so reading earlier messages while a reply streams is not yanked down.
+     * Pass force=true after sending a message or restoring a session.
+     */
+    scrollToBottom(force: boolean = false): void {
+        const container = document.getElementById('chat-container');
+        if (!container) return;
+        if (!force && !this.isChatNearBottom()) return;
+        container.scrollTop = container.scrollHeight;
     }
 
     clearChat(): void {
+        const fund = this.selectedFund;
+        if (fund) {
+            fetch('/api/v2/ai/chat/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ fund }),
+                keepalive: true,
+            }).catch((err: Error) => console.warn('[AIAssistant] clear session failed:', err));
+        }
+        this.pendingPersistUser = null;
         this.messages = [];
         this.conversationHistory = [];
+        this.resetPortfolioContextInjection();
         const messagesDiv = document.getElementById('chat-messages');
         if (messagesDiv) messagesDiv.innerHTML = '';
         const retryButtonContainer = document.getElementById('retry-button-container');
@@ -1663,6 +1880,102 @@ class AIAssistant {
         if (this.contextItems.length > 0) {
             this.showStartAnalysis();
         }
+    }
+
+    /** Hydrate UI + conversationHistory from server for the current fund. */
+    async loadSessionFromServer(): Promise<void> {
+        const fund = this.selectedFund;
+        if (!fund) return;
+        try {
+            const res = await fetch(
+                `/api/v2/ai/chat/session?fund=${encodeURIComponent(fund)}`,
+                { headers: { ...getCsrfHeaders() } },
+            );
+            if (!res.ok) {
+                console.warn('[AIAssistant] session load HTTP', res.status);
+                return;
+            }
+            const data = await res.json();
+            const messages = Array.isArray(data.messages) ? data.messages : [];
+            this.applySessionMessages(messages);
+        } catch (err) {
+            console.warn('[AIAssistant] session load failed:', err);
+        }
+    }
+
+    applySessionMessages(messages: Array<{ role?: string; content?: string }>): void {
+        this.messages = [];
+        this.conversationHistory = [];
+        this.pendingPersistUser = null;
+        // Session rows are bare turns (no portfolio blob). Next send re-injects context.
+        this.resetPortfolioContextInjection();
+        const messagesDiv = document.getElementById('chat-messages');
+        if (messagesDiv) messagesDiv.innerHTML = '';
+
+        for (const raw of messages) {
+            const role = raw.role === 'assistant' ? 'assistant' : 'user';
+            const content = String(raw.content || '');
+            if (!content.trim()) continue;
+            this.addMessage(role, content);
+            this.conversationHistory.push({ role, content });
+        }
+
+        if (this.conversationHistory.length === 0 && this.contextItems.length > 0) {
+            this.showStartAnalysis();
+        } else {
+            const startAnalysisArea = document.getElementById('start-analysis-area');
+            if (startAnalysisArea) startAnalysisArea.classList.add('hidden');
+        }
+        this.updateRetryButton();
+        this.scrollToBottom(true);
+    }
+
+    recordAssistantReply(content: string): void {
+        this.conversationHistory.push({ role: 'assistant', content });
+        const userText = this.pendingPersistUser;
+        this.pendingPersistUser = null;
+        if (userText) {
+            void this.persistTurns([
+                { role: 'user', content: userText },
+                { role: 'assistant', content },
+            ]);
+        }
+    }
+
+    persistTurns(turns: Message[], keepalive: boolean = false): void {
+        const fund = this.selectedFund;
+        if (!fund || !turns.length) return;
+        const payload = {
+            fund,
+            model: this.selectedModel,
+            turns: turns.map((t) => ({
+                role: t.role,
+                content: t.content,
+                ts: new Date().toISOString(),
+            })),
+        };
+        fetch('/api/v2/ai/chat/append', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            keepalive,
+        }).catch((err: Error) => console.warn('[AIAssistant] append session failed:', err));
+    }
+
+    persistInterruptedIfNeeded(): void {
+        if (!this.isSending || !this.pendingPersistUser || !this.selectedFund) return;
+        const userText = this.pendingPersistUser;
+        this.pendingPersistUser = null;
+        this.persistTurns(
+            [
+                { role: 'user', content: userText },
+                {
+                    role: 'assistant',
+                    content: '*(Response interrupted — navigated away before the reply finished.)*',
+                },
+            ],
+            true,
+        );
     }
 
     showStartAnalysis(): void {
@@ -1940,6 +2253,7 @@ class AIAssistant {
             content.appendChild(resultItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         header.addEventListener('click', () => {
             content.classList.toggle('hidden');
             const arrow = header.querySelector('span:last-child');
@@ -1989,6 +2303,7 @@ class AIAssistant {
             content.appendChild(articleItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
         header.addEventListener('click', () => {
             content.classList.toggle('hidden');
             const arrow = header.querySelector('span:last-child');
@@ -2050,6 +2365,16 @@ class AIAssistant {
                             toggleEtfTrades.checked = this.includeEtfTrades;
                         }
                         console.log('[AIAssistant] Loaded includeEtfTrades preference:', this.includeEtfTrades);
+                    }
+
+                    // Load intelligence pulse preference (defaults to true)
+                    if (typeof data.preferences.ai_include_intelligence_pulse === 'boolean') {
+                        this.includeIntelligencePulse = data.preferences.ai_include_intelligence_pulse;
+                        const togglePulse = document.getElementById('toggle-intelligence-pulse') as HTMLInputElement | null;
+                        if (togglePulse) {
+                            togglePulse.checked = this.includeIntelligencePulse;
+                        }
+                        console.log('[AIAssistant] Loaded includeIntelligencePulse preference:', this.includeIntelligencePulse);
                     }
                 }
             }
@@ -2159,6 +2484,29 @@ class AIAssistant {
             }
         } catch (err) {
             console.error('[AIAssistant] Error saving includeEtfTrades preference:', err);
+        }
+    }
+
+    async saveIntelligencePulsePreference(includePulse: boolean): Promise<void> {
+        try {
+            const response = await fetch('/api/settings/ai_include_intelligence_pulse', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify({ include_intelligence_pulse: includePulse })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    console.log('[AIAssistant] Saved includeIntelligencePulse preference:', includePulse);
+                } else {
+                    console.warn('[AIAssistant] Failed to save preference:', result.error);
+                }
+            } else {
+                console.warn('[AIAssistant] Failed to save preference, status:', response.status);
+            }
+        } catch (err) {
+            console.error('[AIAssistant] Error saving includeIntelligencePulse preference:', err);
         }
     }
 }

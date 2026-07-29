@@ -153,6 +153,13 @@
                     </a>
                 </li>
                 <li>
+                    <a href="/admin/sources" {% if current_page=='admin_sources' %}aria-current="page" {% endif %}
+                        class="flex items-center px-3 py-2 text-sm font-medium rounded-lg border-l-4 hover:bg-dashboard-surface-alt {% if current_page == 'admin_sources' %}border-accent text-accent bg-dashboard-surface-alt{% else %}border-transparent text-text-secondary{% endif %}">
+                        <span class="mr-3 text-lg flex-shrink-0"><i class="fas fa-rss"></i></span>
+                        <span class="sidebar-text flex-1 whitespace-nowrap overflow-hidden opacity-100 group-data-[sidebar-collapsed=true]:opacity-0 group-data-[sidebar-collapsed=true]:w-0 group-data-[sidebar-collapsed=true]:overflow-hidden transition-all duration-300">Sources</span>
+                    </a>
+                </li>
+                <li>
                     <a href="/admin/ai-audit" {% if current_page=='admin_ai_audit' %}aria-current="page" {% endif %}
                         class="flex items-center px-3 py-2 text-sm font-medium rounded-lg border-l-4 hover:bg-dashboard-surface-alt {% if current_page == 'admin_ai_audit' %}border-accent text-accent bg-dashboard-surface-alt{% else %}border-transparent text-text-secondary{% endif %}">
                         <span class="mr-3 text-lg flex-shrink-0"><i class="fas fa-clipboard-list"></i></span>

@@ -17,13 +17,22 @@ os.environ["DISABLE_SCHEDULER"] = "true"
 
 # Add web_dashboard to path so we can import app (ensure highest priority)
 web_dashboard_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'web_dashboard'))
-if web_dashboard_path not in sys.path:
-    sys.path.insert(0, web_dashboard_path)
-
-# Also add root to path for utils import
 root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if root_path not in sys.path:
-    sys.path.insert(0, root_path)
+
+# Always pin root first, web_dashboard second. Pytest often pre-seeds root on
+# sys.path, so a naive insert(0) after web_dashboard would leave web_dashboard
+# ahead and shadow the project `utils` package with web_dashboard/utils.
+for _path in (web_dashboard_path, root_path):
+    while _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, root_path)
+sys.path.insert(1, web_dashboard_path)
+
+# Pin project-root `utils` before collection. Some tests prepend web_dashboard to
+# sys.path[0], which would otherwise register web_dashboard/utils as `utils` and
+# break imports of root modules (fund_manager, trade_reason.is_trade_sell, etc.).
+import utils as _root_utils  # noqa: F401
+assert "web_dashboard" not in str(getattr(_root_utils, "__file__", "") or "")
 
 @pytest.fixture
 def app():

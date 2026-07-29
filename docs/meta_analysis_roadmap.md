@@ -2,16 +2,21 @@
 
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
-> **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan** (2026-06-09)
-> covering presentation redesign, the stance ledger / outcome feedback (Phase 4 made concrete),
-> and new trackables. This doc remains the deep reference for the meta-analysis layers
-> (Phases 1–3, all shipped); its "Later phases" section is superseded by `ROADMAP.md`.
+> **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan**. As of
+> **2026-07-15**, active work is **Phase H** (source-ROI, meta-bundle injection, trend memory) —
+> see ROADMAP “Key findings from the 2026-07-15 design review.” Backlog after H: **Phase I**
+> (news quality / FRED) then **Phase J** (event/news catalyst backtesting) and **Phase K**
+> (YouTube captions → research articles). This doc remains the deep reference for the
+> meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section is superseded by
+> `ROADMAP.md`.
 
 **Related docs (keep in sync when the pipeline changes):**
 
 | Doc | Purpose |
 |-----|---------|
 | [`docs/ROADMAP.md`](ROADMAP.md) | **Master plan** — prioritized pillars, decision surfaces, sequencing |
+| [`docs/PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) | Event catalyst backtest + YouTube captions → articles (pipeline integration) |
+| [`docs/INSIGHTS.md`](INSIGHTS.md) | Human theses + **Decide-layer job map** (meta vs thesis eval vs queue review — table + mermaid) |
 | [`docs/ETF_SECTOR_META_OPS.md`](ETF_SECTOR_META_OPS.md) | Ops cheat sheet: catch-up after outage, one-command backfill |
 | [`docs/ETF_AI_ANALYSIS_SYSTEM.md`](ETF_AI_ANALYSIS_SYSTEM.md) | ETF group + ticker analysis jobs, prompts, storage |
 | [`docs/ETF_WATCHTOWER.md`](ETF_WATCHTOWER.md) | Holdings ingestion into Research |
@@ -35,10 +40,11 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 |------------|-------|------------|
 | Market regime prior | Shipped (`market_daily_brief` → ticker meta) | Same |
 | Sector rotation view | Shipped (`sector_meta_analysis`, Sector Insights UI) | Fed into ticker meta (3c) |
-| Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+) |
+| Human ticker theses | Shipped as **Insights** (`/insights`, `ticker_theses`) — not Sector Insights; see [`INSIGHTS.md`](INSIGHTS.md). Injected into ticker meta (R1) and Today/Ideas attention (R2); thesis advice → ledger (R3). | Widen scope / trust calibration via Phase H source-ROI |
+| Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+); **Phase H2** adds clusters / dilution / filings / confluence / prior stance (Today-only as of 2026-07-15) |
 | Action queue | **Rules-based** from technical `signal_analysis`; meta attached as context | Ranked ideas aligned with meta + portfolio |
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
-| Outcome feedback | Planned (Phase 4) | Calibrate which inputs predict good trades |
+| Outcome feedback | Ledger + scoring + track-record **shipped**; **source-ROI report still missing** (Phase H1) | Calibrate which inputs predict good trades; down-weight noisy collectors |
 
 ## Phase status (2026-05-23)
 
@@ -472,6 +478,8 @@ Near term (recommended order):
 3. **Phase 2c (when scheduled):** Newsletters / digests consuming **`regime_canonical`** — deferred; see Phase 2c above.
 4. **Quality loop:** 10–20 ticker eval set; regression on `stance`, `contradictions`, `risk_flags` after prompt/model changes.
 5. **Lock-aware scheduling:** Batch or stagger meta jobs if AI lock wait grows (global lock serializes anyway).
+6. **Event/news catalyst backtesting:** See master plan **Phase J** in [`ROADMAP.md`](ROADMAP.md#phase-j--event--news-catalyst-backtesting) (after Phase I story dedup).
+7. **YouTube captions as articles:** See master plan **Phase K** in [`ROADMAP.md`](ROADMAP.md#phase-k--youtube-captions--research-articles) (allowlisted channels → `research_articles`).
 
 ### Phase 4 — Outcome feedback
 

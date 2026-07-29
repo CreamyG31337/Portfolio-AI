@@ -152,6 +152,7 @@ def _extract_json_array(text: str) -> Optional[List[Any]]:
 
 # FlareSolverr configuration (for bypassing Cloudflare on StockTwits)
 from web_fetch_client import get_web_fetch_client
+from reddit_client import RedditClient, get_reddit_client
 
 # Import clients
 from postgres_client import PostgresClient
@@ -171,7 +172,8 @@ class SocialSentimentService:
         self,
         postgres_client: Optional[PostgresClient] = None,
         supabase_client: Optional[SupabaseClient] = None,
-        ollama_client: Optional[OllamaClient] = None
+        ollama_client: Optional[OllamaClient] = None,
+        reddit_client: Optional[RedditClient] = None,
     ):
         """Initialize social sentiment service
         
@@ -184,9 +186,7 @@ class SocialSentimentService:
             self.postgres = postgres_client or PostgresClient()
             self.supabase = supabase_client or SupabaseClient()
             self.ollama = ollama_client or get_ollama_client()
-            
-            # Rate limiting state
-            self.last_reddit_request_time = 0
+            self.reddit = reddit_client or get_reddit_client()
             
         except Exception as e:
             logger.error(f"Failed to initialize PostgresClient: {e}")
@@ -201,18 +201,6 @@ class SocialSentimentService:
         self.ollama = ollama_client or get_ollama_client()
         self.web_fetch = get_web_fetch_client()
     
-    def _wait_for_reddit_rate_limit(self, min_interval: float = 2.0) -> None:
-        """Enforce rate limit between Reddit requests.
-
-        Args:
-            min_interval: Minimum seconds between requests (default: 2.0)
-        """
-        now = time.time()
-        elapsed = now - getattr(self, 'last_reddit_request_time', 0)
-        if elapsed < min_interval:
-            time.sleep(min_interval - elapsed)
-        self.last_reddit_request_time = time.time()
-
     def _reddit_search_queries(self, ticker: str) -> List[str]:
         """Build high-signal Reddit search queries for a ticker."""
 
@@ -512,69 +500,161 @@ class SocialSentimentService:
             - raw_data: Top 3 posts/comments as JSONB
         """
         fetch_start = time.time()
+        reddit_errors: List[str] = []
         try:
-            # Use browser-like User-Agent to avoid 429 errors
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            search_queries = self._reddit_search_queries(ticker)
-            all_posts = []
+            all_posts: List[Dict[str, Any]] = []
             cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)  # Last week
-            
-            # One global search per query is much faster than scanning every subreddit.
-            # We still filter to stock-related subreddits below to preserve data quality.
-            for query in search_queries:
-                if max_duration:
-                    elapsed = time.time() - fetch_start
-                    if elapsed > max_duration:
-                        logger.debug(
-                            "Reddit fetch timeout for %s after %.1fs (found %s posts)",
-                            ticker,
-                            elapsed,
-                            len(all_posts),
-                        )
-                        break
 
-                try:
-                    self._wait_for_reddit_rate_limit()
-                    response = requests.get(
-                        "https://www.reddit.com/search.json",
-                        headers=headers,
-                        params={"q": query, "sort": "relevance", "t": "week", "limit": 100},
-                        timeout=10,
+            if self.reddit.rss_enabled:
+                warm_stats = self.reddit.warm_sentiment_feed_cache()
+                if warm_stats.skipped_cooldown:
+                    reddit_errors.append("429")
+                    logger.warning(
+                        "Reddit RSS cache warm skipped — cooldown active (%s posts in stale cache)",
+                        warm_stats.posts_cached,
                     )
+                elif warm_stats.subs_rate_limited and warm_stats.subs_fetched == 0:
+                    reddit_errors.append("429")
 
-                    if response.status_code == 429:
-                        logger.warning("Reddit rate limit hit for %s query=%s. Waiting longer...", ticker, query)
-                        time.sleep(5)
+                cache_posts = self.reddit.feed_cache.get_posts_for_ticker(
+                    ticker,
+                    cutoff_time,
+                    allowed_subreddits=STOCK_SUBREDDIT_SET,
+                )
+                all_posts.extend(cache_posts)
+
+                # Fallback: subreddit-restricted search on top subs (avoid global search.rss).
+                if not all_posts and not self.reddit.feed_cache.is_fresh():
+                    search_queries = self._reddit_search_queries(ticker)
+                    fallback_subs = ["wallstreetbets", "stocks", "investing", "pennystocks"]
+                    for subreddit in fallback_subs:
+                        for query in search_queries[:1]:
+                            if max_duration and (time.time() - fetch_start) > max_duration:
+                                break
+                            result = self.reddit.get_json(
+                                f"/r/{subreddit}/search",
+                                params={"q": query, "sort": "new", "t": "week", "limit": 25},
+                            )
+                            if result.rate_limited:
+                                reddit_errors.append("429")
+                                break
+                            if result.payload is None:
+                                continue
+                            all_posts.extend(
+                                self._parse_reddit_search_posts(
+                                    result.payload,
+                                    ticker,
+                                    cutoff_time,
+                                    restrict_to_stock_subreddits=True,
+                                )
+                            )
+            else:
+                search_queries = self._reddit_search_queries(ticker)
+                for query in search_queries:
+                    if max_duration:
+                        elapsed = time.time() - fetch_start
+                        if elapsed > max_duration:
+                            logger.debug(
+                                "Reddit fetch timeout for %s after %.1fs (found %s posts)",
+                                ticker,
+                                elapsed,
+                                len(all_posts),
+                            )
+                            break
+
+                    try:
+                        if not self.reddit.check_robots_allowed("https://www.reddit.com/search.json"):
+                            logger.warning("Reddit search blocked by robots.txt policy for %s", ticker)
+                            reddit_errors.append("robots_txt_blocked")
+                            continue
+
+                        result = self.reddit.get_json(
+                            "/search",
+                            params={"q": query, "sort": "relevance", "t": "week", "limit": 100},
+                        )
+
+                        if result.rate_limited:
+                            logger.warning(
+                                "Reddit rate limit hit for %s query=%s oauth=%s status=429",
+                                ticker,
+                                query,
+                                result.used_oauth,
+                            )
+                            reddit_errors.append("429")
+                            time.sleep(5)
+                            continue
+
+                        if result.payload is None:
+                            log_fn = (
+                                logger.error
+                                if result.used_oauth and result.status_code in (401, 403, 429)
+                                else logger.warning
+                            )
+                            log_fn(
+                                "Reddit search failed for %s query=%s status=%s oauth=%s",
+                                ticker,
+                                query,
+                                result.status_code,
+                                result.used_oauth,
+                            )
+                            if result.status_code in (401, 403):
+                                reddit_errors.append("auth_failed")
+                            elif result.status_code == 429:
+                                reddit_errors.append("429")
+                            else:
+                                reddit_errors.append(str(result.status_code))
+                            continue
+
+                        all_posts.extend(
+                            self._parse_reddit_search_posts(
+                                result.payload,
+                                ticker,
+                                cutoff_time,
+                                restrict_to_stock_subreddits=True,
+                            )
+                        )
+                    except Exception as e:
+                        logger.debug("Error searching Reddit for %s query=%s: %s", ticker, query, e)
+                        reddit_errors.append(type(e).__name__)
                         continue
 
-                    response.raise_for_status()
-                    all_posts.extend(
-                        self._parse_reddit_search_posts(
-                            response.json(),
-                            ticker,
-                            cutoff_time,
-                            restrict_to_stock_subreddits=True,
-                        )
+            if not all_posts and reddit_errors:
+                transport = (
+                    "rss"
+                    if self.reddit.rss_enabled
+                    else "cookies"
+                    if self.reddit.cookie_enabled
+                    else "oauth"
+                )
+                if "429" in reddit_errors:
+                    logger.error(
+                        "Reddit rate limited for %s (transport=%s): %s",
+                        ticker,
+                        transport,
+                        ", ".join(sorted(set(reddit_errors))),
                     )
-                except requests.exceptions.HTTPError as e:
-                    if e.response is not None and e.response.status_code == 429:
-                        logger.warning("Reddit rate limit for %s query=%s. Skipping.", ticker, query)
-                        time.sleep(5)
-                    else:
-                        logger.debug("HTTP error searching Reddit for %s query=%s: %s", ticker, query, e)
-                    continue
-                except Exception as e:
-                    logger.debug("Error searching Reddit for %s query=%s: %s", ticker, query, e)
-                    continue
+                elif "auth_failed" in reddit_errors:
+                    logger.error(
+                        "Reddit auth failed for %s: %s",
+                        ticker,
+                        ", ".join(sorted(set(reddit_errors))),
+                    )
+                else:
+                    logger.error(
+                        "Reddit returned no data for %s (transport=%s): %s",
+                        ticker,
+                        transport,
+                        ", ".join(sorted(set(reddit_errors))),
+                    )
             
             # Deduplicate by URL
             unique_posts = self._dedupe_reddit_posts(all_posts)
             
-            # Sort by score (upvotes) and take top 5 for AI analysis
-            unique_posts.sort(key=lambda x: x['score'], reverse=True)
+            # Sort by engagement score when available; RSS feeds have no scores.
+            if self.reddit.rss_enabled:
+                unique_posts.sort(key=lambda x: x.get("created_utc", 0), reverse=True)
+            else:
+                unique_posts.sort(key=lambda x: x['score'], reverse=True)
             top_5_posts = unique_posts[:5]
             
             # Combine post titles and bodies for AI analysis.
@@ -622,12 +702,12 @@ class SocialSentimentService:
             if unique_posts:
                 raw_data = [
                     {
-                        'title': post['title'],
-                        'selftext': post['selftext'][:500],  # Limit length
-                        'score': post['score'],
-                        'num_comments': post['num_comments'],
-                        'subreddit': post['subreddit'],
-                        'url': post['url']
+                        'title': post.get('title', ''),
+                        'selftext': str(post.get('selftext', ''))[:500],
+                        'score': post.get('score', 0),
+                        'num_comments': post.get('num_comments', 0),
+                        'subreddit': post.get('subreddit', ''),
+                        'url': post.get('url', ''),
                     }
                     for post in unique_posts[:3]
                 ]
@@ -638,7 +718,8 @@ class SocialSentimentService:
                 'volume': len(unique_posts),
                 'sentiment_label': sentiment_label,
                 'sentiment_score': sentiment_score,
-                'raw_data': raw_data
+                'raw_data': raw_data,
+                'reddit_error_codes': sorted(set(reddit_errors)),
             }
             
         except Exception as e:
@@ -647,7 +728,8 @@ class SocialSentimentService:
                 'volume': 0,
                 'sentiment_label': 'NEUTRAL',
                 'sentiment_score': 0.0,
-                'raw_data': None
+                'raw_data': None,
+                'reddit_error_codes': ['exception'],
             }
     
     def map_sentiment_label_to_score(self, label: str) -> float:
@@ -740,21 +822,37 @@ class SocialSentimentService:
         try:
             logger.info(f"🔎 Scanning r/{subreddit} for opportunities...")
             
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-            
-            # Fetch top posts with rate limiting
-            url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}"
-            self._wait_for_reddit_rate_limit()
-            response = requests.get(url, headers=headers, timeout=10)
-            
-            if response.status_code == 429:
+            listing_url = f"https://www.reddit.com/r/{subreddit}/top.json"
+            if not self.reddit.check_robots_allowed(listing_url):
+                logger.warning("Subreddit scan blocked by robots.txt policy for r/%s", subreddit)
+                return []
+
+            result = self.reddit.get_json(
+                f"/r/{subreddit}/top",
+                params={"t": "day", "limit": limit},
+            )
+
+            if result.rate_limited:
                 logger.warning(f"Rate limited scanning r/{subreddit}")
                 return []
-                
-            response.raise_for_status()
-            data = response.json()
+
+            if result.payload is None:
+                transport = (
+                    "rss"
+                    if result.used_rss
+                    else "cookies"
+                    if result.used_cookies
+                    else "oauth"
+                )
+                logger.warning(
+                    "Subreddit scan failed for r/%s status=%s transport=%s",
+                    subreddit,
+                    result.status_code,
+                    transport,
+                )
+                return []
+
+            data = result.payload
             
             if 'data' not in data or 'children' not in data['data']:
                 logger.warning(f"Invalid response format from r/{subreddit}")
@@ -762,10 +860,15 @@ class SocialSentimentService:
             
             posts = data['data']['children']
             logger.info(f"Found {len(posts)} posts in r/{subreddit}")
-            
+            using_rss = self.reddit.rss_enabled
+            comment_fetches_remaining = 3 if using_rss else limit
+
             for child in posts:
                 post = child.get('data', {})
-                if not post or post.get('score', 0) < min_score:
+                if not post:
+                    continue
+                score = post.get('score', 0)
+                if not using_rss and score < min_score:
                     continue
                 
                 # Check duplication (skip if URL already analyzed?)
@@ -780,22 +883,43 @@ class SocialSentimentService:
                 # Fetch comments for context (Deep Dive)
                 comments_text = ""
                 try:
-                    # Rate limit for comment fetch
-                    comments_url = f"https://www.reddit.com/comments/{post_id}.json?sort=top&limit=10"
-                    self._wait_for_reddit_rate_limit()
-                    
-                    c_resp = requests.get(comments_url, headers=headers, timeout=10)
-                    
-                    if c_resp.status_code == 200:
-                        c_data = c_resp.json()
-                        # Reddit comment structure is [post_listing, comment_listing]
-                        if isinstance(c_data, list) and len(c_data) > 1:
-                            comment_listing = c_data[1]
-                            if 'data' in comment_listing and 'children' in comment_listing['data']:
-                                for c in comment_listing['data']['children']:
-                                    c_body = c.get('data', {}).get('body', '')
-                                    if c_body:
-                                        comments_text += f"- {c_body[:500]}...\n"
+                    if comment_fetches_remaining <= 0:
+                        logger.debug(
+                            "Skipping comment fetch for %s (RSS comment budget exhausted)",
+                            post_id,
+                        )
+                    else:
+                        comments_url = f"https://www.reddit.com/comments/{post_id}.json"
+                        if not self.reddit.check_robots_allowed(comments_url):
+                            logger.debug("Comment fetch blocked by robots.txt for post %s", post_id)
+                        else:
+                            comment_fetches_remaining -= 1
+                            comment_result = self.reddit.get_json(
+                                f"/comments/{post_id}",
+                                params={"sort": "top", "limit": 10},
+                            )
+                            if comment_result.payload is not None:
+                                c_data = comment_result.payload
+                                # Reddit comment structure is [post_listing, comment_listing]
+                                if isinstance(c_data, list) and len(c_data) > 1:
+                                    comment_listing = c_data[1]
+                                    if 'data' in comment_listing and 'children' in comment_listing['data']:
+                                        for c in comment_listing['data']['children']:
+                                            c_body = c.get('data', {}).get('body', '')
+                                            if c_body:
+                                                comments_text += f"- {c_body[:500]}...\n"
+                                elif isinstance(c_data, dict):
+                                    comment_children = (c_data.get("data") or {}).get("children") or []
+                                    for c in comment_children[1:]:
+                                        c_data_item = c.get("data", {})
+                                        c_body = (
+                                            c_data_item.get("body")
+                                            or c_data_item.get("selftext")
+                                            or c_data_item.get("title")
+                                            or ""
+                                        )
+                                        if c_body:
+                                            comments_text += f"- {str(c_body)[:500]}...\n"
                 except Exception as e:
                     logger.debug(f"Failed to fetch comments for {post_id}: {e}")
                 

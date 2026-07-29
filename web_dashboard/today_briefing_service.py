@@ -46,40 +46,149 @@ def fetch_stance_flips(postgres: PostgresClient, *, days: int = 2, limit: int = 
     return [dict(r) for r in rows]
 
 
-def fetch_alpha_ideas(postgres: PostgresClient, *, limit: int = 15) -> list[dict[str, Any]]:
+def _normalize_ideas_ticker_filter(ticker: str | None) -> str | None:
+    """Uppercase alnum/.- only prefix for Ideas inbox filter; None = no filter."""
+    if not ticker:
+        return None
+    cleaned = "".join(ch for ch in str(ticker).upper().strip() if ch.isalnum() or ch in ".-")
+    return cleaned[:20] or None
+
+
+def fetch_alpha_ideas(
+    postgres: PostgresClient,
+    *,
+    limit: int = 15,
+    ticker: str | None = None,
+    include_low_signal: bool = False,
+) -> list[dict[str, Any]]:
+    """Ranked Ideas inbox rows, best first.
+
+    Ordered by the composite ``idea_score`` (see ``ideas_quality.idea_score_sql``),
+    NOT by ``relevance_score`` -- that score is derived from ``logic_check``, a genre
+    label that ranks ETF holdings tables above real theses. It survives only as a late
+    tiebreaker.
+
+    Low-signal rows are hidden by default rather than deleted: every row still carries
+    ``idea_score``/``low_signal``, and ``low_signal_total`` reports how many were
+    withheld so the count is visible in the UI instead of silently vanishing. Pass
+    ``include_low_signal=True`` to see them.
+    """
+    ticker_prefix = _normalize_ideas_ticker_filter(ticker)
     try:
-        return _fetch_alpha_ideas_query(postgres, limit=limit)
+        return _fetch_alpha_ideas_query(
+            postgres, limit=limit, ticker_prefix=ticker_prefix,
+            include_low_signal=include_low_signal,
+        )
     except Exception as exc:
         logger.warning("fetch_alpha_ideas failed (idea_triage may be missing): %s", exc)
-        return postgres.execute_query(
-            """
-            SELECT id, title, article_type, source, fetched_at,
-                   relevance_score, tickers, summary
-            FROM research_articles
-            WHERE article_type IN ('Alpha Research', 'Opportunity Discovery')
-              AND fetched_at >= NOW() - INTERVAL '14 days'
-            ORDER BY relevance_score DESC NULLS LAST, fetched_at DESC
-            LIMIT %s
-            """,
-            (limit,),
+        return _fetch_alpha_ideas_fallback(
+            postgres, limit=limit, ticker_prefix=ticker_prefix,
+            include_low_signal=include_low_signal,
         )
 
 
-def _fetch_alpha_ideas_query(postgres: PostgresClient, *, limit: int = 15) -> list[dict[str, Any]]:
-    return postgres.execute_query(
-        """
-        SELECT ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
-               ra.relevance_score, ra.tickers, ra.summary
-        FROM research_articles ra
-        LEFT JOIN idea_triage it ON it.article_id = ra.id
-        WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
-          AND ra.fetched_at >= NOW() - INTERVAL '14 days'
-          AND (it.id IS NULL OR (it.status = 'snoozed' AND it.snooze_until < NOW()))
-        ORDER BY ra.relevance_score DESC NULLS LAST, ra.fetched_at DESC
+# Columns both query paths return, before the ranking columns are added. Keeping
+# this in one place is what stops the fallback from silently drifting.
+_IDEA_COLUMNS = """ra.id, ra.title, ra.article_type, ra.source, ra.fetched_at,
+               ra.relevance_score, ra.tickers, ra.summary,
+               ra.conclusion, ra.url, ra.logic_check, ra.sentiment"""
+
+
+def _rank_and_limit_sql() -> str:
+    """Wrap a ``scored`` CTE: flag low-signal rows, count them, then filter and order.
+
+    The count is a window function computed BEFORE the low-signal filter, so it
+    reports the size of the withheld set rather than zero.
+    """
+    from ideas_quality import LOW_SIGNAL_THRESHOLD
+
+    return f"""
+        ), flagged AS (
+            SELECT scored.*,
+                   (idea_score < {LOW_SIGNAL_THRESHOLD}) AS low_signal,
+                   COUNT(*) FILTER (WHERE idea_score < {LOW_SIGNAL_THRESHOLD})
+                       OVER () AS low_signal_total
+            FROM scored
+        )
+        SELECT * FROM flagged
+        WHERE %s OR NOT low_signal
+        ORDER BY idea_score DESC, relevance_score DESC NULLS LAST, fetched_at DESC
         LIMIT %s
-        """,
-        (limit,),
-    )
+    """
+
+
+def _ticker_prefix_clause(column_expr: str = "ra.tickers") -> str:
+    # Prefix match so typing "CO" finds COST without loading the full 14d pool client-side.
+    return f"""
+          AND EXISTS (
+              SELECT 1
+              FROM unnest(COALESCE({column_expr}, ARRAY[]::text[])) AS t(sym)
+              WHERE upper(t.sym) LIKE %s
+          )
+    """
+
+
+def _fetch_alpha_ideas_fallback(
+    postgres: PostgresClient,
+    *,
+    limit: int,
+    ticker_prefix: str | None,
+    include_low_signal: bool = False,
+) -> list[dict[str, Any]]:
+    # This is the failure path (idea_triage missing). It shares _IDEA_COLUMNS,
+    # idea_score_sql() and _rank_and_limit_sql() with the primary query precisely so
+    # it cannot drift -- a divergence here means the inbox silently degrades at
+    # exactly the moment nobody is watching it. The ONLY difference is the missing
+    # triage join, so dismissed ideas reappear; that is the degradation, and it is
+    # visible rather than a reordering nobody would notice.
+    #
+    # research_articles is aliased `ra` here purely so the shared SQL fragments
+    # (which reference ra.*) apply unchanged.
+    from ideas_quality import idea_score_sql
+
+    sql = f"""
+        WITH scored AS (
+            SELECT {_IDEA_COLUMNS},
+                   {idea_score_sql()} AS idea_score
+            FROM research_articles ra
+            WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
+              AND ra.fetched_at >= NOW() - INTERVAL '14 days'
+    """
+    params: list[Any] = []
+    if ticker_prefix:
+        sql += _ticker_prefix_clause("ra.tickers")
+        params.append(f"{ticker_prefix}%")
+    sql += _rank_and_limit_sql()
+    params.extend([bool(include_low_signal), limit])
+    return postgres.execute_query(sql, tuple(params))
+
+
+def _fetch_alpha_ideas_query(
+    postgres: PostgresClient,
+    *,
+    limit: int = 15,
+    ticker_prefix: str | None = None,
+    include_low_signal: bool = False,
+) -> list[dict[str, Any]]:
+    from ideas_quality import idea_score_sql
+
+    sql = f"""
+        WITH scored AS (
+            SELECT {_IDEA_COLUMNS},
+                   {idea_score_sql()} AS idea_score
+            FROM research_articles ra
+            LEFT JOIN idea_triage it ON it.article_id = ra.id
+            WHERE ra.article_type IN ('Alpha Research', 'Opportunity Discovery')
+              AND ra.fetched_at >= NOW() - INTERVAL '14 days'
+              AND (it.id IS NULL OR (it.status = 'snoozed' AND it.snooze_until < NOW()))
+    """
+    params: list[Any] = []
+    if ticker_prefix:
+        sql += _ticker_prefix_clause("ra.tickers")
+        params.append(f"{ticker_prefix}%")
+    sql += _rank_and_limit_sql()
+    params.extend([bool(include_low_signal), limit])
+    return postgres.execute_query(sql, tuple(params))
 
 
 def build_today_briefing(
@@ -178,9 +287,70 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: movers/dividends failed: %s", exc)
 
+    theses_attention: list[dict[str, Any]] = []
+    try:
+        from user_insights_service import list_theses_attention
+
+        theses_attention = list_theses_attention(pg, limit=20)
+    except Exception as exc:
+        logger.warning("Today briefing: theses attention failed: %s", exc)
+
+    advise_pack: list[dict[str, Any]] = []
+    advise_source = "advise"
+    try:
+        from advise_service import rank_candidate_pack
+        from track_record_service import build_track_record_summary
+
+        # Prefer 7d (more samples); fall back shape is still valid if empty.
+        track_summary: dict[str, Any] | None = None
+        try:
+            track_summary = build_track_record_summary(pg, horizon_days=7)
+            if int(track_summary.get("total_scored") or 0) < 30:
+                track_summary = build_track_record_summary(pg, horizon_days=30)
+        except Exception as tr_exc:
+            logger.warning("Today briefing: track record for advise failed: %s", tr_exc)
+
+        # A3: shared ranking source with the chat pulse. Falls back to the same
+        # held-gated watchlist signals when the queue + theses are empty, so
+        # Today and chat agree instead of Today showing "no items". Inherits A2
+        # tension annotation + demotion.
+        def _today_signal_fallback() -> list[dict[str, Any]]:
+            from ai_assistant_candidates import build_signal_fallback_candidates
+            from flask_data_utils import get_current_positions_flask
+
+            try:
+                held_df = get_current_positions_flask(fund=fund)
+            except Exception:
+                held_df = None
+            held: set[str] = set()
+            if held_df is not None and not getattr(held_df, "empty", True):
+                col = "ticker" if "ticker" in held_df.columns else "symbol"
+                if col in held_df.columns:
+                    held = {
+                        str(t).upper().strip()
+                        for t in held_df[col].dropna().tolist()
+                        if str(t).strip()
+                    }
+            return build_signal_fallback_candidates(
+                supabase_client, fund=fund, held_tickers=held, limit=12
+            )
+
+        advise_pack, advise_source = rank_candidate_pack(
+            action_queue=actions,
+            theses_attention=theses_attention,
+            track_record=track_summary,
+            confluence_events=confluence_events,
+            signal_fallback=_today_signal_fallback,
+            limit=12,
+        )
+    except Exception as exc:
+        logger.warning("Today briefing: advise pack failed: %s", exc)
+
     return {
         "market_regime": regime,
         "market_brief_headline": (brief_row or {}).get("headline"),
+        "advise_pack": advise_pack,
+        "advise_source": advise_source,
         "stance_flips": fetch_stance_flips(pg, days=2, limit=20),
         "action_queue": actions,
         "alpha_articles": fetch_alpha_ideas(pg, limit=15),
@@ -189,6 +359,7 @@ def build_today_briefing(
         "dilution_alerts": dilution_alerts,
         "filing_alerts": filing_alerts,
         "confluence_events": confluence_events,
+        "theses_attention": theses_attention,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
         "updated_at": datetime.now(UTC).isoformat(),

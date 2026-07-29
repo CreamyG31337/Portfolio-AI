@@ -8,6 +8,10 @@ CREATE TABLE rss_feeds (
     category VARCHAR(100),
     enabled BOOLEAN DEFAULT true,
     last_fetched_at TIMESTAMP,
+    notes TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    last_success_at TIMESTAMPTZ,
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now()
 ,

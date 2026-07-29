@@ -31,6 +31,24 @@ logger = logging.getLogger(__name__)
 # Columns that represent a price and must be strictly positive to be usable.
 PRICE_COLS: tuple[str, ...] = ("Open", "High", "Low", "Close")
 
+# Escalate to warning when this fraction (or more) of input rows are dropped.
+# A single trailing bad bar on a long history is routine (partial feed) -> debug.
+SIGNIFICANT_DROP_FRACTION = 0.10
+
+
+def _log_dropped_bars(original_len: int, dropped: int, retained: int) -> None:
+    """Log bar drops at debug (routine) vs warning (monitor upstream data quality)."""
+    drop_pct = (dropped / original_len) * 100.0 if original_len else 0.0
+    msg = (
+        "Dropping %d/%d OHLCV bar(s) (%.1f%%) with missing/zero/negative price "
+        "(%d retained)"
+    )
+    args = (dropped, original_len, drop_pct, retained)
+    if retained == 0 or drop_pct >= SIGNIFICANT_DROP_FRACTION * 100.0:
+        logger.warning(msg, *args)
+    else:
+        logger.debug(msg, *args)
+
 
 def drop_invalid_ohlcv_bars(
     df: pd.DataFrame,
@@ -68,10 +86,10 @@ def drop_invalid_ohlcv_bars(
         mask &= ~(volume < 0)
 
     if not bool(mask.all()):
+        original_len = len(df)
         dropped = int((~mask).sum())
-        logger.warning(
-            "Dropping %d OHLCV bar(s) with missing/zero/negative price", dropped
-        )
+        retained = original_len - dropped
+        _log_dropped_bars(original_len, dropped, retained)
         df = df[mask]
 
     return df

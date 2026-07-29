@@ -51,3 +51,37 @@
 ## 2026-06-10 - Optimize iterrows bottlenecks in Generate_Graph
 **Learning:** `df.iterrows()` inside `Generate_Graph.py` was being used incorrectly both for finding valid real prices and for converting to a dictionary, which incurred massive O(N) overheads due to instantiating Pandas Series objects. A quick vectorized check (`.abs()` and `.any()`) and `.to_dict('records')` conversion provide >90x speedup.
 **Action:** Replace `df.iterrows()` iterative checks with `.any()` boolean checks where possible. Use `.to_dict('records')` if an exact dictionary loop is needed instead of `row.to_dict()`.
+
+## 2026-06-22 - Pandas df.apply with axis=1 in routes
+**Learning:** Using df.apply(..., axis=1) is notoriously slow (O(n) overhead) in Flask routes like dashboard_routes.py and etf_routes.py. It is a major bottleneck on large DataFrames compared to numpy vectorized alternatives.
+**Action:** Replaced df.apply(..., axis=1) with vectorized conditional logic using numpy.where and numpy.select, improving iteration speed by 8x-80x.
+
+## 2026-06-22 - np.where with pandas division and zero denominators
+**Learning:** When vectorizing `DataFrame.apply()` using `np.where` and pandas division, pandas evaluates `A / B` for all rows before `np.where` applies its mask. If `B` can be zero, this floods logs with `RuntimeWarning: divide by zero encountered in divide` even when the result is masked.
+**Action:** Use safe division by replacing zeros with `np.nan` before dividing: `df['A'].divide(df['B'].replace(0, np.nan))`.
+
+## 2026-06-23 - Pandas df.apply with Decimal conversion
+**Learning:** Using `df['col'].apply(lambda x: Decimal(str(float(x) * rate)))` is extremely slow due to Python object instantiation overhead per row. Even for type conversions, vectorizing operations in pandas and numpy before object creation is much faster.
+**Action:** Replace `df.apply` with vectorized math and type conversions: `(df['col'].astype(float) * rate).astype(str).apply(Decimal)`. This performs the math at C-speed before finally casting to `Decimal` in Python space. For conditional replacements with `Decimal`, use list comprehensions over a vectorized `.round().fillna()` series, which bypasses Pandas' slow `apply` method overhead entirely.
+## 2026-07-10 - Vectorized sector name normalization
+**Learning:** Per-row `.apply(normalize_sector_name)` for a small fixed synonym map is unnecessary Python overhead in chart aggregation.
+**Action:** Pre-strip the series, `.str.lower().map(dict)`, then `.fillna(stripped)` so unmapped values keep their original spelling. Restore NaN/empty from the original column after `astype(str)`.
+
+## 2026-07-10 - CSVRepository timezone strip without strftime apply
+**Learning:** `parsed_dates.apply(lambda x: x.strftime(...))` is a slow way to drop tz while keeping wall-clock time; mixed-offset Series also break naive vectorized tz ops.
+**Action:** Use a list comprehension with `d.replace(tzinfo=None)` then `pd.to_datetime(...)`, and re-localize from the first parsed tz (same contract as before).
+
+## 2026-07-10 - Vectorized ISO date strings in price history API
+**Learning:** Row-wise `.apply(lambda x: x.isoformat())` in `/api/ticker/.../history` is pure formatting overhead.
+**Action:** `series.astype(str).str.replace(' ', 'T', n=1)` produces ISO-like strings without per-row Python calls.
+
+## 2026-07-20 - Pandas .apply() vs List Comprehensions for Type Conversions & Object Arrays
+**Learning:** In pandas, `.apply()` on object/string/datetime columns incurs a massive O(N) overhead due to instantiating a Series object and calling python-space functions per row. A fast python list comprehension over a native list (e.g., `df['col'].tolist()`) is often 50x to 100x faster for things like parsing custom datetime strings, formatting to CSV strings, or casting floats to Decimals.
+**Action:** Replace `df['col'].apply(custom_func)` with `[custom_func(x) for x in df['col'].tolist()]` when dealing with scalar conversions or object arrays that cannot be natively vectorized in C (e.g. returning timezone-aware objects, Decimals, or parsing non-standard strings).
+## 2026-07-25 - Pandas .apply() vs List Comprehensions for is_stock_ticker and normalize_holding_ticker
+**Learning:** In `jobs_etf_watchtower.py`, using `df['ticker'].apply(normalize_holding_ticker)` and `df[df['ticker'].apply(is_stock_ticker)]` is significantly slower than using list comprehensions. `df['ticker'].apply` has a high overhead because it creates a new Pandas Series for each row. Using `np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)` provides a 2x-4x speedup for boolean filtering, and `[normalize_holding_ticker(x) for x in df['ticker'].tolist()]` gives a ~20% speedup for string transformations.
+**Action:** Replace `df['col'].apply(custom_func)` with `np.array([custom_func(x) for x in df['col'].tolist()], dtype=bool)` for boolean filtering and `[custom_func(x) for x in df['col'].tolist()]` for column assignment, bypassing the slow Pandas `apply` method overhead.
+
+## 2025-05-15 - Unbounded Supabase Query in jobs_dividends.py
+**Learning:** Supabase caps unbounded queries at 1000 rows. `processed_res = client.supabase.table("dividend_log").select(...).execute()` was vulnerable to silently missing past dividend records, risking duplicate entries.
+**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.

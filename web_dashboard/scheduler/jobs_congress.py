@@ -43,66 +43,20 @@ else:
     sys.path.append(web_dashboard_path)
 
 from scheduler.scheduler_core import log_job_execution
-from prompt_safety import sanitize_for_llm
 
 # Initialize logger
 logger = logging.getLogger(__name__)
 
 
-def _parse_ai_conflict_json(response_text: str):
-    """Parse AI conflict-score JSON from Ollama response. Tolerates malformed JSON (trailing commas, nested braces in reasoning).
-    Returns (parsed_dict, None) on success or (None, error_message) on failure.
-    """
-    import json
-    import re
-
-    text = response_text.strip()
-    # Remove markdown code blocks
-    text = re.sub(r"```json\s*", "", text)
-    text = re.sub(r"```\s*", "", text)
-    text = text.strip()
-
-    # Extract first top-level {...} using balanced braces (so "reasoning" can contain { or })
-    start = text.find("{")
-    if start == -1:
-        return None, "No JSON object found"
-    depth = 0
-    for i in range(start, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                json_str = text[start : i + 1]
-                break
-    else:
-        return None, "Unbalanced braces"
-
-    for attempt in range(3):
-        try:
-            return json.loads(json_str), None
-        except json.JSONDecodeError as e:
-            if attempt == 0:
-                # Remove trailing commas before } or ] (common LLM mistake)
-                json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
-            elif attempt == 1:
-                # Single-quoted keys (common LLM mistake): 'key': -> "key":
-                json_str = re.sub(r"'([^']+)'\s*:", r'"\1":', json_str)
-            else:
-                return None, str(e)
-    return None, "Parse failed"
-
-
 def fetch_congress_trades_job() -> None:
-    """Fetch and analyze congressional stock trades from Financial Modeling Prep API.
+    """Fetch congressional stock trades from Financial Modeling Prep API.
     
     This job:
     1. Fetches House and Senate trading disclosures from FMP API
     2. Processes up to 10 records per chamber per run (API docs claim 0-25 but actual limit is 10)
     3. Cleans and normalizes the data
     4. Checks for duplicates before processing
-    5. Analyzes each new trade with AI (Ollama Granite 3.3) for conflict of interest
-    6. Saves trades to Supabase congress_trades table
+    5. Saves trades to Supabase congress_trades table (unscored — analyze_congress_trades_job scores them)
     
     Note: FMP API documentation lies - they claim limit can be 0-25, but only 10 actually works.
     
@@ -116,6 +70,10 @@ def fetch_congress_trades_job() -> None:
     
     job_id = 'congress_trades'
     start_time = time.time()
+    # Defined up front (before any early-exit path, e.g. the robots.txt check)
+    # so the outer except handler below never hits an UnboundLocalError trying
+    # to finalize the job.
+    target_date = datetime.now(timezone.utc).date()
     
     try:
         # Check robots.txt compliance (if enabled)
@@ -153,21 +111,28 @@ def fetch_congress_trades_job() -> None:
         logger.info("Starting congress trades job...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
         mark_job_started('congress_trades', target_date)
         
         # Import dependencies (lazy imports)
         try:
             from supabase_client import SupabaseClient
-            from ollama_client import collect_with_summary_model_chain, get_ollama_client
             from web_dashboard.utils.politician_mapping import lookup_politician_metadata, resolve_politician_name
-            from settings import get_summarizing_model
-            from data.committee_jurisdictions import get_committee_context
+            from web_dashboard.utils.congress_trade_normalize import (
+                CONGRESS_TRADE_UPSERT_ON_CONFLICT,
+                normalize_amount,
+                normalize_owner,
+                normalize_ticker,
+                normalize_trade_type,
+            )
         except ImportError as e:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {e}"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('congress_trades', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Get FMP API key
@@ -177,14 +142,13 @@ def fetch_congress_trades_job() -> None:
             message = "FMP_API_KEY not found in environment"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('congress_trades', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
-        # Initialize clients
         supabase_client = SupabaseClient(use_service_role=True)
-        ollama_client = get_ollama_client()
-        
-        if not ollama_client:
-            logger.warning("⚠️  Ollama unavailable - trades will be saved without conflict analysis")
         
         # Calculate cutoff date (7 days ago)
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=7)
@@ -198,7 +162,6 @@ def fetch_congress_trades_job() -> None:
         new_trades = 0
         skipped_duplicates = 0
         skipped_no_ticker = 0
-        ai_analyzed = 0
         errors = 0  # insert failed + processing exceptions only
         warnings = 0  # politician not in DB (skipped, not a failure)
         error_politician_not_in_db = 0
@@ -262,7 +225,7 @@ def fetch_congress_trades_job() -> None:
                                 skipped_no_ticker += 1
                                 continue
                             
-                            ticker = ticker.strip().upper()
+                            ticker = normalize_ticker(ticker)
                             
                             # Get politician name (FMP uses firstName and lastName)
                             first_name = trade_data.get('firstName') or trade_data.get('first_name') or ''
@@ -375,20 +338,18 @@ def fetch_congress_trades_job() -> None:
                                     trade_type = 'Purchase'
                                 elif 'sale' in description or 'sell' in description:
                                     trade_type = 'Sale'
+                                elif 'exchange' in description:
+                                    trade_type = 'Exchange'
+                                elif 'receive' in description:
+                                    trade_type = 'Received'
                                 else:
                                     trade_type = 'Purchase'  # Default
                             
-                            # Normalize to Purchase or Sale
-                            trade_type_lower = trade_type.lower()
-                            if 'purchase' in trade_type_lower or 'buy' in trade_type_lower:
-                                trade_type = 'Purchase'
-                            else:
-                                trade_type = 'Sale'
+                            trade_type = normalize_trade_type(trade_type)
                             
                             # Get amount (keep as string - FMP may use 'amount' or 'value')
                             amount = trade_data.get('amount') or trade_data.get('value') or trade_data.get('range') or ''
-                            if amount:
-                                amount = str(amount).strip()
+                            amount = normalize_amount(amount)
                             
                             # Get asset type (default to Stock)
                             asset_type = trade_data.get('assetType') or trade_data.get('asset_type') or 'Stock'
@@ -423,10 +384,7 @@ def fetch_congress_trades_job() -> None:
                             
                             # Extract owner (Self/Spouse/Dependent)
                             owner = trade_data.get('owner') or trade_data.get('assetOwner') or trade_data.get('ownerType')
-                            if owner:
-                                owner = str(owner).strip().title()
-                            else:
-                                owner = 'Unknown'  # Default matches migration 36
+                            owner = normalize_owner(owner)
                             
                             # Extract disclosure link
                             disclosure_link = trade_data.get('link') or trade_data.get('disclosureUrl') or trade_data.get('url')
@@ -475,169 +433,6 @@ def fetch_congress_trades_job() -> None:
                                 logger.debug(f"Duplicate check skipped (will use upsert): {dup_check_error}")
                                 pass
                             
-                            # This is a new trade - analyze with AI
-                            conflict_score = None
-                            notes = None
-                            model_name = None  # Will be set if AI analysis runs
-
-                            # Note: Ollama errors (e.g., 404 if service not running) are handled gracefully
-                            # Trades will still be saved without AI analysis if Ollama is unavailable
-                            if ollama_client:
-                                try:
-                                    # Fetch company/sector info from securities table
-                                    company_name = 'Unknown'
-                                    sector = 'Unknown'
-                                    description = None
-                                    try:
-                                        sec_result = supabase_client.supabase.table("securities")\
-                                            .select("company_name, sector, description")\
-                                            .eq("ticker", ticker)\
-                                            .maybe_single()\
-                                            .execute()
-                                        if sec_result and sec_result.data:
-                                            company_name = sec_result.data.get('company_name', 'Unknown')
-                                            sector = sec_result.data.get('sector', 'Unknown')
-                                            description = sec_result.data.get('description')
-                                    except Exception as sec_err:
-                                        logger.debug(f"Could not fetch security info for {ticker}: {sec_err}")
-
-                                    # Fetch committee assignments if we have politician_id
-                                    committees_str = 'Unknown'
-                                    if politician_id:
-                                        try:
-                                            assignments_result = supabase_client.supabase.table("committee_assignments")\
-                                                .select("""
-                                                    rank,
-                                                    title,
-                                                    committees (
-                                                        name,
-                                                        target_sectors
-                                                    )
-                                                """)\
-                                                .eq("politician_id", politician_id)\
-                                                .execute()
-
-                                            if assignments_result.data:
-                                                committees_list = []
-                                                for assignment in assignments_result.data:
-                                                    committee = assignment.get('committees', {})
-                                                    committee_name = committee.get('name', 'Unknown')
-                                                    target_sectors = committee.get('target_sectors', [])
-                                                    title = assignment.get('title', 'Member')
-                                                    sectors_str = ', '.join(target_sectors) if target_sectors else 'None'
-                                                    title_str = f" ({title})" if title else ""
-                                                    committees_list.append(f"{committee_name}{title_str} - Sectors: {sectors_str}")
-                                                committees_str = '; '.join(committees_list) if committees_list else 'None'
-                                            else:
-                                                committees_str = 'None (no committee assignments found)'
-                                        except Exception as comm_err:
-                                            logger.debug(f"Could not fetch committees for politician {politician_id}: {comm_err}")
-
-                                    # Get committee jurisdiction descriptions (the "cheat sheet" for the AI)
-                                    committee_context = sanitize_for_llm(
-                                        get_committee_context(committees_str)
-                                    )
-
-                                    # Build description section
-                                    description_section = ""
-                                    if description:
-                                        safe_description = sanitize_for_llm(description)
-                                        description_section = f"- Description: {safe_description}\n"
-
-                                    # Build full prompt with all context (matches batch script quality)
-                                    prompt = f"""Analyze this trade for potential Insider Trading/Conflict of Interest.
-Data:
-- Politician: {politician} ({party or 'Unknown'} - {state or 'Unknown'})
-- Chamber: {chamber}
-- Asset Owner: {owner}
-- Committee Assignments: {committees_str}
-- Committee Jurisdictions:
-{committee_context}
-- Ticker: {ticker}
-- Company: {company_name}
-- Sector: {sector}
-{description_section}- Date: {transaction_date}
-- Type: {trade_type}
-- Amount: {amount}
-
-Task:
-Calculate a 'conflict_score' from 0.0 to 1.0 based on these rules:
-1. HIGH SCORE (0.8-1.0): Direct overlap (e.g., Armed Services member buying Defense stock, Intelligence member trading defense contractors, spouse trades, timing near votes).
-2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries.
-3. LOW SCORE (0.0-0.3): Broad index funds or clearly unrelated industries.
-
-Consider:
-- Committee jurisdiction over company's sector (see Committee Jurisdictions above)
-- Asset owner (Self vs Spouse/Dependent) - spouse trades can still be concerning
-- Political party relevance to industry
-- State interests (e.g., CA rep + tech stocks, TX rep + energy)
-
-Return JSON with these fields:
-{{
-  "conflict_score": 0.95,
-  "confidence_score": 0.88,
-  "reasoning": "Brief explanation of why this score was assigned."
-}}
-
-The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations."""
-                                    try:
-                                        from skill_loader import build_enhanced_prompt
-
-                                        trade_context = (
-                                            f"{politician} {party} {chamber} {sector} "
-                                            f"{company_name} {ticker} {trade_type} "
-                                            f"{committees_str}"
-                                        )
-                                        prompt = build_enhanced_prompt(
-                                            prompt,
-                                            trade_context,
-                                            "congress_trades",
-                                        )
-                                    except Exception as exc:
-                                        logger.warning(
-                                            "Skill injection failed for congress trades prompt (falling back to base): %s",
-                                            exc,
-                                        )
-
-                                    # Summarization model chain (Ollama multi-host + GLM fallbacks)
-                                    model_name = get_summarizing_model()
-                                    full_response, model_name = collect_with_summary_model_chain(
-                                        ollama_client,
-                                        prompt=prompt,
-                                        requested_model=model_name,
-                                        stream=True,
-                                        temperature=0.1,
-                                        response_ok=lambda s: _parse_ai_conflict_json(s)[0] is not None,
-                                        function_name="analyze_congress_trades",
-                                    )
-                                    full_response = full_response or ""
-
-                                    parsed, parse_err = (
-                                        _parse_ai_conflict_json(full_response)
-                                        if full_response
-                                        else (None, "all summarization models failed")
-                                    )
-                                    if parsed:
-                                        conflict_score = float(parsed.get("conflict_score", 0.0))
-                                        conflict_score = max(0.0, min(1.0, conflict_score))
-                                        notes = parsed.get("reasoning", "AI analysis completed")
-                                        ai_analyzed += 1
-                                    else:
-                                        logger.warning(f"Failed to parse AI response for {politician} {ticker}: {parse_err}")
-                                        logger.debug(f"Response was: {full_response[:500]}")
-                                        conflict_score = None
-                                        notes = "Failed to parse AI response"
-
-                                except json.JSONDecodeError as e:
-                                    logger.warning(f"Failed to parse AI response for {politician} {ticker}: {e}")
-                                    logger.debug(f"Response was: {full_response[:500]}")
-                                    conflict_score = None
-                                    notes = "Failed to parse AI response"
-                                except Exception as ai_error:
-                                    logger.warning(f"AI analysis failed for {politician} {ticker}: {ai_error}")
-                                    conflict_score = None
-                                    notes = "AI analysis error"
-                            
                             # Skip trades without politician_id (can't enforce uniqueness without it)
                             if not politician_id:
                                 error_politician_not_in_db += 1
@@ -645,9 +440,10 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
                                 politicians_skipped_not_in_db.add(politician)
                                 logger.debug(f"Skipping trade {politician} / {ticker} (politician not in database)")
                                 continue
-                            
+
                             # Prepare trade record with ALL available fields
                             # Note: 'politician' column was dropped in migration 27 - use politician_id only
+                            # conflict_score left null — analyze_congress_trades_job scores via PostgreSQL
                             trade_record = {
                                 'ticker': ticker,
                                 'politician_id': politician_id,  # FK to politicians table (required)
@@ -661,7 +457,6 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
                                 'amount': amount,
                                 'price': price_per_share,  # Price per share if available
                                 'asset_type': asset_type,
-                                'conflict_score': conflict_score,
                                 'notes': final_notes  # Includes description, capital gains, disclosure link
                             }
                             
@@ -671,48 +466,13 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
                                 result = supabase_client.supabase.table("congress_trades")\
                                     .upsert(
                                         trade_record,
-                                        on_conflict="politician_id,ticker,transaction_date,amount,type,owner"
+                                        on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
                                     )\
                                     .execute()
                                 
                                 if result.data:
                                     new_trades += 1
                                     logger.debug(f"✅ Saved trade: {politician} {trade_type} {ticker} on {transaction_date}")
-                                    
-                                    # If AI analysis was successful, also save to PostgreSQL analysis table
-                                    # (UI reads from PostgreSQL, not Supabase conflict_score column)
-                                    if conflict_score is not None and result.data:
-                                        try:
-                                            from postgres_client import PostgresClient
-                                            postgres = PostgresClient()
-                                            
-                                            # Get the trade ID from the inserted/updated record
-                                            trade_id = result.data[0].get('id') if isinstance(result.data, list) and result.data else None
-                                            if not trade_id and isinstance(result.data, dict):
-                                                trade_id = result.data.get('id')
-                                            
-                                            if trade_id:
-                                                # Save analysis to PostgreSQL (same as analyze_congress_trades_job)
-                                                postgres.execute_update(
-                                                    """
-                                                    INSERT INTO congress_trades_analysis 
-                                                        (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
-                                                    VALUES (%s, %s, %s, %s, %s, %s)
-                                                    ON CONFLICT (trade_id, model_used, analysis_version) 
-                                                    DO UPDATE SET 
-                                                        conflict_score = EXCLUDED.conflict_score,
-                                                        confidence_score = EXCLUDED.confidence_score,
-                                                        reasoning = EXCLUDED.reasoning,
-                                                        analyzed_at = NOW()
-                                                    """,
-                                                    (trade_id, conflict_score, 0.75, notes or "AI analysis completed", model_name or get_summarizing_model(), 1)
-                                                )
-                                                logger.debug(f"   💾 Saved analysis to PostgreSQL for trade {trade_id}")
-                                        except ImportError:
-                                            logger.debug("PostgreSQL client not available - skipping analysis save")
-                                        except Exception as pg_error:
-                                            logger.warning(f"Failed to save analysis to PostgreSQL: {pg_error}")
-                                            # Don't fail the whole job if PostgreSQL save fails
                                 else:
                                     skipped_duplicates += 1
                                     
@@ -739,9 +499,19 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
             except Exception as e:
                 logger.error(f"Unexpected error processing {chamber}: {e}", exc_info=True)
         
+        # Quarantine known-bad disclosures (fingerprint registry; fresh-DB safe)
+        try:
+            from utils.congress_trade_quality import apply_trade_quality_overrides
+
+            quality_stats = apply_trade_quality_overrides(supabase_client)
+            if quality_stats.get("matched"):
+                logger.info("Congress trade quality overrides: %s", quality_stats)
+        except Exception as quality_err:
+            logger.warning("Congress trade quality overrides failed: %s", quality_err)
+
         # Log completion
         duration_ms = int((time.time() - start_time) * 1000)
-        message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {ai_analyzed} AI analyzed, {errors} errors, {warnings} warnings"
+        message = f"Found {total_trades_found} trades: {new_trades} new, {skipped_duplicates} duplicates, {skipped_no_ticker} no ticker, {errors} errors, {warnings} warnings"
         if errors:
             error_breakdown = []
             if error_insert_failed:
@@ -767,6 +537,88 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
         logger.error(f"❌ Congress trades job failed: {e}", exc_info=True)
 
 
+def _analyze_congress_trades_queue_enabled() -> bool:
+    try:
+        from scheduler.ai_task_workers import is_ai_queue_job_enabled
+
+        return is_ai_queue_job_enabled("analyze_congress_trades")
+    except Exception as exc:
+        logger.warning(
+            "AI queue mode check failed for analyze_congress_trades (using legacy path): %s",
+            exc,
+        )
+        return False
+
+
+def _run_analyze_congress_trades_enqueue_mode(job_id: str, start_time: float) -> None:
+    """Queue-mode: enqueue newest unscored trades; workers score on three backends."""
+
+    from utils.job_tracking import mark_job_completed, mark_job_failed, mark_job_started
+    from scheduler.ai_task_workers import (
+        AIQueueConfig,
+        enqueue_congress_trade_analysis_tasks,
+    )
+    from supabase_client import SupabaseClient
+    import os
+
+    target_date = datetime.now(timezone.utc).date()
+    mark_job_started(job_id, target_date)
+
+    # Modest priority so catch-up bulk (priority 0) stays behind, but cron work
+    # still runs ahead of pure backlog dumps.
+    cron_priority = 10
+    batch_size = 40
+
+    try:
+        client = SupabaseClient(use_service_role=True)
+        resp = (
+            client.supabase.table("congress_trades")
+            .select("id")
+            .is_("conflict_score", "null")
+            .neq("quality_status", "garbage")
+            .order("transaction_date", desc=True)
+            .order("id", desc=True)
+            .limit(batch_size)
+            .execute()
+        )
+        trade_ids = [int(r["id"]) for r in (resp.data or [])]
+        if not trade_ids:
+            duration_ms = int((time.time() - start_time) * 1000)
+            message = "No unscored trades to enqueue"
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            logger.info("✅ %s", message)
+            return
+
+        config = AIQueueConfig.from_env()
+        enqueued_by = os.getenv("AI_QUEUE_ENQUEUED_BY", "cron").strip() or "cron"
+        stats = enqueue_congress_trade_analysis_tasks(
+            client,
+            trade_ids,
+            priority=cron_priority,
+            enqueued_by=enqueued_by,
+            max_attempts=config.max_attempts,
+        )
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = (
+            f"Enqueued {stats['enqueued']}/{stats['attempted']} analyze_congress_trades "
+            f"task(s); failed={stats['failed']}."
+        )
+        ok = stats["failed"] == 0
+        log_job_execution(job_id, success=ok, message=message, duration_ms=duration_ms)
+        if ok:
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+        else:
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.info("✅ Congress trades enqueue complete: %s", message)
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        message = f"Congress trades enqueue failed: {exc}"
+        log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        logger.error("❌ %s", message, exc_info=True)
+
+
 def analyze_congress_trades_job() -> None:
     """Analyze unscored congress trades using committee data to calculate conflict scores.
     
@@ -778,9 +630,16 @@ def analyze_congress_trades_job() -> None:
     
     Note: This is a wrapper around analyze_congress_trades_batch.py logic.
     Processes in batches to avoid overwhelming Ollama.
+
+    When ``analyze_congress_trades`` is in ``AI_QUEUE_JOBS``, this job only
+    enqueues tasks; backend-bound workers perform the LLM scoring.
     """
     job_id = 'analyze_congress_trades'
     start_time = time.time()
+
+    if _analyze_congress_trades_queue_enabled():
+        _run_analyze_congress_trades_enqueue_mode(job_id, start_time)
+        return
 
     # Global AI lock (prevent overlapping AI jobs)
     try:
@@ -830,20 +689,33 @@ def analyze_congress_trades_job() -> None:
             mark_job_failed('analyze_congress_trades', target_date, None, message, duration_ms=duration_ms)
             return
         
-        # Import analysis functions from batch script
-        # We'll import the functions directly to reuse the logic
+        # Import analysis functions from batch script.
+        # Keep repo root ahead of web_dashboard so `data.*` resolves to root data/
+        # (web_dashboard/data previously shadowed it and broke committee_jurisdictions).
+        # web_dashboard must still be on the path for `scripts.*`.
         import sys
         from pathlib import Path
-        project_root = Path(__file__).parent.parent.parent
-        sys.path.insert(0, str(project_root))
-        sys.path.insert(0, str(project_root / 'web_dashboard'))
-        
-        # Import the analysis functions
+        _job_repo_root = Path(__file__).resolve().parent.parent.parent
+        _job_web_dashboard = _job_repo_root / 'web_dashboard'
+        for _p in (str(_job_web_dashboard), str(_job_repo_root)):
+            if _p in sys.path:
+                sys.path.remove(_p)
+        sys.path.insert(0, str(_job_web_dashboard))
+        sys.path.insert(0, str(_job_repo_root))
+        # Drop a cached wrong `data` package if web_dashboard/data was imported earlier
+        for _k in sorted(list(sys.modules), key=len, reverse=True):
+            if _k == 'data' or _k.startswith('data.'):
+                mod = sys.modules.get(_k)
+                mod_file = getattr(mod, '__file__', '') or ''
+                if 'web_dashboard' in mod_file.replace('\\', '/'):
+                    sys.modules.pop(_k, None)
+
         # Note: fix_failed_scores is NOT imported - it should only be run manually via --fix-only flag
         from scripts.analyze_congress_trades_batch import (
             get_trade_context,
             analyze_trade,
-            is_low_risk_asset
+            is_low_risk_asset,
+            sync_supabase_conflict_score,
         )
         from settings import get_summarizing_model
         
@@ -877,6 +749,7 @@ def analyze_congress_trades_job() -> None:
             response = client.supabase.table("congress_trades_enriched")\
                 .select("*")\
                 .is_("conflict_score", "null")\
+                .neq("quality_status", "garbage")\
                 .order("transaction_date", desc=True)\
                 .limit(batch_size)\
                 .execute()
@@ -938,11 +811,12 @@ def analyze_congress_trades_job() -> None:
                                 """,
                                 (trade['id'], score, confidence, reasoning, model_name, 1)
                             )
-                            
+                            sync_supabase_conflict_score(client, trade['id'], score)
+
                             logger.info(f"   [SCORED] {context['politician']} - {context['ticker']}: conflict={score:.2f}, confidence={confidence:.2f}")
                             total_processed += 1
                         except Exception as db_error:
-                            logger.error(f"   [ERROR] Failed to save analysis to Postgres: {db_error}")
+                            logger.error(f"   [ERROR] Failed to save analysis for trade {trade['id']}: {db_error}")
                             total_errors += 1
                     else:
                         logger.warning(f"   [WARN] Failed to parse AI response for trade ID {trade['id']}")
@@ -1177,6 +1051,10 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
     """
     job_id = 'scrape_congress_trades'
     start_time = time.time()
+    # Defined up front (before any early-exit path, e.g. the robots.txt check)
+    # so the outer except handler below never hits an UnboundLocalError trying
+    # to finalize the job.
+    target_date = datetime.now(timezone.utc).date()
     
     try:
         # Check robots.txt compliance (if enabled)
@@ -1215,7 +1093,6 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
         logger.info(f"Starting congress trades scraping job (months_back={months_back}, page_size={page_size}, max_pages={max_pages}, start_page={start_page}, skip_recent={skip_recent})...")
         
         # Mark job as started
-        target_date = datetime.now(timezone.utc).date()
         mark_job_started('scrape_congress_trades', target_date)
         
         # Import dependencies

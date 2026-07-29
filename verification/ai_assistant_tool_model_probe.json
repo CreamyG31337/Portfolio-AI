@@ -1,0 +1,290 @@
+[
+  {
+    "model": "granite4.1:8b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "igorls/gemma-4-12B-it-heretic-GGUF:Q8_0",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "bge-m3:latest",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "granite-embedding:278m",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gemma4:e4b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "batiai/qwen3.6-27b:iq3",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "mistral-small:22b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "qwen2.5-coder:14b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "glm4:latest",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "llama3.2:3b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gpt-oss:20b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "phi4-reasoning:14b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "qwen3:14b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "dolphin-mixtral:8x7b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "exaone-deep:7.8b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "dolphin3:8b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gemma3:12b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "deepseek-r1:14b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "llama3.1:8b",
+    "type": "ollama",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gemini-2.5-flash",
+    "type": "webai",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gemini-2.5-pro",
+    "type": "webai",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "gemini-3.0-pro",
+    "type": "webai",
+    "ok": false,
+    "tools_called": [],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 0,
+    "verdict": "fail_tools_not_wired",
+    "note": "ChatHandler only enables tools when backend == 'glm' (wishlist A1)."
+  },
+  {
+    "model": "glm-5.2",
+    "type": "glm",
+    "ok": true,
+    "tools_called": [
+      "get_track_record"
+    ],
+    "error": null,
+    "content_preview": "The user wants to know which stance sources have been right over the last 30 days. They explicitly want me to call get_track_record with horizon_days=30.",
+    "elapsed_s": 4.6,
+    "verdict": "pass"
+  },
+  {
+    "model": "glm-5.1",
+    "type": "glm",
+    "ok": true,
+    "tools_called": [
+      "get_track_record"
+    ],
+    "error": null,
+    "content_preview": "The user wants to know which stance sources have been right over the last 30 days. They explicitly want me to call get_track_record with a 30-day horizon.",
+    "elapsed_s": 4.4,
+    "verdict": "pass"
+  },
+  {
+    "model": "glm-5-turbo",
+    "type": "glm",
+    "ok": false,
+    "tools_called": [],
+    "error": "GLM API error: 429 Client Error: Too Many Requests for url: https://api.z.ai/api/coding/paas/v4/chat/completions",
+    "content_preview": "",
+    "elapsed_s": 0.7,
+    "verdict": "fail_no_tool_call"
+  },
+  {
+    "model": "glm-4.5-air",
+    "type": "glm",
+    "ok": true,
+    "tools_called": [
+      "get_track_record"
+    ],
+    "error": null,
+    "content_preview": "",
+    "elapsed_s": 2.5,
+    "verdict": "pass"
+  }
+]

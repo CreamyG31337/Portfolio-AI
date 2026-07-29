@@ -53,6 +53,15 @@ def is_boilerplate_buy_rationale(reason: Optional[str]) -> bool:
     return False
 
 
+def is_trade_sell(trade: dict[str, object]) -> bool:
+    """Return True when a trade_log row represents a sell."""
+    action = str(trade.get("action") or "").strip().upper()
+    if action == "SELL":
+        return True
+    reason = trade.get("reason")
+    return is_sell_reason(reason if isinstance(reason, str) else str(reason or ""))
+
+
 def infer_trade_action(reason: Optional[str], default: str = "BUY") -> str:
     """Infer canonical action from freeform reason text.
 

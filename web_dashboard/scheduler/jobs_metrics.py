@@ -116,6 +116,10 @@ def benchmark_refresh_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed('benchmark_refresh', target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Initialize Supabase client (use service role for writing)
@@ -460,7 +464,10 @@ def _process_performance_metrics_for_date(
     """
     # Get all funds that have data for target_date
     positions_query = client.supabase.table("portfolio_positions")\
-        .select("fund, total_value, cost_basis, pnl, currency, date")\
+        .select(
+            "fund, total_value, cost_basis, pnl, currency, date, "
+            "total_value_base, cost_basis_base, pnl_base"
+        )\
         .gte("date", f"{target_date}T00:00:00")\
         .lt("date", f"{target_date}T23:59:59.999999")
     
@@ -497,23 +504,31 @@ def _process_performance_metrics_for_date(
                 logger.warning(f"⚠️ Position in fund '{fund}' ticker '{pos.get('ticker', 'unknown')}' has invalid currency '{original_currency}'. Defaulting to CAD.")
                 currency = 'CAD'
         
-        # Convert to Decimal for precision
-        total_value = Decimal(str(pos.get('total_value', 0) or 0))
-        cost_basis = Decimal(str(pos.get('cost_basis', 0) or 0))
-        pnl = Decimal(str(pos.get('pnl', 0) or 0))
-        
-        # Convert USD to CAD if needed
-        if currency == 'USD':
-            rate = get_exchange_rate_for_date_from_db(
-                datetime.combine(target_date, dt_time(0, 0, 0)),
-                'USD',
-                'CAD'
-            )
-            if rate:
-                rate_decimal = Decimal(str(rate))
-                total_value *= rate_decimal
-                cost_basis *= rate_decimal
-                pnl *= rate_decimal
+        # Prefer pre-converted base-currency columns (authoritative after price job).
+        # Manual USD conversion fails on US-only holidays when positions are partial at 5 PM ET.
+        base_value = pos.get("total_value_base")
+        if base_value is not None and base_value != "":
+            total_value = Decimal(str(base_value or 0))
+            cost_basis = Decimal(str(pos.get("cost_basis_base", 0) or 0))
+            pnl = Decimal(str(pos.get("pnl_base", 0) or 0))
+        else:
+            # Convert to Decimal for precision
+            total_value = Decimal(str(pos.get("total_value", 0) or 0))
+            cost_basis = Decimal(str(pos.get("cost_basis", 0) or 0))
+            pnl = Decimal(str(pos.get("pnl", 0) or 0))
+
+            # Convert USD to CAD if needed
+            if currency == "USD":
+                rate = get_exchange_rate_for_date_from_db(
+                    datetime.combine(target_date, dt_time(0, 0, 0)),
+                    "USD",
+                    "CAD",
+                )
+                if rate:
+                    rate_decimal = Decimal(str(rate))
+                    total_value *= rate_decimal
+                    cost_basis *= rate_decimal
+                    pnl *= rate_decimal
         
         fund_totals[fund]['total_value'] += total_value
         fund_totals[fund]['cost_basis'] += cost_basis
@@ -624,7 +639,6 @@ def populate_performance_metrics_job(
         total_rows_skipped = 0
         total_dates_processed = 0
         total_dates_failed = 0
-        all_funds_processed = set()
         
         for process_date in dates_to_process:
             try:
@@ -639,12 +653,30 @@ def populate_performance_metrics_job(
                 if rows_inserted == 0 and rows_skipped == 0:
                     # No data for this date
                     logger.info(f"ℹ️ No position data found for {process_date}")
+                    try:
+                        mark_job_completed(
+                            'performance_metrics', process_date, None, [],
+                            duration_ms=0, message="No position data found",
+                        )
+                    except Exception:
+                        pass
                     continue
                 
                 total_rows_inserted += rows_inserted
                 total_rows_skipped += rows_skipped
-                all_funds_processed.update(funds)
                 total_dates_processed += 1
+
+                # Pair mark_job_started for this date (do not wait for post-loop
+                # dates_to_process[-1] — a multi-day backfill would leave prior
+                # dates stuck as status='running').
+                try:
+                    mark_job_completed(
+                        'performance_metrics', process_date, None, list(funds),
+                        duration_ms=int((time.time() - start_time) * 1000),
+                        message=f"{rows_inserted} inserted, {rows_skipped} skipped",
+                    )
+                except Exception:
+                    pass
                 
                 # Log progress for date ranges
                 if len(dates_to_process) > 1:
@@ -676,10 +708,6 @@ def populate_performance_metrics_job(
                 message = f"Populated {total_rows_inserted} fund(s) for {process_date}"
         
         log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
-        
-        # Mark completion for the last date processed (or first if none processed)
-        if dates_to_process:
-            mark_job_completed('performance_metrics', dates_to_process[-1], None, list(all_funds_processed), duration_ms=duration_ms)
         
         logger.info(f"✅ {message}")
 

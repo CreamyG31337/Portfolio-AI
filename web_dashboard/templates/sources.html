@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Sources - Admin Dashboard{% endblock %}
+{% block page_title %}Sources{% endblock %}
+{% block page_subtitle %}RSS feeds and YouTube allowlist for research collectors{% endblock %}
+
+{% block content %}
+<!-- PAGE: sources.html | ID: admin_sources -->
+<div class="px-4 py-6" id="sources-page" data-can-modify="{{ 'true' if can_modify_data else 'false' }}">
+    <div class="mb-4 flex flex-wrap gap-2 border-b border-border">
+        <button type="button" id="tab-youtube"
+            class="sources-tab px-4 py-2 text-sm font-medium border-b-2 border-accent text-accent"
+            data-tab="youtube">YouTube</button>
+        <button type="button" id="tab-rss"
+            class="sources-tab px-4 py-2 text-sm font-medium border-b-2 border-transparent text-text-secondary hover:text-text-primary"
+            data-tab="rss">RSS Feeds</button>
+    </div>
+
+    <!-- YouTube tab -->
+    <div id="panel-youtube" class="sources-panel">
+        <div class="p-6 bg-dashboard-surface border border-border rounded-lg shadow-xs">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <div>
+                    <h2 class="text-xl font-bold tracking-tight text-text-primary">YouTube sources</h2>
+                    <p class="text-sm text-text-secondary mt-1">
+                        Allowlisted channels / playlists / IR / search queries. Bulk import is the primary path.
+                    </p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="yt-bulk-btn" class="btn-outline" {% if not can_modify_data %}disabled{% endif %}>
+                        Bulk import
+                    </button>
+                    <button type="button" id="yt-add-btn" class="btn-outline" {% if not can_modify_data %}disabled{% endif %}>
+                        Add source
+                    </button>
+                </div>
+            </div>
+
+            <div class="relative overflow-x-auto max-h-[640px]">
+                <table class="w-full text-sm text-left text-text-secondary">
+                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">Label</th>
+                            <th class="px-4 py-3">Kind</th>
+                            <th class="px-4 py-3">Mechanism</th>
+                            <th class="px-4 py-3">Tickers</th>
+                            <th class="px-4 py-3">Weight</th>
+                            <th class="px-4 py-3">Enabled</th>
+                            <th class="px-4 py-3">Captions</th>
+                            <th class="px-4 py-3">Last seen</th>
+                            <th class="px-4 py-3">Last error</th>
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="yt-table-body">
+                        <tr><td colspan="10" class="px-4 py-4 text-center text-text-secondary">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- RSS tab -->
+    <div id="panel-rss" class="sources-panel hidden">
+        <div class="p-6 bg-dashboard-surface border border-border rounded-lg shadow-xs">
+            <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+                <h2 class="text-xl font-bold tracking-tight text-text-primary">RSS feeds</h2>
+            </div>
+
+            {% if can_modify_data %}
+            <div class="flex flex-wrap gap-2 mb-4 items-end">
+                <div>
+                    <label class="block mb-1 text-xs text-text-tertiary" for="rss-add-name">Name</label>
+                    <input id="rss-add-name" type="text" class="border rounded-lg block p-2" placeholder="Feed name">
+                </div>
+                <div class="flex-1 min-w-[220px]">
+                    <label class="block mb-1 text-xs text-text-tertiary" for="rss-add-url">URL</label>
+                    <input id="rss-add-url" type="url" class="border rounded-lg block w-full p-2" placeholder="https://…">
+                </div>
+                <div>
+                    <label class="block mb-1 text-xs text-text-tertiary" for="rss-add-category">Category</label>
+                    <input id="rss-add-category" type="text" class="border rounded-lg block p-2" placeholder="finance">
+                </div>
+                <button type="button" id="rss-add-btn" class="btn-outline">Add</button>
+            </div>
+            {% endif %}
+
+            <div class="relative overflow-x-auto max-h-[640px]">
+                <table class="w-full text-sm text-left text-text-secondary">
+                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3">Name</th>
+                            <th class="px-4 py-3">URL</th>
+                            <th class="px-4 py-3">Category</th>
+                            <th class="px-4 py-3">Enabled</th>
+                            <th class="px-4 py-3">Last fetched</th>
+                            <th class="px-4 py-3">Last error</th>
+                            <th class="px-4 py-3 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rss-table-body">
+                        <tr><td colspan="7" class="px-4 py-4 text-center text-text-secondary">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk import modal -->
+<div id="yt-bulk-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+    <div class="bg-dashboard-surface border border-border rounded-xl shadow-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div class="p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-text-primary">Bulk import YouTube sources</h3>
+                <button type="button" id="yt-bulk-close" class="text-text-secondary hover:text-text-primary">✕</button>
+            </div>
+            <p class="text-sm text-text-secondary mb-3">
+                Paste JSON array or CSV with headers matching the research deliverable
+                (<code class="text-xs">label, handle, kind, alpha_mechanism, expected_tickers, …</code>
+            </p>
+            <div class="mb-3 flex gap-3 text-sm">
+                <label class="inline-flex items-center gap-1"><input type="radio" name="bulk-format" value="json" checked> JSON</label>
+                <label class="inline-flex items-center gap-1"><input type="radio" name="bulk-format" value="csv"> CSV</label>
+            </div>
+            <textarea id="yt-bulk-payload" rows="10"
+                class="border rounded-lg block w-full p-3 font-mono text-xs mb-3"
+                placeholder='[{"label":"Gamers Nexus","handle":"@GamersNexus","kind":"channel","alpha_mechanism":"TEARDOWN","expected_tickers":["NVDA"]}]'></textarea>
+            <div class="flex gap-2 mb-4">
+                <button type="button" id="yt-bulk-preview-btn" class="btn-outline">Preview</button>
+                <button type="button" id="yt-bulk-commit-btn" class="btn-outline" disabled>Commit</button>
+            </div>
+            <div id="yt-bulk-summary" class="text-sm text-text-secondary mb-2"></div>
+            <div class="relative overflow-x-auto max-h-[280px]">
+                <table class="w-full text-sm text-left text-text-secondary">
+                    <thead class="text-xs text-text-tertiary uppercase bg-dashboard-surface-alt sticky top-0">
+                        <tr>
+                            <th class="px-3 py-2">Status</th>
+                            <th class="px-3 py-2">Label</th>
+                            <th class="px-3 py-2">Handle</th>
+                            <th class="px-3 py-2">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody id="yt-bulk-preview-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Simple add/edit YouTube modal -->
+<div id="yt-edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+    <div class="bg-dashboard-surface border border-border rounded-xl shadow-lg w-full max-w-lg">
+        <div class="p-6 space-y-3">
+            <h3 id="yt-edit-title" class="text-lg font-semibold text-text-primary">Add YouTube source</h3>
+            <input type="hidden" id="yt-edit-id">
+            <div>
+                <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-label">Label</label>
+                <input id="yt-edit-label" class="border rounded-lg block w-full p-2">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-handle">Handle</label>
+                    <input id="yt-edit-handle" class="border rounded-lg block w-full p-2" placeholder="@channel">
+                </div>
+                <div>
+                    <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-kind">Kind</label>
+                    <select id="yt-edit-kind" class="border rounded-lg block w-full p-2">
+                        <option value="channel">channel</option>
+                        <option value="playlist">playlist</option>
+                        <option value="ir">ir</option>
+                        <option value="search">search</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-query">Query (search kind)</label>
+                <input id="yt-edit-query" class="border rounded-lg block w-full p-2">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-mechanism">Mechanism</label>
+                    <select id="yt-edit-mechanism" class="border rounded-lg block w-full p-2">
+                        <option value="">—</option>
+                        {% for m in alpha_mechanisms %}
+                        <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-tickers">Tickers</label>
+                    <input id="yt-edit-tickers" class="border rounded-lg block w-full p-2" placeholder="NVDA, INTC">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs text-text-tertiary mb-1" for="yt-edit-notes">Notes</label>
+                <textarea id="yt-edit-notes" rows="2" class="border rounded-lg block w-full p-2"></textarea>
+            </div>
+            <div class="flex justify-end gap-2 pt-2">
+                <button type="button" id="yt-edit-cancel" class="px-4 py-2 text-sm border border-border rounded-lg">Cancel</button>
+                <button type="button" id="yt-edit-save" class="btn-outline">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test video prompt modal -->
+<div id="yt-test-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 p-4">
+    <div class="bg-dashboard-surface border border-border rounded-xl shadow-lg w-full max-w-md p-6 space-y-3">
+        <h3 class="text-lg font-semibold text-text-primary">Test captions</h3>
+        <p class="text-sm text-text-secondary">Paste a watch URL or video id from this channel (live network call).</p>
+        <input type="hidden" id="yt-test-source-id">
+        <input id="yt-test-url" class="border rounded-lg block w-full p-2" placeholder="https://www.youtube.com/watch?v=…">
+        <div class="flex justify-end gap-2">
+            <button type="button" id="yt-test-cancel" class="px-4 py-2 text-sm border border-border rounded-lg">Cancel</button>
+            <button type="button" id="yt-test-run" class="btn-outline">Run test</button>
+        </div>
+    </div>
+</div>
+
+{% include "components/_confirm_modal.html" %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/sources.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

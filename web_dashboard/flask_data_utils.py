@@ -649,14 +649,26 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         def _merge_missing_dates_from_positions(
             base_daily_totals: pd.DataFrame,
             missing_dates: list[date],
+            *,
+            replace_existing: bool = False,
         ) -> pd.DataFrame:
-            """Fetch and aggregate missing dates from portfolio_positions."""
+            """Fetch and aggregate dates from portfolio_positions.
+
+            When replace_existing is True, rows for those dates are removed from
+            base_daily_totals first (used to fix suspect performance_metrics).
+            """
             if not missing_dates:
                 return base_daily_totals
 
             missing_date_set = set(missing_dates)
             range_start = min(missing_dates)
             range_end = max(missing_dates)
+
+            if replace_existing:
+                keep_mask = ~pd.to_datetime(base_daily_totals["date"]).dt.date.isin(
+                    missing_date_set
+                )
+                base_daily_totals = base_daily_totals.loc[keep_mask].copy()
 
             all_rows = []
             batch_size = 1000
@@ -732,11 +744,106 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 .reset_index(drop=True)
             )
             logger.info(
-                "Filled %s missing performance date(s) from portfolio_positions for %s",
+                "%s %s performance date(s) from portfolio_positions for %s",
+                "Replaced" if replace_existing else "Filled",
                 len(filled),
                 fund,
             )
             return merged
+
+        def _detect_suspect_metric_dates(
+            metrics_df: pd.DataFrame,
+            positions_df: pd.DataFrame,
+            *,
+            threshold: float = 0.15,
+        ) -> list[date]:
+            """Dates where performance_metrics diverges from position aggregates."""
+            if metrics_df.empty or positions_df.empty:
+                return []
+
+            suspect: list[date] = []
+            pos_by_date = {
+                pd.to_datetime(row["date"]).date(): float(row["value"])
+                for row in positions_df.to_dict("records")
+            }
+            for row in metrics_df.itertuples(index=False):
+                d = pd.to_datetime(row.date).date()
+                pos_val = pos_by_date.get(d)
+                if pos_val is None or pos_val <= 0:
+                    continue
+                met_val = float(row.value)
+                if abs(pos_val - met_val) / pos_val > threshold:
+                    suspect.append(d)
+            return suspect
+
+        def _fetch_position_daily_totals(
+            range_start: date,
+            range_end: date,
+        ) -> pd.DataFrame:
+            """Aggregate portfolio_positions to one row per calendar date."""
+            all_rows: list[dict] = []
+            batch_size = 1000
+            offset = 0
+            while True:
+                query = client.supabase.table("portfolio_positions").select(
+                    "date, total_value, cost_basis, pnl, fund, currency, "
+                    "total_value_base, cost_basis_base, pnl_base, base_currency"
+                )
+                if fund and fund.lower() != "all":
+                    query = query.eq("fund", fund)
+
+                query = (
+                    query.gte("date", f"{range_start}T00:00:00")
+                    .lt("date", f"{range_end}T23:59:59.999999")
+                    .order("date")
+                    .order("id")
+                    .range(offset, offset + batch_size - 1)
+                )
+
+                result = query.execute()
+                rows = result.data or []
+                if not rows:
+                    break
+                all_rows.extend(rows)
+                if len(rows) < batch_size:
+                    break
+                offset += batch_size
+
+            if not all_rows:
+                return pd.DataFrame(columns=["date", "value", "cost_basis", "pnl"])
+
+            df = pd.DataFrame(all_rows)
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+
+            has_preconverted = (
+                "total_value_base" in df.columns
+                and df["total_value_base"].notna().mean() > 0.8
+            )
+            if has_preconverted:
+                value_col, cost_col, pnl_col = (
+                    "total_value_base",
+                    "cost_basis_base",
+                    "pnl_base",
+                )
+            else:
+                value_col, cost_col, pnl_col = "total_value", "cost_basis", "pnl"
+
+            grouped = (
+                df.groupby("date")
+                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
+                .reset_index()
+                .rename(
+                    columns={
+                        value_col: "value",
+                        cost_col: "cost_basis",
+                        pnl_col: "pnl",
+                    }
+                )
+            )
+            grouped["date"] = (
+                pd.to_datetime(grouped["date"]).dt.normalize() + pd.Timedelta(hours=12)
+            )
+            return grouped
 
         # OPTIMIZATION: Try fetching pre-aggregated metrics first
         # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
@@ -787,6 +894,39 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                         daily_totals = (
                             daily_totals.groupby('date', as_index=False)
                             .agg({'value': 'sum', 'cost_basis': 'sum', 'pnl': 'sum'})
+                        )
+
+                    # Replace suspect metrics (e.g. US-only holidays with CAD-only totals)
+                    try:
+                        metric_dates = [
+                            pd.to_datetime(d).date() for d in daily_totals["date"]
+                        ]
+                        if metric_dates:
+                            pos_totals = _fetch_position_daily_totals(
+                                min(metric_dates),
+                                max(metric_dates),
+                            )
+                            suspect_dates = _detect_suspect_metric_dates(
+                                daily_totals,
+                                pos_totals,
+                            )
+                            if suspect_dates:
+                                logger.warning(
+                                    "Replacing %s suspect performance_metrics date(s) "
+                                    "from portfolio_positions for %s: %s",
+                                    len(suspect_dates),
+                                    fund,
+                                    suspect_dates,
+                                )
+                                daily_totals = _merge_missing_dates_from_positions(
+                                    daily_totals,
+                                    suspect_dates,
+                                    replace_existing=True,
+                                )
+                    except Exception as reconcile_error:
+                        logger.warning(
+                            "Failed to reconcile performance_metrics: %s",
+                            reconcile_error,
                         )
 
                     # Append today's live data if needed
@@ -870,22 +1010,55 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                                 )
                                 current_pnl += u_pnl * rate
 
-                            # Create row for today (noon UTC) — compare calendar dates only so
-                            # tz-aware portfolio_positions timestamps don't break the check.
-                            today_date = pd.Timestamp.utcnow().normalize() + pd.Timedelta(hours=12)
-                            last_metric_date = pd.to_datetime(daily_totals['date'].max())
-                            if last_metric_date.date() < today_date.date():
-                                new_row = pd.DataFrame([{
-                                    'date': today_date,
-                                    'value': current_val,
-                                    'cost_basis': current_cost,
-                                    'pnl': current_pnl,
-                                    'fund': fund
-                                }])
-                                daily_totals = pd.concat([daily_totals, new_row], ignore_index=True)
+                            # Use Eastern calendar day (America/Toronto) — matches price job and
+                            # Canadian users; avoids UTC day-boundary drift vs local sessions.
+                            from zoneinfo import ZoneInfo
+                            from utils.market_holidays import MarketHolidays
+
+                            today_calendar = datetime.now(ZoneInfo("America/Toronto")).date()
+                            chart_calendar = MarketHolidays()
+                            if chart_calendar.is_trading_day(today_calendar, market="any"):
+                                today_date = pd.Timestamp(today_calendar) + pd.Timedelta(hours=12)
+                                last_metric_date = pd.to_datetime(daily_totals["date"].max())
+                                if last_metric_date.date() < today_calendar:
+                                    new_row = pd.DataFrame([{
+                                        "date": today_date,
+                                        "value": current_val,
+                                        "cost_basis": current_cost,
+                                        "pnl": current_pnl,
+                                        "fund": fund,
+                                    }])
+                                    daily_totals = pd.concat(
+                                        [daily_totals, new_row], ignore_index=True
+                                    )
 
                     except Exception as live_data_error:
                         logger.warning(f"Failed to append live data to performance metrics: {live_data_error}")
+
+                    # Trailing sessions after last metric (e.g. TSX open on US-only holidays)
+                    try:
+                        from zoneinfo import ZoneInfo
+                        from utils.market_holidays import MarketHolidays
+
+                        chart_calendar = MarketHolidays()
+                        through_date = datetime.now(ZoneInfo("America/Toronto")).date()
+                        last_in_series = pd.to_datetime(daily_totals["date"].max()).date()
+                        trailing: list[date] = []
+                        cursor = last_in_series + timedelta(days=1)
+                        while cursor <= through_date:
+                            if chart_calendar.is_trading_day(cursor, market="any"):
+                                trailing.append(cursor)
+                            cursor += timedelta(days=1)
+                        if trailing:
+                            daily_totals = _merge_missing_dates_from_positions(
+                                daily_totals,
+                                trailing,
+                            )
+                    except Exception as trailing_error:
+                        logger.warning(
+                            "Failed to backfill trailing performance dates: %s",
+                            trailing_error,
+                        )
 
                     # Sort ensuring date order
                     daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
@@ -989,8 +1162,10 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         # Filter weekends (optional, but good for consistency)
         # Import local to avoid circular dep
         try:
-            from chart_utils import _filter_trading_days
-            daily_totals = _filter_trading_days(daily_totals, 'date')
+            from chart_utils import CHART_TRADING_MARKET, _filter_trading_days
+            daily_totals = _filter_trading_days(
+                daily_totals, "date", market=CHART_TRADING_MARKET
+            )
         except ImportError:
             pass
             
@@ -1413,19 +1588,22 @@ def get_first_trade_dates_flask(fund: Optional[str] = None) -> Dict[str, datetim
         return {}
 
     try:
-        # Optimized: Only fetch ticker and date columns, avoiding massive join and payload
-        query = client.supabase.table("trade_log").select("ticker, date")
-        if fund:
-            query = query.eq("fund", fund)
+        from supabase_pagination import fetch_all_rows
 
-        # Limit to 5000 most recent trades (approximate coverage)
-        # Fetching 5000 rows of just 2 columns is very light compared to 5000 rows of ALL columns + joined securities
-        result = query.order("date", desc=True).limit(5000).execute()
-
-        if not result.data:
+        # Full paginated read of ticker+date (PostgREST caps each page at 1000).
+        filters = [("fund", "eq", fund)] if fund else None
+        rows = fetch_all_rows(
+            client,
+            "trade_log",
+            "ticker, date",
+            filters=filters,
+            order="date",
+            order_desc=True,
+        )
+        if not rows:
             return {}
-            
-        df = pd.DataFrame(result.data)
+
+        df = pd.DataFrame(rows)
         if df.empty or 'date' not in df.columns or 'ticker' not in df.columns:
             return {}
 
@@ -1529,9 +1707,10 @@ def get_biggest_movers_flask(positions_df: pd.DataFrame, display_currency: str, 
     if 'securities' in df.columns:
         # Handle nested securities data
         try:
-            df['company_name'] = df['securities'].apply(
-                lambda x: x.get('company_name', '') if isinstance(x, dict) else ''
-            )
+            sec_list = df['securities'].tolist()
+            df['company_name'] = [
+                x.get('company_name', '') if isinstance(x, dict) else '' for x in sec_list
+            ]
             company_col = 'company_name'
         except:
             pass
@@ -1586,7 +1765,7 @@ def fetch_unique_column_values_parallel(
     supabase_client,
     table: str,
     column: str,
-    chunk_size: int = 5000,
+    chunk_size: int = 1000,
     max_workers: int = 10,
     max_rows: int = 200000,
 ) -> List[str]:
@@ -1599,7 +1778,7 @@ def fetch_unique_column_values_parallel(
         supabase_client: Authenticated SupabaseClient instance.
         table: Table name to query.
         column: Column name to extract unique values from.
-        chunk_size: Number of rows per parallel chunk (default 5000).
+        chunk_size: Rows per parallel chunk (clamped to PostgREST max of 1000).
         max_workers: Maximum ThreadPoolExecutor workers (default 10).
         max_rows: Safety cap on total rows fetched (default 200k).
 
@@ -1607,6 +1786,8 @@ def fetch_unique_column_values_parallel(
         Sorted list of unique non-null string values.
     """
     import concurrent.futures
+
+    from supabase_pagination import clamp_page_size, page_ranges
 
     if supabase_client is None:
         return []
@@ -1644,11 +1825,9 @@ def fetch_unique_column_values_parallel(
         if total == 0:
             return []
 
-        # 2. Build chunk ranges
-        chunks = []
-        for offset in range(0, total, chunk_size):
-            end = min(offset + chunk_size - 1, total - 1)
-            chunks.append((offset, end))
+        # PostgREST silently caps each response at 1000 rows — never ask for more.
+        chunk_size = clamp_page_size(chunk_size)
+        chunks = page_ranges(total, chunk_size)
 
         # 3. Fetch chunks in parallel
         all_values: set = set()

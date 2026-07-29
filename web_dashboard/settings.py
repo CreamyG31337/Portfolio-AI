@@ -34,6 +34,48 @@ def is_meta_analysis_phase3_sector_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def is_meta_analysis_human_thesis_enabled() -> bool:
+    """Inject Insights (``ticker_theses``) into ticker-meta artifact bundles (ROADMAP §2.6 R1).
+
+    Default on. Set ``META_ANALYSIS_HUMAN_THESIS=false`` to disable without redeploying.
+    Scope via ``META_ANALYSIS_HUMAN_THESIS_SCOPE`` (see ``get_meta_analysis_human_thesis_scope``).
+    """
+    raw = os.getenv("META_ANALYSIS_HUMAN_THESIS", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def is_meta_analysis_phase_h2_enabled() -> bool:
+    """Inject Phase H2 families into ticker-meta bundles (clusters, dilution, filings,
+    confluence, prior stance + track record).
+
+    Default on. Set ``META_ANALYSIS_PHASE_H2=false`` to disable without redeploying.
+    """
+    raw = os.getenv("META_ANALYSIS_PHASE_H2", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def is_meta_analysis_trend_memory_enabled() -> bool:
+    """Inject prior regime / rotation-rank history into market brief and sector meta (Phase H4).
+
+    Default on. Set ``META_ANALYSIS_TREND_MEMORY=false`` to disable without redeploying.
+    """
+    raw = os.getenv("META_ANALYSIS_TREND_MEMORY", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
+def get_meta_analysis_human_thesis_scope() -> str:
+    """Who gets theses injected into meta: ``holdings`` (default), ``holdings_or_recent``, or ``all``.
+
+    ``holdings`` — production fund positions only (limits first-night meta refresh backlog).
+    ``holdings_or_recent`` — holdings plus tickers with an active thesis updated in the last 14d.
+    ``all`` — any ticker with an active Insights thesis.
+    """
+    raw = os.getenv("META_ANALYSIS_HUMAN_THESIS_SCOPE", "holdings").strip().lower()
+    if raw in ("all", "holdings_or_recent", "holdings"):
+        return raw
+    return "holdings"
+
+
 DEFAULT_FUND_PROFILE_SETTINGS: dict[str, dict[str, Any]] = {
     "DEFAULT": {
         "signal_alert_min_confidence": 0.72,

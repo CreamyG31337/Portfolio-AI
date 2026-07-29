@@ -2,6 +2,7 @@ import sys
 import logging
 from pathlib import Path
 import pandas as pd
+import numpy as np
 
 # Add project root to path
 sys.path.append(str(Path.cwd()))
@@ -79,7 +80,8 @@ if len(significant) > 0:
         print(f"{ticker:10} -> is_stock_ticker = {is_stock}")
 
     # Apply stock filter
-    significant_stocks = significant[significant['ticker'].apply(is_stock_ticker)].copy()
+    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+    significant_stocks = significant[np.array([is_stock_ticker(x) for x in significant['ticker'].tolist()], dtype=bool)].copy()
     print(f"\nSignificant changes (after ticker filter): {len(significant_stocks)}")
 else:
     print("\nNo significant changes found!")

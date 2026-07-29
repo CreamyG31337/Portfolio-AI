@@ -332,11 +332,12 @@ def sync_exchange_rates_from_csv(csv_path: Path, use_service_role: bool = True) 
                 logger.warning(f"Could not parse date '{date_str}': {e}")
                 return None
         
-        df['parsed_date'] = df['Date'].apply(parse_date)
+        # ⚡ Bolt: Use list comprehension to bypass Pandas .apply() overhead
+        df['parsed_date'] = [parse_date(x) for x in df['Date'].tolist()]
         df = df[df['parsed_date'].notna()]
-        df['rate_decimal'] = df['USD_CAD_Rate'].apply(
-            lambda x: Decimal(str(x)) if pd.notna(x) else None
-        )
+        # ⚡ Bolt: Vectorized float to Decimal conversion bypassing row-wise apply overhead
+        rates_arr = df['USD_CAD_Rate'].values
+        df['rate_decimal'] = [Decimal(str(x)) if pd.notna(x) else None for x in rates_arr]
         df = df[df['rate_decimal'].notna()]
         
         # Prepare for upsert

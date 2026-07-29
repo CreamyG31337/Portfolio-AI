@@ -401,18 +401,8 @@ def normalize_transaction_type(tx_type: Optional[str]) -> Optional[str]:
     """Normalize transaction types to Purchase/Sale/Exchange/Received"""
     if not tx_type:
         return None
-    
-    tx_lower = str(tx_type).lower().strip()
-    if 'buy' in tx_lower or 'purchase' in tx_lower:
-        return 'Purchase'
-    elif 'sell' in tx_lower or 'sale' in tx_lower:
-        return 'Sale'
-    elif 'exchange' in tx_lower:
-        return 'Exchange'
-    elif 'receive' in tx_lower:
-        return 'Received'
-    else:
-        return 'Purchase'
+    from web_dashboard.utils.congress_trade_normalize import normalize_trade_type
+    return normalize_trade_type(tx_type)
 
 
 def extract_party_from_text(text: Optional[str]) -> Optional[str]:
@@ -495,14 +485,15 @@ def extract_owner_from_text(text: Optional[str]) -> Optional[str]:
 def normalize_politician_name(name: str) -> str:
     """
     Normalize politician name to match official records better.
-    Handles nicknames (Rafael -> Ted, Ladda -> Tammy) and removes suffixes.
+    Handles nicknames (Rafael -> Ted, Ladda -> Tammy).
+
+    Keep Jr/Sr/II/III/IV suffixes — stripping them breaks lookups like Thomas Kean Jr.
     """
     if not name:
         return name
+
+    name = re.sub(r"\s+", " ", str(name).strip())
         
-    # Remove suffixes
-    name = re.sub(r'\s+(Jr\.?|Sr\.?|II|III|IV)\.?$', '', name, flags=re.IGNORECASE)
-    
     # Specific known override map (Safer than broad nickname mapping)
     full_name_overrides = {
         'rafael cruz': 'Ted Cruz',
@@ -896,9 +887,14 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             notes = f"Imported from public records (scraped)"
         
         # Extract owner (Self, Spouse, Dependent, Joint, Undisclosed)
+        from web_dashboard.utils.congress_trade_normalize import (
+            normalize_amount,
+            normalize_owner,
+        )
+
         owner = trade_data.get('owner') or trade_data.get('assetOwner') or trade_data.get('ownerType')
         if owner:
-            owner = str(owner).strip().title()  # Capitalize properly: "Self", "Spouse", etc.
+            owner = str(owner).strip()
         else:
             owner = None
         
@@ -917,6 +913,9 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 tooltip = trade_data.get('tooltip') or trade_data.get('comment')
                 if tooltip:
                     owner = extract_owner_from_text(str(tooltip))
+
+        owner = normalize_owner(owner)
+        amount = normalize_amount(amount)
         
         # Extract representative (may differ from politician for spousal trades)
         representative = trade_data.get('representative') or trade_data.get('repName') or trade_data.get('representativeName')
@@ -1094,25 +1093,66 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
                     continue
             
             # Deduplicate records within the batch by unique key
-            # (politician, ticker, transaction_date, amount)
+            # (politician_id, ticker, transaction_date, amount, type, owner)
+            from web_dashboard.utils.congress_trade_normalize import (
+                CONGRESS_TRADE_UPSERT_ON_CONFLICT,
+                congress_trade_dedupe_key,
+            )
+            from web_dashboard.utils.politician_mapping import lookup_politician_metadata
+
             seen_keys = set()
             unique_records = []
             securities_to_upsert = {}  # Map ticker -> company_name
-            
+            skipped_no_politician = 0
+
             for record in page_records:
-                key = (record['politician'], record['ticker'], record['transaction_date'], record['amount'])
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    unique_records.append(record)
-                    
-                    # Collect company info for securities table
-                    ticker = record['ticker']
-                    company_name = record.get('company_name')
-                    if company_name and ticker not in securities_to_upsert:
-                        securities_to_upsert[ticker] = company_name
+                politician_name = record.pop("politician", None)
+                company_name = record.pop("company_name", None)
+                ticker = record.get("ticker") or ""
+
+                if company_name and ticker and ticker not in securities_to_upsert:
+                    securities_to_upsert[ticker] = company_name
+
+                if not politician_name:
+                    skipped_no_politician += 1
+                    continue
+
+                politician_meta = lookup_politician_metadata(client, politician_name)
+                if not politician_meta:
+                    skipped_no_politician += 1
+                    logger.debug(
+                        "Skipping scraped trade %s / %s (politician not in database)",
+                        politician_name,
+                        ticker,
+                    )
+                    continue
+
+                record["politician_id"] = politician_meta["politician_id"]
+                # Prefer DB metadata when present
+                if politician_meta.get("party"):
+                    record["party"] = politician_meta["party"]
+                if politician_meta.get("state"):
+                    record["state"] = politician_meta["state"]
+                if politician_meta.get("chamber"):
+                    record["chamber"] = politician_meta["chamber"]
+
+                key = congress_trade_dedupe_key(
+                    record["politician_id"],
+                    record["ticker"],
+                    record["transaction_date"],
+                    record.get("amount", ""),
+                    record.get("type", ""),
+                    record.get("owner", "Unknown"),
+                )
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                unique_records.append(record)
 
             page_records = unique_records
-            
+            if skipped_no_politician:
+                print(f"   ⚠️  Skipped {skipped_no_politician} trades (politician not in DB)")
+
             # Upsert securities (Company Names)
             if securities_to_upsert:
                 try:
@@ -1132,19 +1172,13 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
                 except Exception as e:
                     logger.warning(f"   ⚠️  Error updating securities metadata: {e}")
 
-            # Remove company_name from records before inserting to congress_trades
-            # as the table doesn't have that column
-            for record in page_records:
-                if 'company_name' in record:
-                    del record['company_name']
-
             # Insert records in batch
             if page_records:
                 try:
                     result = client.supabase.table("congress_trades")\
                         .upsert(
                             page_records,
-                            on_conflict="politician,ticker,transaction_date,amount,type,owner"
+                            on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
                         )\
                         .execute()
                     
@@ -1192,6 +1226,16 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
             logger.exception("Critical error in seeder")
             break
     
+    # Quarantine known-bad disclosures (fingerprint registry; fresh-DB safe)
+    try:
+        from utils.congress_trade_quality import apply_trade_quality_overrides
+
+        quality_stats = apply_trade_quality_overrides(client)
+        print(f"Quality overrides: {quality_stats}")
+    except Exception as quality_err:
+        logger.warning("Congress trade quality overrides failed: %s", quality_err)
+        print(f"⚠️  Quality overrides failed: {quality_err}")
+
     print()
     print("=" * 70)
     print("✅ SEEDING COMPLETE")

@@ -12,6 +12,20 @@
             "temperature": 0.1,
             "desc": "Best All-Rounder. High context, fits comfortably in VRAM."
         },
+        "mistral-small:22b": {
+            "num_ctx": 32768,
+            "num_predict": 2048,
+            "temperature": 0.1,
+            "desc": "Dumps tool calls as text JSON in content instead of structured tool_calls (probe 2026-07-25). Hidden from pickers.",
+            "hidden": true
+        },
+        "glm4:latest": {
+            "num_ctx": 32768,
+            "num_predict": 2048,
+            "temperature": 0.1,
+            "desc": "Local Ollama GLM-4 tag — writes tool names as plain text, not structured tool_calls (probe 2026-07-25). Not Z.AI glm-*. Hidden from pickers.",
+            "hidden": true
+        },
         "llama3.1:8b": {
             "num_ctx": 40000,
             "num_predict": 8192,
@@ -59,13 +73,23 @@
         },
         "qwen3.6:27b-heretic": {
             "num_ctx": 20000,
-            "num_predict": 2048,
+            "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on a single 24GB-class GPU host (e.g. RTX 3090). num_ctx=20000 leaves ~13k tokens of slack above the current summary worst-case (~6.5k tokens) while keeping KV cache around 2.5GB so other GPU consumers (Plex transcode, browser, IDE) can coexist. Operators with dedicated VRAM can raise via system_settings.model_qwen3.6:27b-heretic_num_ctx. Primary host: OLLAMA_BASE_URL_NVIDIA (else legacy OLLAMA_BASE_URL_2). Failover host: AMD."
+            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt so long answers are not cut early when the window has room."
+        },
+        "batiai/qwen3.6-27b:iq3": {
+            "num_ctx": 20000,
+            "num_predict": 8192,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_AMD",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same chat predict/ctx-fit policy as heretic."
         },
         "phi4:14b": {
             "num_ctx": 8192,
@@ -135,14 +159,16 @@
             "num_ctx": 128000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.7 via Z.AI. Best quality."
+            "desc": "Zhipu GLM-4.7 via Z.AI. Retired; use glm-5.2.",
+            "hidden": true
         },
         "glm-4.5": {
             "provider": "zhipu",
             "num_ctx": 128000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI."
+            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI. Retired; use glm-5.2.",
+            "hidden": true
         },
         "glm-4.5-air": {
             "provider": "zhipu",
@@ -156,7 +182,8 @@
             "num_ctx": 200000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.6 via Z.AI (if enabled for your key)."
+            "desc": "Zhipu GLM-4.6 via Z.AI. Retired; use glm-5.2.",
+            "hidden": true
         },
         "glm-5.2": {
             "provider": "zhipu",
@@ -184,7 +211,8 @@
             "num_ctx": 200000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-5 base via Z.AI (if enabled for your key)."
+            "desc": "Zhipu GLM-5 base via Z.AI. Retired; use glm-5.2.",
+            "hidden": true
         },
         "gemini-2.5-flash": {
             "provider": "webai",

@@ -172,6 +172,9 @@ cython_debug/
 # SEC insider backfill debug (raw filing samples, do not commit)
 debug/insider_junk/
 
+# Raw filing/disclosure documents pulled during debugging (do not commit)
+debug/*.pdf
+
 # PyCharm
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
 #  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
@@ -203,7 +206,7 @@ debug/insider_junk/
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
-.cursorindexingignore
+# .cursorindexingignore is committed — shared index exclusions for all dev machines
 
 # Marimo
 marimo/_static/
@@ -337,6 +340,7 @@ backups/**/*.dump
 
 webai_cookies.json
 ai_service_cookies.json
+reddit_cookies.json
 
 # Vendor/backup packages (local copies in case packages disappear)
 vendor/
@@ -408,3 +412,6 @@ verification/quality/quality_*.csv
 verification/quality/quality_*.md
 verification/quality/quality_*_summaries.json
 verification/quality/run_subset_benchmark.log
+
+# Phase K Stage 0 caption cache
+.stage0_cache/

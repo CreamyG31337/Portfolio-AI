@@ -19,7 +19,11 @@ from typing import Any
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from sector_meta_normalization import normalize_sector_meta_payload
-from settings import get_summarizing_model, is_meta_analysis_phase3_sector_enabled
+from settings import (
+    get_summarizing_model,
+    is_meta_analysis_phase3_sector_enabled,
+    is_meta_analysis_trend_memory_enabled,
+)
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
 
@@ -29,6 +33,7 @@ _MAX_ARTICLE_EXCERPT = 900
 _LOOKBACK_DAYS = 730
 _MAX_SECTORS_PER_RUN = 18
 _MAX_ARTICLES_PER_SECTOR = 14
+_ROTATION_HISTORY_LIMIT = 4
 
 
 def _clip(text: str | None, max_len: int = _MAX_ARTICLE_EXCERPT) -> str:
@@ -140,6 +145,68 @@ class SectorMetaAnalysisService:
             parts.append("")
         return "\n".join(parts).strip()
 
+    def _fetch_rotation_history(
+        self,
+        sector_key: str,
+        *,
+        before_date: Any,
+        limit: int = _ROTATION_HISTORY_LIMIT,
+    ) -> list[dict[str, Any]]:
+        """Prior sector_meta_analysis rows for this sector (newest first)."""
+        if limit < 1:
+            return []
+        try:
+            return list(
+                self.postgres.execute_query(
+                    """
+                    SELECT run_date, sector_stance, rotation_rank, news_pressure, momentum_state
+                    FROM sector_meta_analysis
+                    WHERE sector = %s AND run_date < %s
+                    ORDER BY run_date DESC
+                    LIMIT %s
+                    """,
+                    (sector_key[:120], before_date, limit),
+                )
+                or []
+            )
+        except Exception as exc:
+            logger.warning(
+                "rotation history fetch failed for %s: %s", sector_key, exc
+            )
+            return []
+
+    def _format_rotation_history_block(self, rows: list[dict[str, Any]]) -> str:
+        """Markdown block: oldest → newest + delta note. Empty → ``\"\"``."""
+        if not rows:
+            return ""
+        chronological = list(reversed(rows))
+        lines = ["### Rotation rank - recent runs (oldest to newest)"]
+        for r in chronological:
+            lines.append(
+                f"- {r.get('run_date')}: stance={r.get('sector_stance')} | "
+                f"rotation_rank={r.get('rotation_rank')} | "
+                f"momentum={r.get('momentum_state')} | "
+                f"news_pressure={r.get('news_pressure')}"
+            )
+        if len(chronological) >= 2:
+            try:
+                oldest_rank = int(chronological[0].get("rotation_rank") or 0)
+                latest_rank = int(chronological[-1].get("rotation_rank") or 0)
+                delta = latest_rank - oldest_rank
+                if delta > 0:
+                    direction = "climbed"
+                elif delta < 0:
+                    direction = "fell"
+                else:
+                    direction = "unchanged"
+                lines.append(
+                    f"- delta (oldest→newest in window): rotation_rank "
+                    f"{oldest_rank} → {latest_rank} ({direction}, Δ={delta:+d})"
+                )
+            except (TypeError, ValueError):
+                pass
+        return "\n".join(lines)
+
     def run_sector_meta(
         self,
         sector_key: str,
@@ -185,6 +252,14 @@ class SectorMetaAnalysisService:
         if not self.ollama:
             logger.error("Sector meta requires an LLM client for %s", sector_key)
             return None
+
+        if is_meta_analysis_trend_memory_enabled():
+            hist = self._fetch_rotation_history(
+                sector_key, before_date=run_date, limit=_ROTATION_HISTORY_LIMIT
+            )
+            hist_block = self._format_rotation_history_block(hist)
+            if hist_block:
+                bundle = f"{bundle}\n\n{hist_block}".strip()
 
         from ai_prompts import SECTOR_META_ANALYSIS_PROMPT
 

@@ -48,12 +48,24 @@ Optional nightly (or on-demand) LLM pass that stores a compact **verdict** (e.g.
 | Screen | Purpose | Key APIs / routes |
 |--------|---------|-------------------|
 | Dashboard | Portfolio summary, Action Queue, Market brief card | `/api/dashboard/summary`, `/api/dashboard/action-queue`, `/api/dashboard/market-brief` |
+| Today | Regime + **Advise pack** (ranked buy/sell) + flips + queue + Insights attention | `/api/today/briefing` (`advise_pack`) |
+| AI Assistant | Decide chat: optional **Today Intelligence Pulse** + on-demand tools (candidates, setup, market, sector, holdings, search) | `/ai-assistant`, pulse/tools in `ai_intelligence_pulse.py` / `ai_assistant_tools.py` — wishlist in [`ROADMAP.md` → AI Assistant](ROADMAP.md#ai-assistant--decide-chat-surface-shipped--wishlist) |
+| Watchlist | Fund-scoped watched tickers: list, bulk paste, soft-remove, tier, analysis status, queue analyze | `/watchlist`, `GET/POST /api/watchlist`, `POST /api/watchlist/analyze`, `PATCH /api/watchlist/item`. Results live on ticker dossier (`/ticker?ticker=…`). Ticker page Add/Remove. Ideas Accept still adds discovery tickers (`source=ideas_inbox`). |
 | Ticker detail | Full ticker AI analysis + meta synthesis | `/api/v2/ticker/<t>/analysis`, `/api/v2/ticker/<t>/meta-analysis` |
+| Insights | Human thesis threads (org-wide); due-for-review queue | `/insights`, `/api/insights`, `/api/insights/due`, `/api/ticker/<t>/insights` |
 | Research | Articles, semantic search | Research routes / `research_articles` |
 | Jobs admin | Schedule / run jobs | Scheduler UI / `jobs.py` |
 
+Insights (`/insights`) is **not** Sector Insights (`/sector_insights`). Thesis eval job
+(`insights_thesis_evaluation`) posts advisory `llm_reply` entries; it does not update
+Action Queue review rows. See [`docs/INSIGHTS.md`](INSIGHTS.md).
+
+For the full Decide-layer comparison (what each LLM pass is *for*, data-flow mermaid,
+circularity guards): [`INSIGHTS.md` → Analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for).
+
 ## Related docs
 
+- [Insights / analysis layers](INSIGHTS.md#analysis-layers--what-each-pass-is-for)
 - [ETF / ticker AI](../docs/ETF_AI_ANALYSIS_SYSTEM.md)
 - [AI research system](../web_dashboard/AI_RESEARCH_SYSTEM.md)
 - [AGENTS.md](../AGENTS.md) — testing and conventions

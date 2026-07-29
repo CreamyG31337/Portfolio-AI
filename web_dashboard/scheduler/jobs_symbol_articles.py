@@ -55,13 +55,13 @@ def symbol_article_scraper_job() -> None:
     """
     job_id = 'symbol_article_scraper'
     start_time = time.time()
+    target_date = datetime.now(timezone.utc).date()
     
     try:
         from scheduler.scheduler_core import log_job_execution
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         
         # Mark started
-        target_date = datetime.now(timezone.utc).date()
         try:
             mark_job_started(job_id, target_date)
         except Exception:
@@ -88,6 +88,10 @@ def symbol_article_scraper_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            try:
+                mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
         
         # Initialize clients
@@ -110,6 +114,10 @@ def symbol_article_scraper_job() -> None:
                 log_job_execution(job_id, True, message, duration_ms)
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
+            try:
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            except Exception:
+                pass
             logger.info(f"ℹ️ {message}")
             return
         
@@ -129,6 +137,10 @@ def symbol_article_scraper_job() -> None:
                 log_job_execution(job_id, True, message, duration_ms)
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
+            try:
+                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=message)
+            except Exception:
+                pass
             logger.info(f"ℹ️ {message}")
             return
         
@@ -374,5 +386,10 @@ def symbol_article_scraper_job() -> None:
             log_job_execution(job_id, False, message, duration_ms)
         except Exception as log_error:
             logger.warning(f"Failed to log job execution error: {log_error}")
+        try:
+            from utils.job_tracking import mark_job_failed
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
         logger.error(f"❌ Symbol article scraper job failed: {e}", exc_info=True)
 

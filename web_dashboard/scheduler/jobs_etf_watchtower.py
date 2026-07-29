@@ -51,6 +51,7 @@ import re
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional, Tuple
+import numpy as np
 import pandas as pd
 import requests
 
@@ -361,9 +362,11 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
             
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '-']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
         # Filter to valid stock tickers only (exclude cash/futures/malformed symbols)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         # Truncate ticker to avoid DB errors (max 50 chars)
         df['ticker'] = df['ticker'].astype(str).str.slice(0, 50)
         df['shares'] = pd.to_numeric(df['shares'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
@@ -435,8 +438,10 @@ def fetch_spdr_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetime]
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -525,8 +530,10 @@ def fetch_globalx_holdings(etf_ticker: str, csv_url_template: str, date: Optiona
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns (remove commas)
         if 'shares' in df.columns:
@@ -611,8 +618,10 @@ def fetch_ark_holdings(etf_ticker: str, csv_url: str, date: Optional[datetime] =
         # Clean data
         df = df[df['ticker'].notna()]  # Remove empty rows
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert shares to numeric (remove commas first)
         if 'shares' in df.columns:
@@ -692,11 +701,14 @@ def fetch_direxion_holdings(etf_ticker: str, csv_url: str, date: Optional[dateti
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Filter to valid stock tickers only (exclude cash, futures, etc.)
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -807,10 +819,12 @@ def fetch_vaneck_holdings(etf_ticker: str, xlsx_url: str, date: Optional[datetim
         # Clean data
         df = df[df['ticker'].notna()]
         df = df[df['ticker'] != '']
-        df['ticker'] = df['ticker'].apply(normalize_holding_ticker)
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df['ticker'] = [normalize_holding_ticker(x) for x in df['ticker'].tolist()]
         
         # Filter to valid stock tickers only
-        df = df[df['ticker'].apply(is_stock_ticker)]
+        # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+        df = df[np.array([is_stock_ticker(x) for x in df['ticker'].tolist()], dtype=bool)]
         
         # Convert numeric columns
         if 'shares' in df.columns:
@@ -934,7 +948,8 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Filter out non-stock tickers (cash, futures, derivatives)
     before_filter = len(significant)
-    significant = significant[significant['ticker'].apply(is_stock_ticker)].copy()
+    # ⚡ Bolt: Fast list comprehension to bypass Pandas .apply() overhead
+    significant = significant[np.array([is_stock_ticker(x) for x in significant['ticker'].tolist()], dtype=bool)].copy()
     filtered_out = before_filter - len(significant)
 
     if filtered_out > 0:
@@ -972,7 +987,7 @@ def calculate_diff(today: pd.DataFrame, yesterday: pd.DataFrame, etf_ticker: str
     
     # Add context
     significant['etf'] = etf_ticker
-    significant['action'] = significant['share_diff'].apply(lambda x: 'BUY' if x > 0 else 'SELL')
+    significant['action'] = np.where(significant['share_diff'] > 0, 'BUY', 'SELL')
     
     logger.info(f"📊 {etf_ticker}: Found {len(significant)} significant stock changes out of {len(merged)} holdings")
     
@@ -988,8 +1003,6 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
         holdings: Holdings DataFrame
         date: Snapshot date
     """
-    import math
-    
     date_str = date.strftime('%Y-%m-%d')
     
     # First, clean the data and aggregate duplicates
@@ -999,7 +1012,7 @@ def save_holdings_snapshot(pc: PostgresClient, etf_ticker: str, holdings: pd.Dat
     # Remove rows with empty/invalid tickers
     clean_holdings = clean_holdings[clean_holdings['ticker'].notna()]
     clean_holdings = clean_holdings[clean_holdings['ticker'] != '']
-    clean_holdings = clean_holdings[clean_holdings['ticker'].apply(lambda x: not (isinstance(x, float) and math.isnan(x)))]
+    clean_holdings = clean_holdings[~pd.isna(clean_holdings['ticker'])]
     clean_holdings['ticker'] = clean_holdings['ticker'].astype(str).str.strip()
     
     # Replace NaN/inf with 0 for numeric columns before aggregation
@@ -1249,10 +1262,26 @@ def etf_watchtower_job():
         mark_job_started(job_id, target_date)
     except Exception as e:
         logger.warning(f"Could not mark job started: {e}")
-    
-    db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
-    pc = PostgresClient()  # Research DB for etf_holdings_log
-    repo = ResearchRepository()
+
+    try:
+        db = SupabaseClient(use_service_role=True)  # Use service role for securities metadata
+        pc = PostgresClient()  # Research DB for etf_holdings_log
+        repo = ResearchRepository()
+    except Exception as client_error:
+        duration_ms = int((__import__('time').time() - start_time) * 1000)
+        message = f"Failed to initialize clients: {client_error}"
+        logger.error(f"❌ {message}", exc_info=True)
+        try:
+            from scheduler.scheduler_core import log_job_execution
+            log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        try:
+            from utils.job_tracking import mark_job_failed as _mark_job_failed
+            _mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
+        except Exception:
+            pass
+        return
     
     total_changes = 0
     successful_etfs = []

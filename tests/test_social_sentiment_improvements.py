@@ -120,6 +120,8 @@ def test_social_sentiment_summary_distinguishes_deferred_from_timeouts():
         no_data_count=0,
         per_ticker_timeout_count=0,
         skipped_count=83,
+        reddit_429_count=0,
+        reddit_auth_fail_count=0,
         duration_min=50.5,
     )
 
@@ -128,3 +130,77 @@ def test_social_sentiment_summary_distinguishes_deferred_from_timeouts():
         "(24 ok, 0 errors, 0 no-data, 0 per-ticker-timeouts). "
         "Job cap reached - 83 tickers deferred to next run"
     )
+
+
+def test_social_sentiment_summary_includes_reddit_failure_counts():
+    from web_dashboard.scheduler.jobs_social import _build_social_sentiment_summary
+
+    summary = _build_social_sentiment_summary(
+        total_tickers=10,
+        attempted_count=10,
+        success_count=5,
+        error_count=0,
+        no_data_count=5,
+        per_ticker_timeout_count=0,
+        skipped_count=0,
+        reddit_429_count=3,
+        reddit_auth_fail_count=1,
+        duration_min=12.0,
+    )
+
+    assert "reddit 429=3" in summary
+    assert "reddit auth_fail=1" in summary
+
+
+def test_fetch_reddit_sentiment_uses_rss_cache_without_global_search():
+    from datetime import UTC, datetime, timedelta
+    from unittest.mock import MagicMock
+
+    from reddit_rss import RedditFeedCache, RedditRssWarmStats
+    from social_service import SocialSentimentService
+
+    service = SocialSentimentService.__new__(SocialSentimentService)
+    service.ollama = None
+
+    now = datetime.now(UTC)
+    cache = RedditFeedCache(ttl_seconds=3600)
+    cache._posts = [
+        {
+            "title": "NVDA earnings beat",
+            "selftext": "",
+            "subreddit": "stocks",
+            "created_utc": now.timestamp(),
+            "url": "https://reddit.com/r/stocks/comments/abc/nvda",
+            "ups": 0,
+            "num_comments": 0,
+        }
+    ]
+    cache._warmed_at = now.timestamp()
+
+    warm_mock = MagicMock(
+        return_value=RedditRssWarmStats(
+            subs_requested=0,
+            subs_fetched=0,
+            subs_rate_limited=0,
+            posts_cached=1,
+        )
+    )
+    get_json_mock = MagicMock()
+
+    class FakeReddit:
+        oauth_enabled = False
+        rss_enabled = True
+        feed_cache = cache
+        warm_sentiment_feed_cache = warm_mock
+        get_json = get_json_mock
+
+        @staticmethod
+        def check_robots_allowed(_url: str) -> bool:
+            return True
+
+    service.reddit = FakeReddit()
+    result = service.fetch_reddit_sentiment("NVDA", max_duration=30)
+
+    assert result["volume"] == 1
+    get_json_mock.assert_not_called()
+    warm_mock.assert_called_once()

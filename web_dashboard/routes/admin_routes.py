@@ -430,8 +430,8 @@ def _get_cached_contributors_flask():
         # Use service_role to bypass RLS for admin operations
         client = SupabaseClient(use_service_role=True)
         
-        result = client.supabase.table("contributors").select("id, name, email").order("name").execute()
-        return result.data if result.data else []
+        from supabase_pagination import fetch_all_rows
+        return fetch_all_rows(client, "contributors", select="id, name, email", order="name")
     except Exception as e:
         logger.error(f"Error getting contributors: {e}", exc_info=True)
         return []
@@ -2550,12 +2550,12 @@ def api_submit_trade():
                 "requires_rebuild": True
             }), 200
 
-        # 6. Trigger Rebuild if Backdated, or recalc today's metrics
+        # 6. Trigger rebuild on sells (closes can leave stale per-ticker snapshots) or
+        # backdated trades; otherwise recalc today's metrics only.
         is_backdated = trade_dt.date() < datetime.now().date()
         job_id = None
-        if is_backdated:
-            # Backdated trade: rebuild_from_date.py handles both
-            # portfolio_positions AND performance_metrics recalculation
+        if is_backdated or act == "SELL":
+            # rebuild_from_date.py rewrites portfolio_positions from trade_log
             try:
                 job_id = trigger_background_rebuild(fund, trade_dt.date())
             except Exception as rb_e:
@@ -3069,16 +3069,17 @@ def api_contributions_summary():
         # Service role client
         client = SupabaseClient(use_service_role=True)
         
-        result = client.supabase.table("fund_contributions").select("contributor, fund, contribution_type, amount").execute()
+        from supabase_pagination import fetch_all_rows
+        rows = fetch_all_rows(client, "fund_contributions", select="contributor, fund, contribution_type, amount")
         
-        if not result.data:
+        if not rows:
             return jsonify({"summary": []})
             
         # Manually aggregate in Python since Supabase JS client groupBy is limited
         # structure: { 'contributor|fund': { name, fund, contribution: 0, withdrawal: 0 } }
         agg = {}
         
-        for row in result.data:
+        for row in rows:
             key = f"{row['contributor']}|{row['fund']}"
             if key not in agg:
                 agg[key] = {

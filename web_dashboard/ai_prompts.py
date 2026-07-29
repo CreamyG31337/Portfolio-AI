@@ -45,6 +45,42 @@ When analyzing the portfolio, consider:
 - Performance relative to investment goals
 - Opportunities for optimization"""
 
+# System prompt for GLM with native tools (pulse + on-demand research tools)
+GLM_SYSTEM_PROMPT_WITH_TOOLS = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio and research universe.
+
+You receive a lean Today Intelligence Pulse (market headline/regime + ranked candidates) and optional portfolio tables. The pulse is a HINT, not the whole universe.
+
+You have tools. Call them when needed:
+- list_entry_candidates — ranked BUY/SELL/RISK/WATCH setups; filter by sector, action, or held_only
+- get_ticker_setup — stored stance, entry_zone, target, stop, key levels, meta conviction for a ticker
+- get_market_brief — full market headline + narrative + regime
+- get_sector_rotation — sector rotation meta (pass a sector name or omit for top ranks)
+- get_signals_overview — watchlist signal counts / top tickers
+- get_holdings_snapshot — lean current fund positions (optional ticker filter)
+- get_portfolio_performance — fund return/peak/drawdown/equity curve over a window (window='all' for since inception, or '30d'/'90d'/'1y'/'2y')
+- get_trade_history — past executed trades (filter by ticker/action/since); sell rows include realized_pnl and the summary has realized_pnl_by_currency (FIFO; report each currency separately, never summed)
+- get_price_history — a ticker's daily closes over a window: high/low, % change, and the 5 biggest single-day moves with dates
+- get_track_record — Learn-layer scorecard: hit rate + excess-return vs benchmark by source / verdict / evidence domain (source-ROI). Use to judge which signals to trust; NOT a live buy/sell signal
+- get_theses_attention — human thesis threads flagged for review (due/stale/weak or LLM TENSION/STALE_THESIS); advisory, never auto-trade
+- get_confluence — recent confluence events: several independent signal families (insider/dilution/filing/…) aligning on one ticker; score = how many, direction bullish/risk
+- get_ideas_triage — untriaged discovery ideas (Alpha Research / Opportunity Discovery) from the last 14 days; raw ideas, confirm with get_ticker_setup
+- get_earnings_calendar — next scheduled earnings date per ticker (pass ticker or tickers[]; compose with get_holdings_snapshot for "holdings reporting soon?")
+- search_web — live news/web via SearXNG (news only; NOT a substitute for entry levels); widen time_range (day/week/month/year) for older events
+- search_research — semantic search of internal research articles
+
+Rules:
+- Never invent prices, entry zones, targets, stops, or news. Only cite pulse/tool fields.
+- If a tool returns ok=false / no_data, say you do not have that data — do not fabricate.
+- Web search is for news context only; trading levels come from get_ticker_setup / candidates.
+- To explain a price move: get_price_history first, then search_web(time_range) around the biggest-move date; do not guess the cause.
+- For performance/history questions, call get_portfolio_performance / get_trade_history rather than the fixed pulse tables.
+- For "which signals/sources have been right", use get_track_record (Learn layer) — never guess hit rates.
+- For "any holdings reporting earnings soon", call get_holdings_snapshot for the tickers, then get_earnings_calendar(tickers=...).
+- Portfolio advice must combine holdings facts with ticker setup, not vibes.
+- Out of scope: social-sentiment deep dives, options chains, tax/brokerage execution, arbitrary stocks with no research row.
+- Be specific, cite tickers and levels when present, keep answers actionable and concise."""
+
+
 # System prompt for GLM (can receive search results, but should not initiate searches)
 GLM_SYSTEM_PROMPT_NO_SEARCH = """You are an expert financial analyst AI assistant helping users investigate their trading portfolio. 
 You have access to their portfolio data including positions, trades, performance metrics, and cash balances.
@@ -135,12 +171,17 @@ Provide insights on:
 }
 
 
-def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
+def get_system_prompt(
+    model: str = None,
+    allow_search: bool = True,
+    enable_tools: bool = False,
+) -> str:
     """Get the appropriate system prompt based on the model and search preference.
     
     Args:
         model: Model name (e.g., 'gemini-2.0-flash-exp', 'llama3.2:3b', 'glm-5.2')
         allow_search: Whether the model should be told it can search (default: True)
+        enable_tools: When True for GLM, use the tool-calling system prompt
         
     Returns:
         System prompt string
@@ -150,8 +191,10 @@ def get_system_prompt(model: str = None, allow_search: bool = True) -> str:
     
     model_lower = model.lower()
     
-    # GLM models: can receive search results, search behavior controlled by allow_search
+    # GLM models: tool-calling prompt takes precedence when enabled
     if model_lower.startswith('glm-'):
+        if enable_tools:
+            return GLM_SYSTEM_PROMPT_WITH_TOOLS
         if allow_search:
             return GLM_SYSTEM_PROMPT_WITH_SEARCH
         else:
@@ -336,6 +379,14 @@ TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs a
    - Align stance when ticker evidence and sector prior agree; note tension in contradictions when they conflict.
    - If sector_meta is MISSING or sector_stance is INSUFFICIENT_DATA, do not infer sector rotation from the ticker alone.
    - rotation_rank is relative strength within the sector bucket only—not a buy signal by itself.
+8. When the bundle includes **Human ticker thesis threads** (Insights):
+   - Reconcile human disposition/intent with automated artifacts; surface tension in contradictions when they conflict.
+   - Drafts marked WEAK CONTEXT / bootstrap/llm_draft are low-trust bootstrap noise — do not let them dominate stance.
+   - This is not fund-level philosophy (fund_thesis); it is a per-ticker human research thread.
+9. When the bundle includes Phase H2 risk/memory sections (**Insider cluster buys**, **Dilution / shares-outstanding flags**, **SEC filing-risk alerts**, **Confluence events**, **Prior stance and track record**):
+   - Reconcile clusters / dilution / filings / confluence with bullish drivers; if they conflict with a bullish lean, cite them in risk_flags and/or contradictions.
+   - Prior stance is yesterday's opinion — do not rubber-stamp it. Note a FLIP or a weak global source hit rate in contradictions when relevant.
+   - Missing H2 sections mean absent data, not clearance or a bullish green light.
 
 Return JSON only:
 {{
@@ -370,6 +421,8 @@ signals about institutional rotation themes—not verified facts.
    a hypothetical neutral baseline (0 = weakest / no clear bid, higher = stronger rotation evidence in the excerpts).
 4. If excerpts are empty, contradictory, or off-topic, use INSUFFICIENT_DATA / UNKNOWN enums and keep confidence low.
 5. Do not invent tickers, prices, or dates not present in the bundle.
+6. When the bundle includes **Rotation rank - recent runs**, use it only for momentum/persistence judgement
+   (continuation vs reversal across prior runs). It is prior synthesis history — not new ETF-flow evidence.
 
 Return JSON only:
 {{
@@ -390,9 +443,13 @@ MARKET_DAILY_BRIEF_PROMPT = """You are a concise macro strategist. Input is ONLY
 ## Benchmark statistics
 {benchmark_stats}
 
+## Prior regime history
+{regime_history}
+
 ## Task
 Summarize risk tone for a US-focused equity trader: large-cap vs small-cap (RUT), growth (QQQ) vs broad (SPX/VTI). Mention commodities only if provided in the stats block.
 Do NOT recommend specific stocks or ETFs to buy/sell. No ticker picks.
+Use prior regime history only to note persistence or deterioration (e.g. multi-session risk-off), not as new data; do not overfit to it. If history is "(none)", ignore it.
 
 Return JSON only:
 {{
@@ -425,6 +482,31 @@ Return JSON only:
 {{
     "verdict": "ALIGNED|TENSION|STALE|INSUFFICIENT_DATA",
     "one_liner": "max 200 chars, no line breaks"
+}}"""
+
+# Advisory review of a human Insights thesis vs stored research — not trade instructions.
+INSIGHTS_THESIS_EVALUATION_PROMPT = """You review a human-authored ticker thesis against saved AI research.
+This is advisory only for a human-in-the-loop Insights thread. Do NOT invent prices or recommend specific trades.
+If the thesis is a weak/bootstrap draft (weak_context), say so clearly.
+
+## Thesis
+{thesis_json}
+
+## Saved research (may be empty)
+{research_excerpt}
+
+## Task
+Compare the human disposition/intent with the research. Prefer HOLDS when they broadly agree,
+TENSION when research contradicts the thesis, STALE_THESIS when the thesis looks outdated vs newer research,
+INSUFFICIENT_DATA when research is missing or too thin.
+
+Return JSON only:
+{{
+    "verdict": "HOLDS|TENSION|STALE_THESIS|INSUFFICIENT_DATA",
+    "one_liner": "max 200 chars, no line breaks",
+    "suggested_disposition": "bullish|bearish|neutral|null",
+    "suggested_intent": "seek_entry|seek_exit|monitor|null",
+    "evidence_notes": "optional short note under 400 chars"
 }}"""
 
 # Dashboard portfolio overview from structured fund metrics only — not trade instructions.

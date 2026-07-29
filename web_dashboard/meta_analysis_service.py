@@ -16,9 +16,12 @@ from market_regime_normalization import normalize_market_regime
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
 from settings import (
+    get_meta_analysis_human_thesis_scope,
     get_summarizing_model,
+    is_meta_analysis_human_thesis_enabled,
     is_meta_analysis_phase1_signal_fusion_enabled,
     is_meta_analysis_phase3_sector_enabled,
+    is_meta_analysis_phase_h2_enabled,
 )
 from supabase_client import SupabaseClient
 from ticker_analysis_service import extract_json
@@ -74,6 +77,10 @@ class TickerMetaAnalysisService:
         self.ollama = ollama
         self.supabase = supabase
         self.postgres = postgres
+        self._held_tickers_cache: set[str] | None = None
+        self._insider_clusters_cache: list[dict[str, Any]] | None = None
+        self._track_record_cache: dict[str, Any] | None = None
+        self._track_record_cache_tried = False
 
     def _resolve_model(self, model_override: str | None) -> str:
         if model_override:
@@ -558,8 +565,235 @@ class TickerMetaAnalysisService:
                 )
                 parts.append(f"  {_clip(t.get('reasoning'), _MAX_REASON)}")
 
+        if is_meta_analysis_phase_h2_enabled():
+            for family, block in (
+                ("insider_cluster", self._fetch_insider_cluster_block(ticker)),
+                ("dilution", self._fetch_dilution_block(ticker)),
+                ("filing", self._fetch_filing_block(ticker)),
+                ("confluence", self._fetch_confluence_block(ticker)),
+                ("prior_stance", self._fetch_prior_stance_block(ticker)),
+            ):
+                if block:
+                    families.append(family)
+                    parts.append("")
+                    parts.append(block)
+
+        if self._should_include_human_thesis(ticker):
+            thesis_block = self._fetch_human_thesis_block(ticker)
+            if thesis_block:
+                families.append("human_thesis")
+                parts.append("")
+                parts.append(thesis_block)
+
         evidence["artifact_types"] = families
         return "\n".join(parts).strip(), std_rows[0], evidence
+
+    def _production_held_tickers(self) -> set[str]:
+        """Cached set of tickers held across production funds (best-effort)."""
+        if self._held_tickers_cache is not None:
+            return self._held_tickers_cache
+        held: set[str] = set()
+        try:
+            funds_res = (
+                self.supabase.supabase.table("funds")
+                .select("name")
+                .eq("is_production", True)
+                .execute()
+            )
+            fund_names = [r["name"] for r in (funds_res.data or []) if r.get("name")]
+            if not fund_names:
+                funds_res = (
+                    self.supabase.supabase.table("funds").select("name").limit(5).execute()
+                )
+                fund_names = [r["name"] for r in (funds_res.data or []) if r.get("name")]
+            for fund in fund_names:
+                try:
+                    for pos in self.supabase.get_current_positions(fund) or []:
+                        t = str(pos.get("ticker") or pos.get("symbol") or "").upper().strip()
+                        if t:
+                            held.add(t)
+                except Exception as pos_exc:
+                    logger.debug("human_thesis holdings skip fund %s: %s", fund, pos_exc)
+        except Exception as exc:
+            logger.warning("human_thesis holdings lookup failed: %s", exc)
+        self._held_tickers_cache = held
+        return held
+
+    def _should_include_human_thesis(self, ticker: str) -> bool:
+        if not is_meta_analysis_human_thesis_enabled():
+            return False
+        scope = get_meta_analysis_human_thesis_scope()
+        if scope == "all":
+            return True
+        ticker_u = ticker.upper().strip()
+        held = self._production_held_tickers()
+        if ticker_u in held:
+            return True
+        if scope == "holdings_or_recent":
+            try:
+                from user_insights_service import ticker_has_recent_active_thesis
+
+                return ticker_has_recent_active_thesis(self.postgres, ticker_u)
+            except Exception as exc:
+                logger.debug("human_thesis recent check failed for %s: %s", ticker_u, exc)
+                return False
+        # default: holdings only
+        return False
+
+    def _fetch_human_thesis_block(self, ticker: str) -> str | None:
+        try:
+            from user_insights_service import format_human_theses_for_meta_bundle
+
+            return format_human_theses_for_meta_bundle(self.postgres, ticker)
+        except Exception as exc:
+            logger.warning("human_thesis bundle fetch failed for %s: %s", ticker, exc)
+            return None
+
+    def _cached_insider_clusters(self) -> list[dict[str, Any]]:
+        if self._insider_clusters_cache is not None:
+            return self._insider_clusters_cache
+        try:
+            from insider_clusters_service import build_insider_cluster_buys
+
+            self._insider_clusters_cache = build_insider_cluster_buys(
+                self.supabase, days=30, min_insiders=3, limit=50
+            )
+        except Exception as exc:
+            logger.warning("insider cluster cache build failed: %s", exc)
+            self._insider_clusters_cache = []
+        return self._insider_clusters_cache
+
+    def _cached_track_record_summary(self) -> dict[str, Any] | None:
+        if self._track_record_cache_tried:
+            return self._track_record_cache
+        self._track_record_cache_tried = True
+        try:
+            from track_record_service import build_track_record_summary
+
+            summary = build_track_record_summary(self.postgres, horizon_days=30)
+            total = int(summary.get("total_scored") or 0)
+            if total <= 0:
+                summary = build_track_record_summary(self.postgres, horizon_days=7)
+            self._track_record_cache = summary
+        except Exception as exc:
+            logger.warning("track record cache for meta H2 failed: %s", exc)
+            self._track_record_cache = None
+        return self._track_record_cache
+
+    def _fetch_insider_cluster_block(self, ticker: str) -> str | None:
+        ticker_u = ticker.upper().strip()
+        try:
+            matches = [
+                c
+                for c in self._cached_insider_clusters()
+                if str(c.get("ticker") or "").upper() == ticker_u
+            ][:3]
+            if not matches:
+                return None
+            lines = ["### Insider cluster buys"]
+            for c in matches:
+                names = [
+                    str(i.get("name") or "").strip()
+                    for i in (c.get("insiders") or [])[:5]
+                    if i.get("name")
+                ]
+                name_s = ", ".join(names) if names else "n/a"
+                lines.append(
+                    f"- {c.get('insider_count')} distinct insiders / "
+                    f"{c.get('buy_count')} buys; latest={c.get('latest_buy')}; "
+                    f"held={c.get('held')} watched={c.get('watched')}"
+                )
+                lines.append(f"  insiders: {name_s}")
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("insider_cluster bundle fetch failed for %s: %s", ticker_u, exc)
+            return None
+
+    def _fetch_dilution_block(self, ticker: str) -> str | None:
+        ticker_u = ticker.upper().strip()
+        try:
+            from dilution_service import fetch_recent_dilution_flags
+
+            rows = fetch_recent_dilution_flags(
+                self.postgres, tickers=[ticker_u], days=45, limit=5
+            )
+            if not rows:
+                return None
+            lines = ["### Dilution / shares-outstanding flags"]
+            for r in rows[:5]:
+                lines.append(
+                    f"- window={r.get('window_days')}d pct_change={r.get('pct_change')}% "
+                    f"shares {r.get('shares_start')} → {r.get('shares_end')} "
+                    f"as_of={r.get('as_of')}"
+                )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("dilution bundle fetch failed for %s: %s", ticker_u, exc)
+            return None
+
+    def _fetch_filing_block(self, ticker: str) -> str | None:
+        ticker_u = ticker.upper().strip()
+        try:
+            from sec_filings_service import fetch_recent_filing_alerts
+
+            rows = fetch_recent_filing_alerts(
+                self.postgres, tickers=[ticker_u], days=14, limit=6
+            )
+            if not rows:
+                return None
+            lines = ["### SEC filing-risk alerts"]
+            for r in rows[:6]:
+                lines.append(
+                    f"- {r.get('form_type')} category={r.get('category')} "
+                    f"direction={r.get('direction')} filed_at={r.get('filed_at')}"
+                )
+                title = r.get("title")
+                if title:
+                    lines.append(f"  {_clip(str(title), 200)}")
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("filing bundle fetch failed for %s: %s", ticker_u, exc)
+            return None
+
+    def _fetch_confluence_block(self, ticker: str) -> str | None:
+        ticker_u = ticker.upper().strip()
+        try:
+            from confluence_service import fetch_recent_confluence_events
+
+            rows = fetch_recent_confluence_events(
+                self.postgres, tickers=[ticker_u], days=7, limit=5
+            )
+            if not rows:
+                return None
+            lines = ["### Confluence events"]
+            for r in rows[:5]:
+                families = r.get("families") or []
+                if isinstance(families, list):
+                    fam_s = ", ".join(str(f) for f in families[:8])
+                else:
+                    fam_s = str(families)
+                lines.append(
+                    f"- score={r.get('score')} direction={r.get('direction')} "
+                    f"as_of={r.get('as_of')} families=[{fam_s}]"
+                )
+            return "\n".join(lines)
+        except Exception as exc:
+            logger.warning("confluence bundle fetch failed for %s: %s", ticker_u, exc)
+            return None
+
+    def _fetch_prior_stance_block(self, ticker: str) -> str | None:
+        ticker_u = ticker.upper().strip()
+        try:
+            from stance_history import format_prior_stance_for_meta_bundle
+
+            return format_prior_stance_for_meta_bundle(
+                self.postgres,
+                ticker_u,
+                track_summary=self._cached_track_record_summary(),
+            )
+        except Exception as exc:
+            logger.warning("prior_stance bundle fetch failed for %s: %s", ticker_u, exc)
+            return None
 
     def run_meta_analysis(
         self,

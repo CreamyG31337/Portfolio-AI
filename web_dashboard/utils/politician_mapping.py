@@ -36,6 +36,16 @@ POLITICIAN_ALIASES = {
     "Gerald Connolly": ("Gerry Connolly", "C001078"),
     "Robert Latta": ("Bob Latta", "L000566"),
     "Jacob Auchincloss": ("Jake Auchincloss", "A000370"),
+
+    # Kean: prefer clerk/bioguide form (has committee assignments); collapse TMP duplicate name
+    "Thomas Kean Jr": ("Thomas H. Kean, Jr.", "K000398"),
+    "Thomas Kean": ("Thomas H. Kean, Jr.", "K000398"),
+    "Thomas H. Kean Jr": ("Thomas H. Kean, Jr.", "K000398"),
+    "Thomas H. Kean Jr.": ("Thomas H. Kean, Jr.", "K000398"),
+    "Thomas H. Kean, Jr": ("Thomas H. Kean, Jr.", "K000398"),
+    "Thomas H. Kean, Jr.": ("Thomas H. Kean, Jr.", "K000398"),
+    "Daniel Crenshaw": ("Dan Crenshaw", "C001120"),
+    "Dan Crenshaw": ("Dan Crenshaw", "C001120"),
     
     # Middle initial variations
     "Deborah Ross": ("Deborah K. Ross", "R000305"),
@@ -87,9 +97,16 @@ def resolve_politician_name(trade_name: str) -> Tuple[str, Optional[str]]:
         >>> resolve_politician_name("Nancy Pelosi")
         ("Nancy Pelosi", None)  # No alias, passes through
     """
-    if trade_name in POLITICIAN_ALIASES:
-        return POLITICIAN_ALIASES[trade_name]
-    return (trade_name, None)
+    if not trade_name:
+        return ("", None)
+    cleaned = " ".join(str(trade_name).split())
+    if cleaned in POLITICIAN_ALIASES:
+        return POLITICIAN_ALIASES[cleaned]
+    # Case-insensitive alias fallback (FMP/scraper casing varies)
+    lower_map = {alias.lower(): value for alias, value in POLITICIAN_ALIASES.items()}
+    if cleaned.lower() in lower_map:
+        return lower_map[cleaned.lower()]
+    return (cleaned, None)
 
 
 def get_or_create_politician(

@@ -1,11 +1,14 @@
 # Phase G Plan — Provenance, Filings, and Confluence
 
-**Audience: a coding agent (Cursor plan mode).** This is the detailed implementation brief for
-Phase G of [`docs/ROADMAP.md`](ROADMAP.md) (the master plan — read it first, especially its
-Guardrails). Created 2026-06-11 after Phases A–F shipped. Run this through plan mode: several
-items contain explicit **RESEARCH** tasks where you must investigate and propose an approach
-before writing code. Improve this plan where the codebase contradicts it — and update this doc
-and ROADMAP.md as items land.
+**Audience: historical.** Phase G of [`docs/ROADMAP.md`](ROADMAP.md) — G1–G5 + G7 **shipped**;
+G6 optional and **gated by Phase H1** (source-ROI). **Active work is Phase H** in ROADMAP
+(2026-07-15 design review): source-ROI report, meta-bundle injection of Phase G signals + prior
+stance, trend memory, congress herd → ledger, executive ship-or-kill. Keep this doc for G specs
+and acceptance criteria; update ROADMAP checklists when anything here still lands.
+
+Created 2026-06-11 after Phases A–F shipped. Several items contain explicit **RESEARCH** tasks.
+Improve this plan where the codebase contradicts it — and update this doc and ROADMAP.md as
+items land.
 
 **Verified against codebase 2026-06-11; re-reviewed 2026-06-13** (fixed a scheduling defect —
 G2 and G4 were both pointed at "22:30 ET", which collides and ignores that G4 consumes G2's
@@ -312,7 +315,9 @@ outbound sending. Reuse:
 
 **Recipients (decided):** this is a system-self-review digest, not a per-user portfolio digest.
 Send to a small **admin/owner recipient list** from env/system_settings (e.g.
-`RETRO_DIGEST_RECIPIENTS` — comma-separated emails). Call `send_mailgun_message` directly; do
+`RETRO_DIGEST_RECIPIENT_ACCOUNTS` — comma-separated `user_profiles.full_name` values resolved
+to current account emails; direct `RETRO_DIGEST_RECIPIENTS` remains supported). Call
+`send_mailgun_message` directly; do
 **not** route through the per-user `user_newsletter_subscriptions` wave in
 `outbound_newsletter_pipeline.py`. Gate send behind a feature flag (e.g.
 `RETRO_DIGEST_ENABLED` or reuse Mailgun config presence check).
@@ -322,9 +327,9 @@ since outcomes are sparse until ~July); send path behind enable flag; recipients
 list only.
 **Size:** S (≈1 day).
 
-**Ops status (2026-06-20):** Code shipped; **prod email not configured** — no
-`RETRO_DIGEST_RECIPIENTS` set. The Sunday job logs flips/hit-rate summary only until someone
-adds recipients + Mailgun outbound (same keys as portfolio digest). Intentionally deferred.
+**Ops status (updated 2026-07-16):** Account-based recipient resolution shipped under Phase H3.
+The production deploy defaults `RETRO_DIGEST_RECIPIENT_ACCOUNTS` to `Lance Colton`; its current
+`user_profiles.email` is resolved at send time. Mailgun outbound keys are still required.
 
 ## G6 — FINRA daily short volume (optional stretch)
 
@@ -384,7 +389,7 @@ that area now) to avoid collisions.
 | Shape A smart prioritizer | track record shows signal (~2026-07-10) |
 | Shape B theme research, Shape C dedicated job | their cheap-learn gates (ROADMAP "Cheap-learn results") |
 | 13F ownership deltas (§4.6) | after G2 proves the EDGAR plumbing |
-| Earnings-call transcript summarization | after source-ROI proves synthesis hit rate |
+| Earnings-call transcript summarization | **→ Phase K** in [`ROADMAP.md`](ROADMAP.md#phase-k--youtube-captions--research-articles) (YouTube captions → `research_articles`; H1 source-ROI already shipped) |
 | Bi-monthly short interest (§4.5) | superseded by G6 unless G6 research says otherwise |
 | Embedding-based article dedup | anytime as a palate cleanser; not load-bearing |
 | Holdings-table days-to-exit column | frontend polish; needs async grid enrichment, see §4.3 note |

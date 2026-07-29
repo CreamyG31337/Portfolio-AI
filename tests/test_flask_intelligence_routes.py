@@ -164,3 +164,57 @@ def test_ideas_triage_api(client, auth_ok):
     assert resp.status_code == 200
     assert resp.get_json()["ok"] is True
     mock_pg.execute_update.assert_called_once()
+
+
+@skip_without_plotly
+def test_ideas_inbox_enriches_thesis_attention(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    ideas = [{
+        "id": "a1",
+        "title": "Something about Costco",
+        "tickers": ["COST"],
+        "relevance_score": 0.9,
+    }]
+    flags = {
+        "COST": [{
+            "thesis_id": "t1",
+            "title": "Moat",
+            "llm_verdict": "TENSION",
+            "attention_reasons": ["tension"],
+        }]
+    }
+    with patch("routes.intelligence_routes.PostgresClient", return_value=MagicMock()), patch(
+        "routes.intelligence_routes.fetch_alpha_ideas",
+        return_value=ideas,
+    ), patch(
+        "user_insights_service.thesis_attention_by_ticker",
+        return_value=flags,
+    ):
+        resp = client.get("/api/ideas/inbox")
+    assert resp.status_code == 200
+    row = resp.get_json()["data"][0]
+    assert row["thesis_attention"][0]["llm_verdict"] == "TENSION"
+
+
+@skip_without_plotly
+def test_ideas_inbox_passes_ticker_filter(client, auth_ok):
+    client.set_cookie("auth_token", "test.jwt.token")
+    with patch("routes.intelligence_routes.PostgresClient", return_value=MagicMock()), patch(
+        "routes.intelligence_routes.fetch_alpha_ideas",
+        return_value=[],
+    ) as mock_fetch:
+        resp = client.get("/api/ideas/inbox?ticker=co&limit=100")
+    assert resp.status_code == 200
+    kwargs = mock_fetch.call_args_list[0].kwargs
+    assert kwargs.get("ticker") == "co"
+    assert kwargs.get("limit") == 100
+    assert kwargs.get("include_low_signal") is False
+    # An empty page triggers a second, minimal call: the withheld-row count rides on
+    # the rows themselves, so with zero rows we must ask again to find out whether
+    # the result was genuinely empty or entirely filtered away.
+    assert len(mock_fetch.call_args_list) == 2
+    probe = mock_fetch.call_args_list[1].kwargs
+    assert probe.get("include_low_signal") is True
+    assert probe.get("limit") == 1
+    assert probe.get("ticker") == "co"
+    assert resp.get_json()["low_signal_total"] == 0

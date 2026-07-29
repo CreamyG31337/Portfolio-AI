@@ -1,0 +1,6 @@
+# Zhipu GLM coding API is text-only; image batches fail semantic extraction.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp

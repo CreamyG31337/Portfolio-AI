@@ -206,10 +206,11 @@ def _fetch_tickers_from_table(client, table: str, ticker_column: str = 'ticker',
         if total == 0:
             return tickers
 
-        # 2. Build chunks and fetch in parallel
-        chunk_size = 5000
-        chunks = [(offset, min(offset + chunk_size - 1, total - 1))
-                  for offset in range(0, total, chunk_size)]
+        # PostgREST silently caps each response at 1000 rows — never ask for more.
+        from supabase_pagination import clamp_page_size, page_ranges
+
+        chunk_size = clamp_page_size(1000)
+        chunks = page_ranges(total, chunk_size)
 
         def _fetch_chunk(range_tuple):
             start, end = range_tuple
@@ -756,19 +757,44 @@ def _fetch_insider_trades(ticker_upper: str, supabase_client) -> Dict[str, Any]:
     return result
 
 
-def _fetch_watchlist_status(ticker_upper: str, supabase_client) -> Dict[str, Any]:
-    """Fetch watchlist status."""
+def _fetch_watchlist_status(
+    ticker_upper: str, supabase_client, fund: Optional[str] = None
+) -> Dict[str, Any]:
+    """Fetch fund-scoped watchlist status (always returns a status dict when fund set)."""
     result: Dict[str, Any] = {'watchlist_status': None, 'found': False}
     if not supabase_client:
         return result
 
     try:
+        from watchlist_access import get_watchlist_status_for_fund
+
+        fund_filter = _normalize_fund_filter(fund) if fund else None
+        if fund_filter:
+            status = get_watchlist_status_for_fund(
+                supabase_client, fund=fund_filter, ticker=ticker_upper
+            )
+            result['watchlist_status'] = status
+            # Do not set found=True solely for watchlist — ticker may still be unknown
+            return result
+
+        # No fund: best-effort first active match (legacy behavior)
         rows = get_active_watchlist_rows(supabase_client)
         for row in rows:
             if row.get("ticker") == ticker_upper:
-                result['watchlist_status'] = row
-                result['found'] = True
+                result['watchlist_status'] = {
+                    **row,
+                    "in_watchlist": bool(row.get("is_active")),
+                }
                 break
+        if result['watchlist_status'] is None:
+            result['watchlist_status'] = {
+                "fund": None,
+                "ticker": ticker_upper,
+                "priority_tier": "B",
+                "is_active": False,
+                "source": None,
+                "in_watchlist": False,
+            }
     except Exception as e:
         logger.warning(f"Error fetching watchlist status for {ticker_upper}: {e}")
 
@@ -910,7 +936,9 @@ def get_ticker_info(
             executor.submit(_fetch_social_sentiment, ticker_upper, postgres_client): 'social_sentiment',
             executor.submit(_fetch_congress_trades, ticker_upper, supabase_client, postgres_client): 'congress_trades',
             executor.submit(_fetch_insider_trades, ticker_upper, supabase_client): 'insider_trades',
-            executor.submit(_fetch_watchlist_status, ticker_upper, supabase_client): 'watchlist_status'
+            executor.submit(
+                _fetch_watchlist_status, ticker_upper, supabase_client, fund_filter
+            ): 'watchlist_status'
         }
 
         for future in as_completed(futures):

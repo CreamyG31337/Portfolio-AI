@@ -98,6 +98,11 @@ def opportunity_discovery_job() -> None:
             message = "SearXNG client not initialized"
             log_job_step(job_id, "init", message, status="failed")
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
+            # Must pair with mark_job_started or the row stays status='running',
+            # holds the global AI lock, and is later flipped to a misleading
+            # "Auto-cleared stale AI lock" failure. See alpha_research_job's
+            # docstring -- same bug, fixed there, missed here.
+            mark_job_failed(job_id, target_date, None, message, duration_ms=duration_ms)
             logger.error(f"❌ {message}")
             return
 
@@ -134,6 +139,12 @@ def opportunity_discovery_job() -> None:
             message = f"No results for query: {selected_query}"
             log_job_step(job_id, "search", message, status="skipped")
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            # A query returning nothing is a correct, intentional no-op -- not an
+            # execution error -- so this completes SUCCESSFULLY. Queries rotate by
+            # hour, so whether this path is taken varies run to run, which is why
+            # the job appeared to fail intermittently (~36% of recent runs) while
+            # actually working fine.
+            mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
             logger.info(f"ℹ️ {message}")
             return
 

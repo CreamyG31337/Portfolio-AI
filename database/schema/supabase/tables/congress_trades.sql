@@ -17,13 +17,20 @@ CREATE TABLE congress_trades (
     party VARCHAR(50),
     state VARCHAR(2),
     owner VARCHAR(100) NOT NULL DEFAULT 'Unknown'::character varying,
-    politician_id INTEGER
+    politician_id INTEGER,
+    asset_description TEXT,
+    quality_status TEXT NOT NULL DEFAULT 'ok'::text,
+    quality_reason TEXT,
+    suggested_ticker TEXT,
+    replacement_trade_id INTEGER
 ,
     PRIMARY KEY (id)
 );
 
 -- Foreign Keys
+ALTER TABLE congress_trades ADD CONSTRAINT congress_trades_replacement_trade_id_fkey FOREIGN KEY (replacement_trade_id) REFERENCES congress_trades(id);
 ALTER TABLE congress_trades ADD CONSTRAINT fk_congress_trades_politician FOREIGN KEY (politician_id) REFERENCES politicians(id);
+ALTER TABLE congress_trades ADD CONSTRAINT congress_trades_quality_status_check CHECK (quality_status IN ('ok', 'garbage', 'corrected'));
 
 -- Indexes
 CREATE UNIQUE INDEX congress_trades_politician_ticker_date_amount_type_owner_key ON congress_trades (politician_id, ticker, transaction_date, amount, type, owner);
@@ -36,4 +43,5 @@ CREATE INDEX idx_congress_state ON congress_trades (state);
 CREATE INDEX idx_congress_ticker ON congress_trades (ticker);
 CREATE INDEX idx_congress_ticker_date ON congress_trades (ticker, transaction_date);
 CREATE INDEX idx_congress_trades_politician_id ON congress_trades (politician_id);
+CREATE INDEX idx_congress_trades_quality_status ON congress_trades (quality_status);
 CREATE INDEX idx_congress_transaction_date ON congress_trades (transaction_date);

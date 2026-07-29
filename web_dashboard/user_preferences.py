@@ -93,6 +93,7 @@ _PREFERENCES_BULK_KEYS_FLASK_IMPERSONATION = (
     "ai_include_insider_trades",
     "ai_include_congress_trades",
     "ai_include_etf_trades",
+    "ai_include_intelligence_pulse",
 )
 
 
@@ -772,46 +773,52 @@ def clear_preference_cache():
 
 def get_user_ai_model() -> Optional[str]:
     """Get user's preferred AI model.
-    
+
     Fallback order:
     1. User's personal preference (from user_profiles.preferences)
     2. System default (from system_settings table)
-    3. Environment variable OLLAMA_MODEL
-    4. Hardcoded default 'llama3'
-    
+    3. model_registry.get_primary_model()
+
+    Stale or deprecated ids are migrated to a supported model on read.
+
     Returns:
-        Model name (e.g., 'llama3', 'mistral') or None
+        Model name (e.g., 'glm-5.2', 'granite4.1:8b')
     """
-    # Check user preference first
     user_model = get_user_preference('ai_model', default=None)
-    if user_model:
-        return user_model
-    
-    # Fall back to system setting
+    stored: Optional[str] = user_model
+
+    if not stored:
+        try:
+            from settings import get_system_setting
+            system_model = get_system_setting("ai_default_model", default=None)
+            if system_model:
+                stored = str(system_model)
+        except Exception as e:
+            logger.warning(f"Could not load system default model: {e}")
+
+    if not stored:
+        try:
+            from model_registry import get_primary_model
+            stored = get_primary_model()
+        except Exception:
+            from model_registry import PRIMARY_MODEL_DEFAULT
+            stored = PRIMARY_MODEL_DEFAULT
+
+    available: Optional[list[str]] = None
     try:
-        from settings import get_system_setting
-        system_model = get_system_setting("ai_default_model", default=None)
-        if system_model:
-            return system_model
+        from ollama_client import list_available_models
+        available = list_available_models()
     except Exception as e:
-        logger.warning(f"Could not load system default model: {e}")
-    
-    try:
-        from model_registry import get_primary_model
+        logger.debug("Could not load available models for preference resolution: %s", e)
 
-        return get_primary_model()
-    except Exception:
-        from model_registry import PRIMARY_MODEL_DEFAULT
+    from model_registry import resolve_ai_model_preference
+    resolved = resolve_ai_model_preference(stored, available)
 
-        return PRIMARY_MODEL_DEFAULT
+    if user_model and resolved != user_model:
+        logger.info("Migrating ai_model preference from %s to %s", user_model, resolved)
+        set_user_preference('ai_model', resolved)
 
-    # Fall back to environment variable (deprotilized in favor of Granite)
-    # env_model = os.getenv("OLLAMA_MODEL")
-    # if env_model:
-    #     return env_model
-    
-    # Final fallback
-    # return "llama3"
+    return resolved
 
 
 def set_user_ai_model(model: str) -> bool:

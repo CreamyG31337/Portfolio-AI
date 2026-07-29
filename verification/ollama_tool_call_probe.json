@@ -1,0 +1,48 @@
+[
+  {
+    "model": "granite4.1:8b",
+    "ok": true,
+    "verdict": "pass",
+    "tools": [
+      "get_track_record"
+    ],
+    "elapsed_s": 39.4,
+    "content": ""
+  },
+  {
+    "model": "qwen3:14b",
+    "ok": true,
+    "verdict": "pass",
+    "tools": [
+      "get_track_record"
+    ],
+    "elapsed_s": 32.8,
+    "content": ""
+  },
+  {
+    "model": "mistral-small:22b",
+    "ok": false,
+    "verdict": "no_tool_call",
+    "tools": [],
+    "elapsed_s": 69.4,
+    "content": " [{\"name\": \"get_track_record\", \"arguments\": {\"horizon_days\": 30}}]"
+  },
+  {
+    "model": "llama3.1:8b",
+    "ok": true,
+    "verdict": "pass",
+    "tools": [
+      "get_track_record"
+    ],
+    "elapsed_s": 7.7,
+    "content": ""
+  },
+  {
+    "model": "glm4:latest",
+    "ok": false,
+    "verdict": "no_tool_call",
+    "tools": [],
+    "elapsed_s": 4.4,
+    "content": "\nget_track_record()"
+  }
+]

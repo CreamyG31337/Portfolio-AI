@@ -19,12 +19,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- TABLES
 \i tables/ai_analysis_queue.sql
 \i tables/ai_analysis_skip_list.sql
+\i tables/ai_assistant_chats.sql
 \i tables/ai_task_queue.sql
 \i tables/apscheduler_jobs.sql
 \i tables/benchmark_data.sql
 \i tables/cash_balances.sql
 \i tables/committee_assignments.sql
 \i tables/committees.sql
+\i tables/congress_positions.sql
+\i tables/congress_trade_returns.sql
 \i tables/congress_trades.sql
 \i tables/contributor_access.sql
 \i tables/contributors.sql
@@ -39,6 +42,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/job_executions.sql
 \i tables/job_retry_queue.sql
 \i tables/job_steps.sql
+\i tables/og_asset_ticker_map.sql
 \i tables/outbound_newsletter_types.sql
 \i tables/outbound_newsletter_issues.sql
 \i tables/outbound_newsletter_sends.sql
@@ -50,6 +54,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/securities.sql
 \i tables/signal_analysis.sql
 \i tables/system_settings.sql
+\i tables/ticker_state_snapshots.sql
 \i tables/trade_log.sql
 \i tables/user_funds.sql
 \i tables/user_profiles.sql
@@ -62,11 +67,13 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/backfill_preconverted_values.sql
 \i functions/calculate_daily_performance.sql
 \i functions/can_modify_data.sql
+\i functions/congress_trades_preserve_quality.sql
 \i functions/create_user_profile.sql
 \i functions/delete_user_safe.sql
 \i functions/complete_ai_task.sql
 \i functions/enqueue_ai_task.sql
 \i functions/fail_ai_task.sql
+\i functions/get_politician_leaderboard.sql
 \i functions/get_etf_holding_trades.sql
 \i functions/get_etf_holding_trades_batch.sql
 \i functions/get_exchange_rate_for_date.sql
@@ -107,6 +114,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i views/latest_positions.sql
 
 -- TRIGGERS
+\i triggers/trg_congress_trades_preserve_quality.sql
 \i triggers/trigger_set_portfolio_position_date_only.sql
 \i triggers/update_dividend_log_updated_at.sql
 \i triggers/update_fund_contributions_updated_at.sql
@@ -119,6 +127,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/benchmark_data_Allow service role to insert benchmark data.sql
 \i policies/benchmark_data_Allow service role to manage benchmark data.sql
 \i policies/benchmark_data_Allow service role to update benchmark data.sql
+\i policies/ai_assistant_chats_Service role full access.sql
+\i policies/ai_assistant_chats_Users manage own.sql
 \i policies/ai_task_queue_Allow authenticated users to read ai task queue.sql
 \i policies/ai_task_queue_Allow service role full access.sql
 \i policies/cash_balances_Admins can view all cash balances.sql
@@ -194,6 +204,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i policies/watched_tickers_Service role can manage watched_tickers.sql
 \i policies/watched_tickers_v2_Service role can manage watched_tickers_v2.sql
 \i policies/watched_tickers_v2_Users can view watchlist for their funds.sql
+\i policies/ticker_state_snapshots_ticker_state_snapshots_read.sql
+\i policies/ticker_state_snapshots_ticker_state_snapshots_service_write.sql
 
 -- RLS tightening (2026-05-20): see docs/RLS_AUDIT_PHASE0.md
 \i policies/ai_analysis_queue_Allow service role full access.sql

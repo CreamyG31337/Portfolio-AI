@@ -40,6 +40,8 @@ QUEUE_JOB_TICKER_ANALYSIS = "ticker_analysis"
 QUEUE_JOB_TICKER_META_ANALYSIS = "ticker_meta_analysis"
 QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
 QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
+QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE = "executive_ticker_resolve"
+QUEUE_JOB_ANALYZE_CONGRESS_TRADES = "analyze_congress_trades"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -121,6 +123,114 @@ def _first_env(*names: str) -> Optional[str]:
         if value:
             return value
     return None
+
+
+def backend_is_configured(backend: str) -> bool:
+    """True when env has enough config to run this backend (URL or API key).
+
+    Missing secondary Ollama / GLM config is common for single-host OSS installs;
+    those backends simply start with zero workers. Fully configured deployments
+    (primary + secondary + GLM) are unchanged.
+    """
+
+    if backend == BACKEND_GLM:
+        try:
+            from glm_config import get_zhipu_api_key
+
+            return bool(get_zhipu_api_key())
+        except Exception:
+            return bool(
+                os.getenv("ZHIPU_API_KEY", "").strip()
+                or os.getenv("GLM_4_API_KEY", "").strip()
+            )
+    if backend in (BACKEND_OLLAMA_PRIMARY, BACKEND_OLLAMA_SECONDARY):
+        return bool(ollama_base_url_for_backend(backend))
+    return False
+
+
+def probe_backend_health(
+    backend: str,
+    *,
+    timeout_sec: float = 3.0,
+) -> tuple[bool, str]:
+    """Lightweight reachability check. Returns ``(ok, detail)``.
+
+    Ollama: ``GET {base}/api/tags``. GLM: API key present (no network call).
+    """
+
+    if backend == BACKEND_GLM:
+        if backend_is_configured(backend):
+            return True, "ZHIPU/GLM API key present"
+        return False, "ZHIPU_API_KEY / GLM_4_API_KEY not set"
+
+    base_url = ollama_base_url_for_backend(backend)
+    if not base_url:
+        return False, f"no Ollama base URL configured for {backend}"
+
+    try:
+        import requests
+
+        resp = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=timeout_sec)
+        if resp.status_code >= 400:
+            return False, f"{base_url} returned HTTP {resp.status_code}"
+        return True, f"{base_url} ok"
+    except Exception as exc:
+        return False, f"{base_url} unreachable: {exc}"
+
+
+def resolve_effective_worker_counts(
+    config: AIQueueConfig,
+    *,
+    strict_health: Optional[bool] = None,
+    probe: Optional[Callable[[str], tuple[bool, str]]] = None,
+) -> Dict[str, int]:
+    """Apply config counts, then drop backends that are not configured.
+
+    When ``AI_QUEUE_STRICT_BACKEND_HEALTH`` is truthy (or ``strict_health=True``),
+    also drop backends that fail a health probe. Default is non-strict so a
+    transient blip at scheduler boot does not disable a configured host.
+    """
+
+    if strict_health is None:
+        strict_health = _env_bool(os.getenv("AI_QUEUE_STRICT_BACKEND_HEALTH"), default=False)
+    probe_fn = probe or (lambda b: probe_backend_health(b))
+
+    effective: Dict[str, int] = {}
+    for backend, count in config.worker_counts.items():
+        requested = max(0, int(count))
+        if requested <= 0:
+            effective[backend] = 0
+            continue
+        if not backend_is_configured(backend):
+            logger.info(
+                "AI queue: skipping %s workers for %s (not configured)",
+                requested,
+                backend,
+            )
+            effective[backend] = 0
+            continue
+        if strict_health:
+            ok, detail = probe_fn(backend)
+            if not ok:
+                logger.warning(
+                    "AI queue: skipping %s workers for %s (health check failed: %s)",
+                    requested,
+                    backend,
+                    detail,
+                )
+                effective[backend] = 0
+                continue
+        else:
+            ok, detail = probe_fn(backend)
+            if not ok:
+                logger.warning(
+                    "AI queue: starting %s workers for %s despite health warning: %s",
+                    requested,
+                    backend,
+                    detail,
+                )
+        effective[backend] = requested
+    return effective
 
 
 def model_for_backend(backend: str) -> str:
@@ -264,7 +374,8 @@ class AIQueueWorkerPool:
 
             self._stop_event.clear()
             self._threads = []
-            for backend, count in self.config.worker_counts.items():
+            effective_counts = resolve_effective_worker_counts(self.config)
+            for backend, count in effective_counts.items():
                 for ordinal in range(count):
                     thread = threading.Thread(
                         target=self._worker_loop,
@@ -275,12 +386,24 @@ class AIQueueWorkerPool:
                     thread.start()
                     self._threads.append(thread)
 
+            if not self._threads:
+                logger.warning(
+                    "AI task workers not started: no backends configured/healthy "
+                    "(check OLLAMA_BASE_URL and/or ZHIPU_API_KEY)"
+                )
+                return False
+
             logger.info(
-                "Started %d AI task worker(s) for jobs=%s",
+                "Started %d AI task worker(s) for jobs=%s backends=%s",
                 len(self._threads),
                 ",".join(analysis_types),
+                ",".join(
+                    f"{backend}:{count}"
+                    for backend, count in effective_counts.items()
+                    if count > 0
+                ),
             )
-            return bool(self._threads)
+            return True
 
     def stop(self, *, wait: bool = True, timeout: float = 5.0) -> None:
         """Signal workers to stop and optionally wait for thread exit."""
@@ -970,6 +1093,122 @@ def etf_group_analysis_task_handler(task: Mapping[str, Any], backend: str) -> No
         raise
 
 
+def enqueue_executive_ticker_tasks(
+    supabase_client: Any,
+    names: Sequence[tuple[str, str, int]],
+    *,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``executive_ticker_resolve`` task per unresolved OGE name.
+
+    ``names`` is a sequence of ``(canonical_name, raw_description, priority)``.
+    ``canonical_name`` is the ``og_asset_ticker_map`` cache key (also used as the
+    task ``target_key`` for dedupe); ``raw_description`` is the original OGE asset
+    text fed to the LLM prompt.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    for canonical_name, raw_description, priority in names:
+        stats["attempted"] += 1
+        key = str(canonical_name or "").strip()
+        if not key:
+            stats["failed"] += 1
+            continue
+        try:
+            payload = {
+                "canonical_description": key,
+                "description": str(raw_description or "").strip(),
+                "priority": int(priority),
+            }
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE,
+                target_key=key,
+                payload=payload,
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue executive_ticker_resolve task for %s: %s",
+                key,
+                exc,
+            )
+    return stats
+
+
+def executive_ticker_resolve_task_handler(
+    task: Mapping[str, Any], backend: str
+) -> None:
+    """Resolve one OGE asset description to a ticker via LLM on the given backend.
+
+    The worker is bound to a single backend/model (GLM or an Ollama host), so
+    the pool already spreads these tasks across backends in parallel. A validated
+    hit is cached in ``og_asset_ticker_map`` with ``source='llm'``; a confident
+    "no ticker" answer marks the task done without a write. Transient LLM/infra
+    failures raise :class:`LLMResolutionError` so the queue retries.
+    """
+
+    target_key = str(task.get("target_key") or "").strip()
+    if not target_key:
+        raise ValueError("executive_ticker_resolve task missing target_key")
+
+    payload_raw = task.get("payload")
+    payload: dict[str, Any] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+    description = str(payload.get("description") or "").strip() or target_key
+
+    model = model_for_backend(backend)
+
+    from executive_ticker_resolver import resolve_from_llm
+    from ollama_client import OllamaClient
+    from supabase_client import SupabaseClient
+
+    from scheduler.jobs_executive import upsert_og_asset_cache_entry
+
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    result = resolve_from_llm(description, ollama_client=ollama, model=model)
+    if not result:
+        logger.info(
+            "executive_ticker_resolve: no validated ticker for %r on %s",
+            target_key,
+            backend,
+        )
+        return
+
+    ticker, asset_type, confidence = result
+    supabase = SupabaseClient(use_service_role=True)
+    from executive_ticker_resolver import classify_oge_asset_type
+
+    product_type = classify_oge_asset_type(description)
+    upsert_og_asset_cache_entry(
+        supabase,
+        canonical_description=target_key,
+        ticker=ticker,
+        source="llm",
+        confidence=confidence,
+        asset_type=product_type,
+    )
+    logger.info(
+        "executive_ticker_resolve: %r -> %s (%.2f, %s) via %s",
+        target_key,
+        ticker,
+        confidence,
+        product_type,
+        backend,
+    )
+
+
 def _mark_legacy_etf_queue_outcome(
     supabase: Any,
     queue_id: str,
@@ -1056,6 +1295,187 @@ def get_ai_task_worker_pool() -> Optional[AIQueueWorkerPool]:
     return _worker_pool
 
 
+def enqueue_congress_trade_analysis_tasks(
+    supabase_client: Any,
+    trade_ids: Sequence[int],
+    *,
+    priority: int = 0,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``analyze_congress_trades`` task per trade id.
+
+    Catch-up bulk should use low ``priority`` (default 0) so ticker/meta/ETF
+    work (higher priority) leases first. ``target_key`` is the string trade id
+    for active-row dedupe on re-enqueue.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    total = len(trade_ids)
+    progress_every = 500
+    for raw_id in trade_ids:
+        stats["attempted"] += 1
+        try:
+            trade_id = int(raw_id)
+        except (TypeError, ValueError):
+            stats["failed"] += 1
+            continue
+        if trade_id <= 0:
+            stats["failed"] += 1
+            continue
+        target_key = str(trade_id)
+        try:
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_ANALYZE_CONGRESS_TRADES,
+                target_key=target_key,
+                payload={"trade_id": trade_id, "priority": int(priority)},
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue analyze_congress_trades task for trade_id=%s: %s",
+                trade_id,
+                exc,
+            )
+        if total > progress_every and stats["attempted"] % progress_every == 0:
+            logger.info(
+                "Enqueue progress: %s/%s attempted (enqueued=%s failed=%s)",
+                stats["attempted"],
+                total,
+                stats["enqueued"],
+                stats["failed"],
+            )
+    return stats
+
+
+def congress_trade_analysis_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Score one congress trade on the assigned backend; sync Supabase conflict_score."""
+
+    payload = task.get("payload") if isinstance(task.get("payload"), dict) else {}
+    raw_id = payload.get("trade_id") or task.get("target_key")
+    try:
+        trade_id = int(raw_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"analyze_congress_trades task missing trade_id (target_key={task.get('target_key')!r})"
+        ) from exc
+
+    model = model_for_backend(backend)
+
+    from ollama_client import OllamaClient
+    from postgres_client import PostgresClient
+    from scripts.analyze_congress_trades_batch import (
+        analyze_trade,
+        get_trade_context,
+        is_low_risk_asset,
+        sync_supabase_conflict_score,
+    )
+    from supabase_client import SupabaseClient
+
+    supabase = SupabaseClient(use_service_role=True)
+    postgres = PostgresClient()
+
+    existing = (
+        supabase.supabase.table("congress_trades")
+        .select("id,conflict_score")
+        .eq("id", trade_id)
+        .limit(1)
+        .execute()
+    )
+    rows = existing.data or []
+    if not rows:
+        raise ValueError(f"congress trade id={trade_id} not found")
+    if rows[0].get("conflict_score") is not None:
+        logger.info(
+            "analyze_congress_trades trade_id=%s already scored (%.3f); skipping",
+            trade_id,
+            float(rows[0]["conflict_score"]),
+        )
+        return
+
+    trade_resp = (
+        supabase.supabase.table("congress_trades_enriched")
+        .select("*")
+        .eq("id", trade_id)
+        .limit(1)
+        .execute()
+    )
+    trade_rows = trade_resp.data or []
+    if not trade_rows:
+        raise ValueError(f"congress trade id={trade_id} missing from enriched view")
+    trade = trade_rows[0]
+    if trade.get("quality_status") == "garbage":
+        logger.info(
+            "analyze_congress_trades trade_id=%s is quarantine garbage; skipping",
+            trade_id,
+        )
+        return
+
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    context = get_trade_context(supabase, trade)
+    is_low_risk, filter_reason = is_low_risk_asset(context)
+    if is_low_risk:
+        analysis = {
+            "conflict_score": 0.0,
+            "confidence_score": 1.0,
+            "reasoning": f"Auto-filtered: {filter_reason}",
+        }
+        model_used = "auto-filter"
+    else:
+        analysis = analyze_trade(
+            ollama,
+            context,
+            model,
+            model_chain_override=[model],
+        )
+        model_used = model
+
+    if not analysis or "conflict_score" not in analysis:
+        raise RuntimeError(
+            f"analyze_congress_trades returned no score for trade_id={trade_id} on {backend}"
+        )
+
+    score = float(analysis["conflict_score"])
+    confidence = float(analysis.get("confidence_score", 0.75))
+    reasoning = analysis.get("reasoning", "No reasoning provided")
+
+    postgres.execute_update(
+        """
+        INSERT INTO congress_trades_analysis
+            (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (trade_id, model_used, analysis_version)
+        DO UPDATE SET
+            conflict_score = EXCLUDED.conflict_score,
+            confidence_score = EXCLUDED.confidence_score,
+            reasoning = EXCLUDED.reasoning,
+            analyzed_at = NOW()
+        """,
+        (trade_id, score, confidence, reasoning, model_used, 1),
+    )
+    sync_supabase_conflict_score(supabase, trade_id, score)
+    logger.info(
+        "analyze_congress_trades scored trade_id=%s conflict=%.2f confidence=%.2f backend=%s model=%s",
+        trade_id,
+        score,
+        confidence,
+        backend,
+        model_used,
+    )
+
+
 def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandler]:
     """Build handlers for queue-managed jobs that are enabled in config."""
 
@@ -1069,6 +1489,12 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         handlers[QUEUE_JOB_SECTOR_META_ANALYSIS] = sector_meta_analysis_task_handler
     if QUEUE_JOB_ETF_GROUP_ANALYSIS in jobs:
         handlers[QUEUE_JOB_ETF_GROUP_ANALYSIS] = etf_group_analysis_task_handler
+    if QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE in jobs:
+        handlers[QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE] = (
+            executive_ticker_resolve_task_handler
+        )
+    if QUEUE_JOB_ANALYZE_CONGRESS_TRADES in jobs:
+        handlers[QUEUE_JOB_ANALYZE_CONGRESS_TRADES] = congress_trade_analysis_task_handler
     return handlers
 
 

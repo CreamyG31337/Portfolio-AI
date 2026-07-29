@@ -34,13 +34,19 @@ if sys.platform == 'win32':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+# web_dashboard first so utils.session_manager resolves correctly.
+# Repo root second so data.* still resolves to root data/ (web_dashboard/data removed).
+_web_dashboard_root = Path(__file__).resolve().parent.parent
+_repo_root = _web_dashboard_root.parent
+for _path in (str(_repo_root), str(_web_dashboard_root)):
+    if _path in sys.path:
+        sys.path.remove(_path)
+sys.path.insert(0, str(_repo_root))
+sys.path.insert(0, str(_web_dashboard_root))
 
 # Load environment variables
 from dotenv import load_dotenv
-env_path = project_root / 'web_dashboard' / '.env'
+env_path = _web_dashboard_root / '.env'
 if env_path.exists():
     load_dotenv(env_path)
 else:
@@ -149,7 +155,8 @@ STEP 1: REGULATORY LINK?
 - Does the Committee Definition above explicitly cover the stock's industry?
   - *YES:* Proceed to Step 2.
   - *NO:* Mark as "NO_RELATIONSHIP" (Score 0.0).
-
+- Hard rule: Financial Services / Banking ≠ jurisdiction over every large-cap stock.
+  Only banks, insurance, fintech, securities markets, or similarly regulated firms count.
 STEP 2: DIRECTION OF TRADE?
 - **BUYING:** This is an active bet on the sector.
   - *Verdict:* If Link is YES -> "CONFLICT_BUY" (Score 0.9).
@@ -183,6 +190,107 @@ Enums for "risk_pattern":
 The confidence_score (0.0-1.0) indicates how certain you are.
 """
 
+# Executive-branch sessions have no committees; score via policy/contract levers (ROADMAP H6).
+EXECUTIVE_SESSION_PROMPT_TEMPLATE = """
+Role: Forensic Financial Analyst
+Mission: Classify the **INTENT** behind Executive-branch trading sessions
+(president / executive officers). Do **not** use congressional committee logic.
+
+--- INPUT DATA ---
+**Subject:** {politician} ({party} - {state})
+**Chamber:** {chamber}
+
+**Session Activity ({trade_count} trades):**
+{trades_table}
+
+--- ANALYSIS LOGIC (Follow Step-by-Step) ---
+
+STEP 1: EXECUTIVE POLICY LINK?
+Weigh whether the executive branch has a concrete lever over the issuer's sector:
+- **Policy control:** regulate / subsidize / tariff the sector (energy, defense, pharma,
+  semis, banks, crypto, etc.)?
+- **Federal contracting:** is the issuer a major federal contractor?
+- **Direct mention/action:** company or sector named in recent executive orders,
+  tariffs, appointments, or agency actions?
+- **Timing vs policy events (v1):** if you recall a nearby EO/tariff/appointment affecting
+  the sector around the trade date, note it — but lower confidence_score when relying on
+  general knowledge rather than provided facts.
+  - *YES (concrete lever):* Proceed to Step 2.
+  - *NO:* Mark as "NO_RELATIONSHIP" (Score 0.0).
+- Hard rule: "the president influences markets" is NOT a link. Require a sector-specific lever.
+
+STEP 2: DIRECTION OF TRADE?
+- **BUYING:** active bet on the sector.
+  - *Verdict:* If Link is YES -> "CONFLICT_BUY" (Score 0.9).
+- **SELLING:** ambiguous. Proceed to Step 3.
+
+STEP 3: SELLING CONTEXT
+- **Small Sell ($1k - $15k):** likely housekeeping / diversifying.
+  - *Verdict:* "ROUTINE_DIVESTMENT" (Score 0.1 - Safe).
+- **Large Sell ($50k+) or Full Exit:** material dump.
+  - *Verdict:* If Link is YES -> "SUSPICIOUS_SELL" (Score 0.8 - Danger).
+- **Options/Shorts:** betting against the name/sector.
+  - *Verdict:* "AGGRESSIVE_BET" (Score 1.0 - Critical).
+
+--- OUTPUT REQUIREMENT ---
+Return valid JSON only. "risk_pattern" MUST be one of the enums below.
+
+Enums for "risk_pattern":
+- "CONFLICT_BUY" (Buying when executive policy/contract lever applies)
+- "SUSPICIOUS_SELL" (Large dump when lever applies)
+- "AGGRESSIVE_BET" (Options/Shorts)
+- "ROUTINE_DIVESTMENT" (Small sales)
+- "NO_RELATIONSHIP" (No concrete executive lever)
+
+{{
+  "conflict_score": 0.1,
+  "confidence_score": 0.7,
+  "risk_pattern": "ROUTINE_DIVESTMENT",
+  "reasoning": "Subject is Executive chamber. Sector has tariff exposure, but the trade is a small sale (<$15k), consistent with routine rebalancing rather than policy-timed profit-taking."
+}}
+
+The confidence_score (0.0-1.0) indicates how certain you are. Prefer ≤0.75 when timing
+claims rest on general knowledge rather than provided facts.
+"""
+
+
+def is_executive_chamber(chamber: str | None) -> bool:
+    """True when the session/trade is presidential / executive-branch."""
+    return str(chamber or "").strip().casefold() == "executive"
+
+
+def build_session_conflict_prompt(
+    *,
+    politician: str,
+    party: str,
+    state: str,
+    chamber: str,
+    trade_count: int,
+    trades_table: str,
+    committees: str | None = None,
+) -> str:
+    """Build the session LLM prompt; executive chamber skips committee rubric."""
+    if is_executive_chamber(chamber):
+        return EXECUTIVE_SESSION_PROMPT_TEMPLATE.format(
+            trade_count=trade_count,
+            politician=politician,
+            party=party,
+            state=state,
+            chamber=chamber,
+            trades_table=trades_table,
+        )
+    committee_descriptions = get_committee_context(committees or "Unknown")
+    return SESSION_PROMPT_TEMPLATE.format(
+        trade_count=trade_count,
+        politician=politician,
+        party=party,
+        state=state,
+        chamber=chamber,
+        committee_descriptions=committee_descriptions,
+        trades_table=trades_table,
+    )
+
+
 # Legacy prompt for single-trade analysis (kept for backward compatibility if needed)
 PROMPT_TEMPLATE = """
 Analyze this trade for potential Insider Trading/Conflict of Interest.
@@ -201,8 +309,13 @@ Data:
 Task:
 Calculate a 'conflict_score' from 0.0 to 1.0 based on these rules:
 1. HIGH SCORE (0.8-1.0): Direct overlap (e.g., Armed Services member buying Defense stock, spouse trades, timing near votes).
-2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries.
+2. MEDIUM SCORE (0.4-0.7): Sector overlap or related industries — only when the committee's stated jurisdiction covers that sector.
 3. LOW SCORE (0.0-0.3): Broad index funds or clearly unrelated industries.
+
+Hard rules (do not stretch):
+- Financial Services / Banking committees regulate banks, insurance, fintech, securities markets — NOT every large-cap equity.
+- Do NOT score medium/high merely because a stock is "big" or "in the market." Require a concrete committee↔sector link.
+- House/Senate Administration, Homeland Security, Education, etc. do not imply jurisdiction over consumer staples, grocery, or unrelated tech.
 
 Consider:
 - Committee jurisdiction over company's sector
@@ -219,6 +332,54 @@ Return JSON with TWO fields:
 
 The confidence_score (0.0-1.0) indicates how certain you are about the conflict_score. Use high confidence (>0.8) for clear-cut cases, medium (0.5-0.8) for typical cases, and low (<0.5) for ambiguous situations.
 """
+
+# Single-trade executive path (AI queue / analyze_trade). Same levers as session H6.
+EXECUTIVE_PROMPT_TEMPLATE = """
+Analyze this Executive-branch trade for potential conflict of interest.
+Do **not** use congressional committee logic — the subject has no committees.
+
+Data:
+- Politician: {politician} ({party} - {state})
+- Chamber: {chamber}
+- Asset Owner: {owner}
+- Ticker: {ticker}
+- Company: {company_name}
+- Sector: {sector}
+{description_section}- Date: {date}
+- Type: {type}
+- Amount: {amount}
+
+Task:
+Calculate a 'conflict_score' from 0.0 to 1.0 based on executive levers:
+1. HIGH (0.8-1.0): Concrete policy/contract lever — regulate/subsidize/tariff the sector,
+   major federal contractor, or company/sector named in recent EO/tariff/appointment near
+   the trade date, and the trade direction fits an active bet (buy) or material dump (large sell).
+2. MEDIUM (0.4-0.7): Plausible sector policy exposure without a tight company-specific link.
+3. LOW (0.0-0.3): No concrete executive lever, or small routine sale / housekeeping.
+
+Hard rules:
+- "The president influences markets" is NOT a link. Require a sector-specific lever.
+- Prefer confidence_score ≤ 0.75 when timing claims rest on general knowledge.
+
+Return JSON:
+{{
+  "conflict_score": 0.15,
+  "confidence_score": 0.7,
+  "reasoning": "Executive chamber; no concrete tariff/contract lever for this Materials name; small purchase looks routine."
+}}
+"""
+
+
+def sync_supabase_conflict_score(
+    supabase: SupabaseClient,
+    trade_id: int,
+    conflict_score: float,
+) -> None:
+    """Mirror analysis score to Supabase so the scheduler queue (conflict_score IS NULL) drains."""
+    supabase.supabase.table("congress_trades").update(
+        {"conflict_score": conflict_score}
+    ).eq("id", trade_id).execute()
+
 
 def fix_failed_scores(client: SupabaseClient):
     """Reset trades with 0.0 score and failure notes to NULL so they can be retried.
@@ -518,7 +679,14 @@ def get_trade_context(client: SupabaseClient, trade: Dict[str, Any], use_cache: 
         
     return context
 
-def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, verbose: bool = False, max_retries: int = 2) -> Dict[str, Any]:
+def analyze_trade(
+    ollama: OllamaClient,
+    context: Dict[str, Any],
+    model: str,
+    verbose: bool = False,
+    max_retries: int = 2,
+    model_chain_override: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Run AI analysis on a single trade with structured JSON output.
     
     Args:
@@ -527,6 +695,7 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
         model: Model name to use
         verbose: Whether to print streaming output
         max_retries: Maximum number of retry attempts for transient failures
+        model_chain_override: When set (e.g. queue workers), try only these models
     
     Returns:
         Dictionary with conflict_score, confidence_score, and reasoning, or None on failure
@@ -539,8 +708,11 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
     # Create context copy with formatted description
     formatted_context = context.copy()
     formatted_context['description_section'] = description_section
-    
-    prompt = PROMPT_TEMPLATE.format(**formatted_context)
+
+    if is_executive_chamber(context.get("chamber")):
+        prompt = EXECUTIVE_PROMPT_TEMPLATE.format(**formatted_context)
+    else:
+        prompt = PROMPT_TEMPLATE.format(**formatted_context)
     
     logger.info(f"Analyzing {context['politician']} - {context['ticker']}...")
     
@@ -567,6 +739,7 @@ def analyze_trade(ollama: OllamaClient, context: Dict[str, Any], model: str, ver
                     "politician": context.get("politician"),
                     "tickers_extracted": [context.get("ticker")] if context.get("ticker") else None,
                 },
+                model_chain_override=model_chain_override,
             )
             model = model_used
             if verbose and full_response:
@@ -724,7 +897,23 @@ def analyze_session(
                     .order("transaction_date", desc=False)\
                     .execute()
                 if not response.data:
-                    logger.warning(f"No trades found for session {session_id} (politician={politician_name}, {start_str} to {end_str})")
+                    logger.warning(
+                        f"No trades found for session {session_id} "
+                        f"(politician={politician_name}, {start_str} to {end_str}); "
+                        "clearing needs_reanalysis so it does not block the queue"
+                    )
+                    # Orphan/stale session: keep it from being retried forever.
+                    postgres.execute_update(
+                        """
+                        UPDATE congress_trade_sessions
+                        SET needs_reanalysis = FALSE,
+                            last_analyzed_at = NOW(),
+                            ai_summary = COALESCE(ai_summary, 'Skipped: no matching trades found'),
+                            updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (session_id,),
+                    )
                     return False
                 trade_ids = [row['id'] for row in response.data]
                 logger.info(f"   [LINK] Session {session_id}: resolved {len(trade_ids)} trades from Supabase (date range)")
@@ -746,7 +935,25 @@ def analyze_session(
             except Exception as e:
                 logger.error(f"Failed to fetch trades chunk {i}: {e}")
                 return False
-        
+
+        if not trades:
+            logger.warning(
+                f"Session {session_id} linked trade_ids but none loaded from Supabase; "
+                "clearing needs_reanalysis"
+            )
+            postgres.execute_update(
+                """
+                UPDATE congress_trade_sessions
+                SET needs_reanalysis = FALSE,
+                    last_analyzed_at = NOW(),
+                    ai_summary = COALESCE(ai_summary, 'Skipped: linked trades missing in Supabase'),
+                    updated_at = NOW()
+                WHERE id = %s
+                """,
+                (session_id,),
+            )
+            return False
+
         if not trades:
             logger.warning(f"No trade data found in Supabase for session {session_id}")
             return False
@@ -755,9 +962,12 @@ def analyze_session(
         # Prefetch all securities data in one query
         tickers = list(set(t.get('ticker') for t in trades if t.get('ticker')))
         prefetch_securities_batch(supabase, tickers)
-        
-        # Prefetch politician committee data (one call for the session's politician)
-        prefetch_politician_committees(supabase, politician_name)
+
+        session_chamber = str(trades[0].get("chamber") or "").strip()
+        executive_session = is_executive_chamber(session_chamber)
+        # Executive officers have no committees — skip the degenerate prefetch.
+        if not executive_session:
+            prefetch_politician_committees(supabase, politician_name)
         
         # Enrich each trade with context (now uses cache, no Supabase calls)
         enriched_trades = []
@@ -800,6 +1010,7 @@ def analyze_session(
                         """,
                         (trade['id'], session_id, 0.0, 1.0, f"Auto-filtered: {skip_reason}", "ROUTINE", model, 1)
                     )
+                    sync_supabase_conflict_score(supabase, trade['id'], 0.0)
                 except Exception as e:
                     logger.error(f"Failed to save filtered analysis for trade {trade['id']}: {e}")
             
@@ -818,21 +1029,15 @@ def analyze_session(
         
         # Format trades table
         trades_table = format_trades_table(enriched_trades)
-        
-        # Generate committee context descriptions for injection
-        committee_descriptions = get_committee_context(politician_context['committees'])
-        
-        # Build prompt with injected context
-        prompt = SESSION_PROMPT_TEMPLATE.format(
-            trade_count=trade_count,
+
+        prompt = build_session_conflict_prompt(
             politician=politician_context['politician'],
             party=politician_context['party'],
             state=politician_context['state'],
             chamber=politician_context['chamber'],
-            committee_descriptions=committee_descriptions,
-            start_date=start_date,
-            end_date=end_date,
-            trades_table=trades_table
+            trade_count=trade_count,
+            trades_table=trades_table,
+            committees=politician_context['committees'],
         )
         
         
@@ -930,6 +1135,7 @@ def analyze_session(
                     """,
                     (trade['id'], session_id, conflict_score, confidence_score, reasoning, risk_pattern, model, 1)
                 )
+                sync_supabase_conflict_score(supabase, trade['id'], conflict_score)
             except Exception as e:
                 logger.error(f"Failed to save analysis for trade {trade['id']}: {e}")
         
@@ -1076,6 +1282,9 @@ def main():
             # Skip trades with null metadata if requested
             if args.skip_nulls:
                 query = query.not_.is_("party", "null").not_.is_("state", "null")
+
+            # Quarantined disclosures stay out of conflict scoring
+            query = query.neq("quality_status", "garbage")
             
             # Order by transaction_date DESC, then id DESC for deterministic ordering
             # This ensures consistent pagination even when multiple trades have the same date
@@ -1185,6 +1394,7 @@ def main():
                                 """,
                                 (trade['id'], score, confidence, reasoning, args.model, 1)
                             )
+                            sync_supabase_conflict_score(client, trade['id'], score)
                             logger.info(f"   [SCORED] conflict={score:.2f}, confidence={confidence:.2f}")
                             total_processed += 1
                         except Exception as db_error:

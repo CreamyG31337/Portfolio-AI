@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 from web_dashboard.stance_history import (
+    format_prior_stance_for_meta_bundle,
     is_directional_stance,
     record_stance,
 )
@@ -153,3 +154,45 @@ def test_record_stance_metadata_none_when_empty() -> None:
 
     insert_args = pg.execute_update.call_args[0][1]
     assert insert_args[-1] is None
+
+
+def test_format_prior_stance_empty_history_returns_none() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    assert format_prior_stance_for_meta_bundle(pg, "COST") is None
+
+
+def test_format_prior_stance_flip_and_track_record() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = [
+        {
+            "stance": "BEARISH",
+            "confidence": 0.6,
+            "as_of": "2026-07-15",
+            "source": "ticker_meta_analysis",
+        },
+        {
+            "stance": "BULLISH",
+            "confidence": 0.7,
+            "as_of": "2026-07-14",
+            "source": "ticker_meta_analysis",
+        },
+    ]
+    track = {
+        "horizon_days": 30,
+        "hit_rate_by_source": {"ticker_meta_analysis": 0.5},
+        "avg_excess_by_source": {"ticker_meta_analysis": -1.2},
+        "counts_by_source": {
+            "ticker_meta_analysis": {"scored": 100, "hits": 50, "misses": 50, "unscoreable": 0}
+        },
+    }
+    block = format_prior_stance_for_meta_bundle(pg, "cost", track_summary=track)
+    assert block is not None
+    assert "### Prior stance and track record" in block
+    assert "stance=BEARISH" in block
+    assert "(FLIP)" in block
+    assert "hit_rate=50.0%" in block
+    # Labelled directional so the meta bundle cannot mislead the LLM into reading
+    # a correct bearish call's negative raw excess as a bad outcome.
+    assert "mean_directional_excess=-1.20" in block
+    assert "source calibration" in block

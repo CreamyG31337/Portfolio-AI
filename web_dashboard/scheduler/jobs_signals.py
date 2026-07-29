@@ -150,6 +150,7 @@ def signal_scan_job() -> None:
             except Exception as log_error:
                 logger.warning(f"Failed to log job execution: {log_error}")
             logger.error(f"❌ {message}")
+            mark_job_failed('signal_scan', target_date, None, message, duration_ms=duration_ms)
             return
         
         # Initialize clients
@@ -427,6 +428,10 @@ def fundamentals_refresh_job() -> None:
             except Exception:
                 pass
             logger.error(f"❌ {msg}")
+            try:
+                mark_job_failed(job_id, target_date, None, msg, duration_ms=duration_ms)
+            except Exception:
+                pass
             return
 
         supabase_client = SupabaseClient(use_service_role=True)

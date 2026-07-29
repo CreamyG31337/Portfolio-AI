@@ -94,8 +94,9 @@
                     <select id="ai_summarizing_fallback_model" name="ai_summarizing_fallback_model"
                         class="border rounded-lg block w-full p-2.5">
                         <option value="">None</option>
+                        <option value="glm-5.2">GLM 5.2</option>
+                        <option value="glm-5.1">GLM 5.1</option>
                         <option value="glm-4.5-air">GLM 4.5 Air</option>
-                        <option value="glm-4.7">GLM 4.7</option>
                     </select>
                     <p class="mt-1 text-xs text-text-tertiary">
                         Used if the primary summarization model fails. Stored in <code
@@ -118,7 +119,7 @@
                     <input type="text" id="add-domain-input" placeholder="example.com"
                         class="border rounded-lg block p-2">
                     <button id="add-domain-btn"
-                        class="px-3 py-2 text-sm font-medium text-center text-theme-error-text bg-transparent border border-theme-error-text rounded-lg hover:bg-theme-error-bg/10 focus:ring-4 focus:outline-hidden focus:ring-theme-error-bg/30 transition-colors duration-200">
+                        class="btn-outline-danger">
                         Add
                     </button>
                 </div>
