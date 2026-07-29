@@ -84,4 +84,6 @@
 
 ## 2025-05-15 - Unbounded Supabase Query in jobs_dividends.py
 **Learning:** Supabase caps unbounded queries at 1000 rows. `processed_res = client.supabase.table("dividend_log").select(...).execute()` was vulnerable to silently missing past dividend records, risking duplicate entries.
-**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.
+**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.## 2026-07-26 - Batch ETF Metadata Upserts
+**Learning:** Per-row `.upsert().execute()` inside a loop (like `upsert_etf_metadata` inside `etf_watchtower_job`) can cause excessive network round-trips to PostgREST, thrashing the database connection.
+**Action:** Removed the per-ETF `upsert().execute()` from inside the loop, accumulated successfully processed ETFs into a list (`successful_etfs`), and passed them to a modified `upsert_etf_metadata` function that performs a single batch upsert using `.upsert(records).execute()` at the end of the job.

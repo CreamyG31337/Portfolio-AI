@@ -160,7 +160,7 @@ def test_single_etf(etf_ticker: str):
         print("Step 5: Upserting metadata...")
         print("-" * 80)
         try:
-            upsert_etf_metadata(db, etf_ticker, provider)
+            upsert_etf_metadata(db, [etf_ticker])
             upsert_securities_metadata(db, today_holdings, provider)
             print("[OK] Metadata upserted")
         except Exception as e:
