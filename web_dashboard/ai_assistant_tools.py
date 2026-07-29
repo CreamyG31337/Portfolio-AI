@@ -792,10 +792,6 @@ def _tool_get_trade_history(
             pass
 
     reason_series = work["reason"] if "reason" in work.columns else None
-
-    # Save a reference to the dataset prior to action filtering for the summary block
-    work_for_summary = work.copy()
-
     if action_filter in ("BUY", "SELL") and reason_series is not None:
         actions = reason_series.apply(lambda r: infer_trade_action(r, default="BUY"))
         work = work[actions == action_filter]
@@ -834,10 +830,10 @@ def _tool_get_trade_history(
 
     # Summary over the full filtered set (not just the returned page).
     if reason_series is not None:
-        sell_mask = work_for_summary["reason"].apply(is_sell_reason)
+        sell_mask = work["reason"].apply(is_sell_reason)
         sells = int(sell_mask.sum())
-        buys = int(len(work_for_summary) - sells)
-    for row in work_for_summary.itertuples(index=False):
+        buys = int(len(work) - sells)
+    for row in work.itertuples(index=False):
         try:
             t = getattr(row, "total_value", None)
             if t in (None, ""):
