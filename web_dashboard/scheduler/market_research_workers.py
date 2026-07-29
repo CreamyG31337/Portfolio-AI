@@ -83,6 +83,24 @@ def process_market_research_pair(ctx: MarketResearchCtx, pair: tuple[int, dict])
             c.skipped += 1
             return c
 
+        from story_identity import try_corroborate_incoming_story
+
+        story_match = try_corroborate_incoming_story(
+            ctx.research_repo,
+            title=title,
+            source=result.get("engine") or result.get("source"),
+            url=url,
+        )
+        if story_match is not None:
+            logger.info(
+                "  🔗 Story corroboration (skip extract): matched %s… sim=%.3f%s",
+                story_match.title[:50],
+                story_match.similarity,
+                " [containment]" if story_match.via_containment else "",
+            )
+            c.skipped += 1
+            return c
+
         if time.time() - article_start > ctx.max_article_duration:
             logger.warning("⏱️  Article timeout (%.1fs) - skipping: %s...", time.time() - article_start, title[:50])
             return c

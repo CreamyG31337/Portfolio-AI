@@ -5,7 +5,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 | Doc | Relationship to this one |
 |-----|--------------------------|
-| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Closed 2026-07-27:** H1–H7 shipped. Post-H7 Ideas quality P1–P4 shipped (ranking / low-value filters / why-care UI); genuine human triage still the success bar. Measurement rig M1–M5 shipped — see §2.4. |
+| **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Closed 2026-07-27:** H1–H7 shipped. Ideas quality P1–P6 closed (P5 by product judgment 2026-07-29). Measurement rig M1–M5 shipped — see §2.4. |
 | **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not blocking I/K). |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
@@ -128,7 +128,7 @@ Learn plumbing ahead of Learn→Synthesize / Learn→Collect wiring).
 | **Executive trades** | Open Cabinet → `congress_trades` (`chamber='Executive'`) with Congress UI filter. **H6 shipped 2026-07-21:** executive sessions use a policy/contract rubric instead of the degenerate committee prompt. Spot-check scores after deploy; kill collector only if v1 stays useless. |
 | **Weekly retro** | Computes flips + hit rates Sundays; Mailgun code shipped 2026-06-20; **`RETRO_DIGEST_RECIPIENTS` never set in prod** — self-review logs into the abyss. Five-minute env fix. |
 | **Congress Learn exemption** | Herd → `stance_history` shipped as **Phase H5** (2026-07-20). **5.1b / 5.1c** still open. |
-| **Ideas inbox labels** | H7 (2026-07-27): zero *human* Accept/Dismiss. Ideas quality P1–P4 shipped same day (why-care UI, cleanup script, low-value filters, `idea_score`); still a habit/product question whether triage gets used. Exclude `auto_cleanup` from label sets. |
+| **Ideas inbox labels** | H7 (2026-07-27): zero *human* Accept/Dismiss. Ideas quality **P1–P6 closed** (why-care UI, cleanup script, low-value filters, `idea_score`; P5 by product judgment 2026-07-29). Habit bar remains: genuine Accept/Dismiss. Exclude `auto_cleanup` from label sets. |
 
 ### Failure mode to watch
 
@@ -139,11 +139,11 @@ new feed.
 
 ### Ordered next work → Phase I (prefer **I1**), then K/J
 
-Phase H closed 2026-07-27; Ideas quality P1–P4 + measurement rig M1–M5 shipped same day.
-Prefer **I1 story dedup** before volume collectors; **K2** (captions → `research_articles`)
-may start in parallel with a tiny allowlist — K1 PoC already done — see
-[Phase K](#phase-k--youtube-captions--research-articles) and
-[`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md). Ops leftover: Ideas P5 top-20 audit; optional M6.
+Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5 shipped.
+**I1 story dedup shipped 2026-07-29.** Prefer **I2** (FRED → regime) or **K2** (captions →
+`research_articles`) next; **I4** RSS additions are cheap anytime now that near-dup
+pressure is handled. See [Phase K](#phase-k--youtube-captions--research-articles) and
+[`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md). Optional leftover: measurement **M6**.
 
 ---
 
@@ -310,15 +310,25 @@ Ideas stays discovery triage only.
 >
 > **Shipped:** P1 why-care UI (`conclusion` primary, full text, HTML escape); P2 cleanup
 > script `web_dashboard/scripts/cleanup_ideas_inbox.py` (`decided_by='auto_cleanup'`); P3
-> low-value title/URL filters; P4 inbox-only `idea_score` + `low_signal` (hidden by default).
-> **Deliberately not shipped:** banning `stockanalysis.com` — measured 43% junk / 57% useful;
-> filtering beats banning. **Still open:** P5 human top-20 spot-check after a live alpha run.
+> low-value title/URL filters; P4 inbox-only `idea_score` + `low_signal` (hidden by default);
+> P5 closed by product judgment 2026-07-29 (fewer, better ideas — no formal baseline left
+> open). **Deliberately not shipped:** banning `stockanalysis.com` — measured 43% junk /
+> 57% useful; filtering beats banning.
 >
 > **Label hygiene:** `auto_cleanup` rows are **not** user labels. Any triage-usage metric,
 > relevance training, or "is Ideas being used?" check must filter
 > `decided_by <> 'auto_cleanup'` (or it will read machine dismissals as engagement — the trap
 > H7's empty-triage finding was guarding against). Undo cleanup with
 > `DELETE FROM idea_triage WHERE decided_by = 'auto_cleanup';`.
+>
+> **Later — cross-source idea clusters (not started).** Today an “idea” is one
+> `research_articles` row (Ideas inbox = Alpha/Opportunity only); email lives in a separate
+> `newsletters` table; YouTube isn’t article-shaped until K2; I1 corroboration only merges
+> near-duplicate *Market News* titles. Goal: one triageable idea that can group evidence from
+> news, newsletters, YouTube transcripts, and other research (story identity + shared tickers /
+> themes), so Accept/Dismiss applies to the catalyst once — not once per source. Prerequisites:
+> K2 + widen I1 beyond Market News; do **not** stuff friend tips or raw email into Ideas without
+> a cluster layer.
 
 ### 2.3 Ticker dossier upgrade — *evidence timeline*
 
@@ -785,7 +795,7 @@ flowchart TD
 | **F** | 4.1 dilution watch; 4.5/4.6 as appetite allows | ongoing — **4.1/G3 shipped; 4.5/4.6 gated by H1** |
 | **G** | Stance provenance; dilution watch; EDGAR filing watch; confluence scorer; retro Mailgun; Yahoo SEDI insiders — see [`PHASE_G_PLAN.md`](PHASE_G_PLAN.md) | ~2 wk — **G1–G5 + G7 shipped; G6 optional** |
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
-| **I** (backlog / next) | Collection quality + macro from WorldMonitor research — story dedup, FRED/stress, Form 4 | after H — **not started** (prefer **I1**) |
+| **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
 | **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); **K1 PoC done 2026-07-27** (no auth on residential; cloud blocks likely) — K2+ not started |
 
@@ -854,7 +864,7 @@ use their BTC Market Radar as a micro-cap BUY/CASH gate.
 
 | ID | Item | Why | Gate |
 |----|------|-----|------|
-| **I1** | Story dedup + `corroboration_count` | Exact URL/text-hash dedup lets SearXNG+RSS double-count the same catalyst; port hashed dual-view cosine technique into Python; feed count into `calculate_relevance_score` | Quality fix (not a new collector); after H — pull forward only if H1 news ROI looks inflated |
+| **I1** | Story dedup + `corroboration_count` | Exact URL/text-hash dedup lets SearXNG+RSS double-count the same catalyst; port hashed dual-view cosine technique into Python; feed count into `calculate_relevance_score` | ✅ **Shipped 2026-07-29** |
 | **I2** | FRED stress (+ optional equity F&G) → `regime_json` | Narrative regime has no quantitative curve/stress backing; `pandas-datareader` already unused in requirements | New macro inputs; after H |
 | **I3** | Finish `sec_form4_poc.py` → raw Form 4 codes, then P/S conviction filter | Quiver scrape already collapsed codes; filter needs EDGAR XML | After H |
 | **I4** | Add SEC + Fed press-release feeds; 3 new SearXNG queries | Confirmed live: 6 feeds in `rss_feeds` (not 4); `finance.yahoo.com`/`seekingalpha.com` already top source-ROI domains via SearXNG, no feed needed; SEC/Fed press releases confirmed absent from every path (RSS, domain-health, source-ROI) | Ops/verify anytime; cheap |
@@ -862,9 +872,16 @@ use their BTC Market Radar as a micro-cap BUY/CASH gate.
 
 #### I checklist
 
-- [ ] **I1 · Story dedup + corroboration** — clean-room Python module; wire into
-  `market_research_job` + `rss_feed_ingest_job`; skip re-extract/re-summarize on match;
-  increment `corroboration_count`; use as relevance multiplier.
+- [x] **I1 · Story dedup + corroboration** — clean-room `web_dashboard/story_identity.py`
+  (dual-view hashed vectors + containment); wired into `market_research_job` +
+  `rss_feed_ingest_job` (skip extract/summarize on match); `corroboration_count` /
+  `corroboration_sources` on `research_articles`; relevance boost via
+  `calculate_relevance_score`. Flag: `STORY_DEDUP_ENABLED` (default on). Migration:
+  `database/migrations/2026-07_add_story_corroboration.sql` —
+  `python web_dashboard/scripts/apply_story_corroboration_migration.py --apply`.
+  Shipped 2026-07-29.
+  **Follow-on (later):** widen candidates beyond Market News and attach newsletters /
+  YouTube once K2 lands — see [§2.2 cross-source idea clusters](#22-ideas-inbox--which-new-ideas-merit-attention).
 - [ ] **I2 · FRED stress → `market_daily_brief.regime_json`** — spike with
   `pandas-datareader` (no new dep); optional equity Fear & Greed blend later.
 - [ ] **I3 · Raw Form 4 ingestion + P/S filter** — finish `sec_form4_poc.py`, then

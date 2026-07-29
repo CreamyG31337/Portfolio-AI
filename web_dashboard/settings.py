@@ -63,6 +63,15 @@ def is_meta_analysis_trend_memory_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 
 
+def is_story_dedup_enabled() -> bool:
+    """Phase I1 near-duplicate headline matching before extract/summarize.
+
+    Default on. Set ``STORY_DEDUP_ENABLED=false`` to disable without redeploying.
+    """
+    raw = os.getenv("STORY_DEDUP_ENABLED", "true").strip().lower()
+    return raw not in ("0", "false", "no", "off")
+
+
 def get_meta_analysis_human_thesis_scope() -> str:
     """Who gets theses injected into meta: ``holdings`` (default), ``holdings_or_recent``, or ``all``.
 

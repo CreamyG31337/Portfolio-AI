@@ -3,10 +3,11 @@
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
 > **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan**. As of
-> **2026-07-29**, Phase H is closed; Ideas quality P1–P4 and measurement rig M1–M5 shipped.
-> Active backlog: **Phase I** (prefer I1 story dedup), then **Phase J** / **Phase K** (K1
-> PoC done). This doc remains the deep reference for the meta-analysis layers (Phases 1–3,
-> all shipped); its "Later phases" section is superseded by `ROADMAP.md`.
+> **2026-07-29**, Phase H is closed; Ideas quality P1–P6, measurement rig M1–M5, and
+> **Phase I1 story dedup** shipped. Active backlog: **I2** (FRED → regime) or **K2**
+> (YouTube → articles); then **Phase J**. This doc remains the deep reference for the
+> meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section is superseded by
+> `ROADMAP.md`.
 
 **Related docs (keep in sync when the pipeline changes):**
 

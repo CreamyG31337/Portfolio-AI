@@ -8,7 +8,7 @@ import json
 import logging
 import threading
 from contextlib import contextmanager
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -1119,6 +1119,140 @@ class ResearchRepository:
         except Exception as e:
             logger.error(f"❌ Error checking if article exists: {e}")
             return False
+
+    def fetch_recent_story_candidates(
+        self,
+        *,
+        hours: int = 72,
+        limit: int = 400,
+        article_types: Optional[Sequence[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Recent articles for Phase I1 near-duplicate title matching.
+
+        Returns rows with id/title/source/url/corroboration fields. If the I1
+        columns are not migrated yet, falls back to a title-only select (callers
+        still work; corroboration updates will no-op until migration).
+        """
+        types = tuple(article_types or ("Market News",))
+        hours = max(1, int(hours))
+        limit = max(1, min(int(limit), 1000))
+        try:
+            query = """
+                SELECT id, title, source, url,
+                       COALESCE(corroboration_count, 1) AS corroboration_count,
+                       COALESCE(corroboration_sources, '{}') AS corroboration_sources,
+                       tickers, relevance_score
+                FROM research_articles
+                WHERE article_type = ANY(%s)
+                  AND fetched_at >= NOW() - (%s || ' hours')::interval
+                  AND title IS NOT NULL
+                  AND length(trim(title)) > 0
+                ORDER BY fetched_at DESC
+                LIMIT %s
+            """
+            return list(self.client.execute_query(query, (list(types), str(hours), limit)) or [])
+        except Exception as e:
+            # Pre-migration DBs lack the columns — degrade to title match only.
+            logger.warning("fetch_recent_story_candidates falling back without corroboration cols: %s", e)
+            try:
+                query = """
+                    SELECT id, title, source, url, tickers, relevance_score
+                    FROM research_articles
+                    WHERE article_type = ANY(%s)
+                      AND fetched_at >= NOW() - (%s || ' hours')::interval
+                      AND title IS NOT NULL
+                      AND length(trim(title)) > 0
+                    ORDER BY fetched_at DESC
+                    LIMIT %s
+                """
+                rows = list(self.client.execute_query(query, (list(types), str(hours), limit)) or [])
+                for row in rows:
+                    row.setdefault("corroboration_count", 1)
+                    row.setdefault("corroboration_sources", [])
+                return rows
+            except Exception as e2:
+                logger.error("fetch_recent_story_candidates failed: %s", e2)
+                return []
+
+    def record_story_corroboration(
+        self,
+        article_id: str,
+        source_key: str,
+        *,
+        relevance_score: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Append a distinct publisher to an existing story cluster.
+
+        Returns ``{matched, incremented, corroboration_count}``. If ``source_key``
+        was already recorded, ``incremented`` is False (caller should still skip
+        re-extract — same story, same outlet or repeat hit).
+        """
+        key = (source_key or "unknown").strip().lower() or "unknown"
+        try:
+            current = self.client.execute_query(
+                """
+                SELECT id, title, source, url,
+                       COALESCE(corroboration_count, 1) AS corroboration_count,
+                       COALESCE(corroboration_sources, '{}') AS corroboration_sources,
+                       relevance_score
+                FROM research_articles
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (article_id,),
+            )
+            if not current:
+                return {"matched": False, "incremented": False, "corroboration_count": 0}
+
+            row = current[0]
+            sources = list(row.get("corroboration_sources") or [])
+            # Postgres may return array as list already; normalize.
+            sources = [str(s).strip().lower() for s in sources if str(s).strip()]
+            if not sources:
+                from story_identity import source_key as _source_key
+
+                seed = _source_key(row.get("source"), row.get("url"))
+                if seed:
+                    sources.append(seed)
+            if key in sources:
+                return {
+                    "matched": True,
+                    "incremented": False,
+                    "corroboration_count": max(
+                        int(row.get("corroboration_count") or 1),
+                        len(sources) or 1,
+                    ),
+                }
+
+            sources.append(key)
+            new_count = len(set(sources))
+            sources = sorted(set(sources))
+            new_relevance = relevance_score
+            if new_relevance is None and row.get("relevance_score") is not None:
+                from story_identity import apply_corroboration_boost
+
+                new_relevance = apply_corroboration_boost(
+                    float(row["relevance_score"]), new_count
+                )
+
+            self.client.execute_update(
+                """
+                UPDATE research_articles
+                SET corroboration_count = %s,
+                    corroboration_sources = %s,
+                    relevance_score = COALESCE(%s, relevance_score)
+                WHERE id = %s
+                """,
+                (new_count, sources, new_relevance, article_id),
+            )
+            return {
+                "matched": True,
+                "incremented": True,
+                "corroboration_count": new_count,
+            }
+        except Exception as e:
+            logger.error("record_story_corroboration failed for %s: %s", article_id, e)
+            return {"matched": False, "incremented": False, "corroboration_count": 0}
     
     def get_article_statistics(self, days: int = 30) -> Dict[str, Any]:
         """Get statistics about articles
