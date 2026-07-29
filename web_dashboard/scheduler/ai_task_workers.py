@@ -42,6 +42,7 @@ QUEUE_JOB_SECTOR_META_ANALYSIS = "sector_meta_analysis"
 QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
 QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE = "executive_ticker_resolve"
 QUEUE_JOB_ANALYZE_CONGRESS_TRADES = "analyze_congress_trades"
+QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY = "youtube_transcript_summary"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -1476,6 +1477,180 @@ def congress_trade_analysis_task_handler(task: Mapping[str, Any], backend: str) 
     )
 
 
+def enqueue_youtube_transcript_summary_tasks(
+    supabase_client: Any,
+    videos: Sequence[Mapping[str, Any]],
+    *,
+    priority: int = 5,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``youtube_transcript_summary`` task per landed transcript row.
+
+    Phase K2: the article body is already persisted by the ingest path; the task
+    only carries identifiers so the worker can re-read the row and fill in
+    summary / CoT fields / tickers. ``target_key`` is the 11-char video id, which
+    the ``(analysis_type, target_key)`` active-dedupe index uses to collapse a
+    re-enqueue while a task is still pending or leased.
+
+    Transcripts are long (an hour-long call is ~16k summarizer tokens even after
+    truncation), so cron-enqueued tasks use a modest priority below ticker/meta
+    work — the point of queueing them is to keep them off the inline AI lock, not
+    to outrank the nightly analysis chain.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    for video in videos:
+        stats["attempted"] += 1
+        video_id = str(video.get("video_id") or "").strip()
+        article_id = str(video.get("article_id") or "").strip()
+        if not video_id or not article_id:
+            stats["failed"] += 1
+            logger.warning(
+                "Skipping youtube_transcript_summary enqueue: missing video_id/article_id (%r)",
+                video,
+            )
+            continue
+        try:
+            payload: Dict[str, Any] = {
+                "video_id": video_id,
+                "article_id": article_id,
+                "url": str(video.get("url") or ""),
+                "expected_tickers": list(video.get("expected_tickers") or []),
+                "priority": int(priority),
+            }
+            if video.get("youtube_source_id") is not None:
+                payload["youtube_source_id"] = int(video["youtube_source_id"])
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY,
+                target_key=video_id,
+                payload=payload,
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue youtube_transcript_summary task for %s: %s",
+                video_id,
+                exc,
+            )
+    return stats
+
+
+def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Summarize + ticker-extract one already-saved ``YouTube Transcript`` row.
+
+    Mirrors the other handlers: bound to a single backend/model so cross-backend
+    fallback happens by re-leasing rather than an inline chain. The row's
+    ``content`` (cleaned captions) is read back from Research Postgres, so a
+    retry never needs to re-hit YouTube — which matters because YouTube
+    rate-limits caption fetches by IP for hours once tripped.
+    """
+
+    payload_raw = task.get("payload")
+    payload: Dict[str, Any] = dict(payload_raw) if isinstance(payload_raw, dict) else {}
+    video_id = str(payload.get("video_id") or task.get("target_key") or "").strip()
+    article_id = str(payload.get("article_id") or "").strip()
+    if not video_id:
+        raise ValueError("youtube_transcript_summary task missing video_id/target_key")
+
+    from ollama_client import OllamaClient
+    from postgres_client import PostgresClient
+    from research_repository import ResearchRepository
+    from youtube_captions import watch_url_for
+    from youtube_articles import enrich_saved_transcript
+
+    postgres = PostgresClient()
+    repo = ResearchRepository(postgres_client=postgres)
+
+    url = str(payload.get("url") or "") or watch_url_for(video_id)
+    if article_id:
+        rows = postgres.execute_query(
+            "SELECT id, title, content FROM research_articles WHERE id = %s",
+            (article_id,),
+        )
+    else:
+        rows = postgres.execute_query(
+            "SELECT id, title, content FROM research_articles WHERE url = %s",
+            (url,),
+        )
+    if not rows:
+        # Terminal: the row was deleted (or retention pruned it) between enqueue
+        # and lease. Nothing to enrich and retrying cannot help.
+        raise ValueError(
+            f"youtube_transcript_summary: no research_articles row for video {video_id}"
+        )
+
+    row = rows[0]
+    content = str(row.get("content") or "")
+    if not content.strip():
+        raise ValueError(
+            f"youtube_transcript_summary: empty content for video {video_id}"
+        )
+
+    model = model_for_backend(backend)
+    if backend == BACKEND_GLM:
+        ollama = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        ollama = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    def _summarize(text: str, *, article_type: str = "") -> Any:
+        return ollama.generate_summary(text, model=model, article_type=article_type)
+
+    enrich_saved_transcript(
+        research_repo=repo,
+        article_id=str(row["id"]),
+        title=str(row.get("title") or ""),
+        content=content,
+        expected_tickers=[str(t) for t in (payload.get("expected_tickers") or [])],
+        owned_tickers=_production_holdings_tickers(),
+        ollama_client=ollama,
+        summarize_fn=_summarize,
+    )
+    logger.info(
+        "youtube_transcript_summary enriched %s (article=%s) via %s/%s",
+        video_id,
+        row["id"],
+        backend,
+        model,
+    )
+
+
+def _production_holdings_tickers() -> list[str]:
+    """Tickers held by production funds, for relevance scoring. Empty on failure."""
+
+    try:
+        from supabase_client import SupabaseClient
+
+        client = SupabaseClient(use_service_role=True)
+        funds = (
+            client.supabase.table("funds")
+            .select("name")
+            .eq("is_production", True)
+            .execute()
+        )
+        names = [f["name"] for f in (funds.data or [])]
+        if not names:
+            return []
+        positions = (
+            client.supabase.table("latest_positions")
+            .select("ticker")
+            .in_("fund", names)
+            .execute()
+        )
+        return sorted({str(p["ticker"]) for p in (positions.data or []) if p.get("ticker")})
+    except Exception as exc:
+        logger.warning("Could not load production holdings for relevance scoring: %s", exc)
+        return []
+
+
 def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandler]:
     """Build handlers for queue-managed jobs that are enabled in config."""
 
@@ -1495,6 +1670,10 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
         )
     if QUEUE_JOB_ANALYZE_CONGRESS_TRADES in jobs:
         handlers[QUEUE_JOB_ANALYZE_CONGRESS_TRADES] = congress_trade_analysis_task_handler
+    if QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY in jobs:
+        handlers[QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY] = (
+            youtube_transcript_summary_task_handler
+        )
     return handlers
 
 

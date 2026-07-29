@@ -92,7 +92,8 @@ flowchart TB
 `sentiment_score`, `tickers[]`, `ticker`, `sector`, `source`, `published_at`,
 `fetched_at`, `relevance_score`, `ticker_validated_at`, `claims` / `fact_check` /
 `logic_check`, optional `embedding vector(1024)`, `fund` (fund-scoped PDFs only),
-`archive_*` (paywall → archive.org).
+`archive_*` (paywall → archive.org), `corroboration_count` / `corroboration_sources` (I1),
+`source_metadata` jsonb (K2 collector provenance — summarizer never writes it).
 
 Write path: `ResearchRepository.save_article` (`web_dashboard/research_repository.py`) —
 `ON CONFLICT (url) DO UPDATE`. **Articles live in Research Postgres only** (`PostgresClient` /
@@ -192,8 +193,8 @@ Shared helpers: `research_utils.extract_article_content`, `scheduler/jobs_common
 | Fetch helper | `web_dashboard/youtube_captions.py` — `fetch_caption_text(video_id) -> CaptionResult` | `research_utils.extract_article_content` |
 | Article type | **`YouTube Transcript`** (stable string; document in save_article callers) | existing type strings |
 | URL | Canonical `https://www.youtube.com/watch?v={id}` (unique key) | `research_articles_url_key` |
-| `source` | Prefer `youtube:{channel_id}` or channel handle for ROI; fall back `youtube.com` | track_record domain slice |
-| Metadata | No dedicated columns required for v0 — put `video_id`, `channel_id`, `duration_s`, `caption_kind`, `caption_lang` in `claims` JSON **or** a small `youtube_video_metadata` jsonb column later if claims collision is ugly | Prefer additive column if claims is semantically wrong |
+| `source` | **Shipped K2:** `youtube:{channel_id}` → `youtube:@handle` → `youtube:{channel-name-slug}` → `youtube:unknown`. Never bare `youtube.com` | track_record domain slice |
+| Metadata | **Shipped K2:** additive `research_articles.source_metadata` JSONB (`video_id`, `channel_id`, `channel`, `duration_s`, `caption_lang`, `caption_kind`, `caption_kind_raw`, `fetch_source`, `char_count`, `truncated`, `youtube_source_id`, `alpha_mechanism`). `claims` was rejected — the summarizer owns and overwrites it, so every re-enrich would drop provenance | One generic column, not a youtube-specific one; reusable by future collectors |
 
 ### End-to-end flow (K)
 
@@ -202,12 +203,13 @@ allowlist poll (yt-dlp flat-playlist)
   → for each new video_id since cursor
   → youtube-transcript-api.fetch (manual EN > auto EN > any)
   → clean text (drop [Music], collapse dup lines)
-  → if len(tokens) huge: chunk → summarize map-reduce OR truncate to N chars for v0 with clear flag
-  → generate_summary(...)  # same CoT fields as symbol scraper
-  → extract_and_validate_tickers
-  → save_article(article_type='YouTube Transcript', url=watch_url, content=full_or_cleaned,
-                 summary/conclusion/sentiment=..., tickers=..., source=youtube:...)
-  → article_relevance_job picks up if ticker_validated_at left null
+  → cap content at YOUTUBE_TRANSCRIPT_MAX_CHARS (flag source_metadata.truncated)
+  → generate_summary(article_type='YouTube Transcript')  # same CoT fields as symbol scraper
+  → extract_and_validate_tickers (expected_tickers from youtube_sources lead)
+  → save_article(article_type='YouTube Transcript', url=watch_url, content=cleaned,
+                 summary/conclusion/sentiment=..., tickers=..., source=youtube:{channel_id},
+                 source_metadata={video_id, channel_id, duration_s, caption_lang, caption_kind})
+  → (queue mode: save body first, then enqueue youtube_transcript_summary for a worker)
   → nightly ticker_meta includes snippet if ticker matches and row is in top-6/90d
   → dossier timeline shows event_type=article, source=YouTube Transcript
 ```
@@ -216,8 +218,8 @@ allowlist poll (yt-dlp flat-playlist)
 
 | Pipeline | Integration | Work required |
 |----------|-------------|---------------|
-| Summarize / CoT | Queue-managed summarize (prefer AI task queue; mirror CoT fields from `symbol_article_scraper_job`) | **Required** — else meta sees empty conclusions; avoid long inline mutex next to `alpha_research` |
-| `article_relevance_job` | No code change if tickers set + `ticker_validated_at` null | Optional: auto-validate when tickers come from IR channel↔ticker map |
+| Summarize / CoT | **Shipped K2:** AI-queue job `youtube_transcript_summary` (target_key = video id) with inline fallback; CoT fields mirror `symbol_article_scraper_job` | Done. Body persists first, so a retry never re-hits YouTube (its rate-limit block lasts hours) |
+| `article_relevance_job` | **Not reachable** — `save_article` always stamps `ticker_validated_at = NOW()`, and the job selects `IS NULL`. K2 validates tickers at ingest instead | None for K. Fixing the stamping is a cross-cutting change (see K2 notes) |
 | Ticker analysis | Automatic via `_get_research_articles` once tickers + summary exist | Spot-check `research_articles_count` / evidence ids after first IR video |
 | Ticker meta | Automatic via `_fetch_article_snippets` | Optional K4+: prefer higher `relevance_score` for IR earnings; or reserve 1 of 6 slots for `YouTube Transcript` (feature flag) |
 | Sector meta | None in v0 | Do not force |
@@ -232,8 +234,16 @@ allowlist poll (yt-dlp flat-playlist)
 
 ### Length / cost gotchas (K)
 
+**Resolved in K2 — option 1 (stitch + single summarize).** Stored `content` is capped at
+`YOUTUBE_TRANSCRIPT_MAX_CHARS` (default 64k chars ≈ a 75-minute call) and
+`source_metadata.truncated` flags rows that lost their tail. The summarizer budget for
+`article_type = 'YouTube Transcript'` is 16k chars (`AI_SUMMARY_MAX_CHARS_TRANSCRIPT`, same as
+Newsletter) instead of the 6k default, and `truncate_for_summary` keeps head **and** tail — at
+6k the entire Q&A of an earnings call would have been discarded, which is the part that moves a
+thesis. Revisit option 2 (map-reduce) before K3 volume if 16k proves too lossy.
+
 - Hour-long auto-captions can be **tens of thousands of tokens**. v0 options (pick one, document):
-  1. **Stitch + single summarize** with hard `content` cap (e.g. 32–64k chars) and note truncation in summary prompt.
+  1. **Stitch + single summarize** with hard `content` cap (e.g. 32–64k chars) and note truncation in summary prompt. ← **chosen**
   2. **Chunked summarize** (map → reduce) via AI task queue — better quality, more queue load.
   3. **Earnings-only** first (shorter, higher signal) before macro channels.
 - Prefer **manual** captions over auto when both exist (`youtube-transcript-api` default preference).
@@ -244,15 +254,24 @@ allowlist poll (yt-dlp flat-playlist)
 - [x] PoC: given a known earnings video with captions, produce cleaned text without downloading media.
   (**K1 done 2026-07-27** — see probe notes below; `web_dashboard/youtube_captions.py` +
   `scripts/youtube_caption_poc.py`.)
-- [ ] Upsert lands one `research_articles` row; re-run is idempotent on URL. (**K2**)
-- [ ] Row has non-empty `conclusion` + `sentiment` after summarize.
+- [x] Upsert lands one `research_articles` row; re-run is idempotent on URL. (**K2 done
+  2026-07-29** — `youtube_articles.ingest_video`; `article_exists` short-circuits a re-run,
+  `--force` re-summarizes through the same `ON CONFLICT (url)` upsert.)
+- [x] Row has non-empty `conclusion` + `sentiment` after summarize. (Covered by
+  `tests/test_youtube_articles.py`; live spot-check is **K4**.)
 - [ ] Holding ticker appears in `tickers[]`; within 90d it can appear in a meta bundle spot-check.
-- [ ] Dossier evidence-timeline lists it with type `YouTube Transcript`.
+  (Ticker merge is implemented — `youtube_sources.expected_tickers` leads, then
+  `extract_and_validate_tickers` — but the live meta spot-check is **K4**.)
+- [ ] Dossier evidence-timeline lists it with type `YouTube Transcript`. (Automatic once a
+  real row exists; verify in **K4**.)
 - [ ] Job registered in `scheduler/jobs.py` with cron that does **not** collide with
   `alpha_research` / `sector_meta` / `ticker_meta` heavy window (check ET vs PT mix in
   `AVAILABLE_JOBS` — same footgun as Phase G).
 - [x] Tests: caption clean + URL parse + mocked fetch/fallback; no network in unit tests
-  (`tests/test_youtube_captions.py`). save_article mock lands with K2.
+  (`tests/test_youtube_captions.py`). save_article mock landed with K2
+  (`tests/test_youtube_articles.py`, 43 tests: fixture VTT → clean → normalize →
+  `save_article` mock, source grain, metadata contract, idempotency, queue vs inline,
+  soft-fails, duration gates).
 
 ### K1 probe notes (2026-07-27)
 
@@ -267,6 +286,46 @@ allowlist poll (yt-dlp flat-playlist)
 | No EN captions? | Soft-fail `no_captions` (e.g. Gangnam-style KO-only auto) |
 
 Run: `python scripts/youtube_caption_poc.py <url-or-id> [--json] [--out file.txt]`
+
+### K2 implementation notes (2026-07-29)
+
+Shipped: `web_dashboard/youtube_articles.py`, `scripts/youtube_article_ingest.py`,
+`youtube_transcript_summary` AI-queue job, `research_articles.source_metadata` migration,
+`tests/test_youtube_articles.py`.
+
+Run one video end to end (allowlist only — this does **not** discover videos):
+
+```powershell
+python scripts/youtube_article_ingest.py "https://www.youtube.com/watch?v=LPEXkI_4qI4" --source-id 3
+python scripts/youtube_article_ingest.py LPEXkI_4qI4 --dry-run   # normalize + print, no DB, no LLM
+python web_dashboard/scripts/apply_article_source_metadata_migration.py --apply
+```
+
+Enable queue-managed transcript summarize by adding `youtube_transcript_summary` to
+`AI_QUEUE_JOBS` (with `AI_QUEUE_ENABLED=true`); without it, ingest summarizes inline like
+`symbol_article_scraper_job`. `ingest_video` returns a status
+(`saved` / `queued` / `skipped_exists` / `skipped_duration` / `soft_fail` / `error`) rather than
+raising, so a K3 poller can walk an allowlist without dying on one blocked video.
+
+**Where this plan was wrong about the codebase (corrected here, not in code):**
+
+1. **`article_relevance_job` will never see these rows.**
+   `ResearchRepository.save_article` stamps `ticker_validated_at = NOW()` unconditionally (both
+   the embedding and non-embedding branches), and `update_article_analysis` does the same. The
+   relevance job selects `WHERE ticker_validated_at IS NULL`, so **no** row created through
+   `save_article` is ever re-validated — this is true for every ingest path today, not just K.
+   The plan's "no code change if tickers set + `ticker_validated_at` null" is therefore
+   unreachable. K2 does its own ticker validation via `extract_and_validate_tickers` at ingest
+   (plus `youtube_sources.expected_tickers` as the lead). Changing the stamping behaviour is a
+   cross-cutting decision for a separate PR, not a YouTube change.
+2. **`claims` is not a safe metadata home.** The summarizer writes `claims` on every
+   summarize/re-enrich, so provenance stored there is lost on the first re-run. Hence the
+   additive `source_metadata` JSONB.
+3. **`claim_recent_summary_input` is deliberately not used** for transcripts. Exact-URL dedup
+   plus `article_exists` already prevent duplicate work per video, and two different videos
+   cannot produce the same stitched caption hash. It would matter for chunked summarize (K3+).
+4. **6k summarizer budget was the real bottleneck**, not the `content` cap — see the length
+   section above.
 
 ---
 
@@ -419,8 +478,14 @@ H7 (Ideas usage) ──► I1 (story dedup) ──┬──► K1–K4 (allowlis
    event rhymes be Today-only?
 2. **Meta slot policy:** Should IR `YouTube Transcript` get a reserved bundle slot so six
    news blurbs cannot erase an earnings call?
-3. **`source` grain:** Channel-level vs `youtube.com` — channel-level wins for K5 but may
-   fragment ROI sample sizes early.
-4. **Chunking policy** for &gt;N-token captions — pick before K3 volume.
+3. ~~**`source` grain:**~~ **Resolved K2 (2026-07-29): channel-level.**
+   `youtube:{channel_id}` → `youtube:@handle` → `youtube:{channel-slug}` → `youtube:unknown`.
+   Bare `youtube.com` was rejected: a single host label would average a trusted IR channel with
+   every macro pundit, which defeats the point of K5. Small-sample fragmentation is accepted —
+   the allowlist is tiny by design, and `confidence_weight` on `youtube_sources` is the intended
+   lever if per-channel N stays too low to rank.
+4. ~~**Chunking policy**~~ **Resolved K2 (2026-07-29): stitch + single summarize**, 64k-char
+   `content` cap + 16k-char summarizer budget, `source_metadata.truncated` flag. Revisit
+   map-reduce before K3 volume if 16k is too lossy for hour-long calls.
 5. **Event baseline:** SPY vs sector ETF vs peer basket — start SPY + one sector ETF map;
    document in playbook metadata.

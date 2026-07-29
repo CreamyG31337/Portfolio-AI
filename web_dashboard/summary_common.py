@@ -21,6 +21,11 @@ logger = logging.getLogger(__name__)
 # So the conservative 6k cap is the bottleneck, not the model.
 SUMMARY_MAX_CHARS_DEFAULT = 6000
 SUMMARY_MAX_CHARS_NEWSLETTER = 16000  # ~4000 tokens, fits comfortably in 8k+ ctx
+# Phase K2: an hour-long earnings call is ~45-50k cleaned caption chars. At the
+# 6k default the head+tail cut would drop the entire Q&A, which is the part that
+# moves a thesis. Same budget as newsletters — the tail matters for the same
+# reason (closing guidance / analyst questions).
+SUMMARY_MAX_CHARS_TRANSCRIPT = 16000
 SUMMARY_TRUNCATION_MARKER = "\n\n[...content truncated; middle section omitted...]\n\n"
 
 
@@ -43,13 +48,17 @@ def _env_int(name: str, default: int) -> int:
 def compute_summary_max_chars(article_type: str = "") -> int:
     """Return the character budget the summarizer should clamp the article body to.
 
-    Newsletters get a larger budget than the default article cap because the
-    actionable thesis usually appears at the bottom; cutting the tail loses
-    the most important signal. Operators can override via
-    ``AI_SUMMARY_MAX_CHARS`` and ``AI_SUMMARY_MAX_CHARS_NEWSLETTER`` env vars.
+    Newsletters and video transcripts get a larger budget than the default
+    article cap because the actionable thesis usually appears at the bottom;
+    cutting the tail loses the most important signal. Operators can override via
+    ``AI_SUMMARY_MAX_CHARS``, ``AI_SUMMARY_MAX_CHARS_NEWSLETTER`` and
+    ``AI_SUMMARY_MAX_CHARS_TRANSCRIPT`` env vars.
     """
-    if (article_type or "").strip().lower() == "newsletter":
+    normalized = (article_type or "").strip().lower()
+    if normalized == "newsletter":
         return _env_int("AI_SUMMARY_MAX_CHARS_NEWSLETTER", SUMMARY_MAX_CHARS_NEWSLETTER)
+    if normalized == "youtube transcript":
+        return _env_int("AI_SUMMARY_MAX_CHARS_TRANSCRIPT", SUMMARY_MAX_CHARS_TRANSCRIPT)
     return _env_int("AI_SUMMARY_MAX_CHARS", SUMMARY_MAX_CHARS_DEFAULT)
 
 

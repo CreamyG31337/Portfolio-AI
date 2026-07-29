@@ -34,6 +34,8 @@ class ResearchRepository:
             self.client = postgres_client or PostgresClient()
             # Check which ticker column exists (for backward compatibility)
             self._has_tickers_column = self._check_tickers_column_exists()
+            # Phase K2 collector provenance; additive column may not be migrated yet.
+            self._has_source_metadata_column = self._check_column_exists("source_metadata")
             logger.debug(f"ResearchRepository initialized successfully (tickers column: {self._has_tickers_column})")
         except Exception as e:
             logger.error(f"ResearchRepository initialization failed: {e}")
@@ -57,7 +59,24 @@ class ResearchRepository:
         except Exception:
             # If we can't check, assume old schema (ticker column only)
             return False
-    
+
+    def _check_column_exists(self, column_name: str) -> bool:
+        """Whether ``research_articles`` has this column (additive-migration guard)."""
+        try:
+            result = self.client.execute_query(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'research_articles'
+                  AND column_name = %s
+                """,
+                (column_name,),
+            )
+            return len(result) > 0
+        except Exception:
+            return False
+
+
     def _normalize_ticker_data(self, article: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize ticker data to always use 'tickers' key (array format).
         
@@ -147,10 +166,11 @@ class ResearchRepository:
         conclusion: Optional[str] = None,
         sentiment: Optional[str] = None,
         sentiment_score: Optional[float] = None,
-        logic_check: Optional[str] = None
+        logic_check: Optional[str] = None,
+        source_metadata: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """Save a research article to the database
-        
+
         Args:
             tickers: List of stock ticker symbols (e.g., ["NVDA", "AMD"])
             sector: Sector name (e.g., "Technology")
@@ -172,7 +192,10 @@ class ResearchRepository:
             sentiment: Sentiment category (VERY_BULLISH, BULLISH, NEUTRAL, BEARISH, VERY_BEARISH)
             sentiment_score: Numeric sentiment score for calculations (VERY_BULLISH=2.0, BULLISH=1.0, NEUTRAL=0.0, BEARISH=-1.0, VERY_BEARISH=-2.0)
             logic_check: Categorical classification (DATA_BACKED, HYPE_DETECTED, NEUTRAL) for relationship confidence scoring
-            
+            source_metadata: Collector-specific provenance JSON (Phase K2). Never written by
+                  the summarizer, so re-enrichment cannot clobber it. YouTube Transcript rows
+                  carry video_id / channel_id / duration_s / caption_lang / caption_kind.
+
         Returns:
             Article ID (UUID as string) if successful, None otherwise
         """
@@ -199,19 +222,42 @@ class ResearchRepository:
             
             # Prepare claims as JSONB (convert list to JSON string)
             claims_json = json.dumps(claims) if claims else None
-            
+
+            # Collector provenance JSONB (Phase K2). The column is additive, so a
+            # deploy that lands before the migration must not break every ingest
+            # path — omit it entirely when the column is not there yet.
+            source_metadata_json = json.dumps(source_metadata) if source_metadata else None
+            if self._has_source_metadata_column:
+                meta_col = "source_metadata,"
+                meta_value = "%s::jsonb,"
+                meta_update = (
+                    "source_metadata = COALESCE("
+                    "EXCLUDED.source_metadata, research_articles.source_metadata),"
+                )
+                meta_params: tuple = (source_metadata_json,)
+            else:
+                if source_metadata:
+                    logger.warning(
+                        "research_articles.source_metadata column missing; dropping "
+                        "collector metadata for %s (run "
+                        "web_dashboard/scripts/apply_article_source_metadata_migration.py)",
+                        url,
+                    )
+                meta_col = meta_value = meta_update = ""
+                meta_params = ()
+
             # Build query dynamically based on whether embedding is provided
             if embedding_str:
-                query = """
+                query = f"""
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, embedding, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        ticker_validated_at
+                        {meta_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        NOW()
+                        {meta_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -231,6 +277,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        {meta_update}
                         ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
@@ -253,19 +300,19 @@ class ResearchRepository:
                     conclusion,
                     sentiment,
                     sentiment_score,
-                    logic_check
-                )
+                    logic_check,
+                ) + meta_params
             else:
-                query = """
+                query = f"""
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        ticker_validated_at
+                        {meta_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        NOW()
+                        {meta_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -284,6 +331,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        {meta_update}
                         ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
@@ -305,8 +353,8 @@ class ResearchRepository:
                     conclusion,
                     sentiment,
                     sentiment_score,
-                    logic_check
-                )
+                    logic_check,
+                ) + meta_params
             
             with self.client.get_connection() as conn:
                 cursor = conn.cursor()

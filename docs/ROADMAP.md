@@ -140,10 +140,9 @@ new feed.
 ### Ordered next work → Phase I (prefer **I1**), then K/J
 
 Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5 shipped.
-**I1 story dedup shipped 2026-07-29.** Prefer **I2** (FRED → regime) or **K2** (captions →
-`research_articles`) next; **I4** RSS additions are cheap anytime now that near-dup
-pressure is handled. See [Phase K](#phase-k--youtube-captions--research-articles) and
-[`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md). Optional leftover: measurement **M6**.
+**I1 story dedup + K2 YouTube→articles shipped 2026-07-29.** Prefer **K3** (allowlist poll
+job) to land videos on a schedule, **I4** (SEC/Fed RSS — cheap), or **I2** (FRED → regime).
+Cross-source idea clusters stay later (need K2 ✅ + widen I1). Optional: measurement **M6**.
 
 ---
 
@@ -323,12 +322,13 @@ Ideas stays discovery triage only.
 >
 > **Later — cross-source idea clusters (not started).** Today an “idea” is one
 > `research_articles` row (Ideas inbox = Alpha/Opportunity only); email lives in a separate
-> `newsletters` table; YouTube isn’t article-shaped until K2; I1 corroboration only merges
-> near-duplicate *Market News* titles. Goal: one triageable idea that can group evidence from
+> `newsletters` table; YouTube can land as `YouTube Transcript` articles (K2) but is not
+> wired into I1 or Ideas yet; I1 corroboration only merges near-duplicate *Market News* titles.
+> Goal: one triageable idea that can group evidence from
 > news, newsletters, YouTube transcripts, and other research (story identity + shared tickers /
 > themes), so Accept/Dismiss applies to the catalyst once — not once per source. Prerequisites:
-> K2 + widen I1 beyond Market News; do **not** stuff friend tips or raw email into Ideas without
-> a cluster layer.
+> widen I1 beyond Market News (+ optional newsletter bridge); do **not** stuff friend tips or
+> raw email into Ideas without a cluster layer.
 
 ### 2.3 Ticker dossier upgrade — *evidence timeline*
 
@@ -797,7 +797,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | after H (prefer after I1); **K1 PoC done 2026-07-27** (no auth on residential; cloud blocks likely) — K2+ not started |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1+K2 shipped 2026-07-29**; K3 allowlist poll + K4/K5 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1069,10 +1069,22 @@ and treat fetch failures as skippable.
   worked with **no auth/API key** on residential Windows; map `blocked` /
   `age_restricted` / `no_captions` for soft-fail. Expect `RequestBlocked` on cloud IPs (proxies
   later). Details in [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K1 probe notes.
-- [ ] **K2 · Normalize → `research_articles`** — upsert by watch URL; set
-  `article_type` (e.g. `YouTube Transcript`), title from video title, `published_at` from
-  upload time, body from captions; domain/source label distinct for source-ROI slicing.
-  Wire retention/domain-health the same way as other ingest paths.
+- [x] **K2 · Normalize → `research_articles`** — **done 2026-07-29:**
+  `web_dashboard/youtube_articles.py` + `scripts/youtube_article_ingest.py` (run-once, one
+  video or one `youtube_sources` row). Upsert by canonical watch URL (unique `url`);
+  `article_type = 'YouTube Transcript'`; title/`published_at` from video metadata; body =
+  cleaned captions capped at `YOUTUBE_TRANSCRIPT_MAX_CHARS` (64k default);
+  `source = youtube:{channel_id}` (channel grain — never bare `youtube.com`, so source-ROI
+  can rank an IR channel apart from a macro pundit). Collector facts (`video_id`,
+  `channel_id`, `duration_s`, `caption_lang`, `caption_kind`) live in the new additive
+  `research_articles.source_metadata` JSONB (migration
+  `database/migrations/2026-07_add_article_source_metadata.sql`) — not `claims`, which the
+  summarizer overwrites. Summarize + ticker extraction reuse the
+  `symbol_article_scraper_job` path, queue-managed via new AI-task-queue job
+  `youtube_transcript_summary` when enabled (falls back to inline). Transcript summarizer
+  budget raised to 16k chars so an hour-long call keeps its Q&A. Retention/domain-health
+  deferred with K3 (there is still no scheduled `delete_old_articles` caller for any type,
+  and domain health is keyed on hosts, not channels).
 - [ ] **K3 · Allowlist job** — scheduler job: poll curated `youtube_sources` (channel id or
   playlist / search query scoped to ticker IR) for new videos since last run; enqueue caption
   fetch + article upsert. Cap per run. Holdings-scoped discovery filters
