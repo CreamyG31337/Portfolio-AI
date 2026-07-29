@@ -1,25 +1,25 @@
 ---
 name: Ideas inbox quality
-overview: Make /ideas a usable triage queue. Root cause is a bucket-semantics inversion (DATA_BACKED is a *genre* label meaning "data dump", but it maps to the top relevance score), not just weak title filters. Fix order is UI-first (readable, untruncated "why care"), then immediate cleanup of the existing junk pool, then supply-side filtering, then inbox ranking. H7 showed triage unused because most ideas are not ideas.
+overview: "P1–P4 + P6 shipped 2026-07-27/29. Inbox ranking inverted because DATA_BACKED (genre=data dump) mapped to top relevance_score; fixed via why-care UI, auto_cleanup script, low-value filters, and inbox-only idea_score/low_signal. stockanalysis.com not banned (filtering beats banning). P5 live top-20 audit still open. Exclude decided_by=auto_cleanup from any label/usage metric."
 todos:
   - id: p1-ui-why-care
     content: "Ideas API + UI: surface conclusion as primary 'why care' line, full text (no dead-end truncation), escape all interpolated fields"
-    status: pending
+    status: completed
   - id: p2-cleanup-now
-    content: "Immediate cleanup: bulk auto-dismiss junk via idea_triage (decided_by='auto_cleanup') + disable stockanalysis.com domain"
-    status: pending
+    content: "Cleanup script shipped (decided_by='auto_cleanup'); stockanalysis.com NOT banned (filtering beats banning — 57% useful). Confirm --execute in prod if pool still junk-heavy."
+    status: completed
   - id: p3-expand-low-value-filter
     content: "Extend low_value_alpha_reason patterns (title-only for unambiguous, title+URL for ambiguous) + tests in test_alpha_helpers.py"
-    status: pending
+    status: completed
   - id: p4-inbox-ranking
     content: "Inbox-only composite idea_score in _fetch_alpha_ideas_query AND the fallback; emit low_signal flag; soft-demote not hard-exclude"
-    status: pending
+    status: completed
   - id: p5-validate
     content: "Baseline snapshot -> run alpha job -> audit low_value skips for false positives -> compare top-20 before/after"
     status: pending
   - id: p6-docs
     content: "Note Ideas quality fix in docs/ROADMAP.md near H7 / §2.2; record that auto_cleanup rows must be excluded from any future label set"
-    status: pending
+    status: completed
 ---
 
 # Ideas inbox quality — implementation plan
@@ -169,11 +169,16 @@ version drift silently rots them and nothing alerts you.
 
 ## Plan (ordered — this order is deliberate)
 
-### P1 — UI: readable, untruncated "why care" **(do this first)**
+### P1 — UI: readable, untruncated "why care" — ✅ SHIPPED 2026-07-27
 
 Highest value, lowest risk, **zero decisions required**, purely additive. It is also
 diagnostic: once conclusions are visible you can eyeball whether P3/P4's patterns are even
 needed, instead of making filtering decisions blind.
+
+**Shipped:** `conclusion` / `url` / `logic_check` / `sentiment` on both Ideas fetch paths;
+`ideas.ts` renders conclusion as primary "why care" (full text), summary behind
+`<details>`, title links to source URL, all fields HTML-escaped; `low_signal` chip ready
+for P4.
 
 **Backend** — [`today_briefing_service.py`](../../web_dashboard/today_briefing_service.py):
 add `conclusion`, `url`, `logic_check`, `sentiment` to the SELECT in **both**
@@ -206,7 +211,15 @@ Build: `pnpm run build:ts`. Tests: `python -m pytest tests/test_flask_intelligen
 **Acceptance:** open `/ideas`, pick any card, read the whole why-care line and reach the
 full summary without leaving the page.
 
-### P2 — Immediate cleanup of the existing mess **(short-term fix the user asked for)**
+### P2 — Immediate cleanup of the existing mess — ✅ SHIPPED 2026-07-27 (script; domain ban skipped)
+
+**Shipped:** `web_dashboard/scripts/cleanup_ideas_inbox.py` — dry-run by default; `--execute`
+inserts `dismissed` / `decided_by='auto_cleanup'` rows (reversible; does not touch
+`research_articles`).
+
+**Not shipped (deliberate):** disabling `stockanalysis.com` in `alpha_research_domains`.
+Measured 43% junk / 57% useful — filtering (P3/P4) beats banning. Domain remains in
+`STRUCTURED_DATA_DOMAINS` for soft demotion.
 
 P3's filter only prevents *new* junk, and the inbox window is 14 days — so without this
 step the page stays unusable for two weeks. Two moves, both reversible, **neither writes to
@@ -254,7 +267,11 @@ Requirements:
 One setting, instantly reversible, removes the single largest junk source at the supply
 side. Note the before/after hit count in the P5 log so the effect is attributable.
 
-### P3 — Extend the low-value pre-filter (stop new junk)
+### P3 — Extend the low-value pre-filter (stop new junk) — ✅ SHIPPED 2026-07-27
+
+**Shipped:** shared rules in `ideas_quality.py` / `jobs_common.low_value_alpha_reason`
+(title-only for unambiguous holdings lists; title+URL for dividend/calendar/ratings);
+tests in `tests/test_alpha_helpers.py` (positive + negative corpus).
 
 Add narrow patterns to `_LOW_VALUE_ALPHA_PATTERNS` in
 [`jobs_common.py`](../../web_dashboard/scheduler/jobs_common.py):
@@ -389,14 +406,17 @@ not after.
    removed rows were junk vs. real (false-positive rate).
 5. **Human spot-check:** of the new top-20, how many are actionable? Target ≥15.
 
-### P6 — Docs
+### P6 — Docs — ✅ SHIPPED 2026-07-29
 
-Update ROADMAP near H7 / §2.2: empty triage + junk ranking diagnosis, the RC1
-genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
+**Shipped in** [`docs/ROADMAP.md`](../../docs/ROADMAP.md) §2.2 / H7 / Phase H index /
+post-ship verification:
 
-- **Do not train relevance on `idea_triage` until real labels exist**, and
-- **`decided_by='auto_cleanup'` rows must be excluded** from any label set or triage-coverage
-  metric.
+- Empty-triage diagnosis + Ideas quality P1–P4 shipped note
+- RC1 genre-vs-quality finding (DATA_BACKED ranking inversion)
+- **`decided_by='auto_cleanup'` must be excluded** from any label set or triage-coverage
+  metric; do not train relevance on `idea_triage` until real human labels exist
+
+P5 (live top-20 / alpha-run audit) remains an ops checklist item.
 
 ---
 
@@ -454,17 +474,17 @@ genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
 
 1. Read this plan + linked files. RC1 and RC5 are the load-bearing findings — do not
    reorder the phases without re-reading them.
-2. **P1** UI/API: conclusion + full-text + escaping. `pnpm run build:ts`;
-   `python -m pytest tests/test_flask_intelligence_routes.py -v`. Eyeball `/ideas`.
-3. **P5.1** baseline snapshot (can run before or alongside P1).
-4. **P2** cleanup script `--dry-run` → review the match list by hand → `--execute`;
-   disable `stockanalysis.com` domain.
-5. **P3** patterns + tests (`python -m pytest tests/test_alpha_helpers.py -v`), incl.
-   negative corpus. Update the docstring and the tuning-guidance comment block.
+2. ~~**P1** UI/API: conclusion + full-text + escaping.~~ ✅ done 2026-07-27
+3. **P5.1** baseline snapshot (ops — can still run anytime for a before/after).
+4. ~~**P2** cleanup script.~~ ✅ done 2026-07-27
+   (`cleanup_ideas_inbox.py`; stockanalysis.com ban **skipped** — filtering beats banning).
+   Confirm `--execute` against prod if the 14d pool is still junk-heavy.
+5. ~~**P3** patterns + tests.~~ ✅ done 2026-07-27
 6. **P5.3** trigger one `alpha_research` run; audit every `low_value` skip. **Hard gate.**
 7. ~~**P4** inbox ranking in *both* query paths + `low_signal` + `include_low_signal`.~~ ✅ done
 8. **P5.4/5.5** diff top-20 vs baseline; record false-positive rate.
-9. **P6** ROADMAP note; Mandrel `context_store` completion when shipped.
+9. ~~**P6** ROADMAP note + `auto_cleanup` hygiene.~~ ✅ done 2026-07-29
+   (Mandrel `context_store` optional).
 
 ## Follow-ups (deliberately out of v1, with triggers)
 
