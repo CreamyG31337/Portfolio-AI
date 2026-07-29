@@ -54,7 +54,7 @@ Run the migration to add the preferences column:
 
 ```bash
 # In Supabase SQL editor or via psql
-psql -f web_dashboard/schema/06_user_preferences.sql
+psql -f database/schema/supabase/functions/set_user_preference.sql
 ```
 
 This adds:
@@ -106,7 +106,7 @@ Users can set their timezone via:
 
 ## Files
 
-- `web_dashboard/schema/06_user_preferences.sql` - Database migration
+- `database/schema/supabase/functions/set_user_preference.sql` - Database migration
 - `web_dashboard/user_preferences.py` — Python utility functions
 - `web_dashboard/templates/settings.html` — Settings UI
 - Admin scheduler pages — use `get_user_timezone()` for display

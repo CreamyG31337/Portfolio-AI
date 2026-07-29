@@ -35,7 +35,7 @@ Run the SQL schema to create the `fund_contributions` table:
 
 ```bash
 # In Supabase SQL Editor, run:
-web_dashboard/schema/05_fund_contributions_schema.sql
+database/schema/supabase/tables/fund_contributions.sql
 ```
 
 This creates:
@@ -147,7 +147,7 @@ To keep contributors in sync going forward, you can either:
 Run the schema file first:
 ```sql
 -- In Supabase SQL Editor
-web_dashboard/schema/05_fund_contributions_schema.sql
+database/schema/supabase/tables/fund_contributions.sql
 ```
 
 ### Error: Connection failed

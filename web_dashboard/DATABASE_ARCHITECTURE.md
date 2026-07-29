@@ -20,7 +20,7 @@ This project uses **two separate databases** for different purposes:
 - `research_articles` - (NOTE: This might be in wrong DB - see below)
 - And more...
 
-**Schema Location**: `web_dashboard/schema/*.sql`
+**Schema Location**: `database/schema/supabase/`
 
 **Why Supabase?**:
 - Managed PostgreSQL with automatic backups
@@ -56,7 +56,7 @@ This project uses **two separate databases** for different purposes:
 
 **Schema Location**: 
 - Research articles: `web_dashboard/scripts/setup_postgres.py`
-- Congress analysis: `web_dashboard/schema/22_congress_trades_analysis.sql`
+- Congress analysis: `database/schema/research/tables/congress_trades_analysis.sql`
 
 **Why Separate Database?**:
 - **Cost savings**: Supabase charges for storage; lengthy AI reasoning text is cheaper on self-hosted Postgres
@@ -95,10 +95,10 @@ Run SQL files in order: `01_*.sql`, `02_*.sql`, etc.
 ### PostgreSQL Migrations
 ```bash
 # Using Python helper script
-python web_dashboard/schema/apply_postgres_schema.py
+python database/schema/apply_postgres_schema.py
 
 # Or directly via psql
-psql $RESEARCH_DATABASE_URL -f web_dashboard/schema/22_congress_trades_analysis.sql
+psql $RESEARCH_DATABASE_URL -f database/schema/research/tables/congress_trades_analysis.sql
 ```
 
 ---
