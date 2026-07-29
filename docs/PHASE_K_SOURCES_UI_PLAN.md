@@ -151,7 +151,7 @@ the job is a **follow-up**, not part of this work — the UI must render them as
 ### 4.3 Register both tables
 
 Add `youtube_sources` to the schema allowlist at
-[`query_and_update_schemas.py:562`](../web_dashboard/schema/query_and_update_schemas.py#L562)
+[`query_and_update_schemas.py:562`](../database/schema/query_and_update_schemas.py#L562)
 or the SQL interface will reject queries against it.
 
 ### 4.4 Migration files
