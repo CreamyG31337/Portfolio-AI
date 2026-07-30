@@ -29,6 +29,9 @@ CREATE TABLE research_articles (
     ticker_sentiment JSONB,
     ticker_validated_at TIMESTAMP
 ,
+    corroboration_count INT NOT NULL DEFAULT 1,
+    corroboration_sources TEXT[] NOT NULL DEFAULT '{}',
+    source_metadata JSONB,
     PRIMARY KEY (id)
 );
 
@@ -46,3 +49,7 @@ CREATE INDEX idx_research_ticker ON research_articles (ticker);
 CREATE INDEX idx_research_tickers_gin ON research_articles (tickers);
 CREATE INDEX idx_research_type ON research_articles (article_type);
 CREATE UNIQUE INDEX research_articles_url_key ON research_articles (url);
+CREATE INDEX idx_research_articles_corroboration ON research_articles (corroboration_count DESC)
+    WHERE corroboration_count > 1;
+CREATE INDEX idx_research_articles_source_metadata ON research_articles USING gin (source_metadata)
+    WHERE source_metadata IS NOT NULL;

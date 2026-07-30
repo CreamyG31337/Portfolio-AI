@@ -1,6 +1,6 @@
 ---
 name: Measurement rig repair
-overview: The track record is unreadable and currently frozen. Three defects: (1) the outcome scoring queue is head-of-line blocked and has scored ~0 rows for days; (2) every stance is scored against ^RUT regardless of what the ticker is, so excess return measures benchmark mismatch rather than skill; (3) mean_excess pools bullish and bearish sign conventions and is meaningless. Fix those, record the benchmark immutably per outcome, then add baselines so a hit rate can be interpreted at all.
+overview: "M1–M5 shipped 2026-07-27 (dead-letter queue, per-ticker benchmarks, sign-adjusted excess, scoring_version rescore, always-bullish/shuffled baselines). Headline metric is edge vs baseline, not raw hit rate. M6 (fund primary benchmark for portfolio reporting) still open."
 todos:
   - id: m1-unjam-scoring
     content: "Fix head-of-line block in select_unscored_stances: dead-letter unscoreable rows so the queue drains"

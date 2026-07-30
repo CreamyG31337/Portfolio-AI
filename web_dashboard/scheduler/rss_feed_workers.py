@@ -60,6 +60,24 @@ def process_rss_feed_item(ctx: RssFeedItemCtx, item: dict) -> ArticleCounters:
             c.skipped += 1
             return c
 
+        from story_identity import try_corroborate_incoming_story
+
+        story_match = try_corroborate_incoming_story(
+            ctx.research_repo,
+            title=str(title),
+            source=item.get("source") or ctx.feed_name,
+            url=str(url),
+        )
+        if story_match is not None:
+            logger.info(
+                "  🔗 Story corroboration (skip extract): matched %s… sim=%.3f%s",
+                story_match.title[:50],
+                story_match.similarity,
+                " [containment]" if story_match.via_containment else "",
+            )
+            c.skipped += 1
+            return c
+
         if not content or len(content) < 200:
             logger.info("  Extracting full content: %s...", title[:40])
             extracted = extract_article_content(url)

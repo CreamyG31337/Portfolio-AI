@@ -462,21 +462,25 @@ def _process_performance_metrics_for_date(
     Returns:
         Tuple of (rows_inserted, rows_skipped, list of fund names processed)
     """
-    # Get all funds that have data for target_date
-    positions_query = client.supabase.table("portfolio_positions")\
-        .select(
-            "fund, total_value, cost_basis, pnl, currency, date, "
-            "total_value_base, cost_basis_base, pnl_base"
-        )\
-        .gte("date", f"{target_date}T00:00:00")\
-        .lt("date", f"{target_date}T23:59:59.999999")
     
+    # ⚡ Bolt: Replace unbounded execute() with fetch_all_rows to avoid PostgREST 1000-row limit on large portfolios
+    from supabase_pagination import fetch_all_rows
+    
+    filters = [
+        ("date", "gte", f"{target_date}T00:00:00"),
+        ("date", "lt", f"{target_date}T23:59:59.999999")
+    ]
     if fund_filter:
-        positions_query = positions_query.eq("fund", fund_filter)
+        filters.append(("fund", "eq", fund_filter))
+
+    positions_data = fetch_all_rows(
+        client,
+        "portfolio_positions",
+        select="fund, total_value, cost_basis, pnl, currency, date, total_value_base, cost_basis_base, pnl_base",
+        filters=filters
+    )
     
-    positions_result = positions_query.execute()
-    
-    if not positions_result.data:
+    if not positions_data:
         return (0, 0, [])
     
     # Group by fund and aggregate
@@ -490,7 +494,7 @@ def _process_performance_metrics_for_date(
     # Load exchange rates if needed for USD conversion
     from exchange_rates_utils import get_exchange_rate_for_date_from_db
     
-    for pos in positions_result.data:
+    for pos in positions_data:
         fund = pos['fund']
         original_currency = pos.get('currency', 'CAD')
         currency = original_currency
@@ -538,6 +542,7 @@ def _process_performance_metrics_for_date(
     # Insert/update performance_metrics for each fund
     rows_inserted = 0
     rows_skipped = 0
+    upsert_batch = []
     for fund, totals in fund_totals.items():
         # Check if we should skip existing entries
         if skip_existing:
@@ -556,8 +561,7 @@ def _process_performance_metrics_for_date(
             if totals['cost_basis'] > 0 else 0.0
         )
         
-        # Upsert into performance_metrics
-        client.supabase.table("performance_metrics").upsert({
+        upsert_batch.append({
             'fund': fund,
             'date': str(target_date),
             'total_value': float(totals['total_value']),
@@ -567,9 +571,15 @@ def _process_performance_metrics_for_date(
             'total_trades': totals['total_trades'],
             'winning_trades': 0,  # Not calculated in this version
             'losing_trades': 0     # Not calculated in this version
-        }, on_conflict='fund,date').execute()
-        
+        })
         rows_inserted += 1
+
+    if upsert_batch:
+        # ⚡ Bolt: Batch upsert metrics instead of row-by-row
+        client.supabase.table("performance_metrics").upsert(
+            upsert_batch,
+            on_conflict='fund,date'
+        ).execute()
     
     return (rows_inserted, rows_skipped, list(fund_totals.keys()))
 

@@ -1474,7 +1474,12 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
         # Sanitize scraped article text before truncation and LLM ingestion.
         text = sanitize_for_llm(text)
-        max_chars = compute_summary_max_chars(article_type)
+        from summary_common import summary_uses_high_context_budget
+
+        max_chars = compute_summary_max_chars(
+            article_type,
+            high_context=summary_uses_high_context_budget(article_type, model=model),
+        )
         original_len = len(text)
         if original_len > max_chars:
             text = truncate_for_summary(text, max_chars)
@@ -1618,7 +1623,12 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             return {}
 
         # Clamp article body length so prompt + article + output fit common model contexts.
-        max_chars = compute_summary_max_chars(article_type)
+        from summary_common import summary_uses_high_context_budget
+
+        max_chars = compute_summary_max_chars(
+            article_type,
+            high_context=summary_uses_high_context_budget(article_type, model=model),
+        )
         original_len = len(text)
         if original_len > max_chars:
             text = truncate_for_summary(text, max_chars)
@@ -2060,7 +2070,12 @@ def _generate_summary_via_zhipu(
         logger.warning("Z.AI API key not set - cannot generate summary with GLM model")
         return {}
 
-    max_chars = compute_summary_max_chars(article_type)
+    from summary_common import summary_uses_high_context_budget
+
+    max_chars = compute_summary_max_chars(
+        article_type,
+        high_context=summary_uses_high_context_budget(article_type, model=model),
+    )
     original_len = len(text)
     if original_len > max_chars:
         text = truncate_for_summary(text, max_chars)

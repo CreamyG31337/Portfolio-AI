@@ -13,31 +13,33 @@ from typing import List, Optional, Sequence
 
 
 def calculate_relevance_score(
-    tickers: List[str], 
+    tickers: List[str],
     sector: Optional[str],
-    owned_tickers: Optional[List[str]] = None
+    owned_tickers: Optional[List[str]] = None,
+    corroboration_count: int = 1,
 ) -> float:
-    """Calculate relevance score based on tickers and ownership.
-    
+    """Calculate relevance score based on tickers, ownership, and story corroboration.
+
     Args:
         tickers: List of ticker symbols extracted from article
         sector: Sector name if available
         owned_tickers: Optional list of tickers we own (for performance)
-        
+        corroboration_count: Distinct publishers covering this story (Phase I1)
+
     Returns:
-        Relevance score: 0.8 (owned tickers), 0.7 (opportunities), 0.5 (general)
+        Relevance score: 0.8 (owned tickers), 0.7 (opportunities), 0.5 (general),
+        plus a small capped boost when multiple sources corroborate the story.
     """
+    from story_identity import apply_corroboration_boost
+
     if not tickers:
-        return 0.5  # General market news
-    
-    # Check if any tickers are owned
-    if owned_tickers:
-        has_owned = any(ticker in owned_tickers for ticker in tickers)
-        if has_owned:
-            return 0.8  # Ticker-specific, owned
-    
-    # Has tickers but none owned = opportunity discovery
-    return 0.7
+        base = 0.5  # General market news
+    elif owned_tickers and any(ticker in owned_tickers for ticker in tickers):
+        base = 0.8  # Ticker-specific, owned
+    else:
+        base = 0.7  # Has tickers but none owned = opportunity discovery
+
+    return apply_corroboration_boost(base, corroboration_count)
 
 
 _MARKET_SIGNAL_PATTERN = re.compile(

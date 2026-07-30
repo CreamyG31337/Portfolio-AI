@@ -8,7 +8,7 @@ import json
 import logging
 import threading
 from contextlib import contextmanager
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Sequence
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -34,6 +34,8 @@ class ResearchRepository:
             self.client = postgres_client or PostgresClient()
             # Check which ticker column exists (for backward compatibility)
             self._has_tickers_column = self._check_tickers_column_exists()
+            # Phase K2 collector provenance; additive column may not be migrated yet.
+            self._has_source_metadata_column = self._check_column_exists("source_metadata")
             logger.debug(f"ResearchRepository initialized successfully (tickers column: {self._has_tickers_column})")
         except Exception as e:
             logger.error(f"ResearchRepository initialization failed: {e}")
@@ -57,7 +59,24 @@ class ResearchRepository:
         except Exception:
             # If we can't check, assume old schema (ticker column only)
             return False
-    
+
+    def _check_column_exists(self, column_name: str) -> bool:
+        """Whether ``research_articles`` has this column (additive-migration guard)."""
+        try:
+            result = self.client.execute_query(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = 'research_articles'
+                  AND column_name = %s
+                """,
+                (column_name,),
+            )
+            return len(result) > 0
+        except Exception:
+            return False
+
+
     def _normalize_ticker_data(self, article: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize ticker data to always use 'tickers' key (array format).
         
@@ -147,10 +166,11 @@ class ResearchRepository:
         conclusion: Optional[str] = None,
         sentiment: Optional[str] = None,
         sentiment_score: Optional[float] = None,
-        logic_check: Optional[str] = None
+        logic_check: Optional[str] = None,
+        source_metadata: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """Save a research article to the database
-        
+
         Args:
             tickers: List of stock ticker symbols (e.g., ["NVDA", "AMD"])
             sector: Sector name (e.g., "Technology")
@@ -172,7 +192,10 @@ class ResearchRepository:
             sentiment: Sentiment category (VERY_BULLISH, BULLISH, NEUTRAL, BEARISH, VERY_BEARISH)
             sentiment_score: Numeric sentiment score for calculations (VERY_BULLISH=2.0, BULLISH=1.0, NEUTRAL=0.0, BEARISH=-1.0, VERY_BEARISH=-2.0)
             logic_check: Categorical classification (DATA_BACKED, HYPE_DETECTED, NEUTRAL) for relationship confidence scoring
-            
+            source_metadata: Collector-specific provenance JSON (Phase K2). Never written by
+                  the summarizer, so re-enrichment cannot clobber it. YouTube Transcript rows
+                  carry video_id / channel_id / duration_s / caption_lang / caption_kind.
+
         Returns:
             Article ID (UUID as string) if successful, None otherwise
         """
@@ -199,19 +222,42 @@ class ResearchRepository:
             
             # Prepare claims as JSONB (convert list to JSON string)
             claims_json = json.dumps(claims) if claims else None
-            
+
+            # Collector provenance JSONB (Phase K2). The column is additive, so a
+            # deploy that lands before the migration must not break every ingest
+            # path — omit it entirely when the column is not there yet.
+            source_metadata_json = json.dumps(source_metadata) if source_metadata else None
+            if self._has_source_metadata_column:
+                meta_col = "source_metadata,"
+                meta_value = "%s::jsonb,"
+                meta_update = (
+                    "source_metadata = COALESCE("
+                    "EXCLUDED.source_metadata, research_articles.source_metadata),"
+                )
+                meta_params: tuple = (source_metadata_json,)
+            else:
+                if source_metadata:
+                    logger.warning(
+                        "research_articles.source_metadata column missing; dropping "
+                        "collector metadata for %s (run "
+                        "web_dashboard/scripts/apply_article_source_metadata_migration.py)",
+                        url,
+                    )
+                meta_col = meta_value = meta_update = ""
+                meta_params = ()
+
             # Build query dynamically based on whether embedding is provided
             if embedding_str:
-                query = """
+                query = f"""
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, embedding, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        ticker_validated_at
+                        {meta_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        NOW()
+                        {meta_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -231,6 +277,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        {meta_update}
                         ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
@@ -253,19 +300,19 @@ class ResearchRepository:
                     conclusion,
                     sentiment,
                     sentiment_score,
-                    logic_check
-                )
+                    logic_check,
+                ) + meta_params
             else:
-                query = """
+                query = f"""
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        ticker_validated_at
+                        {meta_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        NOW()
+                        {meta_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -284,6 +331,7 @@ class ResearchRepository:
                         sentiment = EXCLUDED.sentiment,
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
+                        {meta_update}
                         ticker_validated_at = NOW(),
                         fetched_at = CURRENT_TIMESTAMP
                     RETURNING id
@@ -305,8 +353,8 @@ class ResearchRepository:
                     conclusion,
                     sentiment,
                     sentiment_score,
-                    logic_check
-                )
+                    logic_check,
+                ) + meta_params
             
             with self.client.get_connection() as conn:
                 cursor = conn.cursor()
@@ -1119,6 +1167,140 @@ class ResearchRepository:
         except Exception as e:
             logger.error(f"❌ Error checking if article exists: {e}")
             return False
+
+    def fetch_recent_story_candidates(
+        self,
+        *,
+        hours: int = 72,
+        limit: int = 400,
+        article_types: Optional[Sequence[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Recent articles for Phase I1 near-duplicate title matching.
+
+        Returns rows with id/title/source/url/corroboration fields. If the I1
+        columns are not migrated yet, falls back to a title-only select (callers
+        still work; corroboration updates will no-op until migration).
+        """
+        types = tuple(article_types or ("Market News",))
+        hours = max(1, int(hours))
+        limit = max(1, min(int(limit), 1000))
+        try:
+            query = """
+                SELECT id, title, source, url,
+                       COALESCE(corroboration_count, 1) AS corroboration_count,
+                       COALESCE(corroboration_sources, '{}') AS corroboration_sources,
+                       tickers, relevance_score
+                FROM research_articles
+                WHERE article_type = ANY(%s)
+                  AND fetched_at >= NOW() - (%s || ' hours')::interval
+                  AND title IS NOT NULL
+                  AND length(trim(title)) > 0
+                ORDER BY fetched_at DESC
+                LIMIT %s
+            """
+            return list(self.client.execute_query(query, (list(types), str(hours), limit)) or [])
+        except Exception as e:
+            # Pre-migration DBs lack the columns — degrade to title match only.
+            logger.warning("fetch_recent_story_candidates falling back without corroboration cols: %s", e)
+            try:
+                query = """
+                    SELECT id, title, source, url, tickers, relevance_score
+                    FROM research_articles
+                    WHERE article_type = ANY(%s)
+                      AND fetched_at >= NOW() - (%s || ' hours')::interval
+                      AND title IS NOT NULL
+                      AND length(trim(title)) > 0
+                    ORDER BY fetched_at DESC
+                    LIMIT %s
+                """
+                rows = list(self.client.execute_query(query, (list(types), str(hours), limit)) or [])
+                for row in rows:
+                    row.setdefault("corroboration_count", 1)
+                    row.setdefault("corroboration_sources", [])
+                return rows
+            except Exception as e2:
+                logger.error("fetch_recent_story_candidates failed: %s", e2)
+                return []
+
+    def record_story_corroboration(
+        self,
+        article_id: str,
+        source_key: str,
+        *,
+        relevance_score: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Append a distinct publisher to an existing story cluster.
+
+        Returns ``{matched, incremented, corroboration_count}``. If ``source_key``
+        was already recorded, ``incremented`` is False (caller should still skip
+        re-extract — same story, same outlet or repeat hit).
+        """
+        key = (source_key or "unknown").strip().lower() or "unknown"
+        try:
+            current = self.client.execute_query(
+                """
+                SELECT id, title, source, url,
+                       COALESCE(corroboration_count, 1) AS corroboration_count,
+                       COALESCE(corroboration_sources, '{}') AS corroboration_sources,
+                       relevance_score
+                FROM research_articles
+                WHERE id = %s
+                LIMIT 1
+                """,
+                (article_id,),
+            )
+            if not current:
+                return {"matched": False, "incremented": False, "corroboration_count": 0}
+
+            row = current[0]
+            sources = list(row.get("corroboration_sources") or [])
+            # Postgres may return array as list already; normalize.
+            sources = [str(s).strip().lower() for s in sources if str(s).strip()]
+            if not sources:
+                from story_identity import source_key as _source_key
+
+                seed = _source_key(row.get("source"), row.get("url"))
+                if seed:
+                    sources.append(seed)
+            if key in sources:
+                return {
+                    "matched": True,
+                    "incremented": False,
+                    "corroboration_count": max(
+                        int(row.get("corroboration_count") or 1),
+                        len(sources) or 1,
+                    ),
+                }
+
+            sources.append(key)
+            new_count = len(set(sources))
+            sources = sorted(set(sources))
+            new_relevance = relevance_score
+            if new_relevance is None and row.get("relevance_score") is not None:
+                from story_identity import apply_corroboration_boost
+
+                new_relevance = apply_corroboration_boost(
+                    float(row["relevance_score"]), new_count
+                )
+
+            self.client.execute_update(
+                """
+                UPDATE research_articles
+                SET corroboration_count = %s,
+                    corroboration_sources = %s,
+                    relevance_score = COALESCE(%s, relevance_score)
+                WHERE id = %s
+                """,
+                (new_count, sources, new_relevance, article_id),
+            )
+            return {
+                "matched": True,
+                "incremented": True,
+                "corroboration_count": new_count,
+            }
+        except Exception as e:
+            logger.error("record_story_corroboration failed for %s: %s", article_id, e)
+            return {"matched": False, "incremented": False, "corroboration_count": 0}
     
     def get_article_statistics(self, days: int = 30) -> Dict[str, Any]:
         """Get statistics about articles

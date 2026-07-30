@@ -3,10 +3,9 @@
 This document tracks the multi-layer meta-analysis program and keeps the next phases explicit.
 
 > **⭐ Start here instead:** [`docs/ROADMAP.md`](ROADMAP.md) is the **master plan**. As of
-> **2026-07-15**, active work is **Phase H** (source-ROI, meta-bundle injection, trend memory) —
-> see ROADMAP “Key findings from the 2026-07-15 design review.” Backlog after H: **Phase I**
-> (news quality / FRED) then **Phase J** (event/news catalyst backtesting) and **Phase K**
-> (YouTube captions → research articles). This doc remains the deep reference for the
+> **2026-07-29**, Phase H is closed; Ideas quality P1–P6, measurement rig M1–M5, and
+> **Phase I1 story dedup** shipped. Active backlog: **I2** (FRED → regime) or **K2**
+> (YouTube → articles); then **Phase J**. This doc remains the deep reference for the
 > meta-analysis layers (Phases 1–3, all shipped); its "Later phases" section is superseded by
 > `ROADMAP.md`.
 
@@ -44,7 +43,7 @@ We are **not** building autonomous execution. Outputs should be **inspectable** 
 | Per-ticker conviction | Shipped (`ticker_meta_analysis` + Phase 1 signal fusion) | Sector prior + ETF flow context (3c+); **Phase H2** adds clusters / dilution / filings / confluence / prior stance (Today-only as of 2026-07-15) |
 | Action queue | **Rules-based** from technical `signal_analysis`; meta attached as context | Ranked ideas aligned with meta + portfolio |
 | Explicit BUY/SELL/HOLD with size | **Ticker analysis** JSON has stance fields; **not** portfolio-level picks | Fund-aware recommendation list with explainability |
-| Outcome feedback | Ledger + scoring + track-record **shipped**; **source-ROI report still missing** (Phase H1) | Calibrate which inputs predict good trades; down-weight noisy collectors |
+| Outcome feedback | Ledger + scoring + track-record + **source-ROI (H1) + baselines (M5)** shipped; fund primary benchmark (M6) still open | Calibrate which inputs predict good trades; down-weight noisy collectors |
 
 ## Phase status (2026-05-23)
 

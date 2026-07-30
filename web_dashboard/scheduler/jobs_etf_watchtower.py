@@ -1136,23 +1136,28 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
         logger.error(f"❌ Error upserting securities metadata: {e}")
 
 
-def upsert_etf_metadata(db: SupabaseClient, etf_ticker: str, provider: str):
-    """Upsert ETF metadata into securities table."""
+def upsert_etf_metadata(db: SupabaseClient, etf_tickers: List[str]):
+    """Batch upsert ETF metadata into securities table."""
     try:
-        etf_name = ETF_NAMES.get(etf_ticker, etf_ticker)
-        
-        record = {
-            'ticker': etf_ticker,
-            'company_name': etf_name,
-            'last_updated': datetime.now(timezone.utc).isoformat()
-        }
-        # Note: asset_class and first_detected_by don't exist in Supabase securities table
-        
-        db.supabase.table('securities').upsert(record).execute()
-        logger.info(f"ℹ️  Upserted ETF metadata for {etf_ticker}")
+        if not etf_tickers:
+            return
+
+        records = []
+        for etf_ticker in etf_tickers:
+            etf_name = ETF_NAMES.get(etf_ticker, etf_ticker)
+
+            record = {
+                'ticker': etf_ticker,
+                'company_name': etf_name,
+                'last_updated': datetime.now(timezone.utc).isoformat()
+            }
+            records.append(record)
+
+        db.supabase.table('securities').upsert(records).execute()
+        logger.info(f"ℹ️  Upserted ETF metadata for {len(records)} ETFs")
         
     except Exception as e:
-        logger.error(f"❌ Error upserting ETF metadata for {etf_ticker}: {e}")
+        logger.error(f"❌ Error upserting ETF metadata: {e}")
 
 
 def log_significant_changes(
@@ -1341,10 +1346,8 @@ def etf_watchtower_job():
                 else:
                     logger.info(f"ℹ️ {etf_ticker}: First snapshot - saving holdings but skipping article generation (no historical data to compare)")
                 
-                # 4. Upsert ETF metadata (the ETF itself)
-                upsert_etf_metadata(db, etf_ticker, config['provider'])
-                
                 # 5. Upsert holdings metadata (to Supabase) & Save snapshot (to Research DB)
+                # 4. Upsert holdings metadata (to Supabase)
                 upsert_securities_metadata(db, today_holdings, config['provider'])
                 save_holdings_snapshot(pc, etf_ticker, today_holdings, today)
                 
@@ -1356,6 +1359,10 @@ def etf_watchtower_job():
                 logger.error(f"❌ Error processing {etf_ticker}: {e}", exc_info=True)
                 continue
         
+        # Batch upsert all successful ETF metadata at the end
+        if successful_etfs:
+            upsert_etf_metadata(db, successful_etfs)
+
         duration_ms = int((__import__('time').time() - start_time) * 1000)
         
         # Build summary message
@@ -1379,6 +1386,10 @@ def etf_watchtower_job():
             pass
             
     except Exception as e:
+        # Batch upsert all successful ETF metadata at the end
+        if successful_etfs:
+            upsert_etf_metadata(db, successful_etfs)
+
         duration_ms = int((__import__('time').time() - start_time) * 1000)
         message = f"ETF Watchtower failed: {str(e)}"
         logger.error(f"❌ {message}", exc_info=True)

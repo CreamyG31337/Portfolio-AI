@@ -90,7 +90,7 @@ def reprocess_etf(etf_ticker: str, db: SupabaseClient, repo: ResearchRepository,
         if yesterday_holdings.empty:
             print(f"  [INFO] No previous holdings found - will save snapshot but skip article")
             # Still save the snapshot
-            upsert_etf_metadata(db, etf_ticker, config['provider'])
+            upsert_etf_metadata(db, [etf_ticker])
             upsert_securities_metadata(db, today_holdings, config['provider'])
             save_holdings_snapshot(db, etf_ticker, today_holdings, today)
             return True
@@ -118,7 +118,7 @@ def reprocess_etf(etf_ticker: str, db: SupabaseClient, repo: ResearchRepository,
         
         # 6. Update metadata and save snapshot
         print(f"  Updating metadata and saving snapshot...")
-        upsert_etf_metadata(db, etf_ticker, config['provider'])
+        upsert_etf_metadata(db, [etf_ticker])
         upsert_securities_metadata(db, today_holdings, config['provider'])
         save_holdings_snapshot(db, etf_ticker, today_holdings, today)
         

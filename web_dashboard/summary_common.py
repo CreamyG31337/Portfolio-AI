@@ -21,7 +21,20 @@ logger = logging.getLogger(__name__)
 # So the conservative 6k cap is the bottleneck, not the model.
 SUMMARY_MAX_CHARS_DEFAULT = 6000
 SUMMARY_MAX_CHARS_NEWSLETTER = 16000  # ~4000 tokens, fits comfortably in 8k+ ctx
+# Phase K2: an hour-long earnings call is ~45-50k cleaned caption chars. At the
+# 6k default the head+tail cut would drop the entire Q&A, which is the part that
+# moves a thesis. Same budget as newsletters — the tail matters for the same
+# reason (closing guidance / analyst questions).
+SUMMARY_MAX_CHARS_TRANSCRIPT = 16000
+# When a long transcript is routed to GLM (Z.AI), allow a larger head+tail window.
+# ~48k chars ≈ 12k tokens — still small vs glm-5.2's 1M ctx, large vs Ollama 8–40k.
+SUMMARY_MAX_CHARS_TRANSCRIPT_LONG = 48000
 SUMMARY_TRUNCATION_MARKER = "\n\n[...content truncated; middle section omitted...]\n\n"
+
+# Long-transcript routing thresholds (Ollama stays on the short path).
+TRANSCRIPT_LONG_CHARS_THRESHOLD = SUMMARY_MAX_CHARS_TRANSCRIPT
+TRANSCRIPT_LONG_DURATION_S = 20 * 60  # 20 minutes
+YOUTUBE_TRANSCRIPT_MODEL_SCOPE = "youtube_transcript"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -40,17 +53,112 @@ def _env_int(name: str, default: int) -> int:
     return val
 
 
-def compute_summary_max_chars(article_type: str = "") -> int:
+def summary_uses_high_context_budget(
+    article_type: str = "",
+    *,
+    model: str | None = None,
+) -> bool:
+    """True when summarizer should use the long YouTube transcript character budget.
+
+    Only YouTube Transcript + GLM (Z.AI) gets the expanded window. Ollama and WebAI
+    keep the standard transcript cap so local ctx windows are not blown out.
+    """
+    if (article_type or "").strip().lower() != "youtube transcript":
+        return False
+    return bool(model and str(model).startswith("glm-"))
+
+
+def compute_summary_max_chars(article_type: str = "", *, high_context: bool = False) -> int:
     """Return the character budget the summarizer should clamp the article body to.
 
-    Newsletters get a larger budget than the default article cap because the
-    actionable thesis usually appears at the bottom; cutting the tail loses
-    the most important signal. Operators can override via
-    ``AI_SUMMARY_MAX_CHARS`` and ``AI_SUMMARY_MAX_CHARS_NEWSLETTER`` env vars.
+    Newsletters and video transcripts get a larger budget than the default
+    article cap because the actionable thesis usually appears at the bottom;
+    cutting the tail loses the most important signal. Operators can override via
+    ``AI_SUMMARY_MAX_CHARS``, ``AI_SUMMARY_MAX_CHARS_NEWSLETTER``,
+    ``AI_SUMMARY_MAX_CHARS_TRANSCRIPT``, and ``AI_SUMMARY_MAX_CHARS_TRANSCRIPT_LONG``.
+
+    ``high_context=True`` selects the long transcript budget (GLM path for hour-long
+    earnings calls). Short Ollama path keeps the standard transcript budget.
     """
-    if (article_type or "").strip().lower() == "newsletter":
+    normalized = (article_type or "").strip().lower()
+    if normalized == "newsletter":
         return _env_int("AI_SUMMARY_MAX_CHARS_NEWSLETTER", SUMMARY_MAX_CHARS_NEWSLETTER)
+    if normalized == "youtube transcript":
+        if high_context:
+            return _env_int(
+                "AI_SUMMARY_MAX_CHARS_TRANSCRIPT_LONG",
+                SUMMARY_MAX_CHARS_TRANSCRIPT_LONG,
+            )
+        return _env_int("AI_SUMMARY_MAX_CHARS_TRANSCRIPT", SUMMARY_MAX_CHARS_TRANSCRIPT)
     return _env_int("AI_SUMMARY_MAX_CHARS", SUMMARY_MAX_CHARS_DEFAULT)
+
+
+def transcript_needs_high_context(
+    content_chars: int,
+    *,
+    duration_s: int | None = None,
+) -> bool:
+    """True when a YouTube transcript is too large for a comfortable Ollama summarize."""
+    chars = max(0, int(content_chars or 0))
+    if chars > TRANSCRIPT_LONG_CHARS_THRESHOLD:
+        return True
+    if duration_s is not None:
+        try:
+            if int(duration_s) >= TRANSCRIPT_LONG_DURATION_S:
+                return True
+        except (TypeError, ValueError):
+            pass
+    return False
+
+
+def resolve_youtube_transcript_summary_model(
+    content_chars: int,
+    *,
+    duration_s: int | None = None,
+) -> str | None:
+    """Pick a model for YouTube transcript summarization.
+
+    * Short/medium transcripts → ``None`` (caller uses the normal Ollama summary chain).
+    * Long transcripts → ``system_settings.ai_summarizing_model_youtube_transcript`` if set,
+      otherwise primary Z.AI GLM. **Never** auto-selects a WebAI (cookie) model; a WebAI
+      scoped override is ignored and GLM is used instead.
+    """
+    if not transcript_needs_high_context(content_chars, duration_s=duration_s):
+        return None
+
+    try:
+        from model_registry import PRIMARY_MODEL_DEFAULT
+
+        glm_default = (PRIMARY_MODEL_DEFAULT or "glm-5.2").strip()
+    except Exception:
+        glm_default = "glm-5.2"
+
+    raw = None
+    try:
+        from settings import get_system_setting
+
+        raw = get_system_setting("ai_summarizing_model_youtube_transcript", default=None)
+    except Exception:
+        raw = None
+
+    candidate = str(raw).strip() if raw else ""
+    if not candidate:
+        return glm_default
+
+    try:
+        from webai_wrapper import is_webai_model
+
+        if is_webai_model(candidate):
+            logger.warning(
+                "Ignoring WebAI model %r for long YouTube transcript; using %s",
+                candidate,
+                glm_default,
+            )
+            return glm_default
+    except Exception:
+        pass
+
+    return candidate
 
 
 def truncate_for_summary(text: str, max_chars: int) -> str:

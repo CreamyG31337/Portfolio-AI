@@ -1,25 +1,25 @@
 ---
 name: Ideas inbox quality
-overview: Make /ideas a usable triage queue. Root cause is a bucket-semantics inversion (DATA_BACKED is a *genre* label meaning "data dump", but it maps to the top relevance score), not just weak title filters. Fix order is UI-first (readable, untruncated "why care"), then immediate cleanup of the existing junk pool, then supply-side filtering, then inbox ranking. H7 showed triage unused because most ideas are not ideas.
+overview: "P1–P6 shipped 2026-07-27/29. Inbox ranking inverted because DATA_BACKED (genre=data dump) mapped to top relevance_score; fixed via why-care UI, auto_cleanup script, low-value filters, and inbox-only idea_score/low_signal. stockanalysis.com not banned (filtering beats banning). P5 closed by product judgment 2026-07-29 (fewer, better ideas). Exclude decided_by=auto_cleanup from any label/usage metric."
 todos:
   - id: p1-ui-why-care
     content: "Ideas API + UI: surface conclusion as primary 'why care' line, full text (no dead-end truncation), escape all interpolated fields"
-    status: pending
+    status: completed
   - id: p2-cleanup-now
-    content: "Immediate cleanup: bulk auto-dismiss junk via idea_triage (decided_by='auto_cleanup') + disable stockanalysis.com domain"
-    status: pending
+    content: "Cleanup script shipped (decided_by='auto_cleanup'); stockanalysis.com NOT banned (filtering beats banning — 57% useful)."
+    status: completed
   - id: p3-expand-low-value-filter
     content: "Extend low_value_alpha_reason patterns (title-only for unambiguous, title+URL for ambiguous) + tests in test_alpha_helpers.py"
-    status: pending
+    status: completed
   - id: p4-inbox-ranking
     content: "Inbox-only composite idea_score in _fetch_alpha_ideas_query AND the fallback; emit low_signal flag; soft-demote not hard-exclude"
-    status: pending
+    status: completed
   - id: p5-validate
-    content: "Baseline snapshot -> run alpha job -> audit low_value skips for false positives -> compare top-20 before/after"
-    status: pending
+    content: "Closed 2026-07-29 by product judgment: inbox shows fewer, better ideas. No further formal baseline/top-20 audit required."
+    status: completed
   - id: p6-docs
     content: "Note Ideas quality fix in docs/ROADMAP.md near H7 / §2.2; record that auto_cleanup rows must be excluded from any future label set"
-    status: pending
+    status: completed
 ---
 
 # Ideas inbox quality — implementation plan
@@ -169,11 +169,16 @@ version drift silently rots them and nothing alerts you.
 
 ## Plan (ordered — this order is deliberate)
 
-### P1 — UI: readable, untruncated "why care" **(do this first)**
+### P1 — UI: readable, untruncated "why care" — ✅ SHIPPED 2026-07-27
 
 Highest value, lowest risk, **zero decisions required**, purely additive. It is also
 diagnostic: once conclusions are visible you can eyeball whether P3/P4's patterns are even
 needed, instead of making filtering decisions blind.
+
+**Shipped:** `conclusion` / `url` / `logic_check` / `sentiment` on both Ideas fetch paths;
+`ideas.ts` renders conclusion as primary "why care" (full text), summary behind
+`<details>`, title links to source URL, all fields HTML-escaped; `low_signal` chip ready
+for P4.
 
 **Backend** — [`today_briefing_service.py`](../../web_dashboard/today_briefing_service.py):
 add `conclusion`, `url`, `logic_check`, `sentiment` to the SELECT in **both**
@@ -206,7 +211,15 @@ Build: `pnpm run build:ts`. Tests: `python -m pytest tests/test_flask_intelligen
 **Acceptance:** open `/ideas`, pick any card, read the whole why-care line and reach the
 full summary without leaving the page.
 
-### P2 — Immediate cleanup of the existing mess **(short-term fix the user asked for)**
+### P2 — Immediate cleanup of the existing mess — ✅ SHIPPED 2026-07-27 (script; domain ban skipped)
+
+**Shipped:** `web_dashboard/scripts/cleanup_ideas_inbox.py` — dry-run by default; `--execute`
+inserts `dismissed` / `decided_by='auto_cleanup'` rows (reversible; does not touch
+`research_articles`).
+
+**Not shipped (deliberate):** disabling `stockanalysis.com` in `alpha_research_domains`.
+Measured 43% junk / 57% useful — filtering (P3/P4) beats banning. Domain remains in
+`STRUCTURED_DATA_DOMAINS` for soft demotion.
 
 P3's filter only prevents *new* junk, and the inbox window is 14 days — so without this
 step the page stays unusable for two weeks. Two moves, both reversible, **neither writes to
@@ -254,7 +267,11 @@ Requirements:
 One setting, instantly reversible, removes the single largest junk source at the supply
 side. Note the before/after hit count in the P5 log so the effect is attributable.
 
-### P3 — Extend the low-value pre-filter (stop new junk)
+### P3 — Extend the low-value pre-filter (stop new junk) — ✅ SHIPPED 2026-07-27
+
+**Shipped:** shared rules in `ideas_quality.py` / `jobs_common.low_value_alpha_reason`
+(title-only for unambiguous holdings lists; title+URL for dividend/calendar/ratings);
+tests in `tests/test_alpha_helpers.py` (positive + negative corpus).
 
 Add narrow patterns to `_LOW_VALUE_ALPHA_PATTERNS` in
 [`jobs_common.py`](../../web_dashboard/scheduler/jobs_common.py):
@@ -370,10 +387,12 @@ Displaying the genre-derived score next to a card invites trusting it.
 - Do **not** hard-require tickers: macro/sector ideas are legitimate and ~15 rows in the
   sample lack them. Ticker presence is a ranking bonus, not a gate.
 
-### P5 — Validate that the changes actually produce better ideas
+### P5 — Validate that the changes actually produce better ideas — ✅ CLOSED 2026-07-29
 
-The success criteria are unfalsifiable without a baseline. Do this around the code changes,
-not after.
+**Closed by product judgment** (not a formal baseline CSV): after P1–P4 the inbox shows
+fewer, better ideas. No further auditable P5 checklist required.
+
+Original procedure kept below for history / if quality regresses later.
 
 1. **Before any change:** snapshot the current inbox top-50 (id, title, source,
    relevance_score) to `scratchpad/ideas_baseline_2026-07-27.csv`.
@@ -389,14 +408,17 @@ not after.
    removed rows were junk vs. real (false-positive rate).
 5. **Human spot-check:** of the new top-20, how many are actionable? Target ≥15.
 
-### P6 — Docs
+### P6 — Docs — ✅ SHIPPED 2026-07-29
 
-Update ROADMAP near H7 / §2.2: empty triage + junk ranking diagnosis, the RC1
-genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
+**Shipped in** [`docs/ROADMAP.md`](../../docs/ROADMAP.md) §2.2 / H7 / Phase H index /
+post-ship verification:
 
-- **Do not train relevance on `idea_triage` until real labels exist**, and
-- **`decided_by='auto_cleanup'` rows must be excluded** from any label set or triage-coverage
-  metric.
+- Empty-triage diagnosis + Ideas quality P1–P4 shipped note
+- RC1 genre-vs-quality finding (DATA_BACKED ranking inversion)
+- **`decided_by='auto_cleanup'` must be excluded** from any label set or triage-coverage
+  metric; do not train relevance on `idea_triage` until real human labels exist
+
+P5 closed 2026-07-29 by product judgment (fewer, better ideas) — no formal baseline left open.
 
 ---
 
@@ -446,31 +468,28 @@ genre-vs-quality finding, and Ideas quality work in flight. Record explicitly:
 - Unit tests cover new low-value patterns, positive **and** negative corpus; flask ideas
   routes still pass.
 
-**Real criterion (check within a week of shipping):**
+**Real criterion (ongoing habit, not a code task):**
 - `idea_triage` has ≥1 genuine human Accept/Dismiss
-  (`WHERE decided_by <> 'auto_cleanup'`). Everything above is a proxy for this.
+  (`WHERE decided_by <> 'auto_cleanup'`). Proxies above are satisfied; this is use, not build.
 
 ## Implementation checklist (agent)
 
 1. Read this plan + linked files. RC1 and RC5 are the load-bearing findings — do not
    reorder the phases without re-reading them.
-2. **P1** UI/API: conclusion + full-text + escaping. `pnpm run build:ts`;
-   `python -m pytest tests/test_flask_intelligence_routes.py -v`. Eyeball `/ideas`.
-3. **P5.1** baseline snapshot (can run before or alongside P1).
-4. **P2** cleanup script `--dry-run` → review the match list by hand → `--execute`;
-   disable `stockanalysis.com` domain.
-5. **P3** patterns + tests (`python -m pytest tests/test_alpha_helpers.py -v`), incl.
-   negative corpus. Update the docstring and the tuning-guidance comment block.
-6. **P5.3** trigger one `alpha_research` run; audit every `low_value` skip. **Hard gate.**
-7. ~~**P4** inbox ranking in *both* query paths + `low_signal` + `include_low_signal`.~~ ✅ done
-8. **P5.4/5.5** diff top-20 vs baseline; record false-positive rate.
-9. **P6** ROADMAP note; Mandrel `context_store` completion when shipped.
+2. ~~**P1** UI/API: conclusion + full-text + escaping.~~ ✅ done 2026-07-27
+3. ~~**P5** validate (product judgment).~~ ✅ closed 2026-07-29 — fewer, better ideas; no formal baseline required.
+4. ~~**P2** cleanup script.~~ ✅ done 2026-07-27
+   (`cleanup_ideas_inbox.py`; stockanalysis.com ban **skipped** — filtering beats banning).
+5. ~~**P3** patterns + tests.~~ ✅ done 2026-07-27
+6. ~~**P4** inbox ranking in *both* query paths + `low_signal` + `include_low_signal`.~~ ✅ done
+7. ~~**P6** ROADMAP note + `auto_cleanup` hygiene.~~ ✅ done 2026-07-29
+   (Mandrel `context_store` optional).
 
 ## Follow-ups (deliberately out of v1, with triggers)
 
 | Item | Trigger |
 |---|---|
-| Fix `relevance_for_logic_check` (`DATA_BACKED` should not outrank `NEUTRAL` for ideas) | After P4 ships and the inbox is stable; measure Research-search impact first |
+| Fix `relevance_for_logic_check` (`DATA_BACKED` should not outrank `NEUTRAL` for ideas) | Inbox stable after P1–P6; measure Research-search impact first |
 | Add an explicit `ROUTINE_DATA` bucket to the summarizer prompt so the genre is labeled at the source instead of regex-detected downstream | If conclusion regexes need tuning more than once |
-| Alpha query / domain tuning beyond stockanalysis.com | If the P5 top-20 spot-check yields <15 actionable after P1–P4 |
+| Alpha query / domain tuning beyond stockanalysis.com | If inbox quality regresses (junk returns to the top) |
 | Ideas relevance learning from real labels | Once `idea_triage` has a meaningful count of `decided_by <> 'auto_cleanup'` rows |
