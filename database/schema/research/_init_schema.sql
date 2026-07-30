@@ -25,7 +25,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/post_summaries.sql
 \i tables/research_articles.sql
 \i tables/rss_feeds.sql
-\i tables/youtube_sources.sql
+\i tables/yt_sources.sql
 \i tables/securities.sql
 \i tables/sentiment_sessions.sql
 \i tables/social_metrics.sql

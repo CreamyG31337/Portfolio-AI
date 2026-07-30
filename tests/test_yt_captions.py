@@ -9,11 +9,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "youtube"
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "yt"
 
 # sys.path is set up by tests/conftest.py, which deliberately pins the repo root
 # ahead of web_dashboard — do not re-insert them here.
-from youtube_captions import (  # noqa: E402
+from yt_captions import (  # noqa: E402
     CaptionFetchError,
     CaptionResult,
     clean_caption_lines,
@@ -211,7 +211,7 @@ def test_fetch_maps_blocked_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _make_fake_yt_dlp(vtt_filename: str) -> MagicMock:
-    """yt-dlp stub that drops one VTT into the caller's temp dir."""
+    """Listing-client stub that drops one VTT into the caller's temp dir."""
     vtt_src = (FIXTURES / "me_at_zoo.en.vtt").read_text(encoding="utf-8")
 
     class FakeYDL:
@@ -290,7 +290,7 @@ def test_ytdlp_language_ignores_auto_marker(monkeypatch: pytest.MonkeyPatch) -> 
 def test_missing_transcript_api_still_falls_back_to_ytdlp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """yt-dlp alone is a complete path — a missing dep must degrade, not fail."""
+    """Listing client alone is a complete path — a missing dep must degrade, not fail."""
     monkeypatch.setitem(sys.modules, "youtube_transcript_api", None)
     _install_fake_modules(monkeypatch, yt_dlp=_make_fake_yt_dlp("jNQXAC9IVRw.en.vtt"))
 

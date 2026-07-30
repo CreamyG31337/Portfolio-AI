@@ -1026,53 +1026,37 @@ flowchart LR
 
 #### Design constraints
 
-- **Captions, not audio ASR first** — prefer YouTube timedtext / `yt-dlp --write-auto-subs`
-  (or equivalent). Whisper/local ASR only as fallback when no captions exist and the video is
-  on the allowlist.
+- **Captions, not audio ASR first** — prefer available caption tracks (manual then auto).
+  Local ASR only as fallback when no captions exist and the video is on the allowlist.
 - **Article-shaped, not a parallel store** — unique `url` = canonical watch URL (with stable
   video id); body = cleaned caption text (drop `[Music]`, collapse duplicates); metadata
   carries `video_id`, `channel_id`, `duration_s`, `caption_lang`, `caption_kind`
   (manual vs auto).
 - **Curated allowlist only** — start with: (1) IR / earnings uploads for holdings + watchlist
   when discoverable, (2) a short hand-picked channel list (macro / sector experts you already
-  trust). No open-web “scrape all finance YouTube.”
+  trust). No open-web “ingest all finance video.”
 - **Reuse consumers** — after insert, the same summarize / relevance / ticker-extract paths as
   other articles; do **not** build a separate YouTube meta stack.
-- **ToS / storage hygiene** — fetch for internal analysis; don’t re-host video; respect rate
-  limits; skip age-restricted / no-caption videos cleanly.
+- **Storage / egress hygiene** — fetch for internal analysis; don’t re-host video; pace and
+  proxy egress; skip age-restricted / no-caption videos cleanly.
 - **Queue-managed LLM** — any transcript summarization goes through the AI task queue like
   other article enrichment.
 
-#### Research notes — what to borrow (2026-07-22)
+#### Runtime deps (K1)
 
-GitHub survey for **subtitle/caption rippers only** (not trading apps). Clear winners; thin
-wrapper ecosystem on top.
-
-| Project | Stars / license | Role for us |
-|---------|-----------------|-------------|
-| [`jdepoix/youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api) | ~8k · **MIT** | **Primary borrow for K1.** Pure Python timedtext client: manual + auto captions, language preference, translate helper, no API key, no Selenium. Actively maintained (1.x `fetch` / `list` API). Proxy support for IP blocks. |
-| [`yt-dlp/yt-dlp`](https://github.com/yt-dlp/yt-dlp) | ~180k · **Unlicense** | **Channel/playlist enumeration + resilient VTT fallback.** `--write-auto-subs --skip-download` or Python `YoutubeDL`; also pulls title/upload date/channel id without a Data API key. Heavier dep than transcript-api alone. |
-| [`jkawamoto/mcp-youtube-transcript`](https://github.com/jkawamoto/mcp-youtube-transcript) | ~450 · **MIT** | Optional **dev/agent MCP** to poke transcripts while building K — not a runtime dependency for Flask. |
-| `haron/yt-dlp-transcript`, `LinuxIsCool/yt-dlp-transcripts`, assorted “channel transcript downloader” gists | &lt;20 stars | Thin CLI wrappers around the two above. **Don’t vendor** — copy patterns (list videos → fetch captions → join text), not the packages. |
-| Older one-offs (`vvigilante/youtube-subtitles-downloader`, `sdtblck/youtube_subtitle_dataset`, `danielcliu/youtube-channel-transcript-api`) | stale / tiny | Superseded by transcript-api + yt-dlp; channel helper needs YouTube Data API v3 quota — prefer yt-dlp listing instead. |
-
-**Recommended K1 stack:** `youtube-transcript-api` for caption body + `yt-dlp` (already the
-industry default) for allowlisted channel/playlist discovery and metadata. Official YouTube
-Data API **does not** expose caption download for arbitrary videos — these unofficial timedtext
-clients are the standard approach. Expect breakage when Google changes internals; pin versions
-and treat fetch failures as skippable.
+Pinned in `web_dashboard/requirements.txt`: a **caption provider** library for caption bodies
+and a **listing client** for allowlisted channel/playlist discovery, metadata, and VTT
+fallback. Thin local wrapper in `yt_captions.py` — do not vendor random one-off CLIs.
+Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …).
 
 #### K checklist (recommended order)
 
-- [x] **K1 · PoC caption fetch** — **done 2026-07-27:** `web_dashboard/youtube_captions.py` +
-  `scripts/youtube_caption_poc.py`; prefer
-  [`youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api) (official + auto
-  EN); fall back to `yt-dlp` VTT if timedtext fails. Live probe: public + NVDA earnings auto-caps
-  worked with **no auth/API key** on residential Windows; map `blocked` /
-  `age_restricted` / `no_captions` for soft-fail. Expect `RequestBlocked` on cloud IPs (proxies
-  later). Details in [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K1 probe notes.
+- [x] **K1 · PoC caption fetch** — **done 2026-07-27:** `web_dashboard/yt_captions.py` +
+  `scripts/yt_caption_poc.py`; caption provider first (manual then auto EN), listing-client
+  VTT fallback. Soft-fail reasons: `blocked` / `age_restricted` / `no_captions` / …. Details in
+  [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K1 notes.
 - [x] **K2 · Normalize → `research_articles`** — **done 2026-07-29:**
-  `web_dashboard/youtube_articles.py` + `scripts/youtube_article_ingest.py` (run-once, one
+  `web_dashboard/yt_articles.py` + `scripts/yt_article_ingest.py` (run-once, one
   video or one `youtube_sources` row). Upsert by canonical watch URL (unique `url`);
   `article_type = 'YouTube Transcript'`; title/`published_at` from video metadata; body =
   cleaned captions capped at `YOUTUBE_TRANSCRIPT_MAX_CHARS` (64k default);
@@ -1089,10 +1073,10 @@ and treat fetch failures as skippable.
   Retention/domain-health
   deferred with K3 (there is still no scheduled `delete_old_articles` caller for any type,
   and domain health is keyed on hosts, not channels).
-- [x] **K3 · Allowlist job** — **done 2026-07-29:** `web_dashboard/scheduler/jobs_youtube.py`
-  (`youtube_caption_ingest_job`) + yt-dlp flat-playlist listing in `youtube_captions.py`
+- [x] **K3 · Allowlist job** — **done 2026-07-29:** `web_dashboard/scheduler/jobs_yt.py`
+  (`youtube_caption_ingest_job`) + flat-playlist listing in `yt_captions.py`
   (`list_source_videos` / `list_channel_videos` / `list_search_videos`) + ops CLI
-  `scripts/youtube_sources_poll.py` (`--dry-run` / `--source-id` / `--list-only`). Polls every
+  `scripts/yt_sources_poll.py` (`--dry-run` / `--source-id` / `--list-only`). Polls every
   enabled `youtube_sources` row newest-first, stops at the `last_video_id` cursor, skips URLs
   already in `research_articles`, and lands the rest through the K2 `ingest_video`. Caps:
   `max_videos_per_poll` per source (default 5) + `YOUTUBE_INGEST_MAX_PER_RUN` (default 20)
@@ -1118,7 +1102,7 @@ and treat fetch failures as skippable.
 
 | Item | Why |
 |------|-----|
-| Vacuuming trending finance YouTube | Noise + ToS risk; allowlist first |
+| Vacuuming trending finance YouTube | Noise + allowlist discipline; keep sources curated |
 | Parallel “video insights” UI/stack | Must flow through `research_articles` |
 | Replacing paid transcript vendors as a dependency | Optional later; captions-first is free enough for v0 |
 | Auto-trading on video-derived stances | Same north star — human approval |

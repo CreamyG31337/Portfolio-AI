@@ -201,13 +201,16 @@ def _existing_youtube_keys(pg: PostgresClient) -> tuple[set[str], set[str], set[
 
 
 def _resolve_channel_id(handle: Optional[str], channel_id: Optional[str]) -> Optional[str]:
-    """Best-effort yt-dlp resolve of @handle → UC… id. Soft-fails to None."""
+    """Best-effort listing-client resolve of @handle → UC… id. Soft-fails to None."""
     if channel_id:
         return channel_id
     if not handle:
         return None
+    from yt_brand_display import undecorate_brand_text
+
+    handle = undecorate_brand_text(handle)
     try:
-        import yt_dlp
+        import yt_dlp as _listing_client
     except ImportError:
         return None
     url = f"https://www.youtube.com/{handle.lstrip('@')}"
@@ -215,7 +218,7 @@ def _resolve_channel_id(handle: Optional[str], channel_id: Optional[str]) -> Opt
         url = f"https://www.youtube.com/{handle}"
     opts = {"quiet": True, "no_warnings": True, "extract_flat": True, "playlistend": 1}
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with _listing_client.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
         if not info:
             return None
@@ -252,7 +255,10 @@ def api_list_youtube():
 
 
 def _parse_youtube_body(data: dict[str, Any]) -> tuple[Optional[dict[str, Any]], Optional[tuple]]:
-    label = str(data.get("label") or "").strip()
+    from yt_brand_display import decorate_brand_text
+
+    label_raw = str(data.get("label") or "").strip()
+    label = decorate_brand_text(label_raw) if label_raw else ""
     kind = normalize_kind(data.get("kind"))
     handle = normalize_handle(data.get("handle"))
     channel_id = (str(data.get("channel_id") or "").strip() or None)
@@ -523,7 +529,7 @@ def api_test_youtube():
                         }
                     ), 400
 
-        from youtube_captions import CaptionFetchError, fetch_caption_text
+        from yt_captions import CaptionFetchError, fetch_caption_text
 
         try:
             result = fetch_caption_text(

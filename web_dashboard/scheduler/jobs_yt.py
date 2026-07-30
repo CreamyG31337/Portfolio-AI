@@ -1,12 +1,12 @@
 """YouTube allowlist poll job (Phase K3).
 
 Polls every enabled ``youtube_sources`` row for new videos and lands them through
-the **existing** K2 path (``youtube_articles.ingest_video``). This module owns
+the **existing** K2 path (``yt_articles.ingest_video``). This module owns
 discovery, cursors, caps, and source health only — caption fetch (K1), article
 normalization/upsert and summarize (K2) are not reimplemented here.
 
-Per source: mark ``last_polled_at`` → list newest-first candidates (yt-dlp
-flat-playlist, capped by ``max_videos_per_poll``) → walk them until the cursor is
+Per source: mark ``last_polled_at`` → list newest-first candidates (flat
+playlist metadata, capped by ``max_videos_per_poll``) → walk them until the cursor is
 hit → skip anything already in ``research_articles`` → ``ingest_video`` the rest.
 
 **Cursor rule** (``last_video_id`` / ``last_seen_at``): the walk stops at
@@ -76,9 +76,9 @@ RETRIABLE_REASONS: frozenset[str] = frozenset({"blocked", "unknown", "dependency
 # egress/rate-limit problem, not a statement about the channel's captions.
 _CAPTIONS_MISSING_REASONS: frozenset[str] = frozenset({"no_captions"})
 
-# Pause between videos. YouTube blocks the caption endpoint per IP on request
-# rate (K1 notes: ~150 fetches in 15 min tripped a residential IP for hours), and
-# the yt-dlp fallback shares the address, so pacing is the only real defence.
+# Pause between videos. Caption providers block per egress IP on volume, and the
+# listing/VTT fallback shares that address, so pacing is the main defence short
+# of ``YOUTUBE_PROXY_URL``.
 _SLEEP_BETWEEN_VIDEOS_S = 3.0
 _SLEEP_BETWEEN_SOURCES_S = 2.0
 
@@ -168,7 +168,7 @@ class PollSummary:
 def production_holdings(supabase_client: Any | None = None) -> list[str]:
     """Holdings-scoped relevance input — production funds only.
 
-    Same shape as ``scripts/youtube_article_ingest.py`` and the transcript queue
+    Same shape as ``scripts/yt_article_ingest.py`` and the transcript queue
     handler: relevance scoring should reflect what the production funds actually
     hold, and TEST funds must not widen it.
     """
@@ -321,14 +321,14 @@ def poll_source(
     sleep_fn: Callable[[float], None] | None = None,
 ) -> SourcePollResult:
     """Poll one allowlist row. Never raises; failures land in the result."""
-    from youtube_captions import CaptionFetchError, list_source_videos
+    from yt_captions import CaptionFetchError, list_source_videos
 
     source_id = row.get("id")
     result = SourcePollResult(source_id=source_id, label=_source_label(row))
     listing = list_fn or list_source_videos
     ingest = ingest_fn
     if ingest is None:
-        from youtube_articles import ingest_video as ingest
+        from yt_articles import ingest_video as ingest
 
     sleep = sleep_fn if sleep_fn is not None else time.sleep
 
@@ -607,7 +607,7 @@ def youtube_caption_ingest_job() -> None:
         try:
             from postgres_client import PostgresClient
             from research_repository import ResearchRepository
-            from youtube_articles import ingest_video  # noqa: F401 - fail fast on import
+            from yt_articles import ingest_video  # noqa: F401 - fail fast on import
         except ImportError as exc:
             duration_ms = int((time.time() - start_time) * 1000)
             message = f"Missing dependency: {exc}"

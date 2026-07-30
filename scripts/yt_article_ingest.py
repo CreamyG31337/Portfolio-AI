@@ -8,10 +8,10 @@ AI task queue).
 
 Usage (from repo root, venv active)::
 
-    python scripts/youtube_article_ingest.py "https://www.youtube.com/watch?v=LPEXkI_4qI4"
-    python scripts/youtube_article_ingest.py LPEXkI_4qI4 --source-id 3
-    python scripts/youtube_article_ingest.py LPEXkI_4qI4 --dry-run
-    python scripts/youtube_article_ingest.py LPEXkI_4qI4 --force --queue
+    python scripts/yt_article_ingest.py "https://www.youtube.com/watch?v=LPEXkI_4qI4"
+    python scripts/yt_article_ingest.py LPEXkI_4qI4 --source-id 3
+    python scripts/yt_article_ingest.py LPEXkI_4qI4 --dry-run
+    python scripts/yt_article_ingest.py LPEXkI_4qI4 --force --queue
 
 ``--source-id`` pulls the allowlist row (expected_tickers, duration gates, handle,
 alpha_mechanism) so the landed row carries the same provenance the K3 poller will.
@@ -38,7 +38,7 @@ for path in (_REPO_ROOT, _WEB):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-logger = logging.getLogger("youtube_article_ingest")
+logger = logging.getLogger("yt_article_ingest")
 
 
 def _load_source_row(source_id: int) -> dict[str, Any] | None:
@@ -136,8 +136,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
 
-    from youtube_articles import ingest_video, normalize_transcript
-    from youtube_captions import CaptionFetchError, fetch_caption_text
+    from yt_articles import ingest_video, normalize_transcript
+    from yt_captions import CaptionFetchError, fetch_caption_text
 
     if args.dry_run:
         try:

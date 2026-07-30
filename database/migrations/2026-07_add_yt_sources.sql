@@ -1,5 +1,5 @@
 -- Research DB: youtube_sources allowlist for Phase K.
--- Same DDL as migrations/008_create_youtube_sources.sql (root numbered series).
+-- Same DDL as migrations/008_create_yt_sources.sql (root numbered series).
 
 CREATE TABLE IF NOT EXISTS youtube_sources (
   id                      SERIAL PRIMARY KEY,

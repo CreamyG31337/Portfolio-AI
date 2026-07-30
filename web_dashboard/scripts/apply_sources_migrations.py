@@ -2,7 +2,7 @@
 """Apply Phase K sources migrations to the Research DB.
 
 Runs:
-  - migrations/008_create_youtube_sources.sql
+  - migrations/008_create_yt_sources.sql
   - migrations/009_add_rss_feeds_health_columns.sql
 
 Usage (from repo root, venv active)::
@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 MIGRATIONS = [
-    _ROOT / "migrations" / "008_create_youtube_sources.sql",
+    _ROOT / "migrations" / "008_create_yt_sources.sql",
     _ROOT / "migrations" / "009_add_rss_feeds_health_columns.sql",
 ]
 

@@ -3,9 +3,9 @@
 
 Usage (from repo root, venv active)::
 
-    python scripts/youtube_caption_poc.py "https://www.youtube.com/watch?v=jNQXAC9IVRw"
-    python scripts/youtube_caption_poc.py LPEXkI_4qI4 --no-metadata
-    python scripts/youtube_caption_poc.py LPEXkI_4qI4 --out captions.txt
+    python scripts/yt_caption_poc.py "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+    python scripts/yt_caption_poc.py LPEXkI_4qI4 --no-metadata
+    python scripts/yt_caption_poc.py LPEXkI_4qI4 --out captions.txt
 
 Exit codes:
   0 success
@@ -26,7 +26,7 @@ for path in (_REPO_ROOT, _WEB):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from youtube_captions import CaptionFetchError, fetch_caption_text  # noqa: E402
+from yt_captions import CaptionFetchError, fetch_caption_text  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,12 +42,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-ytdlp-fallback",
         action="store_true",
-        help="Disable yt-dlp VTT fallback",
+        help="Disable listing-client VTT fallback",
     )
     parser.add_argument(
         "--no-metadata",
         action="store_true",
-        help="Skip yt-dlp metadata lookup (faster)",
+        help="Skip listing-client metadata lookup (faster)",
     )
     parser.add_argument(
         "--out",

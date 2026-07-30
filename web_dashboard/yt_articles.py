@@ -1,6 +1,6 @@
 """Normalize allowlisted YouTube captions into ``research_articles`` (Phase K2).
 
-K1 (``youtube_captions``) fetches + cleans caption text. K2 lands that text as an
+K1 (``yt_captions``) fetches + cleans caption text. K2 lands that text as an
 article-shaped row so the **existing** summarize / ticker-extract / meta / dossier
 paths consume it — no parallel "video insights" store, no separate meta stack.
 
@@ -37,7 +37,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from youtube_captions import (
+from yt_captions import (
     CaptionFetchError,
     CaptionResult,
     fetch_caption_text,

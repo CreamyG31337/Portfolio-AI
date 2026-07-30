@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS youtube_sources (
   -- health
   last_success_at         TIMESTAMPTZ,
   consecutive_failures    INTEGER      NOT NULL DEFAULT 0,
-  last_error_reason       VARCHAR(32),  -- youtube_captions.FailureReason literal
+  last_error_reason       VARCHAR(32),  -- yt_captions.FailureReason literal
   captions_ok             BOOLEAN,      -- NULL = never tested
 
   -- provenance
@@ -67,6 +67,6 @@ END $$;
 COMMENT ON TABLE youtube_sources IS
   'Allowlisted YouTube channels/playlists/IR/search queries for Phase K caption ingest. Managed via /admin/sources.';
 COMMENT ON COLUMN youtube_sources.last_error_reason IS
-  'youtube_captions.FailureReason: no_captions | blocked | age_restricted | unavailable | dependency | parse | unknown';
+  'yt_captions.FailureReason: no_captions | blocked | age_restricted | unavailable | dependency | parse | unknown';
 COMMENT ON COLUMN youtube_sources.confidence_weight IS
   'Downstream LLM confidence multiplier (0.00–2.00). Bucketing vs numeric is a K4 concern.';

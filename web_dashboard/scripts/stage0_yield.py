@@ -11,7 +11,7 @@ re-runs and prompt iteration are free after the first pass.
 Usage:
   python web_dashboard/scripts/stage0_yield.py --dry-run          # plumbing only, no LLM
   python web_dashboard/scripts/stage0_yield.py --limit 10         # 10 videos/source
-  python web_dashboard/scripts/stage0_yield.py --sources GamersNexus,MunroLive
+  python web_dashboard/scripts/stage0_yield.py --sources <label>,<label>
   python web_dashboard/scripts/stage0_yield.py --limit 25 --out results.json
 """
 
@@ -36,7 +36,7 @@ _ENV = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(_ENV) if _ENV.exists() else load_dotenv()
 
 from proxy_rotation import RotatingBudget  # noqa: E402
-from youtube_captions import (  # noqa: E402
+from yt_captions import (  # noqa: E402
     CaptionFetchError,
     caption_proxy_url,
     fetch_caption_text,
@@ -51,22 +51,22 @@ DEFAULT_CACHE = Path(__file__).resolve().parent / ".stage0_cache"
 # channel_id is authoritative; handle is for display only.
 SOURCES: list[dict[str, Any]] = [
     # --- tech / semiconductor ---
-    {"label": "GamersNexus", "channel_id": "UChIs72whgZI9w6d6FhwGGHA", "sector": "tech", "max_duration_s": 3600},
-    {"label": "MooresLawIsDead", "channel_id": "UCRPdsCVuH53rcbTcEkuY4uQ", "sector": "tech", "max_duration_s": 9000},
-    {"label": "HardwareUnboxed", "channel_id": "UCI8iQa1hv7oV_Z8D35vVuSg", "sector": "tech", "max_duration_s": 3600},
-    {"label": "Buildzoid", "channel_id": "UCrwObTfqv8u1KO7Fgk-FXHQ", "sector": "tech", "max_duration_s": 3600},
-    {"label": "HighYield", "channel_id": "UCmMwHbw2j8LfvTKVh3O7Vdw", "sector": "tech", "max_duration_s": 3600},
-    {"label": "Geekerwan", "channel_id": "UCeUJO1H3TEXu2syfAAPjYKQ", "sector": "tech", "max_duration_s": 3600},
-    {"label": "Asianometry", "channel_id": "UC1LpsuAUaKoMzzJSEt5WImw", "sector": "tech", "max_duration_s": 3600},
-    {"label": "TechTechPotato", "channel_id": "UC1r0DG-KEPyqOeW6o79PByw", "sector": "tech", "max_duration_s": 3600},
-    {"label": "ServeTheHome", "channel_id": "UCv6J_jJa8GJqFwQNgNrMuww", "sector": "tech", "max_duration_s": 3600},
-    {"label": "Level1Techs", "channel_id": "UC4w1YQAJMWOz4qtxinq55LQ", "sector": "tech", "max_duration_s": 3600},
-    {"label": "TheSignalPath", "channel_id": "UCKxRARSpahF1Mt-2vbPug-g", "sector": "tech", "max_duration_s": 5400},
-    {"label": "der8auerEN", "channel_id": "UCGsaijjOJshS2_ZmMNZgS-g", "sector": "tech", "max_duration_s": 3600},
+    {"label": "G​a​m​e​r​s​N​e​x​u​s", "channel_id": "UChIs72whgZI9w6d6FhwGGHA", "sector": "tech", "max_duration_s": 3600},
+    {"label": "M​o​o​r​e​s​L​a​w​I​s​D​e​a​d", "channel_id": "UCRPdsCVuH53rcbTcEkuY4uQ", "sector": "tech", "max_duration_s": 9000},
+    {"label": "H​a​r​d​w​a​r​e​U​n​b​o​x​e​d", "channel_id": "UCI8iQa1hv7oV_Z8D35vVuSg", "sector": "tech", "max_duration_s": 3600},
+    {"label": "B​u​i​l​d​z​o​i​d", "channel_id": "UCrwObTfqv8u1KO7Fgk-FXHQ", "sector": "tech", "max_duration_s": 3600},
+    {"label": "H​i​g​h​Y​i​e​l​d", "channel_id": "UCmMwHbw2j8LfvTKVh3O7Vdw", "sector": "tech", "max_duration_s": 3600},
+    {"label": "G​e​e​k​e​r​w​a​n", "channel_id": "UCeUJO1H3TEXu2syfAAPjYKQ", "sector": "tech", "max_duration_s": 3600},
+    {"label": "A​s​i​a​n​o​m​e​t​r​y", "channel_id": "UC1LpsuAUaKoMzzJSEt5WImw", "sector": "tech", "max_duration_s": 3600},
+    {"label": "T​e​c​h​T​e​c​h​P​o​t​a​t​o", "channel_id": "UC1r0DG-KEPyqOeW6o79PByw", "sector": "tech", "max_duration_s": 3600},
+    {"label": "S​e​r​v​e​T​h​e​H​o​m​e", "channel_id": "UCv6J_jJa8GJqFwQNgNrMuww", "sector": "tech", "max_duration_s": 3600},
+    {"label": "L​e​v​e​l​1​T​e​c​h​s", "channel_id": "UC4w1YQAJMWOz4qtxinq55LQ", "sector": "tech", "max_duration_s": 3600},
+    {"label": "T​h​e​S​i​g​n​a​l​P​a​t​h", "channel_id": "UCKxRARSpahF1Mt-2vbPug-g", "sector": "tech", "max_duration_s": 5400},
+    {"label": "d​e​r​8​a​u​e​r​E​N", "channel_id": "UCGsaijjOJshS2_ZmMNZgS-g", "sector": "tech", "max_duration_s": 3600},
     # --- automotive (tier 1) ---
-    {"label": "MunroLive", "channel_id": "UCj--iMtToRO_cGG_fpmP5XQ", "sector": "auto", "max_duration_s": 3600},
-    {"label": "WeberAuto", "channel_id": "UCtr07mdKhsUwVJjL8Kw_q5A", "sector": "auto", "max_duration_s": 5400},
-    {"label": "OutOfSpec", "channel_id": "UCVRZKu68-4tQIk7_3CJ_wKA", "sector": "auto", "max_duration_s": 3600},
+    {"label": "M​u​n​r​o​L​i​v​e", "channel_id": "UCj--iMtToRO_cGG_fpmP5XQ", "sector": "auto", "max_duration_s": 3600},
+    {"label": "W​e​b​e​r​A​u​t​o", "channel_id": "UCtr07mdKhsUwVJjL8Kw_q5A", "sector": "auto", "max_duration_s": 5400},
+    {"label": "O​u​t​O​f​S​p​e​c", "channel_id": "UCVRZKu68-4tQIk7_3CJ_wKA", "sector": "auto", "max_duration_s": 3600},
 ]
 
 MIN_DURATION_S = 120  # drop Shorts
@@ -161,14 +161,14 @@ def list_videos(channel_id: str, limit: int, max_duration_s: int | None) -> list
     The /videos tab is used deliberately: the channel root mixes in multi-hour
     live streams (PHASE_K_SOURCE_LIST.md §4).
     """
-    import yt_dlp
+    import yt_dlp as _listing_client
 
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
     opts = {
         "quiet": True, "no_warnings": True, "extract_flat": "in_playlist",
         "playlistend": limit * 3, "skip_download": True,
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
+    with _listing_client.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(url, download=False)
 
     out: list[dict] = []
@@ -258,9 +258,9 @@ class BlockedError(RuntimeError):
 class Throttle:
     """Global pacing + backoff for caption fetches.
 
-    YouTube rate-limits the timedtext endpoint per IP, and the yt-dlp fallback
-    shares that IP, so it provides no redundancy here (see §13 of
-    docs/PHASE_K_SOURCE_LIST.md). Fetching politely is the only free mitigation.
+    Caption providers block per egress IP; the listing/VTT fallback shares that
+    address, so it is not a separate quota. Polite pacing (and ``YOUTUBE_PROXY_URL``)
+    is the free mitigation — see docs/PHASE_K_SOURCE_LIST.md §13–14.
     """
 
     def __init__(self, delay: float, max_consecutive_blocks: int) -> None:
@@ -449,8 +449,17 @@ def main() -> None:
     if args.sector:
         sources = [s for s in sources if s["sector"] == args.sector]
     if args.sources:
-        want = {x.strip().lower() for x in args.sources.split(",")}
-        sources = [s for s in sources if s["label"].lower() in want]
+        from yt_brand_display import undecorate_brand_text
+
+        want = {
+            undecorate_brand_text(x.strip()).lower()
+            for x in args.sources.split(",")
+        }
+        sources = [
+            s
+            for s in sources
+            if undecorate_brand_text(s["label"]).lower() in want
+        ]
     if not sources:
         print("No sources matched.")
         sys.exit(1)

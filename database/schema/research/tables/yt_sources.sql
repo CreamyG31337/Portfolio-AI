@@ -1,4 +1,4 @@
--- Mirror of migrations/008_create_youtube_sources.sql for clean Research schema exports.
+-- Mirror of migrations/008_create_yt_sources.sql for clean Research schema exports.
 -- Table: youtube_sources
 
 CREATE TABLE IF NOT EXISTS youtube_sources (

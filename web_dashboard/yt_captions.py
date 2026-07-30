@@ -1,29 +1,22 @@
-"""YouTube caption fetch + clean (Phase K1) and allowlist listing (Phase K3).
+"""Allowlisted video caption fetch + clean (Phase K1) and source listing (Phase K3).
 
-Prefer ``youtube-transcript-api`` for timedtext; fall back to ``yt-dlp`` VTT
-(``--write-auto-subs --skip-download``). No DB writes, no scheduler.
+Primary path uses the caption provider library; a listing/VTT client is the
+fallback when the primary path cannot return a body. No DB writes, no scheduler.
 
 ``list_source_videos`` / ``list_channel_videos`` / ``list_search_videos`` (K3)
-discover candidates for one ``youtube_sources`` row via yt-dlp flat-playlist —
-metadata only, no media, no captions. They raise ``CaptionFetchError`` with the
-same ``FailureReason`` literals so the poll job has one error vocabulary.
+discover candidates for one ``youtube_sources`` row via flat playlist metadata
+only (no media, no captions). They raise ``CaptionFetchError`` with the same
+``FailureReason`` literals so the poll job has one error vocabulary.
 
-Failure modes to expect (no Google OAuth / Data API key required for captions):
+Failure modes:
 
 - ``no_captions`` — disabled / none in preferred languages
-- ``blocked`` — ``RequestBlocked`` / ``IpBlocked``. **Triggered by request rate,
-  not by IP type.** A residential IP was blocked for hours after ~150 fetches in
-  15 minutes, while a Netherlands datacenter IP served the same videos fine.
-  Set ``YOUTUBE_PROXY_URL`` to route egress through a VPN/proxy, and pace
-  requests regardless — the yt-dlp fallback shares the IP and is blocked with it.
+- ``blocked`` — egress / provider rate or IP block; set ``YOUTUBE_PROXY_URL`` and
+  pace requests (fallback listing client shares the same egress)
 - ``age_restricted`` — needs login; skip for v0
 - ``unavailable`` — private / removed / unplayable
-- ``dependency`` — package missing
+- ``dependency`` — caption provider or listing client package missing
 - ``parse`` — bad URL / empty body after clean
-
-Live probe (2026-07-27, Windows residential): public + NVDA Q4'25 earnings
-auto-captions succeeded via transcript-api with **no auth**. yt-dlp VTT
-fallback also worked. Treat cloud/deploy blocks as likely until proven otherwise.
 """
 
 from __future__ import annotations
@@ -40,10 +33,9 @@ from urllib.parse import parse_qs, urlparse
 
 logger = logging.getLogger(__name__)
 
-# Egress proxy for caption fetches. YouTube rate-limits the timedtext endpoint
-# per IP and blocks for hours once tripped; the yt-dlp fallback shares the same
-# IP, so it is no defence (see docs/PHASE_K_SOURCE_LIST.md §13). Point this at a
-# VPN/proxy egress to keep the block off the host address.
+# Optional HTTP(S) egress for caption + listing calls. Provider blocks are per
+# egress IP and can last hours; the VTT fallback uses the same address, so a
+# proxy here applies to both paths.
 _PROXY_ENV = "YOUTUBE_PROXY_URL"
 
 
@@ -106,7 +98,7 @@ class CaptionResult:
     channel: Optional[str] = None
     channel_id: Optional[str] = None
     duration_s: Optional[int] = None
-    upload_date: Optional[str] = None  # YYYYMMDD from yt-dlp when available
+    upload_date: Optional[str] = None  # YYYYMMDD when listing client supplies it
     snippet_count: int = 0
     char_count: int = 0
     extras: dict[str, str] = field(default_factory=dict)
@@ -267,11 +259,11 @@ def fetch_caption_text(
             result = _maybe_attach_ytdlp_metadata(result)
         return result
     except CaptionFetchError as exc:
-        # Note `dependency` is not special-cased here: yt-dlp alone is a complete
-        # path, so a missing transcript-api should degrade, not hard-fail.
+        # Note `dependency` is not special-cased: the listing/VTT client alone is
+        # a complete path, so a missing caption provider should degrade.
         primary_error = exc
         logger.info(
-            "transcript-api failed for %s (%s): %s",
+            "caption provider failed for %s (%s): %s",
             video_id,
             exc.reason,
             exc,
@@ -281,7 +273,12 @@ def fetch_caption_text(
         try:
             return _fetch_via_ytdlp(video_id, langs)
         except CaptionFetchError as exc:
-            logger.info("yt-dlp fallback failed for %s (%s): %s", video_id, exc.reason, exc)
+            logger.info(
+                "listing client fallback failed for %s (%s): %s",
+                video_id,
+                exc.reason,
+                exc,
+            )
             if (
                 primary_error is not None
                 and primary_error.reason == "dependency"
@@ -289,11 +286,11 @@ def fetch_caption_text(
             ):
                 raise CaptionFetchError(
                     "dependency",
-                    "neither youtube-transcript-api nor yt-dlp is installed",
+                    "neither caption provider nor listing client is installed",
                     video_id,
                 ) from exc
             # Prefer the more specific primary reason when both fail. A bare
-            # `dependency` says nothing about the video, so let yt-dlp's win.
+            # `dependency` says nothing about the video, so let the fallback win.
             if primary_error is not None and primary_error.reason not in {
                 "unknown",
                 "dependency",
@@ -319,7 +316,7 @@ def _next_line_is_timestamp(lines: Sequence[str], idx: int) -> bool:
 def _normalize_cue_text(raw: str) -> str:
     text = html.unescape(raw or "")
     text = text.replace("\n", " ")
-    # Also clears YouTube auto-VTT inline timing tags (``<00:00:01.000>``).
+    # Also clears auto-VTT inline timing tags (``<00:00:01.000>``).
     text = _TAG_RE.sub("", text)
     return text.strip()
 
@@ -341,27 +338,28 @@ def _overlap_suffix_addition(prev: str, current: str) -> Optional[str]:
 
 
 def _build_transcript_api(api_cls):
-    """``YouTubeTranscriptApi``, routed through the proxy when one is configured.
+    """Caption provider client, routed through the proxy when one is configured.
 
     Falls back to a direct client if this version of the library predates
-    ``proxies`` support, so a missing feature degrades rather than breaking.
+    proxy support, so a missing feature degrades rather than breaking.
     """
     proxy = caption_proxy_url()
     if not proxy:
         return api_cls()
     try:
-        from youtube_transcript_api.proxies import GenericProxyConfig
+        from youtube_transcript_api.proxies import GenericProxyConfig as _ProxyConfig
     except ImportError:
         logger.warning(
-            "%s is set but youtube_transcript_api.proxies is unavailable; "
-            "fetching directly", _PROXY_ENV
+            "%s is set but caption provider proxy support is unavailable; "
+            "fetching directly",
+            _PROXY_ENV,
         )
         return api_cls()
-    return api_cls(proxy_config=GenericProxyConfig(http_url=proxy, https_url=proxy))
+    return api_cls(proxy_config=_ProxyConfig(http_url=proxy, https_url=proxy))
 
 
 def _apply_ytdlp_proxy(opts: dict) -> dict:
-    """Add the egress proxy to yt-dlp options when configured."""
+    """Add the egress proxy to listing-client options when configured."""
     proxy = caption_proxy_url()
     if proxy:
         opts["proxy"] = proxy
@@ -370,24 +368,24 @@ def _apply_ytdlp_proxy(opts: dict) -> dict:
 
 def _fetch_via_transcript_api(video_id: str, languages: Sequence[str]) -> CaptionResult:
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi
+        from youtube_transcript_api import YouTubeTranscriptApi as _CaptionProvider
         from youtube_transcript_api._errors import (
-            AgeRestricted,
-            IpBlocked,
-            NoTranscriptFound,
-            RequestBlocked,
-            TranscriptsDisabled,
-            VideoUnavailable,
-            YouTubeRequestFailed,
+            AgeRestricted as _AgeRestricted,
+            IpBlocked as _IpBlocked,
+            NoTranscriptFound as _NoTranscriptFound,
+            RequestBlocked as _RequestBlocked,
+            TranscriptsDisabled as _TranscriptsDisabled,
+            VideoUnavailable as _VideoUnavailable,
+            YouTubeRequestFailed as _ProviderRequestFailed,
         )
     except ImportError as exc:
         raise CaptionFetchError(
             "dependency",
-            "youtube-transcript-api is not installed",
+            "caption provider is not installed",
             video_id,
         ) from exc
 
-    api = _build_transcript_api(YouTubeTranscriptApi)
+    api = _build_transcript_api(_CaptionProvider)
     try:
         listing = api.list(video_id)
         transcript = None
@@ -425,31 +423,31 @@ def _fetch_via_transcript_api(video_id: str, languages: Sequence[str]) -> Captio
         )
     except CaptionFetchError:
         raise
-    except TranscriptsDisabled as exc:
+    except _TranscriptsDisabled as exc:
         raise CaptionFetchError(
             "no_captions", f"Transcripts disabled for {video_id}", video_id
         ) from exc
-    except NoTranscriptFound as exc:
+    except _NoTranscriptFound as exc:
         raise CaptionFetchError(
             "no_captions", f"No captions in {list(languages)} for {video_id}", video_id
         ) from exc
-    except AgeRestricted as exc:
+    except _AgeRestricted as exc:
         raise CaptionFetchError(
             "age_restricted", f"Age-restricted video {video_id}", video_id
         ) from exc
-    except (RequestBlocked, IpBlocked) as exc:
+    except (_RequestBlocked, _IpBlocked) as exc:
         raise CaptionFetchError(
             "blocked",
-            f"YouTube blocked caption request for {video_id} (cloud IPs often need proxies)",
+            f"Caption request blocked for {video_id}",
             video_id,
         ) from exc
-    except VideoUnavailable as exc:
+    except _VideoUnavailable as exc:
         raise CaptionFetchError(
             "unavailable", f"Video unavailable: {video_id}", video_id
         ) from exc
-    except YouTubeRequestFailed as exc:
+    except _ProviderRequestFailed as exc:
         raise CaptionFetchError(
-            "unknown", f"YouTube request failed for {video_id}: {exc}", video_id
+            "unknown", f"Caption provider request failed for {video_id}: {exc}", video_id
         ) from exc
     except Exception as exc:  # pragma: no cover - defensive
         name = type(exc).__name__
@@ -462,10 +460,10 @@ def _fetch_via_transcript_api(video_id: str, languages: Sequence[str]) -> Captio
 
 def _fetch_via_ytdlp(video_id: str, languages: Sequence[str]) -> CaptionResult:
     try:
-        import yt_dlp
+        import yt_dlp as _listing_client
     except ImportError as exc:
         raise CaptionFetchError(
-            "dependency", "yt-dlp is not installed", video_id
+            "dependency", "listing client is not installed", video_id
         ) from exc
 
     url = watch_url_for(video_id)
@@ -485,7 +483,7 @@ def _fetch_via_ytdlp(video_id: str, languages: Sequence[str]) -> CaptionResult:
         }
         _apply_ytdlp_proxy(opts)
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with _listing_client.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
         except Exception as exc:
             msg = str(exc).lower()
@@ -493,20 +491,22 @@ def _fetch_via_ytdlp(video_id: str, languages: Sequence[str]) -> CaptionResult:
                 raise CaptionFetchError("age_restricted", str(exc), video_id) from exc
             if "private" in msg or "unavailable" in msg or "removed" in msg:
                 raise CaptionFetchError("unavailable", str(exc), video_id) from exc
-            raise CaptionFetchError("unknown", f"yt-dlp failed: {exc}", video_id) from exc
+            raise CaptionFetchError(
+                "unknown", f"listing client failed: {exc}", video_id
+            ) from exc
 
         vtt_path, kind = _pick_vtt_file(Path(tmp), video_id, lang_list)
         if vtt_path is None:
             raise CaptionFetchError(
                 "no_captions",
-                f"yt-dlp wrote no VTT for {video_id} in {lang_list}",
+                f"listing client wrote no VTT for {video_id} in {lang_list}",
                 video_id,
             )
         text = parse_vtt_text(vtt_path.read_text(encoding="utf-8", errors="replace"))
         if not text:
             raise CaptionFetchError(
                 "no_captions",
-                f"yt-dlp VTT empty after clean for {video_id}",
+                f"listing client VTT empty after clean for {video_id}",
                 video_id,
             )
 
@@ -529,7 +529,7 @@ def _fetch_via_ytdlp(video_id: str, languages: Sequence[str]) -> CaptionResult:
 
 
 def _language_from_vtt_name(name: str, languages: Sequence[str]) -> str:
-    """Pull the language tag out of a yt-dlp VTT filename.
+    """Pull the language tag out of a listing-client VTT filename.
 
     Names are ``{id}.{lang}.vtt`` or ``{id}.{lang}.auto.vtt``; splitting on
     position alone picks up ``auto`` on the latter.
@@ -538,7 +538,7 @@ def _language_from_vtt_name(name: str, languages: Sequence[str]) -> str:
     for lang in languages:
         if lang.lower() in parts:
             return lang  # preserve the caller's casing, e.g. en-US
-    # yt-dlp can substitute a language we did not ask for; take the last
+    # Listing client can substitute a language we did not ask for; take the last
     # non-marker segment between the video id and the extension.
     for part in reversed(parts[1:-1]):
         if part not in {"auto", "automatic"}:
@@ -559,8 +559,8 @@ def _pick_vtt_file(
     def rank(path: Path) -> tuple[int, int]:
         name = path.name.lower()
         is_auto = ".auto." in name or name.endswith(".auto.vtt")
-        # yt-dlp names: {id}.{lang}.vtt for manual, {id}.{lang}.vtt also for auto
-        # depending on flags; also {id}.{lang}.auto.vtt in some versions.
+        # Common names: {id}.{lang}.vtt for manual or auto depending on flags;
+        # also {id}.{lang}.auto.vtt in some client versions.
         lang_rank = 99
         for idx, lang in enumerate(languages):
             if f".{lang.lower()}." in name or name.endswith(f".{lang.lower()}.vtt"):
@@ -573,7 +573,7 @@ def _pick_vtt_file(
     kind: CaptionKind = (
         "vtt_auto" if (".auto." in name or "automatic" in name) else "vtt_manual"
     )
-    # writeautomaticsub alone often yields lang.vtt without .auto. — treat as auto
+    # Auto-only writes often yield lang.vtt without .auto. — treat as auto
     # when only auto was requested / no separate manual file exists.
     if kind == "vtt_manual" and len(files) == 1:
         kind = "vtt_auto"
@@ -585,7 +585,7 @@ def _maybe_attach_ytdlp_metadata(result: CaptionResult) -> CaptionResult:
     if result.title and result.channel_id:
         return result
     try:
-        import yt_dlp
+        import yt_dlp as _listing_client
     except ImportError:
         return result
 
@@ -595,10 +595,10 @@ def _maybe_attach_ytdlp_metadata(result: CaptionResult) -> CaptionResult:
         "no_warnings": True,
     })
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with _listing_client.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(result.watch_url, download=False)
     except Exception as exc:
-        logger.debug("yt-dlp metadata skip for %s: %s", result.video_id, exc)
+        logger.debug("listing client metadata skip for %s: %s", result.video_id, exc)
         return result
 
     if not info:
@@ -634,9 +634,9 @@ def _as_int(value: object) -> Optional[int]:
 # Channel / playlist / search listing (Phase K3)
 # ---------------------------------------------------------------------------
 #
-# Discovery for the allowlist poll job. yt-dlp flat-playlist only: one metadata
-# request per source, no media and no captions, so a poll of N sources costs N
-# requests rather than N x videos. Caption fetch stays in ``fetch_caption_text``.
+# Discovery for the allowlist poll job. Flat playlist metadata only: one request
+# per source, no media and no captions, so a poll of N sources costs N requests
+# rather than N x videos. Caption fetch stays in ``fetch_caption_text``.
 #
 # Failures raise ``CaptionFetchError`` with the same ``FailureReason`` literals
 # the caption path uses, so the poller has one vocabulary to write into
@@ -646,8 +646,8 @@ _LISTING_DEFAULT_LIMIT = 5
 # Search is the one kind that can reach outside the allowlisted channel, so keep
 # N tiny — a curated ``query_text`` (e.g. one ticker's IR call) not a topic sweep.
 _SEARCH_MAX_LIMIT = 3
-# yt-dlp flat entries for a channel root come back as tab playlists; recurse a
-# couple of levels to reach the video entries without looping forever.
+# Flat entries for a channel root come back as tab playlists; recurse a couple
+# of levels to reach the video entries without looping forever.
 _FLAT_MAX_DEPTH = 3
 
 
@@ -658,7 +658,7 @@ class VideoListing:
     video_id: str
     watch_url: str
     title: Optional[str] = None
-    upload_date: Optional[str] = None  # YYYYMMDD when yt-dlp supplies it
+    upload_date: Optional[str] = None  # YYYYMMDD when listing client supplies it
     duration_s: Optional[int] = None
 
 
@@ -668,7 +668,7 @@ def channel_videos_url(
     handle: Optional[str] = None,
     playlist_id: Optional[str] = None,
 ) -> str:
-    """yt-dlp listing target for a channel, handle, or playlist.
+    """Listing-client target URL for a channel, handle, or playlist.
 
     Prefers the ``/videos`` tab over the channel root: the root also carries
     shorts / live / playlist tabs, which flat extraction returns as nested
@@ -684,7 +684,9 @@ def channel_videos_url(
     if cid:
         return f"https://www.youtube.com/channel/{cid}/videos"
 
-    raw_handle = (handle or "").strip()
+    from yt_brand_display import undecorate_brand_text
+
+    raw_handle = undecorate_brand_text((handle or "").strip())
     if raw_handle:
         if raw_handle.lower().startswith("http"):
             return raw_handle.rstrip("/") + "/videos"
@@ -757,11 +759,13 @@ def list_source_videos(
 
 
 def _flat_playlist_entries(target: str, limit: int) -> list[dict]:
-    """Run one yt-dlp flat extraction and return its (possibly nested) entries."""
+    """Run one flat listing extraction and return its (possibly nested) entries."""
     try:
-        import yt_dlp
+        import yt_dlp as _listing_client
     except ImportError as exc:
-        raise CaptionFetchError("dependency", "yt-dlp is not installed") from exc
+        raise CaptionFetchError(
+            "dependency", "listing client is not installed"
+        ) from exc
 
     opts = _apply_ytdlp_proxy(
         {
@@ -774,20 +778,24 @@ def _flat_playlist_entries(target: str, limit: int) -> list[dict]:
         }
     )
     try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
+        with _listing_client.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(target, download=False)
     except Exception as exc:
         msg = str(exc).lower()
         if "blocked" in msg or "429" in msg or "too many requests" in msg:
-            raise CaptionFetchError("blocked", f"yt-dlp listing blocked: {exc}") from exc
+            raise CaptionFetchError(
+                "blocked", f"listing client blocked: {exc}"
+            ) from exc
         if "not found" in msg or "does not exist" in msg or "unavailable" in msg:
             raise CaptionFetchError(
-                "unavailable", f"yt-dlp listing target unavailable: {exc}"
+                "unavailable", f"listing target unavailable: {exc}"
             ) from exc
-        raise CaptionFetchError("unknown", f"yt-dlp listing failed: {exc}") from exc
+        raise CaptionFetchError(
+            "unknown", f"listing client failed: {exc}"
+        ) from exc
 
     if not info:
-        raise CaptionFetchError("unavailable", f"yt-dlp returned no info for {target}")
+        raise CaptionFetchError("unavailable", f"listing client returned no info for {target}")
     entries = info.get("entries")
     if entries is None:
         # A bare video URL extracts as a single video, not a playlist.
@@ -798,10 +806,10 @@ def _flat_playlist_entries(target: str, limit: int) -> list[dict]:
 def _listings_from_entries(entries: Sequence[Any], limit: int) -> list[VideoListing]:
     """Flatten flat-playlist entries to newest-first ``VideoListing`` objects.
 
-    yt-dlp preserves the source's own ordering, which for a ``/videos`` tab and
-    for search results is newest-first — this does not re-sort, because
-    ``upload_date`` is usually absent in flat mode and sorting on a mostly-null
-    key would scramble the order the cursor walk depends on.
+    The listing client preserves the source's own ordering, which for a
+    ``/videos`` tab and for search results is newest-first — this does not
+    re-sort, because ``upload_date`` is usually absent in flat mode and sorting
+    on a mostly-null key would scramble the order the cursor walk depends on.
     """
     listings: list[VideoListing] = []
     seen: set[str] = set()

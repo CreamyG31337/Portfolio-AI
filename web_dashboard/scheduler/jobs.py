@@ -820,7 +820,7 @@ from scheduler.jobs_opportunity import opportunity_discovery_job
 from scheduler.jobs_symbol_articles import symbol_article_scraper_job
 
 # Import YouTube allowlist poll job (Phase K3)
-from scheduler.jobs_youtube import youtube_caption_ingest_job
+from scheduler.jobs_yt import youtube_caption_ingest_job
 
 # Import dividend processing job
 from scheduler.jobs_dividends import process_dividends_job

@@ -1,10 +1,10 @@
 """Unit tests for the Phase K3 YouTube allowlist poll job (no network, no DB).
 
-Covers yt-dlp flat-playlist listing parse/order, the ``kind`` dispatch, the
+Covers flat-playlist listing parse/order, the ``kind`` dispatch, the
 cursor walk + advance rule, per-source and global caps, soft-fail isolation, the
 ``youtube_sources`` health/cursor writes, and that disabled rows are never read.
 
-``ingest_video`` and yt-dlp are both mocked; ``PostgresClient`` and
+``ingest_video`` and the listing client are both mocked; ``PostgresClient`` and
 ``ResearchRepository`` are fakes.
 """
 
@@ -19,7 +19,7 @@ import pytest
 
 # sys.path is set up by tests/conftest.py, which deliberately pins the repo root
 # ahead of web_dashboard — do not re-insert them here.
-from youtube_captions import (  # noqa: E402
+from yt_captions import (  # noqa: E402
     CaptionFetchError,
     VideoListing,
     channel_videos_url,
@@ -27,7 +27,7 @@ from youtube_captions import (  # noqa: E402
     list_search_videos,
     list_source_videos,
 )
-from scheduler.jobs_youtube import (  # noqa: E402
+from scheduler.jobs_yt import (  # noqa: E402
     PollSummary,
     load_enabled_sources,
     max_per_run,
@@ -112,7 +112,7 @@ def pg() -> _FakePg:
 
 
 # ---------------------------------------------------------------------------
-# Listing helper (yt-dlp mocked)
+# Listing helper (listing client mocked)
 # ---------------------------------------------------------------------------
 
 

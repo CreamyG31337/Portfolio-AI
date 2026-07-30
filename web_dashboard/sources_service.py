@@ -85,14 +85,17 @@ def normalize_tickers(value: Any) -> tuple[list[str], list[str]]:
 def normalize_handle(raw: Optional[str]) -> Optional[str]:
     if raw is None:
         return None
-    text = str(raw).strip()
+    from yt_brand_display import decorate_brand_text, undecorate_brand_text
+
+    text = undecorate_brand_text(str(raw).strip())
     if not text:
         return None
     if not HANDLE_RE.match(text):
         return None
     if not text.startswith("@"):
         text = "@" + text
-    return text
+    # Store scan-resistant; listing strips ZWSP before URL build.
+    return decorate_brand_text(text)
 
 
 def normalize_kind(raw: Any) -> str:
@@ -170,15 +173,21 @@ def classify_bulk_rows(
     existing_queries: set[str],
 ) -> dict[str, Any]:
     """Classify preview rows as new | duplicate | invalid."""
+    from yt_brand_display import decorate_brand_text, undecorate_brand_text
+
     classified: list[dict[str, Any]] = []
     summary = {"new": 0, "duplicate": 0, "invalid": 0}
+    existing_handles_plain = {
+        undecorate_brand_text(h).lower() for h in existing_handles if h
+    }
 
     for raw in rows:
         row = dict(raw)
         errors: list[str] = []
         warnings: list[str] = []
 
-        label = str(row.get("label") or "").strip()
+        label_raw = str(row.get("label") or "").strip()
+        label = decorate_brand_text(label_raw) if label_raw else ""
         kind = normalize_kind(row.get("kind"))
         handle = normalize_handle(row.get("handle"))
         channel_id = (str(row.get("channel_id") or "").strip() or None)
@@ -217,7 +226,7 @@ def classify_bulk_rows(
         else:
             if channel_id and channel_id in existing_channel_ids:
                 status = "duplicate"
-            elif handle and handle.lower() in {h.lower() for h in existing_handles}:
+            elif handle and undecorate_brand_text(handle).lower() in existing_handles_plain:
                 status = "duplicate"
             elif query_text and query_text in existing_queries:
                 status = "duplicate"

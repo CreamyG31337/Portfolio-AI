@@ -6,9 +6,9 @@ so ops can inspect and bound one run without touching the scheduler.
 
 Usage (from repo root, venv active)::
 
-    python scripts/youtube_sources_poll.py --dry-run
-    python scripts/youtube_sources_poll.py --source-id 3 --max-videos 2
-    python scripts/youtube_sources_poll.py --list-only --source-id 3
+    python scripts/yt_sources_poll.py --dry-run
+    python scripts/yt_sources_poll.py --source-id 3 --max-videos 2
+    python scripts/yt_sources_poll.py --list-only --source-id 3
 
 ``--dry-run`` lists candidates and reports what would be ingested without
 fetching captions, writing articles, or touching source cursors/health.
@@ -34,7 +34,7 @@ for path in (_REPO_ROOT, _WEB):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-logger = logging.getLogger("youtube_sources_poll")
+logger = logging.getLogger("yt_sources_poll")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     from postgres_client import PostgresClient
-    from scheduler.jobs_youtube import (
+    from scheduler.jobs_yt import (
         load_enabled_sources,
         poll_youtube_sources,
         production_holdings,
@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     postgres_client = PostgresClient()
 
     if args.list_only:
-        from youtube_captions import CaptionFetchError, list_source_videos
+        from yt_captions import CaptionFetchError, list_source_videos
 
         rows = load_enabled_sources(postgres_client, source_id=args.source_id)
         if not rows:

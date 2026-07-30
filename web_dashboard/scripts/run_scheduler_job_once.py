@@ -172,7 +172,7 @@ def main() -> int:
 
             sector_meta_analysis_job()
         elif args.job == "youtube_caption_ingest":
-            from scheduler.jobs_youtube import youtube_caption_ingest_job
+            from scheduler.jobs_yt import youtube_caption_ingest_job
 
             youtube_caption_ingest_job()
         elif args.job == "etf_group_analysis":

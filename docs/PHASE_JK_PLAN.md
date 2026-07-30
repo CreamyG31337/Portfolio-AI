@@ -174,11 +174,11 @@ Shared helpers: `research_utils.extract_article_content`, `scheduler/jobs_common
 
 ## Phase K — YouTube captions → research articles
 
-### Recommended stack (from ROADMAP research notes)
+### Runtime stack
 
-1. **[`jdepoix/youtube-transcript-api`](https://github.com/jdepoix/youtube-transcript-api)** (MIT) — caption body.
-2. **[`yt-dlp/yt-dlp`](https://github.com/yt-dlp/yt-dlp)** (Unlicense) — channel/playlist listing + metadata + VTT fallback.
-3. Thin local wrapper — do not vendor random &lt;20★ CLI wrappers.
+1. **Caption provider** (pinned in requirements) — caption body (manual preferred, then auto).
+2. **Listing client** (pinned in requirements) — channel/playlist listing, metadata, VTT fallback.
+3. Thin local wrapper (`yt_captions.py`) — do not vendor random one-off CLIs.
 
 > **Source config + admin UI** (the `youtube_sources` table below, plus an
 > `/admin/sources` page that also finally gives `rss_feeds` a UI) is specced separately in
@@ -189,8 +189,8 @@ Shared helpers: `research_utils.extract_article_content`, `scheduler/jobs_common
 | Piece | Suggestion | Mirrors |
 |-------|------------|---------|
 | Config table | `youtube_sources` (Research): `channel_id`, `label`, `kind` (`ir`/`macro`/`earnings_search`), `enabled`, `last_seen_at` | `rss_feeds` |
-| Job | `youtube_caption_ingest_job` in `scheduler/jobs_youtube.py` | `jobs_symbol_articles.py` / `rss_feed_ingest_job` |
-| Fetch helper | `web_dashboard/youtube_captions.py` — `fetch_caption_text(video_id) -> CaptionResult` | `research_utils.extract_article_content` |
+| Job | `youtube_caption_ingest_job` in `scheduler/jobs_yt.py` | `jobs_symbol_articles.py` / `rss_feed_ingest_job` |
+| Fetch helper | `web_dashboard/yt_captions.py` — `fetch_caption_text(video_id) -> CaptionResult` | `research_utils.extract_article_content` |
 | Article type | **`YouTube Transcript`** (stable string; document in save_article callers) | existing type strings |
 | URL | Canonical `https://www.youtube.com/watch?v={id}` (unique key) | `research_articles_url_key` |
 | `source` | **Shipped K2:** `youtube:{channel_id}` → `youtube:@handle` → `youtube:{channel-name-slug}` → `youtube:unknown`. Never bare `youtube.com` | track_record domain slice |
@@ -199,9 +199,9 @@ Shared helpers: `research_utils.extract_article_content`, `scheduler/jobs_common
 ### End-to-end flow (K)
 
 ```
-allowlist poll (yt-dlp flat-playlist)
+allowlist poll (flat playlist metadata)
   → for each new video_id since cursor
-  → youtube-transcript-api.fetch (manual EN > auto EN > any)
+  → caption provider fetch (manual EN > auto EN > any)
   → clean text (drop [Music], collapse dup lines)
   → cap content at YOUTUBE_TRANSCRIPT_MAX_CHARS (flag source_metadata.truncated)
   → generate_summary(article_type='YouTube Transcript')  # same CoT fields as symbol scraper
@@ -246,19 +246,19 @@ thesis. Revisit option 2 (map-reduce) before K3 volume if 16k proves too lossy.
   1. **Stitch + single summarize** with hard `content` cap (e.g. 32–64k chars) and note truncation in summary prompt. ← **chosen**
   2. **Chunked summarize** (map → reduce) via AI task queue — better quality, more queue load.
   3. **Earnings-only** first (shorter, higher signal) before macro channels.
-- Prefer **manual** captions over auto when both exist (`youtube-transcript-api` default preference).
-- Rate limits / `RequestBlocked` — backoff + proxy hook already in transcript-api; job must skip soft-fail.
+- Prefer **manual** captions over auto when both exist (caption provider default preference).
+- Egress blocks (`blocked`) — backoff + `YOUTUBE_PROXY_URL`; job must soft-fail and continue.
 
 ### Acceptance criteria (K)
 
 - [x] PoC: given a known earnings video with captions, produce cleaned text without downloading media.
-  (**K1 done 2026-07-27** — see probe notes below; `web_dashboard/youtube_captions.py` +
-  `scripts/youtube_caption_poc.py`.)
+  (**K1 done 2026-07-27** — see probe notes below; `web_dashboard/yt_captions.py` +
+  `scripts/yt_caption_poc.py`.)
 - [x] Upsert lands one `research_articles` row; re-run is idempotent on URL. (**K2 done
-  2026-07-29** — `youtube_articles.ingest_video`; `article_exists` short-circuits a re-run,
+  2026-07-29** — `yt_articles.ingest_video`; `article_exists` short-circuits a re-run,
   `--force` re-summarizes through the same `ON CONFLICT (url)` upsert.)
 - [x] Row has non-empty `conclusion` + `sentiment` after summarize. (Covered by
-  `tests/test_youtube_articles.py`; live spot-check is **K4**.)
+  `tests/test_yt_articles.py`; live spot-check is **K4**.)
 - [ ] Holding ticker appears in `tickers[]`; within 90d it can appear in a meta bundle spot-check.
   (Ticker merge is implemented — `youtube_sources.expected_tickers` leads, then
   `extract_and_validate_tickers` — but the live meta spot-check is **K4**.)
@@ -269,8 +269,8 @@ thesis. Revisit option 2 (map-reduce) before K3 volume if 16k proves too lossy.
   `AVAILABLE_JOBS` — same footgun as Phase G). (**K3 done 2026-07-29** —
   `youtube_caption_ingest`, 5:20 AM ET; timezone reasoning in the K3 notes below.)
 - [x] Tests: caption clean + URL parse + mocked fetch/fallback; no network in unit tests
-  (`tests/test_youtube_captions.py`). save_article mock landed with K2
-  (`tests/test_youtube_articles.py`, 43 tests: fixture VTT → clean → normalize →
+  (`tests/test_yt_captions.py`). save_article mock landed with K2
+  (`tests/test_yt_articles.py`, 43 tests: fixture VTT → clean → normalize →
   `save_article` mock, source grain, metadata contract, idempotency, queue vs inline,
   soft-fails, duration gates).
 
@@ -278,27 +278,27 @@ thesis. Revisit option 2 (map-reduce) before K3 volume if 16k proves too lossy.
 
 | Question | Result |
 |----------|--------|
-| Works at all from this Windows/residential IP? | **Yes** — `youtube-transcript-api` 1.2.4 `list`/`fetch`, no cookies, no API key |
-| Auth / Google account needed? | **No** for public videos with captions |
+| Works at all from this Windows/residential IP? | **Yes** — caption provider `list`/`fetch` |
+| Auth / account needed? | **No** for public videos with captions |
 | Earnings-length auto-captions? | **Yes** — NVDA Q4'25 call `LPEXkI_4qI4` (~61 min): auto EN, 1312 snippets, ~47k cleaned chars |
-| yt-dlp VTT fallback? | **Yes** on short public video (`jNQXAC9IVRw`); used when timedtext path fails |
-| Cloud / datacenter risk? | **Likely `RequestBlocked`/`IpBlocked`** on AWS/GCP/Azure per upstream README — expect proxies before deploying the job to the Ubuntu host; keep soft-fail |
-| Age-restricted / login-gated? | Mapped as `age_restricted`; **out of scope for K1** (no browser cookies) |
-| No EN captions? | Soft-fail `no_captions` (e.g. Gangnam-style KO-only auto) |
+| Listing-client VTT fallback? | **Yes** on short public video (`jNQXAC9IVRw`); used when primary caption path fails |
+| Cloud / datacenter risk? | **Likely `blocked`** on common cloud egress — set `YOUTUBE_PROXY_URL` before volume; keep soft-fail |
+| Age-restricted / login-gated? | Mapped as `age_restricted`; **out of scope for K1** |
+| No EN captions? | Soft-fail `no_captions` |
 
-Run: `python scripts/youtube_caption_poc.py <url-or-id> [--json] [--out file.txt]`
+Run: `python scripts/yt_caption_poc.py <url-or-id> [--json] [--out file.txt]`
 
 ### K2 implementation notes (2026-07-29)
 
-Shipped: `web_dashboard/youtube_articles.py`, `scripts/youtube_article_ingest.py`,
+Shipped: `web_dashboard/yt_articles.py`, `scripts/yt_article_ingest.py`,
 `youtube_transcript_summary` AI-queue job, `research_articles.source_metadata` migration,
-`tests/test_youtube_articles.py`.
+`tests/test_yt_articles.py`.
 
 Run one video end to end (allowlist only — this does **not** discover videos):
 
 ```powershell
-python scripts/youtube_article_ingest.py "https://www.youtube.com/watch?v=LPEXkI_4qI4" --source-id 3
-python scripts/youtube_article_ingest.py LPEXkI_4qI4 --dry-run   # normalize + print, no DB, no LLM
+python scripts/yt_article_ingest.py "https://www.youtube.com/watch?v=LPEXkI_4qI4" --source-id 3
+python scripts/yt_article_ingest.py LPEXkI_4qI4 --dry-run   # normalize + print, no DB, no LLM
 python web_dashboard/scripts/apply_article_source_metadata_migration.py --apply
 ```
 
@@ -330,27 +330,27 @@ raising, so a K3 poller can walk an allowlist without dying on one blocked video
 
 ### K3 implementation notes (2026-07-29)
 
-Shipped: `web_dashboard/scheduler/jobs_youtube.py` (`youtube_caption_ingest_job`,
-`poll_youtube_sources`, `poll_source`), listing helpers in `web_dashboard/youtube_captions.py`
+Shipped: `web_dashboard/scheduler/jobs_yt.py` (`youtube_caption_ingest_job`,
+`poll_youtube_sources`, `poll_source`), listing helpers in `web_dashboard/yt_captions.py`
 (`list_source_videos` / `list_channel_videos` / `list_search_videos` / `channel_videos_url` +
 `VideoListing`), the `youtube_caption_ingest` entry in `scheduler/jobs.py`,
 `web_dashboard/scripts/run_scheduler_job_once.py youtube_caption_ingest`, the ops CLI
-`scripts/youtube_sources_poll.py`, and `tests/test_youtube_sources_poll.py` (40 tests, no
+`scripts/yt_sources_poll.py`, and `tests/test_yt_sources_poll.py` (40 tests, no
 network, no DB).
 
 ```powershell
-python scripts/youtube_sources_poll.py --list-only --source-id 3    # listing only, no ingest
-python scripts/youtube_sources_poll.py --dry-run                    # no captions, no writes
-python scripts/youtube_sources_poll.py --source-id 3 --max-videos 2
+python scripts/yt_sources_poll.py --list-only --source-id 3    # listing only, no ingest
+python scripts/yt_sources_poll.py --dry-run                    # no captions, no writes
+python scripts/yt_sources_poll.py --source-id 3 --max-videos 2
 python web_dashboard\scripts\run_scheduler_job_once.py youtube_caption_ingest
 ```
 
-**Discovery.** yt-dlp flat-playlist (`extract_flat: "in_playlist"`, `skip_download`,
+**Discovery.** Flat playlist metadata (`extract_flat: "in_playlist"`, `skip_download`,
 `playlistend=N`) — one metadata request per source, no media, no captions. Channel targets use
 the `/videos` tab, not the channel root: the root also returns shorts / live / playlist tabs,
 which flat extraction hands back as nested playlists and which are not uploads in publication
 order (nested entries are still flattened up to 3 levels, defensively). `kind` dispatch:
-`search` → `ytsearchN:{query_text}` with **N capped at 3**; `playlist` → playlist id/URL read
+`search` → curated search with **N capped at 3**; `playlist` → playlist id/URL read
 from `channel_id` or `query_text` (the table has no playlist column and adding one is not worth
 a migration until a playlist source exists); everything else (`channel` / `ir` / `macro` /
 `earnings_search`) → uploads from `channel_id` → `handle`. Listing failures raise
@@ -358,8 +358,9 @@ a migration until a playlist source exists); everything else (`channel` / `ir` /
 poller writes one error vocabulary into `youtube_sources.last_error_reason`.
 
 **Order is trusted, not recomputed.** `upload_date` is usually absent in flat mode, so sorting
-on it would scramble a mostly-null key. yt-dlp preserves the source's own ordering, which for a
-`/videos` tab and for search results is newest-first — that is what the cursor walk assumes.
+on it would scramble a mostly-null key. The listing client preserves the source's own ordering,
+which for a `/videos` tab and for search results is newest-first — that is what the cursor walk
+assumes.
 
 **Cursor rule** (the one thing to re-read before changing this job): the walk is newest-first
 and stops at `last_video_id`. After the walk, `last_video_id` / `last_seen_at` advance to the
@@ -380,9 +381,9 @@ in `research_articles` is a cheap DB read and does not consume budget. When the 
 mid-run, remaining sources are simply not walked (they keep their cursors); the source that hit
 the cap does not advance its cursor either.
 
-**Pacing.** 3 s between videos, 2 s between sources. K1's probe found ~150 caption fetches in 15
-minutes blocked a residential IP for hours, and the yt-dlp fallback shares the address, so
-pacing plus a small cap is the only real defence short of `YOUTUBE_PROXY_URL`.
+**Pacing.** 3 s between videos, 2 s between sources. Caption providers block per egress IP on
+volume, and the listing/VTT fallback shares that address, so pacing plus a small cap is the
+main defence short of `YOUTUBE_PROXY_URL`.
 
 **Soft-fail isolation.** `ingest_video` already returns a status instead of raising; every
 per-video and per-source step is additionally wrapped, so an `ingest_video` that *does* raise,
@@ -543,9 +544,9 @@ H7 (Ideas usage) ──► I1 (story dedup) ──┬──► K1–K4 (allowlis
 ### Phase K PoC
 
 > Read `docs/ROADMAP.md` Phase K + this file’s Phase K sections. Implement **K1 only**:
-> `web_dashboard/youtube_captions.py` + a `scripts/` PoC that prints cleaned caption text for
-> a CLI video URL. Prefer `youtube-transcript-api`, VTT via yt-dlp as fallback. No DB writes,
-> no scheduler registration. Tests with fixtures (sample timedtext JSON / VTT). Windows
+> `web_dashboard/yt_captions.py` + a `scripts/` PoC that prints cleaned caption text for
+> a CLI video URL. Caption provider first; listing-client VTT as fallback. No DB writes,
+> no scheduler registration. Tests with fixtures (sample caption JSON / VTT). Windows
 > PowerShell; use repo venv.
 
 ### Phase J seed + engine

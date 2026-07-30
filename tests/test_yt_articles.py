@@ -14,16 +14,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures" / "youtube"
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "yt"
 
 # sys.path is set up by tests/conftest.py, which deliberately pins the repo root
 # ahead of web_dashboard — do not re-insert them here.
-from youtube_captions import (  # noqa: E402
+from yt_captions import (  # noqa: E402
     CaptionFetchError,
     CaptionResult,
     parse_vtt_text,
 )
-from youtube_articles import (  # noqa: E402
+from yt_articles import (  # noqa: E402
     ARTICLE_TYPE,
     IngestOutcome,
     content_max_chars,

@@ -49,7 +49,7 @@ the primary interaction**, not one-at-a-time entry. Design for paste-a-list firs
 | …backed by GET/POST/DELETE JSON endpoints with `@require_admin` + `can_modify_data_flask()` | [`admin_routes.py:3822-3880`](../web_dashboard/routes/admin_routes.py#L3822-L3880) |
 | Admin routes use `/admin/<kebab-name>` and set `current_page='admin_<snake_name>'` | [`_sidebar_content.html:148`](../web_dashboard/templates/components/_sidebar_content.html#L148) |
 | Blueprints register in a try/except block with a log line | [`app.py:752-760`](../web_dashboard/app.py#L752-L760) |
-| Caption fetch + typed failure reasons already exist | [`youtube_captions.py`](../web_dashboard/youtube_captions.py) |
+| Caption fetch + typed failure reasons already exist | [`yt_captions.py`](../web_dashboard/yt_captions.py) |
 
 ---
 
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS youtube_sources (
   -- health
   last_success_at         TIMESTAMPTZ,
   consecutive_failures    INTEGER      NOT NULL DEFAULT 0,
-  last_error_reason       VARCHAR(32),  -- youtube_captions.FailureReason literal
+  last_error_reason       VARCHAR(32),  -- yt_captions.FailureReason literal
   captions_ok             BOOLEAN,      -- NULL = never tested
 
   -- provenance
@@ -132,7 +132,7 @@ ALTER TABLE youtube_sources ADD CONSTRAINT youtube_sources_kind_target_chk
 ```
 
 **`last_error_reason` must store the literals already defined in
-[`youtube_captions.py`](../web_dashboard/youtube_captions.py) `FailureReason`** —
+[`yt_captions.py`](../web_dashboard/yt_captions.py) `FailureReason`** —
 `no_captions | blocked | age_restricted | unavailable | dependency | parse | unknown`.
 Do not invent a parallel vocabulary; the UI status column reads these directly.
 
@@ -158,7 +158,7 @@ or the SQL interface will reject queries against it.
 
 Follow the numbered convention in [`migrations/`](../migrations/):
 
-- `migrations/008_create_youtube_sources.sql`
+- `migrations/008_create_yt_sources.sql`
 - `migrations/009_add_rss_feeds_health_columns.sql`
 
 Plus a seed/apply script mirroring
@@ -206,8 +206,8 @@ per-row verdict so the user sees what will happen **before** committing:
 {
   "rows": [
     {
-      "label": "Gamers Nexus",
-      "handle": "@GamersNexus",
+      "label": "G​a​m​e​r​s​ ​N​e​x​u​s",
+      "handle": "@​G​a​m​e​r​s​N​e​x​u​s",
       "kind": "channel",
       "alpha_mechanism": "TEARDOWN",
       "expected_tickers": ["NVDA", "INTC"],
@@ -234,7 +234,7 @@ same paste inserts nothing.
 the existing K1 module:
 
 ```python
-from youtube_captions import CaptionFetchError, fetch_caption_text
+from yt_captions import CaptionFetchError, fetch_caption_text
 ```
 
 Return `{ok: true, video_id, language, caption_kind, char_count, title, channel_id}` on
@@ -296,7 +296,7 @@ following the `/admin/ai-settings` entry's markup exactly (`current_page=='admin
    collection — for RSS that already holds; for YouTube the K3 job must filter on it.
 3. **Admin-gate everything**, and honor read-only admins on writes.
 4. **No network in unit tests.** Mock `fetch_caption_text`; the K1 test suite
-   ([`tests/test_youtube_captions.py`](../tests/test_youtube_captions.py)) shows the
+   ([`tests/test_yt_captions.py`](../tests/test_yt_captions.py)) shows the
    `monkeypatch.setitem(sys.modules, ...)` pattern to follow.
 5. **Do not touch `scheduler/jobs.py` cron windows.** No job is added by this work. When K3
    lands, mind the ET/PT collision footgun documented in `PHASE_JK_PLAN.md`.

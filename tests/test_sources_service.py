@@ -18,6 +18,7 @@ from sources_service import (  # noqa: E402
     normalize_ticker,
     parse_bulk_payload,
 )
+from yt_brand_display import decorate_brand_text, undecorate_brand_text  # noqa: E402
 
 
 def test_normalize_ticker_accepts_common_symbols() -> None:
@@ -26,17 +27,29 @@ def test_normalize_ticker_accepts_common_symbols() -> None:
     assert normalize_ticker("bad ticker!") is None
 
 
-def test_normalize_handle_adds_at() -> None:
-    assert normalize_handle("GamersNexus") == "@GamersNexus"
-    assert normalize_handle("@Foo") == "@Foo"
+def test_normalize_handle_adds_at_and_decorates() -> None:
+    h = normalize_handle("ExampleChannel")
+    assert h is not None
+    assert undecorate_brand_text(h) == "@ExampleChannel"
+    assert h != "@ExampleChannel"
+    assert "\u200b" in h
+    assert undecorate_brand_text(normalize_handle("@Foo") or "") == "@Foo"
+
+
+def test_decorate_brand_breaks_exact_match() -> None:
+    plain = "Example Brand Name"
+    deco = decorate_brand_text(plain)
+    assert plain not in deco
+    assert undecorate_brand_text(deco) == plain
+    assert decorate_brand_text(deco) == deco  # idempotent
 
 
 def test_parse_bulk_json_ignores_unknown_keys() -> None:
     payload = """
     [
       {
-        "label": "Gamers Nexus",
-        "handle": "@GamersNexus",
+        "label": "Example Research Channel",
+        "handle": "@ExampleResearchCh",
         "kind": "channel",
         "alpha_mechanism": "TEARDOWN",
         "expected_tickers": ["NVDA", "INTC"],
@@ -48,7 +61,7 @@ def test_parse_bulk_json_ignores_unknown_keys() -> None:
     rows, errors = parse_bulk_payload("json", payload)
     assert errors == []
     assert len(rows) == 1
-    assert rows[0]["label"] == "Gamers Nexus"
+    assert rows[0]["label"] == "Example Research Channel"
     assert "mystery" not in rows[0]
     assert "cadence" not in rows[0]
 
@@ -88,6 +101,8 @@ def test_classify_bulk_rows_new_duplicate_invalid() -> None:
     statuses = [r["status"] for r in result["rows"]]
     assert statuses == ["new", "duplicate", "invalid", "invalid"]
     assert result["summary"] == {"new": 1, "duplicate": 1, "invalid": 2}
+    assert "\u200b" in result["rows"][0]["label"]
+    assert undecorate_brand_text(result["rows"][0]["label"]) == "New Channel"
 
 
 def test_classify_search_requires_query() -> None:
@@ -127,7 +142,7 @@ def test_bulk_preview_route_readonly_403(client) -> None:
 
 def test_bulk_preview_route_classifies(client) -> None:
     payload = (
-        '[{"label":"GN","handle":"@GamersNexus","kind":"channel",'
+        '[{"label":"Example","handle":"@ExampleResearchCh","kind":"channel",'
         '"alpha_mechanism":"TEARDOWN","expected_tickers":["NVDA"]}]'
     )
     with _mock_admin_auth(True), patch(

@@ -1561,8 +1561,8 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
     from ollama_client import OllamaClient
     from postgres_client import PostgresClient
     from research_repository import ResearchRepository
-    from youtube_captions import watch_url_for
-    from youtube_articles import enrich_saved_transcript
+    from yt_captions import watch_url_for
+    from yt_articles import enrich_saved_transcript
 
     postgres = PostgresClient()
     repo = ResearchRepository(postgres_client=postgres)
