@@ -4,150 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Trading Dashboard</title>
-    <!-- TODO(palette): This standalone page bypasses the Tailwind build + semantic theme tokens
-         and reimplements light/dark mode with hardcoded hex values and @media(prefers-color-scheme).
-         Integrate into the Tailwind pipeline (bg-dashboard-background / text-text-primary, Flowbite
-         form components) so auth matches the rest of the dashboard. (Palette audit PR #347, item 3) -->
-    <style>
-        :root {
-            color-scheme: light dark;
+    <link rel="stylesheet" href="/assets/css/style.css">
+    <script>
+        // Set theme from local storage or system preference to match dashboard
+        const theme = localStorage.getItem('theme');
+        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
         }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            margin: 0;
-            padding: 2rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: #ffffff;
-            color: #262730;
-            transition: background-color 0.2s, color 0.2s;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #0E1117;
-                color: #FAFAFA;
-            }
-        }
-        
-        .login-container {
-            background-color: var(--bg-color, #ffffff);
-            padding: 2rem;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .login-container {
-                background-color: #262730;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-            }
-        }
-        
-        h1 {
-            margin-top: 0;
-            text-align: center;
-        }
-        
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-        
-        input[type="email"],
-        input[type="password"] {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 1rem;
-            box-sizing: border-box;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            input[type="email"],
-            input[type="password"] {
-                background-color: #0E1117;
-                border-color: #444;
-                color: #FAFAFA;
-            }
-        }
-        
-        button {
-            width: 100%;
-            padding: 0.75rem;
-            background-color: #1f77b4;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        
-        button:hover {
-            background-color: #1565a0;
-        }
-        
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        
-        .error {
-            color: #ef4444;
-            margin-top: 1rem;
-            padding: 0.75rem;
-            background-color: #fee;
-            border-radius: 4px;
-            display: none;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .error {
-                background-color: #3a1f1f;
-            }
-        }
-        
-        .loading {
-            text-align: center;
-            color: #666;
-        }
-        
-        @media (prefers-color-scheme: dark) {
-            .loading {
-                color: #aaa;
-            }
-        }
-    </style>
+    </script>
 </head>
-<body>
-    <div class="login-container">
-        <h1>Login</h1>
+<body class="bg-dashboard-background text-text-primary min-h-screen flex items-center justify-center p-4">
+    <div class="bg-dashboard-surface p-8 rounded-lg shadow-md w-full max-w-md border border-border">
+        <h1 class="text-2xl font-bold text-center mb-6">Login</h1>
         <form id="loginForm">
-            <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" required autocomplete="email">
+            <div class="mb-4">
+                <label for="email" class="block mb-2 text-sm font-medium">Email</label>
+                <input type="email" id="email" name="email" class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" required autocomplete="email">
             </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required autocomplete="current-password">
+            <div class="mb-4">
+                <label for="password" class="block mb-2 text-sm font-medium">Password</label>
+                <input type="password" id="password" name="password" class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" required autocomplete="current-password">
             </div>
-            <button type="submit" id="submitBtn">Login</button>
-            <div class="error" id="errorMsg"></div>
+            <button type="submit" id="submitBtn" class="w-full text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center mt-2">Login</button>
+            <div class="hidden mt-4 p-4 text-sm text-theme-error-text bg-theme-error-bg rounded-lg border border-theme-error-border" id="errorMsg"></div>
         </form>
-        <div class="loading" id="loadingMsg" style="display: none;">Logging in...</div>
+        <div class="hidden mt-4 text-center text-text-secondary text-sm" id="loadingMsg">Logging in...</div>
     </div>
     
     <script>
@@ -195,7 +78,7 @@
         
         if (!SUPABASE_URL || !SUPABASE_KEY) {
             document.getElementById('errorMsg').textContent = 'Configuration error: Supabase credentials not found.';
-            document.getElementById('errorMsg').style.display = 'block';
+            document.getElementById('errorMsg').classList.remove('hidden');
         }
         
         document.getElementById('loginForm').addEventListener('submit', async function(e) {
@@ -213,19 +96,19 @@
             // Validate inputs
             if (!email || !password) {
                 errorMsg.textContent = 'Please enter both email and password';
-                errorMsg.style.display = 'block';
+                errorMsg.classList.remove('hidden');
                 return;
             }
             
             if (!SUPABASE_URL || !SUPABASE_KEY) {
                 errorMsg.textContent = 'Configuration error: Supabase credentials not found.';
-                errorMsg.style.display = 'block';
+                errorMsg.classList.remove('hidden');
                 return;
             }
             
             // Hide error, show loading
-            errorMsg.style.display = 'none';
-            loadingMsg.style.display = 'block';
+            errorMsg.classList.add('hidden');
+            loadingMsg.classList.remove('hidden');
             submitBtn.disabled = true;
             
             try {
@@ -255,14 +138,14 @@
                     const errorText = data.msg || data.error_description || data.error || 'Login failed';
                     console.error('Login failed:', { status: response.status, error: errorText, data: data });
                     errorMsg.textContent = `Login failed: ${errorText}`;
-                    errorMsg.style.display = 'block';
-                    loadingMsg.style.display = 'none';
+                    errorMsg.classList.remove('hidden');
+                    loadingMsg.classList.add('hidden');
                     submitBtn.disabled = false;
                 }
             } catch (error) {
                 errorMsg.textContent = 'Network error: ' + error.message;
-                errorMsg.style.display = 'block';
-                loadingMsg.style.display = 'none';
+                errorMsg.classList.remove('hidden');
+                loadingMsg.classList.add('hidden');
                 submitBtn.disabled = false;
             }
         });
