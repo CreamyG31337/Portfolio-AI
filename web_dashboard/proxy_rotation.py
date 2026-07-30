@@ -11,6 +11,19 @@ rotation matters for **backfill**, not for the nightly job.
 Prefer rotating *before* the quota trips: a blocked IP stays blocked for hours,
 while an IP retired early stays clean for its next turn.
 
+**Pool size matters more than rotation frequency.** A restart re-picks a server
+from whatever ``SERVER_COUNTRIES`` allows, and a single country may hold only a
+handful of servers — so rotating within one country can hand back an IP whose
+quota is already spent. Widen the filter in the Gluetun compose file instead of
+rotating harder::
+
+    SERVER_COUNTRIES=Netherlands,Germany,France,Belgium,Sweden,Switzerland
+
+That needs no control-API support (it is container config), and every rotation
+then draws from a much larger pool. ``RotatingBudget`` tracks which exit IPs it
+has already burned and reports ``exhausted`` when the pool is too small, so a
+narrow filter surfaces as a clear message rather than as mystery blocks.
+
 Configuration (all optional; absent config disables rotation cleanly):
     GLUETUN_CONTROL_URL   e.g. http://100.64.188.1:8001
     GLUETUN_API_KEY       API key from the Gluetun auth config
@@ -41,6 +54,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_ROTATE_EVERY = 80
 _SETTLE_TIMEOUT_S = 90
 _POLL_INTERVAL_S = 3
+_MAX_ROTATE_ATTEMPTS = 3
 
 
 class RotationUnavailable(RuntimeError):
@@ -117,23 +131,12 @@ class GluetunController:
                 last = exc
         raise RuntimeError(f"could not set tunnel status to {status!r}: {last}")
 
-    def rotate(self, wait: bool = True) -> Optional[str]:
-        """Restart the tunnel so Gluetun picks a different server.
-
-        Returns the new exit IP, or None if it could not be confirmed. Raises
-        ``RotationUnavailable`` when rotation is not configured — callers should
-        treat that as "carry on without rotating", not as a fatal error.
-        """
-        before = self.public_ip()
-        logger.info("Rotating Gluetun exit (current IP %s)", before or "unknown")
-
+    def _restart_tunnel(self) -> None:
         self._set_status("stopped")
         time.sleep(2)
         self._set_status("running")
 
-        if not wait:
-            return None
-
+    def _wait_for_change(self, before: Optional[str]) -> Optional[str]:
         deadline = time.time() + _SETTLE_TIMEOUT_S
         while time.time() < deadline:
             time.sleep(_POLL_INTERVAL_S)
@@ -142,13 +145,53 @@ class GluetunController:
             except Exception:  # noqa: BLE001
                 continue
             if now and now != before:
+                return now
+        return None
+
+    def rotate(self, wait: bool = True, avoid: Optional[set] = None) -> Optional[str]:
+        """Restart the tunnel so Gluetun picks a different server.
+
+        ``avoid`` is a set of recently-used IPs. A provider may hold only a few
+        servers per country, so a restart can hand back an address whose quota is
+        already spent; when that happens this retries a couple of times. If it
+        keeps landing on used IPs the pool is too small — widen
+        ``SERVER_COUNTRIES`` in the Gluetun compose file rather than retrying
+        harder, since a restart draws from whatever that filter allows.
+
+        Returns the new exit IP, or None if it could not be confirmed. Raises
+        ``RotationUnavailable`` when rotation is not configured — callers should
+        treat that as "carry on without rotating", not as a fatal error.
+        """
+        avoid = avoid or set()
+        before = self.public_ip()
+        logger.info("Rotating Gluetun exit (current IP %s)", before or "unknown")
+
+        for attempt in range(1, _MAX_ROTATE_ATTEMPTS + 1):
+            self._restart_tunnel()
+            if not wait:
+                return None
+            now = self._wait_for_change(before)
+            if not now:
+                logger.warning(
+                    "Gluetun did not report a new IP within %ss (still %s); it may have "
+                    "reconnected to the same server.", _SETTLE_TIMEOUT_S, before or "?"
+                )
+                return None
+            if now not in avoid:
                 logger.info("Gluetun rotated: %s -> %s", before or "?", now)
                 return now
+            logger.info(
+                "Rotation %d/%d landed on recently-used IP %s; retrying",
+                attempt, _MAX_ROTATE_ATTEMPTS, now,
+            )
+            before = now
+
         logger.warning(
-            "Gluetun did not report a new IP within %ss (still %s). The tunnel may "
-            "have reconnected to the same server.", _SETTLE_TIMEOUT_S, before or "?"
+            "Exhausted %d rotations still landing on used IPs — the server pool is "
+            "too small. Add countries to SERVER_COUNTRIES in the Gluetun compose file.",
+            _MAX_ROTATE_ATTEMPTS,
         )
-        return None
+        return before
 
 
 class RotatingBudget:
@@ -169,6 +212,9 @@ class RotatingBudget:
         self.used = 0
         self.rotations = 0
         self.enabled = self.controller.configured
+        # IPs whose quota this run has already spent — rotation must not reuse them.
+        self.burned: set[str] = set()
+        self.exhausted = False
 
     def record_fetch(self) -> None:
         """Count one live fetch, rotating if the budget for this IP is spent."""
@@ -185,7 +231,10 @@ class RotatingBudget:
 
     def _try_rotate(self, why: str) -> bool:
         try:
-            new_ip = self.controller.rotate()
+            current = self.controller.public_ip()
+            if current:
+                self.burned.add(current)
+            new_ip = self.controller.rotate(avoid=self.burned)
         except RotationUnavailable as exc:
             logger.info("Rotation unavailable (%s); continuing without it", exc)
             self.enabled = False
@@ -193,9 +242,21 @@ class RotatingBudget:
         except Exception as exc:  # noqa: BLE001
             logger.warning("Rotation failed (%s): %s", why, exc)
             return False
+
+        if new_ip and new_ip in self.burned:
+            # Every server the filter allows has now been used. Rotating again
+            # cannot help; the caller should stop rather than burn IPs harder.
+            self.exhausted = True
+            print(f"    [rotation exhausted: only {len(self.burned)} distinct exit "
+                  f"IP(s) available — widen SERVER_COUNTRIES]")
+            return False
+
+        if new_ip:
+            self.burned.add(new_ip)
         self.used = 0
         self.rotations += 1
-        print(f"    [rotated: {why} -> {new_ip or 'IP unconfirmed'}]")
+        print(f"    [rotated: {why} -> {new_ip or 'IP unconfirmed'} "
+              f"({len(self.burned)} used this run)]")
         return True
 
 
