@@ -251,9 +251,10 @@ def summarize_transcript(
 ) -> EnrichmentResult:
     """Run the same summarize + ticker-extract path as ``symbol_article_scraper_job``.
 
-    Long transcripts (body longer than the Ollama-friendly budget, or duration ≥ 20 min)
-    are routed to Z.AI GLM by default — never WebAI/cookies. Short ones keep the normal
-    Ollama summary chain.
+    Long transcripts still get the expanded GLM character budget; **all** YouTube
+    transcripts now route to Z.AI GLM by default (see
+    ``resolve_youtube_transcript_summary_model``) so short videos do not burn
+    minutes on the Ollama granite timeout path.
 
     ``claim_recent_summary_input`` (the 6h in-process summary-input hash guard
     other ingest paths use) is deliberately **not** applied: exact-URL dedup plus
@@ -274,7 +275,7 @@ def summarize_transcript(
     )
     if model:
         logger.info(
-            "YouTube transcript high-context summarize via model=%s (chars=%s duration_s=%s)",
+            "YouTube transcript summarize via model=%s (chars=%s duration_s=%s)",
             model,
             len(content or ""),
             duration_s,

@@ -10,16 +10,20 @@ playlist metadata, capped by ``max_videos_per_poll``) → walk them until the cu
 hit → skip anything already in ``research_articles`` → ``ingest_video`` the rest.
 
 **Cursor rule** (``last_video_id`` / ``last_seen_at``): the walk stops at
-``last_video_id``, and after the walk the cursor advances to the **newest listed
-video id** — not to the newest one that succeeded — but *only* when nothing in
-this poll failed for a retriable reason (``blocked`` / ``unknown`` /
-``dependency``, i.e. rate-limit or environment problems that a later poll can
-plausibly clear). Failures that will never resolve on retry (``no_captions``,
-``age_restricted``, ``unavailable``, ``parse``) and skips (duration gate, already
-ingested) count as *considered*, so a channel that posts one caption-less video
-does not stall the cursor forever. A retriable failure leaves the cursor where it
-was, so the next poll re-walks the same window and picks the video back up. When
-a listing call itself fails, nothing is walked and the cursor is untouched.
+``last_video_id``. After the walk the cursor advances to the **newest listed
+video id** only when it is safe:
+
+- previous cursor was found in this listing (everything newer was considered), or
+- previous cursor was empty and the listing was fully walked / exhausted
+  (``considered == listed`` or ``listed < list_limit``)
+
+A retriable failure (``blocked`` / ``unknown`` / ``dependency``) or an ingest
+cap mid-source leaves the cursor put so the next poll re-walks. An empty
+previous cursor with a *full* listing window that was only partially ingested
+also holds null — that is what prevents ``max_videos_per_poll=1`` from sealing
+the newest video and permanently stranding the backlog when ops later raises
+the cap. Listing uses ``max(ingest_budget, YOUTUBE_LIST_LOOKBACK)`` (default 25)
+so a tiny ingest cap can still *see* the previous cursor.
 
 Caps: ``youtube_sources.max_videos_per_poll`` (default 5) bounds one source, and
 ``YOUTUBE_INGEST_MAX_PER_RUN`` (default 20) bounds ingests across all sources in
@@ -66,6 +70,12 @@ JOB_ID = "youtube_caption_ingest"
 _MAX_PER_RUN_ENV = "YOUTUBE_INGEST_MAX_PER_RUN"
 _MAX_PER_RUN_DEFAULT = 20
 _MAX_VIDEOS_PER_POLL_DEFAULT = 5
+# Listing lookback is intentionally wider than the ingest cap so a source with
+# ``max_videos_per_poll=1`` can still *see* its previous cursor (and any new
+# uploads above it). Without this, the first poll seals the cursor on the single
+# newest video and permanently strands the backlog when ops later raises the cap.
+_LIST_LOOKBACK_ENV = "YOUTUBE_LIST_LOOKBACK"
+_LIST_LOOKBACK_DEFAULT = 25
 
 # Reasons a later poll can plausibly clear. Anything else is treated as settled
 # for this video, so the cursor may move past it (see the module docstring).
@@ -106,6 +116,32 @@ def max_per_run() -> int:
             _MAX_PER_RUN_DEFAULT,
         )
         return _MAX_PER_RUN_DEFAULT
+    return value
+
+
+def list_lookback() -> int:
+    """How many newest videos to *list* per source (ingest may be smaller)."""
+    raw = (os.environ.get(_LIST_LOOKBACK_ENV) or "").strip()
+    if not raw:
+        return _LIST_LOOKBACK_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Ignoring non-integer %s=%r; using %s",
+            _LIST_LOOKBACK_ENV,
+            raw,
+            _LIST_LOOKBACK_DEFAULT,
+        )
+        return _LIST_LOOKBACK_DEFAULT
+    if value <= 0:
+        logger.warning(
+            "Ignoring non-positive %s=%s; using %s",
+            _LIST_LOOKBACK_ENV,
+            value,
+            _LIST_LOOKBACK_DEFAULT,
+        )
+        return _LIST_LOOKBACK_DEFAULT
     return value
 
 
@@ -339,9 +375,12 @@ def poll_source(
         result.capped = True
         return result
 
-    per_poll = min(_per_poll_limit(row), remaining_budget)
+    # Ingest budget is the row cap ∩ global remaining. Listing is at least that
+    # wide, and usually wider (lookback), so we can find the previous cursor.
+    ingest_budget = min(_per_poll_limit(row), remaining_budget)
+    list_limit = max(ingest_budget, list_lookback())
     try:
-        candidates = list(listing(row, limit=per_poll))
+        candidates = list(listing(row, limit=list_limit))
     except CaptionFetchError as exc:
         result.listing_error = exc.reason
         result.last_reason = exc.reason
@@ -384,18 +423,20 @@ def poll_source(
         logger.info("No videos listed for %s (id=%s)", result.label, source_id)
         return result
 
-    cursor = str(row.get("last_video_id") or "").strip()
+    prev_cursor = str(row.get("last_video_id") or "").strip()
     newest_listed = candidates[0].video_id
     any_success = False
     retriable_failure = False
     failure_reason: Optional[str] = None
+    cursor_seen = False
 
     for index, candidate in enumerate(candidates):
-        if candidate.video_id == cursor:
+        if prev_cursor and candidate.video_id == prev_cursor:
             # Newest-first walk reached the previous cursor: everything below it
             # was handled by an earlier poll.
+            cursor_seen = True
             break
-        if result.attempted >= remaining_budget:
+        if result.attempted >= ingest_budget:
             result.capped = True
             break
 
@@ -471,18 +512,47 @@ def poll_source(
 
     result.last_reason = failure_reason
 
-    # Cursor rule: advance to the newest *listed* id, so permanently un-ingestable
-    # videos (no captions, age-restricted) cannot stall the source. A retriable
-    # failure or a cap hit leaves the cursor put so the next poll re-walks.
+    # Cursor rule:
+    # - Retriable failure or ingest-cap mid-source → hold (re-walk next poll).
+    # - Previous cursor found in this listing → advance to newest listed
+    #   (everything newer was considered; permanently bad videos don't stall).
+    # - Previous cursor empty AND listing exhausted (listed < list_limit) → seal
+    #   to newest (tiny channels / end of available window).
+    # - Previous cursor empty AND listing full → hold null so a later higher
+    #   lookback/cap can still catch the backlog (the max_videos_per_poll=1 footgun).
+    # - Previous cursor set but not in this listing → hold (window too small).
     cursor_video_id: Optional[str] = None
+    listing_exhausted = result.listed < list_limit
     if (
         result.considered > 0
         and not retriable_failure
         and not result.capped
         and not dry_run
     ):
-        cursor_video_id = newest_listed
-        result.cursor_advanced_to = newest_listed
+        if prev_cursor:
+            if cursor_seen:
+                cursor_video_id = newest_listed
+                result.cursor_advanced_to = newest_listed
+            else:
+                logger.warning(
+                    "youtube_sources id=%s: previous cursor %s not in listing "
+                    "(list_limit=%s); holding cursor so backlog is not sealed",
+                    source_id,
+                    prev_cursor,
+                    list_limit,
+                )
+        elif listing_exhausted or result.considered >= result.listed:
+            cursor_video_id = newest_listed
+            result.cursor_advanced_to = newest_listed
+        else:
+            logger.info(
+                "youtube_sources id=%s: catch-up incomplete (listed=%s list_limit=%s "
+                "considered=%s); leaving last_video_id null",
+                source_id,
+                result.listed,
+                list_limit,
+                result.considered,
+            )
 
     if not dry_run and (any_success or failure_reason or cursor_video_id):
         mark_source_outcome(

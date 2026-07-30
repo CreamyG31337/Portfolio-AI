@@ -330,10 +330,25 @@ def validate_extracted_tickers(
                     ticker, real_name,
                 )
             else:
-                logger.info(
-                    "Ticker %s: REJECTED (real company '%s' doesn't match article context)",
-                    ticker, real_name,
-                )
+                # Whole-word ticker in title/body (e.g. speakers saying "AMD" on an
+                # AMD video) — keep even when the legal name is absent. Still
+                # requires the ticker to exist in securities/yfinance above.
+                title_and_body = f"{article_text[:5000]}"
+                if re.search(
+                    rf"(?<![A-Z0-9]){re.escape(ticker)}(?![A-Z0-9])",
+                    title_and_body,
+                    flags=re.IGNORECASE,
+                ):
+                    validated.append(ticker)
+                    logger.debug(
+                        "Ticker %s: KEPT (symbol appears as whole word in article)",
+                        ticker,
+                    )
+                else:
+                    logger.info(
+                        "Ticker %s: REJECTED (real company '%s' doesn't match article context)",
+                        ticker, real_name,
+                    )
 
     return validated
 

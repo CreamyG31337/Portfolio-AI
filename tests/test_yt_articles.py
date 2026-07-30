@@ -641,7 +641,12 @@ def test_transcript_summary_budget_env_override(monkeypatch: pytest.MonkeyPatch)
     assert compute_summary_max_chars(ARTICLE_TYPE, high_context=True) == 60_000
 
 
-def test_short_transcript_does_not_force_model() -> None:
+def test_short_transcript_still_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Short clips used to fall through to Ollama; they must use GLM now."""
+    monkeypatch.setattr(
+        "settings.get_system_setting",
+        lambda key, default=None: None,
+    )
     seen: dict[str, Any] = {}
 
     def fake_summarize(
@@ -655,7 +660,7 @@ def test_short_transcript_does_not_force_model() -> None:
         content="x" * 100,
         summarize_fn=fake_summarize,
     )
-    assert seen["model"] is None
+    assert seen["model"] == "glm-5.2"
 
 
 def test_long_transcript_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -> None:

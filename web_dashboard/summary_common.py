@@ -118,13 +118,20 @@ def resolve_youtube_transcript_summary_model(
 ) -> str | None:
     """Pick a model for YouTube transcript summarization.
 
-    * Short/medium transcripts → ``None`` (caller uses the normal Ollama summary chain).
-    * Long transcripts → ``system_settings.ai_summarizing_model_youtube_transcript`` if set,
-      otherwise primary Z.AI GLM. **Never** auto-selects a WebAI (cookie) model; a WebAI
-      scoped override is ignored and GLM is used instead.
+    **Always** routes YouTube Transcripts to Z.AI GLM (scoped override
+    ``ai_summarizing_model_youtube_transcript``, else primary GLM). Short videos used
+    to fall through to the Ollama summarizing chain (``OLLAMA_SUMMARIZING_MODEL``,
+    often granite), which timed out for minutes before fallback — that made a
+    50–100 video nightly run impossible. ``content_chars`` / ``duration_s`` still
+    drive the long vs short *character budget* via ``transcript_needs_high_context``;
+    they no longer gate the provider.
+
+    **Never** auto-selects a WebAI (cookie) model; a WebAI scoped override is
+    ignored and GLM is used instead.
     """
-    if not transcript_needs_high_context(content_chars, duration_s=duration_s):
-        return None
+    # Args retained for call-site compatibility and for callers that still want
+    # to log whether the long budget applies.
+    _ = (content_chars, duration_s)
 
     try:
         from model_registry import PRIMARY_MODEL_DEFAULT
@@ -150,7 +157,7 @@ def resolve_youtube_transcript_summary_model(
 
         if is_webai_model(candidate):
             logger.warning(
-                "Ignoring WebAI model %r for long YouTube transcript; using %s",
+                "Ignoring WebAI model %r for YouTube transcript; using %s",
                 candidate,
                 glm_default,
             )

@@ -739,7 +739,13 @@ def list_source_videos(
     row = dict(source_row or {})
     kind = str(row.get("kind") or "channel").strip().lower()
     per_poll = _as_int(row.get("max_videos_per_poll")) or _LISTING_DEFAULT_LIMIT
-    effective = per_poll if limit is None else min(per_poll, int(limit))
+    # Explicit limit is a real override (ops CLI ``--max-videos``, poller lookback).
+    # It may widen *or* narrow the row's ``max_videos_per_poll`` — previously
+    # ``min(per_poll, limit)`` made catch-up impossible without a DB write.
+    if limit is None:
+        effective = per_poll
+    else:
+        effective = int(limit)
     effective = max(1, effective)
 
     if kind == "search":

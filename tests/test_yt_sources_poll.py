@@ -336,9 +336,50 @@ def test_list_source_videos_uses_max_videos_per_poll(
     list_source_videos(_source_row(max_videos_per_poll=2))
     assert captured["opts"]["playlistend"] == 2
 
-    # An explicit limit narrows but never widens the row's own cap.
+    # An explicit limit is a real override — it may widen the row's own cap
+    # (ops catch-up / poller lookback) as well as narrow it.
     list_source_videos(_source_row(max_videos_per_poll=2), limit=8)
-    assert captured["opts"]["playlistend"] == 2
+    assert captured["opts"]["playlistend"] == 8
+
+
+def test_cursor_holds_when_null_and_ingest_cap_leaves_backlog(
+    pg: _FakePg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catch-up safeguard: do not seal newest when ingest cap leaves videos unconsidered."""
+    monkeypatch.setenv("YOUTUBE_LIST_LOOKBACK", "5")
+    result = poll_source(
+        _source_row(last_video_id=None, max_videos_per_poll=1),
+        postgres_client=pg,
+        research_repo=_fake_repo(),
+        list_fn=lambda row, limit=None: _listing(
+            "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd", "eeeeeeeeeee"
+        ),
+        ingest_fn=lambda *a, **k: _outcome("saved"),
+        sleep_fn=_no_sleep,
+    )
+
+    assert result.listed == 5
+    assert result.landed == 1
+    assert result.capped is True
+    assert result.cursor_advanced_to is None
+    assert "last_video_id" not in pg.update_sql()
+
+
+def test_cursor_seals_null_when_entire_listing_considered(
+    pg: _FakePg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("YOUTUBE_LIST_LOOKBACK", "5")
+    result = poll_source(
+        _source_row(last_video_id=None, max_videos_per_poll=5),
+        postgres_client=pg,
+        research_repo=_fake_repo(existing={"https://www.youtube.com/watch?v=aaaaaaaaaaa"}),
+        list_fn=lambda row, limit=None: _listing("aaaaaaaaaaa"),
+        ingest_fn=lambda *a, **k: _outcome("saved"),
+        sleep_fn=_no_sleep,
+    )
+
+    assert result.skipped_exists == 1
+    assert result.cursor_advanced_to == "aaaaaaaaaaa"
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +500,7 @@ def test_poll_source_skips_already_ingested_without_fetching(pg: _FakePg) -> Non
 
 def test_cursor_advances_to_newest_listed_on_success(pg: _FakePg) -> None:
     result = poll_source(
-        _source_row(),
+        _source_row(last_video_id="bbbbbbbbbbb"),
         postgres_client=pg,
         research_repo=_fake_repo(),
         list_fn=lambda row, limit=None: _listing("aaaaaaaaaaa", "bbbbbbbbbbb"),
@@ -485,10 +526,12 @@ def test_cursor_advances_past_permanent_soft_fail(pg: _FakePg) -> None:
         return _outcome("saved")
 
     result = poll_source(
-        _source_row(),
+        _source_row(last_video_id="ccccccccccc"),
         postgres_client=pg,
         research_repo=_fake_repo(),
-        list_fn=lambda row, limit=None: _listing("aaaaaaaaaaa", "bbbbbbbbbbb"),
+        list_fn=lambda row, limit=None: _listing(
+            "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"
+        ),
         ingest_fn=ingest,
         sleep_fn=_no_sleep,
     )
@@ -680,7 +723,10 @@ def test_one_dead_source_does_not_stop_the_allowlist() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_per_source_cap_limits_the_listing_request(pg: _FakePg) -> None:
+def test_per_source_cap_limits_ingest_but_listing_uses_lookback(
+    pg: _FakePg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("YOUTUBE_LIST_LOOKBACK", "25")
     limits: list[Any] = []
 
     def list_fn(row: Any, limit: Any = None) -> Any:
@@ -697,10 +743,13 @@ def test_per_source_cap_limits_the_listing_request(pg: _FakePg) -> None:
         sleep_fn=_no_sleep,
     )
 
-    assert limits == [2]
+    assert limits == [25]
 
 
-def test_global_budget_narrows_the_per_source_limit(pg: _FakePg) -> None:
+def test_global_budget_still_bounds_listing_floor(
+    pg: _FakePg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("YOUTUBE_LIST_LOOKBACK", "25")
     limits: list[Any] = []
 
     def list_fn(row: Any, limit: Any = None) -> Any:
@@ -717,7 +766,8 @@ def test_global_budget_narrows_the_per_source_limit(pg: _FakePg) -> None:
         sleep_fn=_no_sleep,
     )
 
-    assert limits == [2]
+    # Listing is max(ingest_budget=2, lookback=25).
+    assert limits == [25]
 
 
 def test_global_cap_stops_later_sources() -> None:
