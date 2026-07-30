@@ -140,9 +140,11 @@ new feed.
 ### Ordered next work → Phase I (prefer **I1**), then K/J
 
 Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5 shipped.
-**I1 story dedup + K2 YouTube→articles shipped 2026-07-29.** Prefer **K3** (allowlist poll
-job) to land videos on a schedule, **I4** (SEC/Fed RSS — cheap), or **I2** (FRED → regime).
-Cross-source idea clusters stay later (need K2 ✅ + widen I1). Optional: measurement **M6**.
+**I1 story dedup + K2/K3 YouTube→articles shipped 2026-07-29** — the poll job is registered but
+**disabled by default**, so the next YouTube step is ops work (curate `youtube_sources`, enable
+the job, then **K4** enrichment parity on a real earnings video), not more code. Otherwise prefer
+**I4** (SEC/Fed RSS — cheap) or **I2** (FRED → regime). Cross-source idea clusters stay later
+(need K2 ✅ + widen I1). Optional: measurement **M6**.
 
 ---
 
@@ -797,7 +799,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1+K2 shipped 2026-07-29**; K3 allowlist poll + K4/K5 open |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1+K2+K3 shipped 2026-07-29** (poll job registered, off by default); K4/K5/K6 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1087,10 +1089,22 @@ and treat fetch failures as skippable.
   Retention/domain-health
   deferred with K3 (there is still no scheduled `delete_old_articles` caller for any type,
   and domain health is keyed on hosts, not channels).
-- [ ] **K3 · Allowlist job** — scheduler job: poll curated `youtube_sources` (channel id or
-  playlist / search query scoped to ticker IR) for new videos since last run; enqueue caption
-  fetch + article upsert. Cap per run. Holdings-scoped discovery filters
-  `funds.is_production = true`.
+- [x] **K3 · Allowlist job** — **done 2026-07-29:** `web_dashboard/scheduler/jobs_youtube.py`
+  (`youtube_caption_ingest_job`) + yt-dlp flat-playlist listing in `youtube_captions.py`
+  (`list_source_videos` / `list_channel_videos` / `list_search_videos`) + ops CLI
+  `scripts/youtube_sources_poll.py` (`--dry-run` / `--source-id` / `--list-only`). Polls every
+  enabled `youtube_sources` row newest-first, stops at the `last_video_id` cursor, skips URLs
+  already in `research_articles`, and lands the rest through the K2 `ingest_video`. Caps:
+  `max_videos_per_poll` per source (default 5) + `YOUTUBE_INGEST_MAX_PER_RUN` (default 20)
+  across the run. Cursor advances to the newest **listed** id unless a *retriable* failure
+  (`blocked` / `unknown` / `dependency`) or a cap hit occurred — so one caption-less video can
+  never stall a channel, and a rate-limit block re-walks the same window next poll. Soft-fails
+  update `last_error_reason` / `consecutive_failures` / `captions_ok` without escaping the
+  source loop. Registered daily at **5:20 AM ET** but `enabled_by_default: False` until ops
+  curates the allowlist (and adds `YOUTUBE_PROXY_URL` if the host gets blocked).
+  Holdings-scoped relevance filters `funds.is_production = true`. Deferred: ticker-expanding
+  IR search, map-reduce chunking, retention. Details in
+  [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K3 notes.
 - [ ] **K4 · Enrichment parity** — ensure new rows hit existing summarize / ticker extraction
   (queue-managed); confirm they appear in ticker meta article blocks and dossier evidence
   timeline. Spot-check an earnings-call video end-to-end.

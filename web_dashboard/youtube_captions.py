@@ -1,7 +1,12 @@
-"""YouTube caption fetch + clean (Phase K1).
+"""YouTube caption fetch + clean (Phase K1) and allowlist listing (Phase K3).
 
 Prefer ``youtube-transcript-api`` for timedtext; fall back to ``yt-dlp`` VTT
 (``--write-auto-subs --skip-download``). No DB writes, no scheduler.
+
+``list_source_videos`` / ``list_channel_videos`` / ``list_search_videos`` (K3)
+discover candidates for one ``youtube_sources`` row via yt-dlp flat-playlist —
+metadata only, no media, no captions. They raise ``CaptionFetchError`` with the
+same ``FailureReason`` literals so the poll job has one error vocabulary.
 
 Failure modes to expect (no Google OAuth / Data API key required for captions):
 
@@ -30,7 +35,7 @@ import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Literal, Optional, Sequence
+from typing import Any, Iterable, Literal, Mapping, Optional, Sequence
 from urllib.parse import parse_qs, urlparse
 
 logger = logging.getLogger(__name__)
@@ -623,3 +628,225 @@ def _as_int(value: object) -> Optional[int]:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+
+
+# ---------------------------------------------------------------------------
+# Channel / playlist / search listing (Phase K3)
+# ---------------------------------------------------------------------------
+#
+# Discovery for the allowlist poll job. yt-dlp flat-playlist only: one metadata
+# request per source, no media and no captions, so a poll of N sources costs N
+# requests rather than N x videos. Caption fetch stays in ``fetch_caption_text``.
+#
+# Failures raise ``CaptionFetchError`` with the same ``FailureReason`` literals
+# the caption path uses, so the poller has one vocabulary to write into
+# ``youtube_sources.last_error_reason``.
+
+_LISTING_DEFAULT_LIMIT = 5
+# Search is the one kind that can reach outside the allowlisted channel, so keep
+# N tiny — a curated ``query_text`` (e.g. one ticker's IR call) not a topic sweep.
+_SEARCH_MAX_LIMIT = 3
+# yt-dlp flat entries for a channel root come back as tab playlists; recurse a
+# couple of levels to reach the video entries without looping forever.
+_FLAT_MAX_DEPTH = 3
+
+
+@dataclass(frozen=True)
+class VideoListing:
+    """One discovered video, before any caption work is attempted."""
+
+    video_id: str
+    watch_url: str
+    title: Optional[str] = None
+    upload_date: Optional[str] = None  # YYYYMMDD when yt-dlp supplies it
+    duration_s: Optional[int] = None
+
+
+def channel_videos_url(
+    *,
+    channel_id: Optional[str] = None,
+    handle: Optional[str] = None,
+    playlist_id: Optional[str] = None,
+) -> str:
+    """yt-dlp listing target for a channel, handle, or playlist.
+
+    Prefers the ``/videos`` tab over the channel root: the root also carries
+    shorts / live / playlist tabs, which flat extraction returns as nested
+    playlists and which are not uploads in publication order.
+    """
+    raw_playlist = (playlist_id or "").strip()
+    if raw_playlist:
+        if raw_playlist.lower().startswith("http"):
+            return raw_playlist
+        return f"https://www.youtube.com/playlist?list={raw_playlist}"
+
+    cid = (channel_id or "").strip()
+    if cid:
+        return f"https://www.youtube.com/channel/{cid}/videos"
+
+    raw_handle = (handle or "").strip()
+    if raw_handle:
+        if raw_handle.lower().startswith("http"):
+            return raw_handle.rstrip("/") + "/videos"
+        return f"https://www.youtube.com/@{raw_handle.lstrip('@')}/videos"
+
+    raise CaptionFetchError(
+        "parse", "Need one of channel_id / handle / playlist_id to list videos"
+    )
+
+
+def list_channel_videos(
+    *,
+    channel_id: Optional[str] = None,
+    handle: Optional[str] = None,
+    playlist_id: Optional[str] = None,
+    limit: int = _LISTING_DEFAULT_LIMIT,
+) -> list[VideoListing]:
+    """Newest-first uploads for one channel / playlist (no media, no captions)."""
+    target = channel_videos_url(
+        channel_id=channel_id, handle=handle, playlist_id=playlist_id
+    )
+    entries = _flat_playlist_entries(target, max(1, int(limit)))
+    return _listings_from_entries(entries, max(1, int(limit)))
+
+
+def list_search_videos(
+    query_text: str, *, limit: int = _SEARCH_MAX_LIMIT
+) -> list[VideoListing]:
+    """Top results for a curated search string, capped at ``_SEARCH_MAX_LIMIT``."""
+    query = (query_text or "").strip()
+    if not query:
+        raise CaptionFetchError("parse", "Empty query_text for search listing")
+    capped = max(1, min(int(limit), _SEARCH_MAX_LIMIT))
+    entries = _flat_playlist_entries(f"ytsearch{capped}:{query}", capped)
+    return _listings_from_entries(entries, capped)
+
+
+def list_source_videos(
+    source_row: Mapping[str, Any], *, limit: Optional[int] = None
+) -> list[VideoListing]:
+    """Discover newest-first candidates for one ``youtube_sources`` row.
+
+    ``kind`` dispatch: ``search`` uses ``query_text``; every other kind
+    (``channel`` / ``ir`` / ``macro`` / ``earnings_search`` / ``playlist``) lists
+    uploads from ``channel_id`` → ``handle``. ``playlist`` reads the playlist
+    id/URL from ``channel_id`` or ``query_text`` — the table has no dedicated
+    column, and adding one is not worth a migration until a playlist source
+    exists.
+    """
+    row = dict(source_row or {})
+    kind = str(row.get("kind") or "channel").strip().lower()
+    per_poll = _as_int(row.get("max_videos_per_poll")) or _LISTING_DEFAULT_LIMIT
+    effective = per_poll if limit is None else min(per_poll, int(limit))
+    effective = max(1, effective)
+
+    if kind == "search":
+        return list_search_videos(row.get("query_text") or "", limit=effective)
+
+    if kind == "playlist":
+        return list_channel_videos(
+            playlist_id=(row.get("channel_id") or row.get("query_text") or ""),
+            limit=effective,
+        )
+
+    return list_channel_videos(
+        channel_id=row.get("channel_id"),
+        handle=row.get("handle"),
+        limit=effective,
+    )
+
+
+def _flat_playlist_entries(target: str, limit: int) -> list[dict]:
+    """Run one yt-dlp flat extraction and return its (possibly nested) entries."""
+    try:
+        import yt_dlp
+    except ImportError as exc:
+        raise CaptionFetchError("dependency", "yt-dlp is not installed") from exc
+
+    opts = _apply_ytdlp_proxy(
+        {
+            "extract_flat": "in_playlist",
+            "skip_download": True,
+            "quiet": True,
+            "no_warnings": True,
+            "playlistend": limit,
+            "ignoreerrors": True,
+        }
+    )
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(target, download=False)
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "blocked" in msg or "429" in msg or "too many requests" in msg:
+            raise CaptionFetchError("blocked", f"yt-dlp listing blocked: {exc}") from exc
+        if "not found" in msg or "does not exist" in msg or "unavailable" in msg:
+            raise CaptionFetchError(
+                "unavailable", f"yt-dlp listing target unavailable: {exc}"
+            ) from exc
+        raise CaptionFetchError("unknown", f"yt-dlp listing failed: {exc}") from exc
+
+    if not info:
+        raise CaptionFetchError("unavailable", f"yt-dlp returned no info for {target}")
+    entries = info.get("entries")
+    if entries is None:
+        # A bare video URL extracts as a single video, not a playlist.
+        return [info]
+    return [e for e in entries if e]
+
+
+def _listings_from_entries(entries: Sequence[Any], limit: int) -> list[VideoListing]:
+    """Flatten flat-playlist entries to newest-first ``VideoListing`` objects.
+
+    yt-dlp preserves the source's own ordering, which for a ``/videos`` tab and
+    for search results is newest-first — this does not re-sort, because
+    ``upload_date`` is usually absent in flat mode and sorting on a mostly-null
+    key would scramble the order the cursor walk depends on.
+    """
+    listings: list[VideoListing] = []
+    seen: set[str] = set()
+
+    def walk(items: Sequence[Any], depth: int) -> None:
+        for entry in items:
+            if len(listings) >= limit:
+                return
+            if not isinstance(entry, Mapping):
+                continue
+            nested = entry.get("entries")
+            if nested and depth < _FLAT_MAX_DEPTH:
+                walk([e for e in nested if e], depth + 1)
+                continue
+            video_id = _listing_video_id(entry)
+            if not video_id or video_id in seen:
+                continue
+            seen.add(video_id)
+            listings.append(
+                VideoListing(
+                    video_id=video_id,
+                    watch_url=watch_url_for(video_id),
+                    title=(entry.get("title") or None),
+                    upload_date=(entry.get("upload_date") or None),
+                    duration_s=_as_int(entry.get("duration")),
+                )
+            )
+
+    walk(list(entries), 0)
+    return listings
+
+
+def _listing_video_id(entry: Mapping[str, Any]) -> Optional[str]:
+    """Video id from a flat entry, tolerating tab/playlist rows that have none."""
+    candidate = str(entry.get("id") or "").strip()
+    if _VIDEO_ID_RE.match(candidate):
+        return candidate
+    for key in ("url", "webpage_url"):
+        raw = str(entry.get(key) or "").strip()
+        if not raw:
+            continue
+        if _VIDEO_ID_RE.match(raw):
+            return raw
+        try:
+            return parse_video_id(raw)
+        except CaptionFetchError:
+            continue
+    return None

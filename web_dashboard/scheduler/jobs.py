@@ -415,6 +415,25 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'enabled_by_default': True,
         'icon': '📚'
     },
+    'youtube_caption_ingest': {
+        'name': '📺 YouTube Allowlist Poll',
+        'description': 'Poll enabled youtube_sources for new videos; land captions as YouTube Transcript articles (Phase K3)',
+        'default_interval_minutes': 1440,  # Daily
+        # Off by default: YouTube blocks the caption endpoint per IP on request
+        # rate, and the allowlist starts empty. Ops enables this once
+        # youtube_sources has curated rows (and a proxy if the host needs one).
+        'enabled_by_default': False,
+        'icon': '📺',
+        'cron_triggers': [
+            # 5:20 AM ET = 2:20 AM PT. Clear of the PT-scheduled heavy AI window
+            # (alpha_research 22:15 PT, sector_meta 23:30 PT, ticker_meta 23:45
+            # PT — i.e. 01:15-02:45 ET) and of the ET-scheduled overnight batch
+            # (symbol_article_scraper 02:10, fundamentals_refresh 03:30,
+            # article_relevance 04:00). Do not move this into the 22:00-00:00
+            # range without converting timezones first — same footgun as Phase G.
+            {'hour': 5, 'minute': 20, 'timezone': 'America/New_York'}
+        ]
+    },
     'alpha_research': {
         'name': '📚 Alpha Hunter',
         'description': 'Targeted research on high-value alpha domains',
@@ -800,6 +819,9 @@ from scheduler.jobs_opportunity import opportunity_discovery_job
 # Import symbol article scraper job
 from scheduler.jobs_symbol_articles import symbol_article_scraper_job
 
+# Import YouTube allowlist poll job (Phase K3)
+from scheduler.jobs_youtube import youtube_caption_ingest_job
+
 # Import dividend processing job
 from scheduler.jobs_dividends import process_dividends_job
 
@@ -887,6 +909,8 @@ __all__ = [
     'opportunity_discovery_job',
     # Symbol article scraper
     'symbol_article_scraper_job',
+    # YouTube allowlist poll (Phase K3)
+    'youtube_caption_ingest_job',
     # Dividend processing
     'process_dividends_job',
     # Watchdog
@@ -1413,7 +1437,29 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: symbol_article_scraper (daily at 2:10 AM EST)")
-    
+
+    # YouTube allowlist poll (Phase K3): daily at 5:20 AM ET by default.
+    # Disabled by default — see the AVAILABLE_JOBS entry for why and for the
+    # timezone reasoning behind the slot.
+    if AVAILABLE_JOBS.get('youtube_caption_ingest', {}).get('enabled_by_default'):
+        yt_triggers = AVAILABLE_JOBS['youtube_caption_ingest'].get('cron_triggers', [])
+        yt_trigger = yt_triggers[0] if yt_triggers else {}
+        scheduler.add_job(
+            youtube_caption_ingest_job,
+            trigger=CronTrigger(
+                hour=yt_trigger.get('hour', 5),
+                minute=yt_trigger.get('minute', 20),
+                timezone=yt_trigger.get('timezone', 'America/New_York')
+            ),
+            id='youtube_caption_ingest',
+            name=f"{get_job_icon('youtube_caption_ingest')} YouTube Allowlist Poll",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: youtube_caption_ingest (daily at 5:20 AM ET)")
+
+
     # Benchmark refresh job - every 30 minutes during market hours (weekdays 9:30 AM - 4:00 PM EST)
     if AVAILABLE_JOBS['benchmark_refresh']['enabled_by_default']:
         # Run every 30 minutes during market hours on weekdays

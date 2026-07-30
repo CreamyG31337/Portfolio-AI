@@ -264,9 +264,10 @@ thesis. Revisit option 2 (map-reduce) before K3 volume if 16k proves too lossy.
   `extract_and_validate_tickers` — but the live meta spot-check is **K4**.)
 - [ ] Dossier evidence-timeline lists it with type `YouTube Transcript`. (Automatic once a
   real row exists; verify in **K4**.)
-- [ ] Job registered in `scheduler/jobs.py` with cron that does **not** collide with
+- [x] Job registered in `scheduler/jobs.py` with cron that does **not** collide with
   `alpha_research` / `sector_meta` / `ticker_meta` heavy window (check ET vs PT mix in
-  `AVAILABLE_JOBS` — same footgun as Phase G).
+  `AVAILABLE_JOBS` — same footgun as Phase G). (**K3 done 2026-07-29** —
+  `youtube_caption_ingest`, 5:20 AM ET; timezone reasoning in the K3 notes below.)
 - [x] Tests: caption clean + URL parse + mocked fetch/fallback; no network in unit tests
   (`tests/test_youtube_captions.py`). save_article mock landed with K2
   (`tests/test_youtube_articles.py`, 43 tests: fixture VTT → clean → normalize →
@@ -326,6 +327,89 @@ raising, so a K3 poller can walk an allowlist without dying on one blocked video
    cannot produce the same stitched caption hash. It would matter for chunked summarize (K3+).
 4. **6k summarizer budget was the real bottleneck**, not the `content` cap — see the length
    section above.
+
+### K3 implementation notes (2026-07-29)
+
+Shipped: `web_dashboard/scheduler/jobs_youtube.py` (`youtube_caption_ingest_job`,
+`poll_youtube_sources`, `poll_source`), listing helpers in `web_dashboard/youtube_captions.py`
+(`list_source_videos` / `list_channel_videos` / `list_search_videos` / `channel_videos_url` +
+`VideoListing`), the `youtube_caption_ingest` entry in `scheduler/jobs.py`,
+`web_dashboard/scripts/run_scheduler_job_once.py youtube_caption_ingest`, the ops CLI
+`scripts/youtube_sources_poll.py`, and `tests/test_youtube_sources_poll.py` (40 tests, no
+network, no DB).
+
+```powershell
+python scripts/youtube_sources_poll.py --list-only --source-id 3    # listing only, no ingest
+python scripts/youtube_sources_poll.py --dry-run                    # no captions, no writes
+python scripts/youtube_sources_poll.py --source-id 3 --max-videos 2
+python web_dashboard\scripts\run_scheduler_job_once.py youtube_caption_ingest
+```
+
+**Discovery.** yt-dlp flat-playlist (`extract_flat: "in_playlist"`, `skip_download`,
+`playlistend=N`) — one metadata request per source, no media, no captions. Channel targets use
+the `/videos` tab, not the channel root: the root also returns shorts / live / playlist tabs,
+which flat extraction hands back as nested playlists and which are not uploads in publication
+order (nested entries are still flattened up to 3 levels, defensively). `kind` dispatch:
+`search` → `ytsearchN:{query_text}` with **N capped at 3**; `playlist` → playlist id/URL read
+from `channel_id` or `query_text` (the table has no playlist column and adding one is not worth
+a migration until a playlist source exists); everything else (`channel` / `ir` / `macro` /
+`earnings_search`) → uploads from `channel_id` → `handle`. Listing failures raise
+`CaptionFetchError` with the **same** `FailureReason` literals as the caption path, so the
+poller writes one error vocabulary into `youtube_sources.last_error_reason`.
+
+**Order is trusted, not recomputed.** `upload_date` is usually absent in flat mode, so sorting
+on it would scramble a mostly-null key. yt-dlp preserves the source's own ordering, which for a
+`/videos` tab and for search results is newest-first — that is what the cursor walk assumes.
+
+**Cursor rule** (the one thing to re-read before changing this job): the walk is newest-first
+and stops at `last_video_id`. After the walk, `last_video_id` / `last_seen_at` advance to the
+newest **listed** id — not the newest that succeeded — but only when at least one video was
+considered *and* nothing failed for a **retriable** reason (`blocked` / `unknown` /
+`dependency`) *and* the global cap was not hit mid-source. Rationale: advancing only on success
+would let a single caption-less or age-restricted upload stall a channel permanently, since it
+would be re-fetched (and re-blocked) every poll forever; holding on retriable failures means a
+rate-limit block re-walks the same window next poll instead of silently skipping videos. A
+listing failure walks nothing and touches no cursor. Terminal-but-unsuccessful outcomes
+(`no_captions`, `age_restricted`, `unavailable`, `parse`, duration skip, already-ingested) all
+count as *considered*.
+
+**Caps.** `youtube_sources.max_videos_per_poll` (default 5) bounds one source and also bounds
+the listing request itself; `YOUTUBE_INGEST_MAX_PER_RUN` (default 20) bounds ingests across the
+whole run. The global budget only counts videos actually sent to `ingest_video` — a URL already
+in `research_articles` is a cheap DB read and does not consume budget. When the budget runs out
+mid-run, remaining sources are simply not walked (they keep their cursors); the source that hit
+the cap does not advance its cursor either.
+
+**Pacing.** 3 s between videos, 2 s between sources. K1's probe found ~150 caption fetches in 15
+minutes blocked a residential IP for hours, and the yt-dlp fallback shares the address, so
+pacing plus a small cap is the only real defence short of `YOUTUBE_PROXY_URL`.
+
+**Soft-fail isolation.** `ingest_video` already returns a status instead of raising; every
+per-video and per-source step is additionally wrapped, so an `ingest_video` that *does* raise,
+an `article_exists` that errors, or a dead channel all leave the rest of the allowlist running.
+An unexplained raise is classified retriable (cursor holds).
+
+**Health fields.** `last_polled_at` is stamped *before* any network work so a crashed run still
+shows the attempt. Success (landed / already present / duration-skipped) sets `last_success_at`,
+zeroes `consecutive_failures`, and sets `captions_ok = true`; a failure increments the streak
+and records the reason. `captions_ok` is only cleared to `false` for `no_captions` —
+`blocked` is an egress/rate-limit problem and says nothing about whether the channel has
+captions, so it must not poison the row.
+
+**Cron: 5:20 AM ET, `enabled_by_default: False`.** 5:20 ET = 2:20 AM PT, which is clear of both
+schedules in the ET/PT mix: the PT-scheduled heavy AI window (`alpha_research` 22:15 PT,
+`sector_meta` 23:30 PT, `ticker_meta` 23:45 PT — i.e. **01:15–02:45 ET**) and the ET-scheduled
+overnight batch (`symbol_article_scraper` 02:10 ET — note that one *does* sit inside the PT
+window, the Phase G footgun — `fundamentals_refresh` 03:30 ET, `article_relevance` 04:00 ET).
+Do not move this into 22:00–00:00 without converting timezones first. Disabled by default
+because the allowlist starts empty and YouTube blocks on request rate; ops enables it after
+curating `youtube_sources` (and setting `YOUTUBE_PROXY_URL` if the Ubuntu host gets blocked).
+
+**Deferred out of K3** (not started, deliberately): ticker-expanding IR search — `kind='search'`
+only ever runs the row's own curated `query_text`, and a `TODO` in the module notes that any
+ticker expansion must be filtered to production holdings + watchlist first; map-reduce chunking
+(still option 2 above); `delete_old_articles` / retention; channel-keyed domain health; the
+`/admin/sources` UI (`PHASE_K_SOURCES_UI_PLAN.md`); and K4's live end-to-end spot-check.
 
 ---
 
