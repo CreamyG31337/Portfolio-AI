@@ -8,6 +8,14 @@ running.
 Seed payload in §6 is shaped for the `bulk-preview` / `bulk-commit` contract in
 `PHASE_K_SOURCES_UI_PLAN.md` §5.2.
 
+> **Read §20 before §10-§19.** Sections 10-19 record five research rounds that rejected ten
+> sectors. Every one of those is a rejection against the **event-alpha** bar — "does a single
+> video contain an unpriced, ticker-specific, falsifiable claim?" **§20 re-scopes them**: the
+> corpus is retained for trend, context, sentiment and cross-source corroboration, which were
+> never tested and which most of these failure modes do not touch. No channel list is
+> discarded. The forward plan is
+> [`PHASE_K_TREND_LAYER_PLAN.md`](PHASE_K_TREND_LAYER_PLAN.md).
+
 ---
 
 ## 1. Provenance and verification status
@@ -784,3 +792,951 @@ single sector.
 
 The abort discarded the in-flight source's partial results. `BlockedError` now carries them
 and the report includes them, so an aborted run reports everything it actually did.
+
+---
+
+## 15. Source selection driven by actual holdings (2026-07-29)
+
+Every sector decision up to here was made against a *hypothetical* ticker universe. Reading
+the real book changes two things, one of them a correction to a criterion this document has
+been applying since §10.
+
+Measured from `trading_data/funds/*/llm_portfolio_update.csv`, snapshot **2026-02-27**
+(slightly stale, fine for sector weighting). Dollar-weighted across all three live funds:
+Project Chimera $16.9k, TFSA $8.3k, RRSP Lance Webull $219.2k, **total $244.4k**.
+
+| Theme | Share of book | Largest positions |
+|---|---|---|
+| Semis / compute | **19.9%** | MU 2.7, AMAT 2.4, NXTG.TO 1.6, TSM 1.6, RMBS 1.4, ASML 1.2 |
+| Grid / power / electrical | **11.9%** | **VRT 3.5**, FTS.TO 1.7, KEY.TO 1.6, ENB.TO 1.6, GEV 1.5, ETN 1.2 |
+| Gold / precious | **10.8%** | XGD.TO 2.7, GLCC.TO 2.6, AEM.TO 2.5, CGL.TO 2.0, GMIN.TO 1.0 |
+| Defense / aero | **6.7%** | GE 1.5, LHX 1.4, ATRL.TO 1.4, ITA 1.3, GD 1.2 |
+| Rail / freight / infra | 2.8% | SNA 1.0, FAST 0.7, RAIL 0.4, DRX.TO 0.4, CNR.TO 0.3 |
+| Ag / heavy equipment | 2.8% | CMI 1.3, DE 1.1, TRMB 0.4 |
+| Nuclear / uranium | 2.4% | HURA.TO 1.1, CCO.TO 0.4, GLO.TO 0.3, LEU, URNM, CEG, URNJ, OKLO |
+| Diversified mining / materials | 2.2% | XMA.TO 1.2, STLD 1.0, TECK.B.TO 0.1 |
+| Unclassified (broad ETFs, staples, healthcare, software) | 40.5% | — |
+
+### The correction: 41% of the book is Canadian-listed
+
+**41.0% CAD-listed (`.TO` / `.V`), 59.0% US-listed.** §10 and §12 both rejected sectors partly
+on the grounds that the covered companies were "not US-listed". The operative universe is
+**North American — US plus TSX and TSXV** — which is a materially larger tradeable set, and
+it matters most for exactly the sectors the book is heaviest in: Canadian miners and
+uranium names are tradeable, not excluded.
+
+Worth being precise about what this does and does not overturn:
+
+- **It does not revive space or displays.** SpaceX is still private; LG, Samsung and TCL are
+  still Korean and Chinese listings. TSX access does not reach them. Those rejections stand.
+- **It does revive mining.** [`PHASE_K_SOURCE_RESEARCH_PROMPT.md`](PHASE_K_SOURCE_RESEARCH_PROMPT.md)
+  §2 listed mining with the hazard "junior-stock promotion is endemic; primary data is in
+  filings, not video" — still true, but it was never evaluated, and TSXV juniors are the one
+  universe where §3's unavailable **attention** mechanism is plausibly live.
+
+### Weighting by fund, not just by dollars
+
+Dollar weight alone is misleading here. RRSP is 90% of the money and is a broad,
+ETF-heavy, largely passive book — low value per marginal signal. **Project Chimera is the
+fund the bot actually trades**, and its concentration is completely different:
+
+- Nuclear/uranium ≈ **19%** of Chimera (CCO.TO 6.4, GLO.TO 3.7, LEU 2.0, URNM 2.0, CEG 2.0,
+  URNJ 1.5, OKLO 1.2)
+- Mining/materials ≈ **31%** (XMA.TO 16.7, GMIN.TO 14.7)
+- Plus RAIL 6.1, DRX.TO 5.6, CNR.TO 4.1 — small-cap industrials
+
+So Chimera is roughly **half mining and nuclear**, and it holds genuine small caps
+(GLO.TO, WEB.V, RAIL, DRX.TO, LTRX) rather than the mega-caps that killed the attention
+thesis in §3. **Source selection should be weighted to Chimera's composition**, not to the
+dollar-weighted aggregate.
+
+### What the existing allowlist already covers, and what it misses
+
+The 13 seeded tech channels map onto the single largest theme (semis, 19.9%) — that was a
+good instinct, and §14's 27% yield was measured against the theme with the most exposure.
+Automotive (§12, adopted, not yet seeded) maps onto **almost nothing in the book** — TSLA
+0.7%, no F/GM/RIVN/LCID at all. It scored best on mechanism quality but has near-zero
+portfolio relevance, which is a genuine argument for de-prioritising it below the themes
+here.
+
+Uncovered themes ranked by *Chimera-weighted* relevance:
+
+1. **Uranium / nuclear fuel cycle** — highest conviction gap. Chimera ~19%, and both
+   ends of the cycle are North-American listed (CCO.TO, DNN.TO, NXE.TO, GLO.TO, LEU, UEC,
+   UUUU) plus SMR names (OKLO, SMR, CEG). Hazard: the corpus is heavily promotional and
+   partly paid placement.
+2. **Grid / power / datacenter electrical** — 11.9% of the book and **VRT is the single
+   largest individual position (3.5%)**. Uniquely well-matched to captions: the AI-datacenter
+   power-constraint story is discussed continuously and technically, and `ServeTheHome`
+   (already seeded) partially covers it. Cleanest sector on the list — no promotion problem,
+   no listing problem.
+3. **Gold / precious metals** — 10.8%. Same promotional hazard as uranium, worse.
+4. **Defense / aerospace primes** — 6.7%. Note §10 already rejected *space*; primes are a
+   different corpus (GD, LHX, GE), but likely derived commentary. Low expectations.
+
+### Recommended revision to the round-3 run order
+
+Supersedes the solar → agriculture → trucking order in
+[`PHASE_K_SOURCE_RESEARCH_PROMPT.md`](PHASE_K_SOURCE_RESEARCH_PROMPT.md) §4, which was
+set before the book was read. Solar drops out entirely — there is **no ENPH, SEDG, FSLR, RUN
+or NOVA position anywhere in the three funds**, so it was a well-reasoned recommendation
+about a sector we have no exposure to.
+
+1. **Grid / power / datacenter electrical** — best combination of exposure (11.9%, top
+   position) and low corpus contamination.
+2. **Uranium / nuclear** — highest Chimera weight; run it second because the promotion
+   filter has to be built and validated first.
+3. **Mining / precious metals** — same corpus as uranium, so run as a follow-on once the
+   promotion tells are calibrated, not as a separate research round.
+
+Agriculture and trucking stay on the list (DE, CMI, TRMB, RAIL, CNR.TO, SNA, FAST — 5.6%
+combined) but below these.
+
+---
+
+## 16. Round-3 sector triage: two-model result (2026-07-29)
+
+Both models were sent the §5 triage prompt from
+[`PHASE_K_SOURCE_RESEARCH_PROMPT.md`](PHASE_K_SOURCE_RESEARCH_PROMPT.md). **That prompt
+predates §15**, so neither model ever saw the portfolio and neither scored grid/power,
+uranium, mining or defense. The headline rankings are therefore not usable as a run order —
+but the diff is still valuable, and it killed three sectors for free.
+
+### Ranking diff
+
+| Sector | Model A rank | Model B rank | Agreement |
+|---|---|---|---|
+| RV / powersports / marine | 1 | 2 | **converge (top 2)** |
+| Residential solar | 2 | 3 | **converge (top 3)** |
+| Trucking / heavy diesel | 3 | 4 | converge |
+| Power tools / outdoor | 5 | 5 | **converge — reject** |
+| 3D printing | 7 | 7 | **converge — reject** |
+| Restaurants | 8 | 8 | **converge — reject** |
+| Agriculture | 4 | 6 | diverge |
+| Firearms / ammunition | 6 | **1** | **maximal disagreement** |
+
+### Three sectors double-rejected, with mechanisms — keep these
+
+Independent double-nomination has outperformed either model's own ranking in every round, and
+it applies to rejections as well as picks:
+
+1. **Power tools.** Both name the same cause: Techtronic (Milwaukee, Ryobi) is HK-listed
+   0669.HK and dominates the high-quality test corpus; Makita and Bosch are foreign or
+   private; SWK is the only US play and we do not hold it. **Third occurrence of the
+   space/displays failure mode.**
+2. **3D printing.** Both name Bambu / Prusa / Creality (private or non-US) as owning the
+   corpus, with DDD and SSYS "enterprise ghosts" on YouTube. Same failure mode again.
+3. **Restaurants.** Both score primary-observation 1-2: food review is subjective, visual and
+   concurrent with public release. No teardown analogue exists.
+
+Solar also weakened on independent grounds: Model B notes Chinese portable-power brands
+(EcoFlow, Jackery, Anker — private) and Tesla dominate DIY/teardown volume, diluting the US
+mid-caps "exactly like displays"; Model A notes rate-driven macro swamps product alpha.
+§15 had already dropped solar for zero exposure; this is convergent mechanistic support.
+
+### The firearms contradiction — treat as unknown, not as Model B's pick
+
+Rank 6 vs rank 1, and the caption-legibility scores are **2 vs 5** for the same corpus. Per
+§8's blocklist finding, disagreement of this size is the signal: both are guessing.
+
+Model A's case is the more checkable one and it is mechanistically right: the decisive data
+points (chronograph velocities, shot groupings on paper) are **visual**, and the brands the
+channels actually test are heavily private (Glock, Sig Sauer). RGR and SWBI are genuine
+US-listed pure plays, but the corpus is not pointed at them. Model B asserts 85-95%
+tradeable without naming which companies produce that figure.
+
+Moot for now regardless — **zero firearms exposure.** Both models agree the demand signal
+belongs to NICS, not YouTube.
+
+### Convergent structured-dataset findings — the most durable output
+
+Both rounds independently reached for datasets over video in the same places, continuing the
+FAA/FCC (§10) and NHTSA (§12) pattern:
+
+| Sector | Dataset | Cost |
+|---|---|---|
+| Firearms | **FBI NICS** background checks (both models) | free, monthly |
+| Trucking | **DAT** load-board rates (both models); Cass Freight Index, ACT/FTR Class-8 net orders, FMCSA CSA, EPA engine certs | DAT / ACT / FTR are **paid subscriptions**; Cass is effectively free |
+| Agriculture | USDA WASDE, NASS yields, crop progress, grain stocks | free |
+| Restaurants | credit-card panels (YipitData, Earnest), Placer.ai foot traffic; municipal health-inspection scores | panels are **institutionally priced**; inspections free |
+| Solar | EIA monthly generation, interconnection-queue reports, state PUC dockets | free |
+
+Neither model flagged cost, and it matters: "skip YouTube, ingest DAT" is only actionable if
+we buy DAT. The free-and-genuinely-good subset is **NICS, USDA, EIA, Cass, health
+inspections**.
+
+### One idea worth transplanting
+
+Model A's proposed sector (HVAC/plumbing — LII, AAON, WTS, FIX) is zero-exposure and not
+adoptable, but its *mechanism* is directly reusable: GoPro service-call channels where
+technicians read out error codes, gauge pressures and part numbers. That is exactly the
+primary-observation corpus §8.1 is looking for in grid/power, drawn from the same trades
+population — and FIX and AAON are datacenter mechanical/cooling contractors, i.e. the VRT /
+ETN theme observed from the install side. We do hold AOS (0.77%). **Fold this into the
+grid/power round as a search hint, not a separate sector.**
+
+Model B's proposed sector (powersports components) is not adoptable: zero exposure, and it
+could not name a single ticker — "think the component suppliers... more specialized". An
+unnamed universe has no verification path.
+
+### Calibration notes for the next round
+
+- **Model A answered "Leads" in 7 of 8 rows**; Model B was more discriminating (three
+  "Concurrent"). Lead time is the column that should separate sectors, so a near-constant
+  answer is agreement, not measurement. Our tech round *measured* a largely concurrent
+  corpus (Anastasi was rejected for exactly this), so treat any unverified "Leads" as
+  unknown.
+- Both admitted their tradeable-share figures are estimates, not audits — §1's rules already
+  say to treat these as leads, and they were honest about it. The escape hatches keep working.
+- **Model B contributed a genuinely new pre-filter:** caption-legibility scores assume
+  average auto-transcripts, so *channels with heavy on-screen charts or silent teardowns
+  score lower in practice*. That is checkable per channel and belongs in the §9 discovery
+  ranking.
+
+### Action
+
+Re-run triage on the §5 prompt **as patched by §15** — it now carries portfolio weights and
+an explicit "I must already have exposure" constraint, plus the note that 41% of the book is
+TSX/TSXV. The run order in §8.1-8.3 (grid/power → uranium → mining) stands unchanged, because
+nothing in this round bears on those three sectors.
+
+> **Superseded by §17.** The triage re-run was skipped as redundant — the portfolio had
+> already selected the sector, and §8.1's core question subsumed the triage question. Went
+> straight to the grid/power channel round.
+
+---
+
+## 17. Grid / power / datacenter electrical — REJECTED as a caption sector, ADOPTED as a
+## dataset path (2026-07-29)
+
+The §8.1 prompt was sent for the highest-exposure uncovered theme (11.9% of the book, VRT the
+largest single position). One round trip, decisive answer, **zero caption fetches spent.**
+
+**Verdict: do not add grid/power caption sources.** The response was a flat *"I will be
+plain: it is wishful thinking"* — the same phrasing that correctly killed space attention
+alpha in §10, which is mildly reassuring about calibration.
+
+### The finding: a new failure mode — access-gated observation
+
+This is **not** another instance of §10/§12's inverse-correlation pattern, and the difference
+matters for the synthesis in §18. Here the companies are ideal: VRT, ETN, PWR, GEV, CEG,
+FIX, MYRG are all US-listed, liquid, and the equipment *is* substantially their revenue. The
+tradeability and materiality criteria both pass cleanly.
+
+What fails is that **the observation is legally and physically inaccessible**:
+
+1. **Security and NERC CIP.** You cannot bring a camera into a hyperscale datacenter or a
+   500kV substation. For utility and contractor staff it is an NDA and corporate-comms
+   violation, and substations sit under Critical Infrastructure Protection physical-security
+   standards.
+2. **Audience mismatch.** The residential HVAC tech works alone and owns his channel. The
+   commissioning engineer spinning up 50 Vertiv CDU cooling loops is escorted, works under a
+   tier-one GC, and is bound by corporate comms policy. **The person with the information is
+   structurally the person who cannot publish it.**
+
+So the residential/light-commercial trades corpus is real — and irrelevant to our tickers.
+The utility-scale and hyperscale corpus we actually wanted does not exist in the wild. What
+does exist is macro commentary, financial YouTubers reading Substacks, and vendor-approved
+sanitized tours.
+
+One caveat on the CIP claim: NERC CIP standards bind the *registered entity*, not a random
+videographer, so "violation of federal CIP rules" is somewhat overstated as applied to a
+filmer. The operational conclusion is unaffected — employees will not film regardless.
+
+### Corroborated by the model's own output, which is why this is credible
+
+The four channels it supplied argue against its own recommendation, and it did not hide that:
+
+| Channel | Visual dependence | Lead time | Dated example |
+|---|---|---|---|
+| HVACR Videos | **HIGH** | UNVERIFIED | UNVERIFIED |
+| Electrician U | MEDIUM | UNVERIFIED | UNVERIFIED |
+| S​e​r​v​e​T​h​e​H​o​m​e | MEDIUM | **concurrent** | UNVERIFIED |
+| Bobsdecline (lineman) | **HIGH** | UNVERIFIED | UNVERIFIED |
+
+**Zero dated examples of the sector leading, on four attempts.** Under §7's criteria that is
+a rejection on its own, independent of the structural argument. The `visual_dependence` field
+added to the §6 schema this round did real work immediately — helmet-cam and gauge-pointing
+content is exactly what a caption pipeline cannot use.
+
+### Useful critique of a source we already run
+
+It independently named **S​e​r​v​e​T​h​e​H​o​m​e** — already seeded — and flagged it as the
+recommendation *most* exposed to the sanitization hazard: heavy vendor access, review
+samples, sponsored datacenter tours, and `lead_time: concurrent`. Its tell is checkable from
+caption text: *"vendor sent us this for review"*, *"we're here at the [Company] briefing
+centre"*. Worth watching in Stage 0 — STH scored 40% yield in §14, and if those claims are
+concurrent product-showcase facts rather than leading ones, that yield is overstated.
+
+### The B-roll silence tell — implement this in K2, it generalises
+
+The best mechanically-implementable heuristic produced by any research round:
+
+> *"Let's take a look at how this liquid cooling loop works"*, followed by **1-3 minutes of
+> silence in the captions** before the narrator returns — meaning OEM marketing animation or
+> silent b-roll played.
+
+This is a **caption-gap detector**: measure the distribution of timestamp gaps in a
+transcript, and flag videos with long silent stretches. It is a direct proxy for
+`visual_dependence`, computable with no LLM call, and it generalises to every sector — silent
+teardowns and chart-heavy explainers fail a caption pipeline everywhere. Recommend
+implementing alongside §8's derived-content score as a per-article metric.
+
+Two further tells worth keeping, both caption-detectable:
+
+- **TAM/CAGR tell** — `TAM`, `CAGR`, `hyperscaler`, *"according to a new report by Dell'Oro /
+  Gartner"*. A technician fixing a chiller does not discuss total addressable market.
+- **Marketing-adjective tell** — *cutting-edge*, *synergistic*, *next-generation*,
+  *optimized*. A tradesman says *"this 400-amp Eaton breaker is backordered 12 weeks"*.
+
+### What we gained: the best structured-data path found so far
+
+The negative space answer is more valuable than the channel list, and cost flags were
+supplied this round because §8.1 asked for them:
+
+| Dataset | Cost | What it gives |
+|---|---|---|
+| **Interconnection queues** (PJM, ERCOT, CAISO, MISO) | **free** | Exact MW requests, developer names, status. What PWR / MYRG / PRIM will build in **18-24 months** — contractor backlog and equipment demand, explicitly listed |
+| **EPA / state air-quality permits** | **free** (state-dependent) | Datacenter backup-generator permitting lands months before concrete is poured — reveals datacenter intent and scale ahead of press releases. Ties to CMI (held, 1.25%) and CAT |
+| **FERC EQR / Form 1** | **free** | Utility transmission spend and vendor contracts |
+| US customs / bill of lading (Panjiva, ImportGenius) | **paid** | Large transformers and HV switchgear entering the US |
+
+The air-permit signal is the most genuinely novel item any round has produced: a
+consumer-invisible, free, leading indicator of datacenter buildout intent. Interconnection
+queues at 18-24 months lead time are the longest-dated signal in this document.
+
+**This belongs in its own phase, not Phase K** — same conclusion as §10 reached for FAA/FCC
+space data. Phase K is a captions pipeline; four rounds have now produced three separate
+sectors whose real answer is structured data (space, auto recalls, grid/power) plus two more
+where a dataset dominates (firearms → NICS, trucking → Cass/DAT). That recurrence is itself
+the finding, and it is getting hard to ignore.
+
+### Second model: partial dissent that strengthens the rejection
+
+Model B did **not** endorse A's structural-impossibility argument. Its read: *"a genuine but
+sparse primary corpus"*, *"not entirely macro talking heads, but the information-dense primary
+slice is thin"*, and — pushing back on the prompt's framing — *"if the 4-8 channel budget
+cannot be filled with high-confidence primary sources after verification, filings + queue
+data will outperform captions here. That is the practical read, not wishful thinking."*
+
+That is a fair distinction, and it converts the question from *does the corpus exist* to
+**can the 4-8 channel budget actually be filled**. Answer, taking both models' output
+together: no.
+
+**Eight channels proposed across both models. Seven fail mechanically:**
+
+| Channel | Model | Disqualifier |
+|---|---|---|
+| Residual Electrical | B | `tickers_actually_discussed: []` — UK contractor, 10-20% tradeable |
+| MEP Academy | B | `tickers: []`, visual MEDIUM-HIGH, educational content |
+| Gaurav J | B | `tickers: []`, educator selling courses, manufacturer-interview access bias |
+| HVACR Videos | A | visual dependence **HIGH** (gauges, part numbers pointed at, not read aloud) |
+| Electrician U | A | NEC code theory, whiteboard-based |
+| Bobsdecline | A | visual **HIGH** — helmet-cam, wind noise, brands not narrated |
+| S​e​r​v​e​T​h​e​H​o​m​e | A | already seeded; flagged `concurrent` + vendor-sanitized |
+
+**Three of Model B's four have literally empty `tickers_actually_discussed`.** The
+tradeability scan fails at the source — these channels do not discuss our companies at all.
+That field and `visual_dependence`, both added to the §6 schema this round, did the rejecting
+without any probe work.
+
+**And the decisive number: 8 channels, 8 × `dated_example: UNVERIFIED`.** Neither model could
+produce a single instance of this sector leading, on eight attempts. §7's criteria reject on
+that alone.
+
+### The one survivor, and why it is a single source rather than a sector
+
+**Gruber Power** (`@GruberPower`, ~229k) is the only candidate that clears the mechanical
+filters: `PRIMARY`, `visual_dependence: LOW`, and it actually names Vertiv/Liebert and Eaton
+equipment in service contexts — UPS modules, battery-string tests, LOTO procedures. Model A
+missed it entirely, which is exactly why we run two models.
+
+Three caveats, and the first is disqualifying at sector scale:
+
+1. **It is a vendor.** Gruber Power is a critical-power service company selling and
+   maintaining the equipment it discusses. Model B flags the promotional bias itself. This is
+   the same conflict class that excluded **iFixit** in §5 — a company with direct financial
+   interest in the problem it publicises.
+2. `typical_nonstream_minutes: 5` — short service explainers, low absolute information volume.
+3. `lead_time: UNKNOWN`, `dated_example: UNVERIFIED`, like everything else here.
+
+**Recommendation:** probe Gruber Power as **one opportunistic source**, not as the beachhead
+of a sector. ~10 caption fetches, well inside a day's budget, and it is the only falsifiable
+residue of the whole round. If its captions genuinely carry backordered-lead-time claims on
+named OEM equipment, that is a real find; the vendor conflict then needs weighing against it.
+
+### The HVAC transplant idea is dead — tested and failed
+
+§16 proposed folding Model A's HVAC-technician corpus into this round as a search hint. Both
+models independently rejected it on the same grounds: the GoPro service-call corpus is real
+and caption-rich for **residential and light-commercial** units, and **does not extend** to
+industrial switchgear, transformers, UPS, or datacenter-scale mechanical at the same verbal
+part-number density. Model B: *"Those jobs exist; they are simply not filmed and narrated at
+scale on public English YouTube the way residential service calls are."*
+
+Double-confirmed rejection of our own hypothesis, at the cost of one prompt. Worth recording
+as a hit for the process, not against it.
+
+### Dataset finding: double-nominated, so this is the durable output
+
+Both models independently reached for the same free sources, which by §16's standard is the
+strongest signal available:
+
+- **ISO/RTO interconnection queues** (PJM, MISO, CAISO, ERCOT) — both models, free
+- **FERC** eLibrary / Form 1 / EQR — both models, free
+- Model B adds: **EIA Electric Power Monthly/Annual**, **DOE transformer reports**, utility
+  **IRPs** and **state PUC dockets** — all free
+- Model A adds: **EPA / state air-quality permits** for datacenter backup generators (free,
+  and still the most novel single item any round has produced), plus customs bill-of-lading
+  (paid)
+
+Both state plainly that these beat captions *for the exact facts we wanted* — lead times and
+shortages that later surface in VRT/ETN/PWR/GEV backlog.
+
+### Blocklist tells also converged
+
+A's **TAM/CAGR tell** and B's *"AI data centers will need X GW / the grid can't keep up"*
+tell are the same tell: macro narration with no SKU, part number, observed lead time, error
+code, or schedule slip. Both independently name the news-aggregation tell (*"according to
+reports"*, *"analysts say transformer lead times are now 3 years"*) and the AI-voice/scripted
+cadence tell (*"in this video we will explore"*, smooth low-hesitation stat delivery). B adds
+**manufacturer promo without field friction** — product-feature lists with zero mention of
+installation problems, commissioning delays, or parts availability.
+
+Convergent tells across two models, in a domain where §8 found blocklists had *zero* overlap.
+These are worth implementing.
+
+### Self-verification: run, and the absence is confirmed (2026-07-30)
+
+`scripts/yt_discover_channels.py` now exists and was pointed at this exact question.
+**6 observation-targeted queries × 20 results = 120 listings, zero caption fetches, ~2
+minutes.**
+
+| Measure | Result |
+|---|---|
+| Distinct channels across 120 videos | **102** |
+| Max distinct-query recurrence | **2** (one channel) |
+| Channels recurring across ≥3 queries | **0** |
+| Channels whose titles name a tradeable target | **2 — `Eaton` and `Switch On to Eaton`**, both the manufacturer's own channels |
+
+**No concentration whatsoever** — 0.85 channels per video means the search surface is a flat
+long tail with no repeat authorities, which is the opposite of what a real source corpus looks
+like. For contrast, the double-nomination principle that drove every research round assumes
+good sources *recur*; here nothing does.
+
+The only tradeable-name coverage comes from **the issuer's own marketing channels**, which are
+disclosure-preempted (§19) and derived by construction. The rest of the head is vendor
+channels (Schneider Electric, OMICRONenergy, DCX Liquid Cooling, NM Cabling, Equinix) and
+`The Engineering Mindset` — which Model A specifically named as *"excellent visually, useless
+for NLP"*. `Electrician U` appears, matching Model A's list, so the tool reproduces the
+research findings rather than contradicting them.
+
+**§17's absence claim is confirmed by measurement, not assertion**, at a cost of zero caption
+fetches. Both models' conclusion stands, and the two research rounds that produced it could
+have been replaced by two minutes of listing.
+
+> **Measurement caveat worth carrying.** The first run reported `0%` tradeable share for
+> *every* channel, which was a bug in the tool, not a finding: it matched ticker symbols only,
+> while §3's original scan counted **company mentions**. Titles say "Eaton", not "ETN". The
+> script now takes company/brand aliases (`ETN:Eaton`), and the corrected figures are above.
+> Any future tradeable-share scan must match names, or it will manufacture absence results.
+
+### The original plan for cheap self-verification
+
+The claim is an assertion of *absence*, which is the hardest kind to trust, and it is
+consequential. It can be checked for free — **listing is not rate-limited (§13)** — using the
+§9 discovery pipeline: run observation-targeted queries (`transformer lead times 2026`,
+`switchgear shortage datacenter`, `liquid cooling retrofit colocation`,
+`interconnection queue delay`), aggregate to channels, and title-scan. If the results are all
+macro commentary and vendor tours, the absence is confirmed at a cost of zero caption
+fetches. Prefer this over a second research round: it is cheaper and it produces measured
+rather than asserted evidence.
+
+---
+
+## 18. Cross-round synthesis: what actually predicts a sector's fate
+
+Four research rounds, ~10 sectors assessed, **2 adopted**. The per-sector reasoning is above;
+this is the part that transfers.
+
+### Scoreboard
+
+| Sector | Verdict | Killed by |
+|---|---|---|
+| Tech / semis | **adopted** — 27% Stage 0 yield | — |
+| Automotive | **adopted** (§12), seeding pending | — |
+| Space / aerospace | rejected | untradeable subject (SpaceX private) |
+| Consumer electronics / displays | rejected | untradeable subject (KR/CN listings) |
+| Power tools | rejected | untradeable subject (TTI HK-listed) |
+| 3D printing | rejected | untradeable subject (Bambu/Prusa/Creality) |
+| Restaurants | rejected | no primary corpus; subjective and visual |
+| Grid / power | rejected as captions, **adopted as dataset** | access-gated observation |
+| Residential solar | dropped | zero portfolio exposure |
+| Firearms | moot | zero exposure; visual data; NICS dominates |
+| Uranium / mining | **pending** | — |
+
+### The five failure modes, in order of how often they have fired
+
+1. **Untradeable subject (4×).** The best primary observation points at a private or
+   foreign-listed company. Detected free by title-scanning for tradeable share — the single
+   highest-value filter we have. Reject under ~50%.
+2. **Dataset dominance (5×).** A free public dataset is more complete, more timely and
+   cheaper than the video corpus: FAA/FCC/SAM.gov (space), NHTSA (recalls), NICS (firearms),
+   Cass/DAT (freight), interconnection queues + EPA air permits (grid). **This has now fired
+   more often than anything else.** Ask the negative-space question early — it has been the
+   highest-yield question in the prompt every single round.
+3. **Access-gated observation (1×, new in §17).** Tradeability and materiality both pass, but
+   the people who can see the facts are contractually or legally barred from publishing — or
+   simply do not film. Watch for this wherever the subject is industrial-scale, secure, or
+   enterprise; it is the failure mode that does *not* show up in a tradeability scan, so it
+   needs asking about directly. Note the two models disagreed on *why* (A: structurally
+   impossible; B: exists but sparse) while agreeing the budget cannot be filled — the
+   operational test is **"can I name 4-8 qualifying channels?"**, not "does any exist?"
+4. **Visual dependence (2×).** Chronograph readings, shot groupings, gauges, helmet-cam.
+   Now partly mechanised: the `visual_dependence` field plus §17's caption-gap detector.
+5. **Materiality dilution (1×).** Real defect, immaterial issuer line — §11's melting
+   Nvidia connector.
+6. **Disclosure-law preemption (1×, new in §19, and the most general of the six).** Where the
+   *issuer* is the source of the fact, securities law requires the filing to precede the
+   spoken word — NI 43-101 and NI 51-102 in Canada, Reg FD in the US. Captions cannot lead in
+   principle. This kills interview- and IR-format sources across **every** regulated sector at
+   once, and it is why `TEARDOWN` and `LEAK` sources have worked for us while `EARNINGS_IR`
+   and interview-`ANALYSIS` have not. **Ask of any candidate source: is the fact observed
+   independently, or supplied by the issuer?** If the latter, the filing beats it by law.
+
+Plus one process failure, which was ours rather than a model's: **recommending sectors with
+zero portfolio exposure** (solar, RV, HVAC). Fixed in §15 by putting real weights in the
+prompt. Cost: two research rounds spent ranking sectors we hold nothing in.
+
+### What consistently worked
+
+- **Independent double-nomination**, for picks *and* rejections. More reliable than either
+  model's self-ranking in every round without exception (§16 killed three sectors this way).
+- **Explicit escape hatches** (`HANDLE UNSURE`, `UNKNOWN`, `UNVERIFIED`). §10 noted these
+  improved calibration; §17 is the strongest case — the model's honest `UNVERIFIED` fields
+  are what made its rejection believable.
+- **Demanding a dated, falsifiable example per channel.** Zero-for-four on that field
+  rejected grid/power independently of any argument.
+- **Asking the make-or-break question directly** in the prompt, and inviting a flat no. Both
+  flat "wishful thinking" answers (space attention, grid corpus) were correct.
+- **Asking for the negative space.** Failure mode 2 above; it has out-produced the channel
+  lists.
+
+### What consistently did not work
+
+- **Model rankings and self-scored tables.** Near-constant columns (§16: "Leads" in 7 of 8
+  rows), estimated percentages presented as measurements, and maximal disagreement on
+  firearms (rank 1 vs 6, caption-legibility 5 vs 2) on identical evidence.
+- **Blocklists of named channels.** Zero overlap between models (§8). The *tells* generalise;
+  the names do not. §17's three tells are worth more than every blocklist combined.
+- **Handles.** ~4 of 30 wrong across rounds, including a 290-sub impostor. Never seed
+  unverified.
+
+### Prediction to test on uranium / mining *(resolved — see §19)*
+
+Given failure mode 2's frequency, the base rate now favours **SEDAR+ technical reports and
+drill-result filings over captions** for mining — as already written down in prompt §8.3
+before the research runs. If the next round comes back enthusiastic about mining channels,
+that is *weak* evidence, because promotional channels are built to read as authoritative.
+Uranium is the more interesting of the two, because it is the only remaining sector where
+ATTENTION alpha is plausibly live (TSXV juniors, retail bases) — and that mechanism has been
+unavailable everywhere else we have looked.
+
+> **Resolved in §19. Prediction confirmed by both models independently:** SEDAR+ / NI 43-101
+> dominate the resource signal and are free; UxC / TradeTech are paid. Recording that it was
+> written down *before* the round, since a prediction made after the fact is worth nothing.
+
+---
+
+## 19. Uranium / nuclear — REJECTED as an INFORMATION sector. Attention alpha is real and
+## is the promotion machine (2026-07-30)
+
+Both models answered the §8.2 prompt. This is the cleanest result of the project, and it
+generalises further than the sector.
+
+### The budget test, and the number that decides it
+
+| | Model A | Model B |
+|---|---|---|
+| Channels named | 4 | 6 |
+| Clearing the INFORMATION filter | **0** | claims 4-6 "usable" |
+| `promotion_risk` LOW | **0** | **0** |
+| `dated_example` verified | **0 / 4** | **0 / 6** |
+| Any channel claimed to *lead* on fact | no ("lagging" ×4) | no ("concurrent \| lagging"; best case "interpretation of known data") |
+
+**Ten distinct channels across two models. Zero rated `promotion_risk: LOW`. Zero dated
+examples, on ten attempts.** Combined with grid/power's 8, that is **18 consecutive channel
+assessments with no verifiable instance of leading.**
+
+Model A answered the budget test bluntly: *"Zero channels clear your INFORMATION filter…
+If your pipeline requires a channel to beat a press release to be valuable, you should
+abandon YouTube for this sector entirely."* Model B said the budget was met at 4-6 usable
+channels — but its own best case for the strongest candidate is *"concurrent to days on
+interpretation of known data; UNKNOWN on pure firsts."* Interpretation of public data is
+`ANALYSIS` of already-priced information; §3 defines that as not alpha. **The two models
+disagree on the verdict and agree on every underlying fact.**
+
+Double-nominated channels: Crux Investor (both, promotion HIGH both), Uranium Insider (both),
+Mining Stock Education (both). Model A supplies the detail that decides Uranium Insider,
+which B missed: its paid newsletter *"subscribers receive actionable stock picks days before
+they are discussed on YouTube."* The video is structurally the exit, not the entry.
+
+### The structural finding: disclosure-law preemption — a new failure mode, and the most general one yet
+
+Model A: *"Because of NI 43-101 (Canada) and Reg FD (US), material drill intercepts and
+resource estimates must hit the tape before a CEO can legally discuss them on a podcast…
+Any channel breaking a drill result first is a CEO committing a securities violation."*
+
+Model B confirms it from the other side: it cannot verify a dated first because it *"cannot
+mechanically confirm a channel published a material non-public fact before any press or
+filing"* — and it routes the hard resource signal to NI 43-101 technical reports.
+
+This is not access-gating (§17) and not untradeability. **The information is legally required
+to be public before it can be spoken.** Where an issuer is the source, the filing *always*
+precedes the video, by law. Captions cannot lead, in principle, not merely in practice.
+
+### Why this explains the entire project's results
+
+The preemption applies to **issuer-sourced** content, not to independent observation. That
+single distinction retrodicts every result in this document:
+
+| `alpha_mechanism` | Source of the fact | Preempted? | Our result |
+|---|---|---|---|
+| `TEARDOWN` | Independent measurement of a product | **No** — nobody has a disclosure duty over a reviewer's bench | tech + auto **adopted** |
+| `LEAK` | Supply-chain source, unofficial | **No** — the whole point is that it evades disclosure | M​L​I​D, 40% yield |
+| `ANALYSIS` | Interpretation of public data | Partly — the input is already priced | low yields (§14: 10-11%) |
+| `EARNINGS_IR` | The issuer itself | **Yes, totally** | — |
+
+**Concrete implication for a source we already run:** `P​a​l​a​n​t​i​r​ ​I​R` is seeded as
+`EARNINGS_IR` (tier 2, disabled by default). An earnings call is Reg FD-compliant public
+disclosure at the moment it is spoken, and machine transcripts are available faster
+elsewhere. **It can never lead, by construction.** It may still be useful as structured claim
+extraction, but it should not be weighted as a source of unpriced information, and enabling
+it should be a deliberate decision rather than a default.
+
+This also retrospectively explains §14's yield table better than the "tech density" heuristic
+did: the low-yield channels were the interpretive ones, the high-yield ones were the
+observational ones.
+
+### Attention alpha: the first YES in the project — and it is the promotion machine
+
+Both models say live, and both immediately qualify it identically.
+
+Model A: *"It is live, but it is entirely the promotion machine working as designed…
+engineered liquidity… it exists primarily so that insiders, warrant holders, or the
+channel's paid newsletter subscribers (who were given the ticker a week in advance) have a
+retail bid to sell into… If you hold the position for a week, you will become the exit
+liquidity for the bought-deal equity raise that almost always immediately follows."*
+
+Model B: *"live in the narrow sense… usually the promotion machine working as designed rather
+than independent information alpha… often reverses once the promotional wave ends… Flat
+dismissal would be wrong; calling it clean alpha would also be wrong."*
+
+So §3's founding question finally gets a YES — in the one sector where the mechanism is
+inseparable from paid promotion. Both describe the same trade: buy the video drop, exit
+within hours, before the financing.
+
+**Recommendation: do not build that.** Two reasons, and the second is sufficient on its own:
+
+1. It is buying into a paid promotion in order to sell to the retail flow the promotion
+   creates. That is being part of the machine, not trading around it.
+2. **Our infrastructure would systematically capture the wrong half.** The edge is
+   hours-scale; `jobs_stance_outcomes.py` and the Stage 3 machinery measure at week scale,
+   and the bought deal lands inside that window. We would reliably eat the reversal and miss
+   the spike. This is not a squeamishness argument — the plumbing cannot hold the trade.
+
+**The defensible use is the inverse, and it is genuinely valuable:** we hold GLO.TO, and both
+models name it as a promotion target. A detector that flags *"a paid-IR wave is running on a
+name we own"* is a **risk and exit signal**, not an entry signal. Same model, same tells,
+opposite direction, no ethical problem, and it fits the horizon our machinery actually
+measures.
+
+### The promotion tells — double-nominated, and the most implementable artifact of the project
+
+§8 found two models' *blocklists* had zero overlap. Their *tells* here converge strongly,
+which is exactly the pattern that made us prefer tells over names:
+
+| Tell | A | B | Implementation |
+|---|---|---|---|
+| **Missing friction words** | ✔ | ✔ | **Zero-count check** on `burn rate`, `dilution`, `warrant overhang`, `bought deal`, `G&A`, `cost overrun`, `inferred only`, `AISC`. Cheap, no LLM call. |
+| **Bad-news reframing** | ✔ ("does this give a better buying opportunity?") | ✔ ("additional de-risking time") | Regex/LLM on delay-adjacent spans |
+| **Story-prompt phrasing** | ✔ ("walk us through the story") | ✔ ("tell us about the opportunity") | Direct phrase match |
+| **Macro buffer** | ✔ (first 30-50% on macro before naming the asset) | — | Transcript-position measure: index of first asset mention |
+| **No adversarial follow-up** | — | ✔ (host never presses on dodged numbers) | LLM scoring |
+| **Absolutist upside language** | — | ✔ (`game-changer`, `multi-bagger`) vs probability-weighted | Lexicon |
+| **Disclosure placement** | — | ✔ (paid: rapid legal paragraph at the very end) | Position of `paid for by` / `business relationship` |
+
+**The missing-friction-word zero-count is the single best filter any round has produced.** It
+is nearly free, needs no model, and generalises to every interview-format source in any
+sector. Recommend implementing it in K2 alongside §8's derived-content score and §17's
+caption-gap detector.
+
+### Datasets — both models, all free unless noted
+
+- **SEDAR+** (Canada) and **EDGAR** (US) — NI 43-101 technical reports, material change
+  reports, resource/reserve tables. Both models. Free.
+- **NRC** and **CNSC** dockets — permitting and SMR licensing timelines, lead YouTube by
+  weeks. Both models. Free.
+- **EIA Uranium Marketing Annual** — utility contracting volumes, inventories, realised
+  prices. Model B. Free.
+- **Euratom Supply Agency** indices — EU equivalent. Model B. Free.
+- **IMF Primary Commodity Prices via FRED** — monthly spot history, free CSV. Model B.
+- **UxC** and **TradeTech** — the actual spot/term benchmarks. **Paid, institutionally
+  priced.** Both models. Model A adds the operational point that YouTubers subscribe to these
+  and read the numbers out days later, so the video is a lagged copy of a paid feed.
+
+---
+
+## 21. K7 validation: the friction-word filter is FALSIFIED (2026-07-30)
+
+`PHASE_K_TREND_LAYER_PLAN.md` §1 set the gate before building: *"K7 filters ship only if the
+friction-word score separates known-promotional from known-primary channels with clear margin.
+Killed if no separation — the tells were model opinion, not signal."*
+
+**It failed, and it failed backwards.** Recording this in full, because it is the first time
+measurement has overturned a double-nominated finding.
+
+### The measurement
+
+`web_dashboard/yt_content_filters.py` scored **109 known-primary transcripts** (the Stage 0
+cache, mapped to their seeded channels via listing) against **12 mining-interview transcripts**
+freshly fetched from Resource Talks, Crux Investor and Mining Stock Education — the exact
+channels §19 named as the paid-IR corpus.
+
+| Group | n | median words | friction/1k | **`zero_friction`** | disclosure hits |
+|---|---|---|---|---|---|
+| Tech primary (all 12 seeded channels) | 109 | 4,167 | **0.00** | **95%** | 0 |
+| Resource Talks *(openly discloses paid production)* | 4 | 17,706 | **0.35** | **0%** | **2.0** |
+| Mining Stock Education | 4 | 6,590 | 0.16 | 25% | 0 |
+| Crux Investor | 4 | 4,060 | 0.00 | 75% | 0 |
+
+§19's claim was that paid-IR interviews score **zero** on friction words while substantive
+ones score above zero. Measured, the ordering is **inverted**: the interviews carry *more*
+friction vocabulary (median 0.20/1k, max 1.46) than the primary corpus (median 0.00, max
+0.47), and **95% of known-primary videos trip `zero_friction` against 33% of the interviews.**
+The single most promotional channel in the sample — the one that openly discloses paid
+content creation — has the **highest** friction score of any group, which contradicts even
+the narrow within-domain version of the claim.
+
+### Why it fails, which is the transferable part
+
+**Friction words are corporate-finance vocabulary, so they track subject matter, not
+integrity.** A GPU teardown never says "dilution" or "bought deal" because it is not about
+corporate finance. A mining interview always does, paid or not, because that *is* the subject.
+The filter was measuring topic and being read as measuring honesty.
+
+This is exactly the §8 sanity check we specced and never ran — *"If Gamers Nexus scores as
+derived, the heuristic is wrong"* — arriving two documents later in a different costume.
+Gamers Nexus scores 100% `zero_friction`. Under the original interpretation it would have been
+flagged as promotional.
+
+### What survives
+
+- **`disclosure_hits` — the only promotional signal that validated.** Resource Talks median 2,
+  primary corpus 0. It detects *disclosed* payment, so by construction it finds honest
+  promoters and misses covert ones. Useful as a K11 input, not as a completeness guarantee.
+- **`friction_rate`, renamed in effect to `finance_topic_rate`** — retained as an honest topic
+  feature. "Does this transcript discuss the issuer's balance sheet at all?" is a genuinely
+  useful routing question and a K9 trend input.
+- **`attribution_rate`** (§8 derived-content) — not yet validated either way; no labelled
+  derived-vs-primary pairs exist. Untested, not endorsed.
+
+### What is inert and should not be trusted
+
+`story_prompt_hits` fired **zero times across all 121 transcripts** — the phrasing both models
+quoted (*"walk us through the story"*, *"tell us about the opportunity"*) simply does not
+occur at measurable rates. `hype_rate` and `macro_rate` are 0.00 median in both groups. The
+composite `promotion_score` was removed rather than shipped, because it summed three inert
+signals and subtracted an inverted one.
+
+### The methodological finding — this is the important one
+
+**Double-nomination is evidence, not proof.** It has been our most reliable instrument across
+five research rounds and it is still the right way to rank leads. But two independent models
+converged on a specific, confidently-stated, mechanically-testable claim, and the first
+measurement falsified it in the opposite direction.
+
+Both models were reasoning plausibly about a corpus neither had measured. The convergence
+reflected shared priors about how promotion *sounds*, not shared observation. Treat future
+double-nominated *tells* as hypotheses with a validation gate attached — which is what the
+plan's kill criteria are for, and why writing them down before building was worth the effort.
+
+**Cost of finding this out: 12 caption fetches and about an hour.** Cost of not finding out:
+a promotion filter, wired into K11, that flags Gamers Nexus and clears paid IR.
+
+### Caveats, stated plainly
+
+n=12 on the interview side, 4 per channel, newest-first — small, and not a random sample.
+The direction is unambiguous and the mechanism explains it, but the precise rates are not
+reliable. What is *not* tested: paid versus unpaid interviews **within** mining, which is the
+narrowest form of §19's claim; we have no labelled pairs. The Resource Talks result is
+evidence against it, not a disproof of it.
+
+---
+
+## 22. View counts: the attention thesis rests on the wrong number (2026-07-30)
+
+Flat listings carry `view_count` for free, and **no research round ever measured it.** Every
+model reported *subscriber* counts, and §19's attention-alpha verdict was argued explicitly
+from them: *"when a junior miner pays for an IR package and a video drops on a channel with
+80K+ subscribers, retail volume measurably spikes."*
+
+Measured across 30 recent videos per channel, listing only, zero caption fetches:
+
+### Seeded tech corpus
+
+| Channel | median views | p90 | max |
+|---|---|---|---|
+| G​a​m​e​r​s​ ​N​e​x​u​s | **241,000** | 615,000 | 1,200,000 |
+| S​e​r​v​e​T​h​e​H​o​m​e | 177,500 | 318,000 | 479,000 |
+| A​s​i​a​n​o​m​e​t​r​y | 158,500 | 286,000 | 485,000 |
+| H​i​g​h​ ​Y​i​e​l​d | 154,500 | 387,000 | 1,600,000 |
+| H​a​r​d​w​a​r​e​ ​U​n​b​o​x​e​d | 115,500 | 270,000 | 569,000 |
+| G​e​e​k​e​r​w​a​n | 114,000 | 269,000 | 623,000 |
+| d​e​r​8​a​u​e​r​ ​E​N | 56,000 | 130,000 | 486,000 |
+| M​o​o​r​e​'​s​ ​L​a​w​ ​I​s​ ​D​e​a​d | 53,500 | 82,000 | 149,000 |
+| L​e​v​e​l​1​T​e​c​h​s | 29,500 | 99,000 | 149,000 |
+| T​h​e​ ​S​i​g​n​a​l​ ​P​a​t​h | 16,000 | 28,000 | 70,000 |
+| A​c​t​u​a​l​l​y​ ​H​a​r​d​c​o​r​e​ ​O​v​e​r​c​l​o​c​k​i​n​g | 7,800 | 15,000 | 47,000 |
+| T​e​c​h​T​e​c​h​P​o​t​a​t​o | 5,500 | 27,000 | 142,000 |
+| **P​a​l​a​n​t​i​r​ ​I​R** | **1,200** | 6,900 | 24,000 |
+
+### Mining / uranium interview corpus
+
+| Channel | subs *(as reported by research)* | **median views** | view/sub | max |
+|---|---|---|---|---|
+| Resource Talks | 119k | **2,350** | **2.0%** | 4,900 |
+| Crux Investor | 88k | **3,600** | **4.1%** | 10,000 |
+| Mining Stock Education | 50k | 7,600 | 15% | 252,000 |
+| Palisades Gold Radio | 115k | 13,000 | 11% | 107,000 |
+| Uranium Insider | 22k | 12,500 | 57% | 28,000 |
+
+**Median-of-channel-medians: tech 56,000 vs mining 7,600 — roughly 7×.**
+
+### The finding: subscriber counts overstate reach by 10-50× in exactly the corpus the attention claim depends on
+
+Crux Investor has 88k subscribers and a **median of 3,600 views**. Resource Talks — the
+channel that openly discloses paid production, and the most promotional in the sample — has
+119k subscribers and a **median of 2,350 views, a 2% view/sub ratio.** By engagement it is
+close to a dead channel propped up by an accumulated subscriber number.
+
+So §19's attention argument was reasoning from "80K+ subscribers" when the actual per-video
+audience on those channels is **2,000-13,000 people** — before discounting for viewers who
+are not traders, are not in the name, and cannot trade a TSXV junior. The claim is not
+refuted, but its stated basis is off by an order of magnitude *in the direction that makes it
+look strongest*, and the two channels with the largest subscriber counts have the **worst**
+view ratios.
+
+### This is the inverse-correlation pattern again, in a third form
+
+Attention alpha needs **reach × small float**. Measured, those two are anti-correlated:
+
+- G​a​m​e​r​s​ ​N​e​x​u​s has 241k median views and, per §3, talks about mega-caps a video cannot move.
+- The mining channels cover genuinely small TSXV floats and reach 2-13k viewers.
+
+§10 found quality inversely correlated with tradeability; §17 found the same for access; this
+is the third instance. **The thing that makes a corpus valuable keeps being anti-correlated
+with the thing that makes it tradeable.** That is now a strong enough regularity to treat as a
+prior when evaluating any future source.
+
+### Immediate consequences
+
+1. **`P​a​l​a​n​t​i​r​ ​I​R` now has two independent disqualifications** — disclosure-preempted by
+   construction (§19) *and* a median audience of 1,200. It is seeded tier 2 / disabled;
+   it should stay that way, and this is the second reason to say so.
+2. **The event study must use views as the independent variable, not run on medians.** If the
+   attention mechanism is real, effect size scales with viewers. The right sample is the
+   **high-view tail** — Mining Stock Education's 252k and Palisades' 107k outliers — not the
+   2,350-view median, which is almost certainly too small to move anything. Testing the median
+   would produce a null result that proves nothing.
+3. **`view_count` is now carried on `VideoListing`** and is a structural reject in
+   `scripts/yt_discover_channels.py` (`--min-views`, default 2,000): no audience means
+   attention is impossible by construction, and information alpha rarely justifies a fetch
+   either.
+4. Low views do **not** disqualify a source for Use 2 (§20). T​e​c​h​T​e​c​h​P​o​t​a​t​o at 5,500 median
+   views still scored 30% Stage 0 yield. Reach matters for *attention*; it is close to
+   irrelevant for *information* and *trend* work.
+
+---
+
+## 20. Scope correction: what these rejections do and do not mean (2026-07-30)
+
+**Everything above was measured against one bar: does a channel produce a ticker-specific,
+falsifiable, material claim that is not yet priced?** That is the *event-driven information
+alpha* bar from §7 Stage 0. It is the right bar for that mechanism and the rejections stand
+against it.
+
+**It is the wrong bar for the corpus as a whole, and reading §10-§19 as "YouTube is a dead
+end" would be a misreading of our own evidence.** This section fixes the framing before it
+calcifies. Nothing in §1-§19 is retracted; the *conclusions* are re-scoped.
+
+### Two distinct uses, one corpus
+
+| | **Use 1 — event alpha** | **Use 2 — trend, context, sentiment** |
+|---|---|---|
+| Unit | a single video | a rolling window of many videos |
+| Question | "is this fact unpriced?" | "what is changing, and how fast?" |
+| Needs a source to be | **first** | **consistent and dated** |
+| Killed by disclosure preemption (§19)? | **yes** | **no** — aggregate interpretation is not a disclosure |
+| Killed by promotion (§19)? | yes | **no** — promotion volume is itself a measurable series |
+| Killed by "concurrent, not leading"? | yes | **no** — concurrent is fine for tracking a trend |
+| Status | tested across 10 sectors, 2 adopted | **never tested** |
+
+Every rejection in §10-§19 is a **Use 1** rejection. Use 2 has not been evaluated once, and
+most of the failure modes that killed Use 1 do not apply to it:
+
+- **Grid/power (§17)** — no channel leads on transformer lead times. But a rising *count* of
+  contractors mentioning backorders across many videos over months is exactly the kind of
+  slow-moving read that shows up in VRT/ETN backlog later. The individual video is not the
+  signal; the derivative is.
+- **Uranium (§19)** — no channel can legally break a drill result. But shifting sentiment
+  across the analyst-and-interview corpus tracks how consensus *forms*, and §19 already
+  identified promotion-wave detection on names we hold (GLO.TO) as a genuine exit signal.
+  That is a Use 2 product built entirely out of a Use 1 rejection.
+- **Stage 0's 27% yield (§14)** — the other **73% of videos were discarded**. They were
+  discarded for lacking a falsifiable ticker claim, not for lacking information. That is
+  three-quarters of an already-paid-for corpus sitting unused.
+
+### What is retained, explicitly
+
+**No research is discarded and no channel list is deleted.** Specifically retained as a
+candidate pool for Use 2:
+
+- All 13 seeded tech sources, plus the 6 verified automotive channels (§12).
+- The grid/power candidates (§17): Gruber Power, HVACR Videos, Electrician U, Bobsdecline,
+  Residual Electrical, MEP Academy, Gaurav J — rejected as leading indicators, still valid as
+  a field-conditions corpus.
+- The uranium/mining candidates (§19): Crux Investor, Palisades Gold Radio, Uranium Insider,
+  Mining Stock Education, Triangle Investor, Resource Talks, The Next Big Rush — **useless as
+  truth, valuable as a promotion-and-sentiment instrument.** A paid-IR channel is a perfectly
+  reliable sensor for *"paid IR is running"*.
+- Every measured artefact: handles, channel IDs, duration distributions, caption status,
+  tradeable-share scans.
+
+The five sector rejections that fail on **tradeability** (space, displays, power tools, 3D
+printing) stay rejected for both uses — a corpus about companies we cannot trade has no Use 2
+value either. **Access-gating and disclosure-preemption rejections do not transfer to Use 2.**
+
+### The honest risk, stated up front
+
+Use 2 is where a system can generate unlimited plausible-looking output that predicts
+nothing. "Sentiment is improving" is unfalsifiable in a way "MU will beat on DRAM pricing" is
+not. The discipline that made §10-§19 useful — demand a falsifiable claim, measure before
+believing, prefer measurement to model opinion — has to carry into the trend layer or it
+becomes an expensive vibes generator.
+
+**Therefore: every Use 2 component gets a measurable success criterion defined *before* it is
+built.** Those criteria are in [`PHASE_K_TREND_LAYER_PLAN.md`](PHASE_K_TREND_LAYER_PLAN.md).
+
+### The two principles that carry forward
+
+1. **No single source is reliable; agreement across independent sources is measurable.**
+   Double-nomination outperformed every individual model ranking in all five research rounds
+   (§16, §17, §19). We used it as a *research method*. It should become the **product's core
+   algorithm** — the unit of output being a claim corroborated across N independent sources
+   with an explicit divergence score, not a claim from one video.
+2. **Allowlist polling answers the wrong question.** It asks *"what did my sources say
+   today?"*. The powerful capability we actually have is transcript retrieval for **any**
+   video, which answers *"what does YouTube know about MU and DRAM pricing?"* — on demand,
+   when a question is being asked. That is a far better fit for research support, and it fits
+   the ~90 fetches/day budget precisely because it is episodic rather than continuous.

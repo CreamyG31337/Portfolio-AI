@@ -660,6 +660,14 @@ class VideoListing:
     title: Optional[str] = None
     upload_date: Optional[str] = None  # YYYYMMDD when listing client supplies it
     duration_s: Optional[int] = None
+    # Channel attribution. Redundant for a channel listing (caller knows it) but
+    # required for search, where each hit can come from a different uploader.
+    channel_id: Optional[str] = None
+    channel_name: Optional[str] = None
+    # Flat listings carry view_count for free. It is the only direct measure of
+    # how many people actually saw a video, which is the variable the ATTENTION
+    # mechanism depends on and which no research round ever measured.
+    view_count: Optional[int] = None
 
 
 def channel_videos_url(
@@ -713,13 +721,23 @@ def list_channel_videos(
 
 
 def list_search_videos(
-    query_text: str, *, limit: int = _SEARCH_MAX_LIMIT
+    query_text: str,
+    *,
+    limit: int = _SEARCH_MAX_LIMIT,
+    max_limit: int = _SEARCH_MAX_LIMIT,
 ) -> list[VideoListing]:
-    """Top results for a curated search string, capped at ``_SEARCH_MAX_LIMIT``."""
+    """Top results for a curated search string, capped at ``max_limit``.
+
+    The default ceiling is deliberately tiny because the *ingest* path must not
+    sweep topics into ``research_articles`` from outside the allowlist. Channel
+    discovery is the opposite case — a wide sweep that fetches no captions and
+    only ranks candidates for human review — so it raises ``max_limit``
+    explicitly rather than relaxing the shared default for everyone.
+    """
     query = (query_text or "").strip()
     if not query:
         raise CaptionFetchError("parse", "Empty query_text for search listing")
-    capped = max(1, min(int(limit), _SEARCH_MAX_LIMIT))
+    capped = max(1, min(int(limit), max(1, int(max_limit))))
     entries = _flat_playlist_entries(f"ytsearch{capped}:{query}", capped)
     return _listings_from_entries(entries, capped)
 
@@ -841,6 +859,13 @@ def _listings_from_entries(entries: Sequence[Any], limit: int) -> list[VideoList
                     title=(entry.get("title") or None),
                     upload_date=(entry.get("upload_date") or None),
                     duration_s=_as_int(entry.get("duration")),
+                    channel_id=(
+                        entry.get("channel_id") or entry.get("uploader_id") or None
+                    ),
+                    channel_name=(
+                        entry.get("channel") or entry.get("uploader") or None
+                    ),
+                    view_count=_as_int(entry.get("view_count")),
                 )
             )
 
