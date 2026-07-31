@@ -167,7 +167,29 @@ _SEED: list[dict[str, Any]] = [
         "alpha_mechanism": 'EARNINGS_IR',
         "expected_tickers": ['PLTR'],
         "max_duration_s": 9000,
-        "notes": 'issuer IR uploads',
+        # Two independent disqualifications (source list §19 + §22): earnings
+        # calls are Reg FD-public the moment they are spoken, so this can never
+        # lead; and median audience is 1,200. Keep disabled deliberately.
+        "notes": 'issuer IR uploads; disclosure-preempted, 1.2k median views',
+        "tier": 2,
+    },
+    {
+        # Canadian small-cap outlet, user-supplied 2026-07-30. No research round
+        # surfaced it. Measured (source list §24): 19% single-company title match
+        # vs 3.2% for the five channels §19 named, 0% Shorts, 730s median — the
+        # cleanest ingest profile of any mining channel evaluated. Captions
+        # confirmed on 1 video (en/auto, 11.9k chars); a wider check is pending
+        # an egress rotation. expected_tickers are *measured* title matches, not
+        # guesses.
+        "label": "The Deep Dive",
+        "handle": "@TheDeepDiveCa",
+        "channel_id": 'UC04_rUstP7vyLANZ0rJYz_A',
+        "kind": 'channel',
+        "alpha_mechanism": 'ANALYSIS',
+        "expected_tickers": ['AG', 'AEM.TO', 'SA'],
+        "min_duration_s": 300,
+        "max_duration_s": 3600,
+        "notes": 'CAD small-cap; 19% single-company titles; verify yield before trusting',
         "tier": 2,
     },
 ]
@@ -201,6 +223,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
+    # Labels carry U+200B, which a cp1252 Windows console cannot encode; printing
+    # the plan would crash before anything was written. Force UTF-8 on stdout.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, OSError):
+        pass
+
     from postgres_client import PostgresClient
 
     pg = PostgresClient()
@@ -220,7 +249,9 @@ def main(argv: list[str] | None = None) -> int:
             "handle": handle,
             "enabled": enabled,
             "max_videos_per_poll": 1,
-            "min_duration_s": 120,
+            # Per-row override wins; 120 is only the fallback. Previously this
+            # sat after ``**item`` and silently discarded any row's own value.
+            "min_duration_s": int(item.get("min_duration_s") or 120),
             "action": "skip_exists" if cid in existing else "insert",
         }
         planned.append(row)

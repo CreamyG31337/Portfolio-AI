@@ -670,6 +670,99 @@ class VideoListing:
     view_count: Optional[int] = None
 
 
+@dataclass(frozen=True)
+class VideoMetadata:
+    """Non-flat per-video metadata — no media, no captions.
+
+    Flat listings omit ``upload_date`` / ``timestamp``. This is the cheap call
+    that fills them (and description) without touching the caption quota.
+    """
+
+    video_id: str
+    watch_url: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    upload_date: Optional[str] = None  # YYYYMMDD
+    timestamp: Optional[int] = None
+    view_count: Optional[int] = None
+    channel_id: Optional[str] = None
+    channel_name: Optional[str] = None
+    duration_s: Optional[int] = None
+
+
+def fetch_video_metadata(video_id_or_url: str) -> VideoMetadata:
+    """Fetch publish date and description for one video (no captions, no media).
+
+    Raises ``CaptionFetchError`` with ``reason="blocked"`` on 429 / IP blocks so
+    callers can abort rather than burning the budget or inventing dates.
+    """
+    video_id = parse_video_id(video_id_or_url)
+    url = watch_url_for(video_id)
+    try:
+        import yt_dlp as _listing_client
+    except ImportError as exc:
+        raise CaptionFetchError(
+            "dependency", "listing client is not installed", video_id
+        ) from exc
+
+    opts = _apply_ytdlp_proxy(
+        {
+            "skip_download": True,
+            "quiet": True,
+            "no_warnings": True,
+            # Explicitly no subtitle work — this must not share the caption quota.
+            "writesubtitles": False,
+            "writeautomaticsub": False,
+        }
+    )
+    try:
+        with _listing_client.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "blocked" in msg or "429" in msg or "too many requests" in msg:
+            raise CaptionFetchError(
+                "blocked", f"metadata fetch blocked: {exc}", video_id
+            ) from exc
+        if (
+            "private" in msg
+            or "unavailable" in msg
+            or "removed" in msg
+            or "not found" in msg
+            or "does not exist" in msg
+        ):
+            raise CaptionFetchError(
+                "unavailable", f"video unavailable: {exc}", video_id
+            ) from exc
+        raise CaptionFetchError(
+            "unknown", f"metadata fetch failed: {exc}", video_id
+        ) from exc
+
+    if not info:
+        raise CaptionFetchError(
+            "unavailable", f"metadata returned empty for {video_id}", video_id
+        )
+
+    upload_raw = info.get("upload_date")
+    upload_date = str(upload_raw).strip() if upload_raw else None
+    if upload_date and len(upload_date) != 8:
+        # Refuse malformed dates rather than inventing a parse.
+        upload_date = None
+
+    return VideoMetadata(
+        video_id=video_id,
+        watch_url=url,
+        title=(info.get("title") or None),
+        description=(info.get("description") or None),
+        upload_date=upload_date,
+        timestamp=_as_int(info.get("timestamp")),
+        view_count=_as_int(info.get("view_count")),
+        channel_id=(info.get("channel_id") or info.get("uploader_id") or None),
+        channel_name=(info.get("channel") or info.get("uploader") or None),
+        duration_s=_as_int(info.get("duration")),
+    )
+
+
 def channel_videos_url(
     *,
     channel_id: Optional[str] = None,

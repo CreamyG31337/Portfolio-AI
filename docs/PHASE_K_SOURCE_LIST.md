@@ -1487,6 +1487,90 @@ caption-gap detector.
 
 ---
 
+## 20. Scope correction: what these rejections do and do not mean (2026-07-30)
+
+**Everything above was measured against one bar: does a channel produce a ticker-specific,
+falsifiable, material claim that is not yet priced?** That is the *event-driven information
+alpha* bar from §7 Stage 0. It is the right bar for that mechanism and the rejections stand
+against it.
+
+**It is the wrong bar for the corpus as a whole, and reading §10-§19 as "YouTube is a dead
+end" would be a misreading of our own evidence.** This section fixes the framing before it
+calcifies. Nothing in §1-§19 is retracted; the *conclusions* are re-scoped.
+
+### Two distinct uses, one corpus
+
+| | **Use 1 — event alpha** | **Use 2 — trend, context, sentiment** |
+|---|---|---|
+| Unit | a single video | a rolling window of many videos |
+| Question | "is this fact unpriced?" | "what is changing, and how fast?" |
+| Needs a source to be | **first** | **consistent and dated** |
+| Killed by disclosure preemption (§19)? | **yes** | **no** — aggregate interpretation is not a disclosure |
+| Killed by promotion (§19)? | yes | **no** — promotion volume is itself a measurable series |
+| Killed by "concurrent, not leading"? | yes | **no** — concurrent is fine for tracking a trend |
+| Status | tested across 10 sectors, 2 adopted | **never tested** |
+
+Every rejection in §10-§19 is a **Use 1** rejection. Use 2 has not been evaluated once, and
+most of the failure modes that killed Use 1 do not apply to it:
+
+- **Grid/power (§17)** — no channel leads on transformer lead times. But a rising *count* of
+  contractors mentioning backorders across many videos over months is exactly the kind of
+  slow-moving read that shows up in VRT/ETN backlog later. The individual video is not the
+  signal; the derivative is.
+- **Uranium (§19)** — no channel can legally break a drill result. But shifting sentiment
+  across the analyst-and-interview corpus tracks how consensus *forms*, and §19 already
+  identified promotion-wave detection on names we hold (GLO.TO) as a genuine exit signal.
+  That is a Use 2 product built entirely out of a Use 1 rejection.
+- **Stage 0's 27% yield (§14)** — the other **73% of videos were discarded**. They were
+  discarded for lacking a falsifiable ticker claim, not for lacking information. That is
+  three-quarters of an already-paid-for corpus sitting unused.
+
+### What is retained, explicitly
+
+**No research is discarded and no channel list is deleted.** Specifically retained as a
+candidate pool for Use 2:
+
+- All 13 seeded tech sources, plus the 6 verified automotive channels (§12).
+- The grid/power candidates (§17): Gruber Power, HVACR Videos, Electrician U, Bobsdecline,
+  Residual Electrical, MEP Academy, Gaurav J — rejected as leading indicators, still valid as
+  a field-conditions corpus.
+- The uranium/mining candidates (§19): Crux Investor, Palisades Gold Radio, Uranium Insider,
+  Mining Stock Education, Triangle Investor, Resource Talks, The Next Big Rush — **useless as
+  truth, valuable as a promotion-and-sentiment instrument.** A paid-IR channel is a perfectly
+  reliable sensor for *"paid IR is running"*.
+- Every measured artefact: handles, channel IDs, duration distributions, caption status,
+  tradeable-share scans.
+
+The five sector rejections that fail on **tradeability** (space, displays, power tools, 3D
+printing) stay rejected for both uses — a corpus about companies we cannot trade has no Use 2
+value either. **Access-gating and disclosure-preemption rejections do not transfer to Use 2.**
+
+### The honest risk, stated up front
+
+Use 2 is where a system can generate unlimited plausible-looking output that predicts
+nothing. "Sentiment is improving" is unfalsifiable in a way "MU will beat on DRAM pricing" is
+not. The discipline that made §10-§19 useful — demand a falsifiable claim, measure before
+believing, prefer measurement to model opinion — has to carry into the trend layer or it
+becomes an expensive vibes generator.
+
+**Therefore: every Use 2 component gets a measurable success criterion defined *before* it is
+built.** Those criteria are in [`PHASE_K_TREND_LAYER_PLAN.md`](PHASE_K_TREND_LAYER_PLAN.md).
+
+### The two principles that carry forward
+
+1. **No single source is reliable; agreement across independent sources is measurable.**
+   Double-nomination outperformed every individual model ranking in all five research rounds
+   (§16, §17, §19). We used it as a *research method*. It should become the **product's core
+   algorithm** — the unit of output being a claim corroborated across N independent sources
+   with an explicit divergence score, not a claim from one video.
+2. **Allowlist polling answers the wrong question.** It asks *"what did my sources say
+   today?"*. The powerful capability we actually have is transcript retrieval for **any**
+   video, which answers *"what does YouTube know about MU and DRAM pricing?"* — on demand,
+   when a question is being asked. That is a far better fit for research support, and it fits
+   the ~90 fetches/day budget precisely because it is episodic rather than continuous.
+
+---
+
 ## 21. K7 validation: the friction-word filter is FALSIFIED (2026-07-30)
 
 `PHASE_K_TREND_LAYER_PLAN.md` §1 set the gate before building: *"K7 filters ship only if the
@@ -1659,84 +1743,368 @@ prior when evaluating any future source.
 
 ---
 
-## 20. Scope correction: what these rejections do and do not mean (2026-07-30)
+## 23. Promotion event study: high-view tail not in the curated junior set (2026-07-30)
 
-**Everything above was measured against one bar: does a channel produce a ticker-specific,
-falsifiable, material claim that is not yet priced?** That is the *event-driven information
-alpha* bar from §7 Stage 0. It is the right bar for that mechanism and the rejections stand
-against it.
+`PHASE_K_TREND_LAYER_PLAN.md` §7 asked whether a promotional mining/uranium video produces a
+measurable 24–48h abnormal price/volume move that then reverses. Script:
+`web_dashboard/scripts/yt_promotion_event_study.py`. Zero caption fetches, zero LLM, zero DB
+writes. Methodology mirrors `insider_event_study.py` (entry = first close strictly after
+publish date; dedupe to ticker×day; high−low spread; day-bucketed null; Canadian listings
+via `resolve_benchmark`).
 
-**It is the wrong bar for the corpus as a whole, and reading §10-§19 as "YouTube is a dead
-end" would be a misreading of our own evidence.** This section fixes the framing before it
-calcifies. Nothing in §1-§19 is retracted; the *conclusions* are re-scoped.
+### Publish dates
 
-### Two distinct uses, one corpus
+Confirmed before the run: flat listing returns `upload_date=None` / `timestamp=None`;
+non-flat metadata (`fetch_video_metadata`, no captions) returns both. All 16 title-matched
+candidates resolved a date; **0 blocked**. Metadata remains available at this volume on a
+residential IP.
 
-| | **Use 1 — event alpha** | **Use 2 — trend, context, sentiment** |
+### Attrition (the result that matters more than the headline)
+
+| Stage | n |
+|---|---|
+| Videos listed (5 channels × 100) | **500** |
+| Title matched exactly one curated ticker | **16** |
+| Title matched multiple curated tickers | 1 |
+| Title matched none | 483 |
+| Demoted to multi after description re-match | −7 |
+| Dates resolved (**16 of 16 attempted, 0 blocked**) | 9 |
+| After (ticker, day) dedupe | 9 |
+| Usable price history | **8** |
+
+*(Row order corrected 2026-07-30: date resolution lost nothing — all 16 attempts
+succeeded. The 16 → 9 drop is entirely the description re-match demotion.)*
+
+Effective sample: **n=8 — directional only.** View buckets after dedupe: low=7, mid=2,
+**high (≥50k)=0**.
+
+### What the high-view tail actually is
+
+§22 named Mining Stock Education's 252k and Palisades' 107k outliers as the sample the claim
+needs. Those videos exist in the listing — they are about names **outside** the curated
+uranium/gold junior list (e.g. copper developers). On the curated set that §19's claim is
+about (DNN / NXE / GLO / CCO-type names), **no priced event cleared 50k views.** Max in the
+priced sample: 24,421 (OR.TO on Mining Stock Education).
+
+So the study cannot falsify or confirm the attention mechanism *as stated*. Running on
+low/mid views would be exactly the null §22 warned against. Reported below for completeness,
+not as a verdict on the claim.
+
+### Low/mid numbers (not a test of the claim)
+
+Pre-event drift (t−5→t−1 excess): n=8, mean **−0.52%**, median +0.91% — names are not
+systematically running into the video in this tiny sample.
+
+| Horizon | low n=6 mean | mid n=2 mean |
 |---|---|---|
-| Unit | a single video | a rolling window of many videos |
-| Question | "is this fact unpriced?" | "what is changing, and how fast?" |
-| Needs a source to be | **first** | **consistent and dated** |
-| Killed by disclosure preemption (§19)? | **yes** | **no** — aggregate interpretation is not a disclosure |
-| Killed by promotion (§19)? | yes | **no** — promotion volume is itself a measurable series |
-| Killed by "concurrent, not leading"? | yes | **no** — concurrent is fine for tracking a trend |
-| Status | tested across 10 sectors, 2 adopted | **never tested** |
+| t+1 | +0.41% | +0.57% |
+| t+2 | +0.69% | +1.02% |
+| t+5 | +1.40% | +0.75% |
+| t+21 | +1.53% (n=5) | −10.66% |
 
-Every rejection in §10-§19 is a **Use 1** rejection. Use 2 has not been evaluated once, and
-most of the failure modes that killed Use 1 do not apply to it:
+Abnormal volume (entry / 20-session median): low 1.16×, mid 0.61× — no retail volume spike
+on these events either. No high/low co-occurrence by day, so the null model has nothing to
+relabel.
 
-- **Grid/power (§17)** — no channel leads on transformer lead times. But a rising *count* of
-  contractors mentioning backorders across many videos over months is exactly the kind of
-  slow-moving read that shows up in VRT/ETN backlog later. The individual video is not the
-  signal; the derivative is.
-- **Uranium (§19)** — no channel can legally break a drill result. But shifting sentiment
-  across the analyst-and-interview corpus tracks how consensus *forms*, and §19 already
-  identified promotion-wave detection on names we hold (GLO.TO) as a genuine exit signal.
-  That is a Use 2 product built entirely out of a Use 1 rejection.
-- **Stage 0's 27% yield (§14)** — the other **73% of videos were discarded**. They were
-  discarded for lacking a falsifiable ticker claim, not for lacking information. That is
-  three-quarters of an already-paid-for corpus sitting unused.
+### What survives
 
-### What is retained, explicitly
+- **Publish-date path is usable** for event studies without caption quota spend.
+- **Company-name matching is mandatory** — 16/500 single-ticker title hits on aliases; symbol-
+  only matching would have been near zero (§17).
+- **Description re-match is strict**: 7/16 title singles demoted when the description named a
+  second curated company. Correct for attribution purity; costly for sample size.
+- **The §19 claim remains UNVERIFIED**, not falsified. The blocker is sample construction:
+  the high-view tail of the promotion channels is not concentrated on the curated junior set
+  the claim names. Closing it needs either a wider (still pre-registered) ticker universe that
+  includes whatever the outliers actually name, or a different channel set — not threshold
+  tuning on this run.
 
-**No research is discarded and no channel list is deleted.** Specifically retained as a
-candidate pool for Use 2:
+### Follow-up: the 483 unmatched titles were inspected, and they change this diagnosis
 
-- All 13 seeded tech sources, plus the 6 verified automotive channels (§12).
-- The grid/power candidates (§17): Gruber Power, HVACR Videos, Electrician U, Bobsdecline,
-  Residual Electrical, MEP Academy, Gaurav J — rejected as leading indicators, still valid as
-  a field-conditions corpus.
-- The uranium/mining candidates (§19): Crux Investor, Palisades Gold Radio, Uranium Insider,
-  Mining Stock Education, Triangle Investor, Resource Talks, The Next Big Rush — **useless as
-  truth, valuable as a promotion-and-sentiment instrument.** A paid-IR channel is a perfectly
-  reliable sensor for *"paid IR is running"*.
-- Every measured artefact: handles, channel IDs, duration distributions, caption status,
-  tradeable-share scans.
+*(Added 2026-07-30 after §23's first draft. The remedy proposed immediately above — widen the
+ticker universe — was checked and **would not work**. Recording why, because the reason is a
+finding.)*
 
-The five sector rejections that fail on **tradeability** (space, displays, power tools, 3D
-printing) stay rejected for both uses — a corpus about companies we cannot trade has no Use 2
-value either. **Access-gating and disclosure-preemption rejections do not transfer to Use 2.**
+The obvious worry about a 16/500 match rate is a repeat of the §17 matcher bug. It is not:
+the matcher is fine and the 42-company universe is reasonable. Sorting all 483 unmatched
+titles by view count and reading the top 26:
 
-### The honest risk, stated up front
+| Content type | count (top 26 by views) |
+|---|---|
+| **Macro / pundit commentary** — Rick Rule, Martin Armstrong, Douglas Macgregor, Bill Holter, Luke Gromen, Michael Oliver, Lyn Alden, Doomberg, Grant Williams, Art Berman | **23** |
+| Single-company promotion | **3** — Midnight Sun (252k, 107k), First Phosphate (104k) |
 
-Use 2 is where a system can generate unlimited plausible-looking output that predicts
-nothing. "Sentiment is improving" is unfalsifiable in a way "MU will beat on DRAM pricing" is
-not. The discipline that made §10-§19 useful — demand a falsifiable claim, measure before
-believing, prefer measurement to model opinion — has to carry into the trend layer or it
-becomes an expensive vibes generator.
+The titles are things like *"Bill Holter: Massive Inflation Ahead"*, *"Douglas Macgregor: Why
+The Iran War Will Restart, Oil to Skyrocket"*, *"Luke Gromen: The Mother of All Supply
+Disruptions"*. Gold, silver, oil, the dollar, war — **no tradeable single issuer at all.**
 
-**Therefore: every Use 2 component gets a measurable success criterion defined *before* it is
-built.** Those criteria are in [`PHASE_K_TREND_LAYER_PLAN.md`](PHASE_K_TREND_LAYER_PLAN.md).
+Median views, unmatched: **top 50 = 40,000; bottom 50 = 1,600.** Against a priced
+single-company sample whose maximum was **24,421**.
 
-### The two principles that carry forward
+**So the structure is: high views = macro punditry with no company attached; company-specific
+promotion = low views.** Widening the ticker list to include Midnight Sun and First Phosphate
+would add roughly three events and would not create a high-view single-company sample,
+because these channels barely produce one.
 
-1. **No single source is reliable; agreement across independent sources is measurable.**
-   Double-nomination outperformed every individual model ranking in all five research rounds
-   (§16, §17, §19). We used it as a *research method*. It should become the **product's core
-   algorithm** — the unit of output being a claim corroborated across N independent sources
-   with an explicit divergence score, not a claim from one video.
-2. **Allowlist polling answers the wrong question.** It asks *"what did my sources say
-   today?"*. The powerful capability we actually have is transcript retrieval for **any**
-   video, which answers *"what does YouTube know about MU and DRAM pricing?"* — on demand,
-   when a question is being asked. That is a far better fit for research support, and it fits
-   the ~90 fetches/day budget precisely because it is episodic rather than continuous.
+### What that means for the attention claim
+
+§19's mechanism requires a **high-reach, single-company** video. Measured across 500 videos
+from the five channels both models named, that combination is close to absent: the content
+that reaches 40k-250k viewers is a named pundit talking about the gold price, and the content
+naming a specific junior reaches 2-13k (§22).
+
+That is stronger than "untested". **The precondition for the mechanism is largely missing from
+the corpus the claim was made about.** It remains formally unfalsified — we have not measured
+a high-view single-company event because there are almost none to measure — but the reason we
+cannot test it is itself evidence against it.
+
+**Fourth instance of the inverse-correlation pattern** (§10 quality vs tradeability, §17
+quality vs access, §22 reach vs float): here it is **reach vs company-specificity**. Whatever
+attracts a large audience keeps being the thing that detaches the content from a tradeable
+security.
+
+### Revised recommendation
+
+Do **not** widen the ticker universe and re-run; the sample it would build does not exist.
+If the attention mechanism is to be tested at all, it needs a channel set selected *because*
+it publishes high-view single-company content — which the §9 discovery script can now look for
+directly, ranking on `median_views` with a single-company title filter, at zero fetch cost.
+Absent that, treat attention alpha as unavailable across every sector examined and close the
+question.
+
+> **Retracted the same day — see §24.** "The sample does not exist" was too strong, and
+> measuring one more channel produced a direct counterexample. The corrected statement is
+> that the sample does not exist *inside a ticker universe built from established names*,
+> which is a different and much more fixable problem.
+
+---
+
+## 24. The universe was selecting against the phenomenon (2026-07-30)
+
+Prompted by a user-supplied channel — **The Deep Dive** (`@TheDeepDiveCa`), a Canadian
+small-cap outlet not surfaced by any research round. Listing only, 100 videos, zero fetches.
+
+| Measure | The Deep Dive | The five §19 channels |
+|---|---|---|
+| Median views | 1,850 | 2,350-13,000 |
+| **Max views** | **252,000** | 4,900-252,000 |
+| Median duration | 730s (12 min) | 25-60 min |
+| Shorts (<120s) | **0%** | — |
+| **Single-company title match** (42-name universe) | **19/100 = 19%** | **16/500 = 3.2%** |
+
+Six times the company-specificity of the previously tested set, no Shorts, and a 12-minute
+median that is the cleanest ingest profile of any mining channel measured.
+
+### The counterexample
+
+§23 concluded that high-view single-company content is close to absent. The Deep Dive's two
+highest-view videos are:
+
+- **252,000** — *"The Fundamental Building Block for the Next Decade of Energy | DD-On-The-G…"*
+- **204,000** — *"This LFP Supply Chain Story Just Got G7 Backing | John Passalacqua — First
+  Phosphate"*
+
+That second one is a **named CEO interview about a single company at 204k views**, which is
+precisely the combination §23 said the corpus did not contain. And First Phosphate appeared
+independently in the §23 unmatched list at 104k on a *different* channel. So high-reach
+single-company promotional content exists, is repeatable, and clusters on the same names.
+
+### Why we missed it — the methodological error
+
+The 42-company universe in `yt_promotion_event_study.py` was built from **established
+producers and our own holdings**: Cameco, Agnico, Barrick, Kinross, Franco-Nevada, Newmont.
+
+Those companies do not buy investor-relations campaigns. **Paid promotion concentrates on
+pre-revenue story juniors** — critical minerals, LFP battery supply chain, phosphate, "G7
+backing" — which is exactly the population the universe excluded.
+
+**We built the sample frame out of the companies least likely to exhibit the behaviour we
+were trying to measure, then concluded the behaviour was absent.** That is a textbook
+sample-frame error and it invalidates §23's negative conclusion (though not its attrition
+numbers or its low/mid results, which stand as reported).
+
+### The fix, and the trap in the fix
+
+Build the ticker universe **from the corpus**, not from the portfolio: extract company names
+from high-view titles, resolve to tickers, then run the event study on those.
+
+The trap is obvious and must be designed around: choosing the universe by looking at which
+videos got views is **selecting on the outcome**, and would manufacture a positive result as
+convincingly as §7's lookahead-bias warning. The clean construction is a **split sample** —
+define the universe from titles in period A, test events in period B only, and pre-register
+the list before looking at any prices. That keeps the discovery honest and is cheap, because
+listing costs nothing.
+
+### Also worth noting
+
+- First Phosphate is **CSE-listed (PHOS.CN)**. Verify broker access before building on it —
+  CSE is not TSX/TSXV and may not be tradeable in these accounts. If it is not, the finding
+  survives as a mechanism but not as a trade.
+- The Deep Dive's in-universe matches (First Majestic `AG`, Agnico `AEM.TO` — **held**,
+  Seabridge `SA`) top out at 19,000 views, versus 204-252k for the out-of-universe story
+  juniors. The reach/company-specificity relationship from §23 holds *within* the channel;
+  it just does not mean what §23 said it meant.
+- Caption ingestability is **unverified** — the fetch was blocked, the day's quota having
+  been spent on §21 and §23. Retry via proxy before adding it as a source.
+
+### Standing lesson
+
+Two conclusions in this document have now been overturned by one additional measurement each
+(§21's filter, §23's sample). Both times the error was the same shape: a plausible negative
+accepted before checking whether the *instrument* could have detected a positive. The §8
+sanity check — "if G​a​m​e​r​s​ ​N​e​x​u​s scores as derived, the heuristic is wrong" — generalises to
+**always confirm the measurement can see the thing before reporting that the thing is
+absent.**
+
+### Caveats
+
+n=8, no high-view events, seven description demotions, one unpriceable. Mid bucket is n=2.
+Do not read the low/mid table as evidence for or against attention alpha.
+
+---
+
+## 25. Complete-exchange universe re-run (2026-07-30)
+
+§24's sample-frame error is fixed by matching titles against **every equity issuer on
+TSX, TSXV, and CSE**, not a hand-curated 42. The list is downloaded from public exchange
+directories, cached at `web_dashboard/data/canadian_issuers/issuers.json` with
+`retrieved_at=2026-07-30` (3,198 equities after dropping ETFs/warrants/preferreds), and
+committed so the run is reproducible. Script:
+`web_dashboard/scripts/yt_promotion_event_study.py` (default `--universe both`) plus
+`canadian_issuer_universe.py`.
+
+Channels: the five §19 promotion channels **plus The Deep Dive**
+(`UC04_rUstP7vyLANZ0rJYz_A`). Zero caption fetches. Guardrails unchanged: entry = first
+close strictly after publish date; dedupe `(ticker, day)`; high−low spread; day-bucketed
+null; `resolve_benchmark()`; pre-event drift t−5→t−1; view buckets from §22.
+
+Matching rules required one adaptation that is *not* sample selection: bare ticker
+symbols are matched only as `$CASHTAG`, and single-token sector peels like
+"Discovery Mining"→"Discovery" are dropped. Without that, English-word CSE/TSXV tickers
+(`MINE`, `PLAN`, `NEWS`, `LONG`, `RISE`) and peeled generics demote almost every
+description re-match and false-positive macro titles. Company-name aliases remain the
+primary key (§17).
+
+### Attrition — curated-42 vs complete-exchange (same 600 videos)
+
+| Stage | curated-42 | complete-exchange | Δ |
+|---|---:|---:|---:|
+| Videos listed (6 × 100) | 600 | 600 | — |
+| Title matched exactly one | **35** | **223** | **+188** |
+| Title matched multiple | 1 | 8 | +7 |
+| Title matched none | 564 | 369 | −195 |
+| Demoted to multi after description re-match | 25 | 85 | +60 |
+| Dates resolved | 10 | **138** | **+128** |
+| After (ticker, day) dedupe | 10 | **138** | +128 |
+| Usable price history | — | **138** | — |
+
+View buckets after dedupe (exchange): low=122, mid=11, **high (≥50k)=5**.
+
+The sample-frame cost of the curated list was roughly **an order of magnitude** of dated
+single-company events (10 → 138), and it had been zeroing the high-view bucket that §22
+said the claim needs.
+
+### Tradeability (reported before prices)
+
+| | TSX | TSXV | CSE |
+|---|---:|---:|---:|
+| All matched events | 37 | 81 | 20 (14.5%) |
+| High-view (≥50k) | 0 | 2 | **3 (60%)** |
+
+**Majority of the high-view promotion sample is CSE-listed** (First Phosphate `PHOS.CN`
+×3 in the high bucket). If CSE is not accessible in these accounts, this is a §10-style
+"signal may exist, untradeable" finding on the exact events the attention claim needs —
+stated here, not discovered at the broker later.
+
+Checked against the actual book (§15 snapshot): held listings are **28 `.TO`, 70 US, and
+exactly one `.V` (WEB.V) — zero `.CN`.** That is not proof CSE is inaccessible; it may
+simply never have been wanted. But no CSE name has ever been held, so **broker access is
+unverified for the exchange carrying 60% of the high-view sample.** Worth a two-minute
+check in the broker before any further work is spent on this branch.
+
+### High-view numbers (the only cut that tests the claim)
+
+Pre-event drift overall: n=137, mean **−1.11%**, median −1.23% — names are not
+systematically running into the video.
+
+| Horizon | low n≈122 mean | mid n=11 mean | **high n=5 mean** | high−low spread |
+|---|---:|---:|---:|---:|
+| t+1 | −0.38% | −1.30% | **+1.83%** | +2.21% |
+| t+2 | +0.11% | −1.29% | +0.07% | −0.03% |
+| t+5 | +0.91% | −4.38% | −0.62% | −1.53% |
+| t+21 | −4.46% | +1.80% | **−6.81%** (n=4) | −2.35% |
+
+Abnormal volume (entry / 20-session median): low 1.87×, mid 2.08×, high 1.52× — no
+retail volume spike on the high-view tail relative to low.
+
+High-view inventory (all priced):
+
+| Date | Ticker | Views | Channel | t+1 excess |
+|---|---|---:|---|---:|
+| 2026-05-16 | MMA.V | 252,939 | Mining Stock Education | −2.22% |
+| 2026-06-24 | PHOS.CN | 204,391 | The Deep Dive | −3.31% |
+| 2026-07-10 | MMA.V | 108,154 | Mining Stock Education | −0.19% |
+| 2026-06-19 | PHOS.CN | 104,863 | Mining Stock Education | −2.90% |
+| 2026-05-01 | PHOS.CN | 62,670 | The Deep Dive | **+17.77%** |
+
+### Dose-response: the test §22 specified, and it fails
+
+§22 set the design principle before any of this ran: *"if the attention mechanism is real,
+effect size scales with viewers."* That is the check the high-view inventory is for, and it
+is more informative at n=5 than the mean, because it uses the ordering rather than the level.
+
+Sorting the five events by views and reading t+1:
+
+| Views | Ticker | t+1 |
+|---:|---|---:|
+| 252,939 | MMA.V | −2.22% |
+| 204,391 | PHOS.CN | −3.31% |
+| 108,154 | MMA.V | −0.19% |
+| 104,863 | PHOS.CN | −2.90% |
+| **62,670** | PHOS.CN | **+17.77%** |
+
+**The single positive event is the lowest-view event.** And *within* each ticker — which
+controls for the security entirely — the relationship is monotonic and **inverted**:
+
+- `PHOS.CN`: 62.7k → **+17.8%**, 104.9k → −2.9%, 204.4k → −3.3%
+- `MMA.V`: 108.2k → −0.2%, 252.9k → −2.2%
+
+More viewers, worse return, in both names, with no exceptions. That is the opposite of the
+claimed mechanism, and it is not a level comparison that a benchmark choice or an outlier can
+explain away.
+
+n=5 proves nothing on its own. But it means the +17.77% print cannot be attributed to the
+video without also explaining why the same ticker's two *larger* audiences produced negative
+returns. The parsimonious reading is that +17.77% is ordinary micro-cap volatility on a CSE
+name, and that it is carrying the entire positive mean.
+
+**This moves the verdict from "inconclusive" toward "no support found"** — still not a clean
+null, because n=5 cannot deliver one, but the one piece of evidence that looked supportive
+does not survive the dose-response check that was specified in advance.
+
+### What survives
+
+- **The sample frame was the bug.** Complete-exchange matching recovers the high-view
+  single-company events §23/§24 said were missing (Midnight Sun, First Phosphate), and
+  The Deep Dive supplies two of the five high-view rows.
+- **High-view n=5 is directional only.** Mean t+1 of +1.83% is **outlier-driven**:
+  median t+1 is **−2.22%**, and four of five high-view events are flat-to-negative at
+  t+1. The fading into t+21 (−6.81%) looks like reverse in the mean curve but is not a
+  confirmatory spike-then-reverse result at this n. **INCONCLUSIVE / directional — not
+  a confirmed attention-alpha edge, not a clean null either.**
+- **CSE concentration on the high-view tail** is a first-order tradeability result
+  independent of the return numbers.
+- Low/mid rows (n=133) remain **untestable for attention alpha** per §22 — reported only
+  as context. Do not read the low bucket as a null on the claim.
+- Issuer cache + parser/matcher tests live under
+  `tests/test_canadian_issuer_universe.py`. Refresh:
+  `python web_dashboard/scripts/canadian_issuer_universe.py --refresh`.
+
+### Caveats
+
+Description demotion still costs 85/223 exchange title singles (channel footers name
+many issuers). Matching deliberately ignores bare English-word tickers; a title that
+only says `PHOS` without "First Phosphate" or `$PHOS` will miss — acceptable given §17
+(names dominate titles). Dual-listed US symbols in the old curated list (e.g. `DNN`) are
+not in the Canadian directory; Canadian aliases (e.g. Denison as `DML.TO` if present)
+cover name hits. No threshold or channel tuning after seeing prices.
