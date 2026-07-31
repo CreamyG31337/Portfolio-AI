@@ -419,10 +419,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'name': '📺 YouTube Allowlist Poll',
         'description': 'Poll enabled youtube_sources for new videos; land captions as YouTube Transcript articles (Phase K3)',
         'default_interval_minutes': 1440,  # Daily
-        # Off by default: YouTube blocks the caption endpoint per IP on request
-        # rate, and the allowlist starts empty. Ops enables this once
-        # youtube_sources has curated rows (and a proxy if the host needs one).
-        'enabled_by_default': False,
+        # Enabled 2026-07-30: both preconditions this was waiting on are met —
+        # youtube_sources carries 13 curated, caption-verified rows and
+        # YOUTUBE_PROXY_URL is configured. Budget is ~90 caption fetches per
+        # egress IP per day (docs/PHASE_K_SOURCE_LIST.md §14); 13 sources at
+        # max_videos_per_poll=1 is ~13/day, and YOUTUBE_INGEST_MAX_PER_RUN
+        # (default 20) bounds a catch-up run regardless.
+        'enabled_by_default': True,
         'icon': '📺',
         'cron_triggers': [
             # 5:20 AM ET = 2:20 AM PT. Clear of the PT-scheduled heavy AI window
