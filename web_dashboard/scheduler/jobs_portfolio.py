@@ -1039,14 +1039,22 @@ def update_portfolio_prices_job(
                             # This is safer than insert alone - if the job runs twice concurrently,
                             # or if delete+insert fails, upsert will update existing records instead of erroring
                             # The unique constraint is on (fund, ticker, date_only) - date_only is auto-populated by trigger
-                            upsert_result = client.supabase.table("portfolio_positions")\
-                                .upsert(
-                                    updated_positions,
-                                    on_conflict="fund,ticker,date_only"
-                                )\
-                                .execute()
+                            # ⚡ Bolt: Execute batched upserts in chunks instead of all at once to avoid timeouts
+                            upserted_count = 0
+                            chunk_size = 200
+                            for i in range(0, len(updated_positions), chunk_size):
+                                chunk = updated_positions[i:i + chunk_size]
+                                upsert_result = client.supabase.table("portfolio_positions")\
+                                    .upsert(
+                                        chunk,
+                                        on_conflict="fund,ticker,date_only"
+                                    )\
+                                    .execute()
+                                if upsert_result.data:
+                                    upserted_count += len(upsert_result.data)
+                                else:
+                                    upserted_count += len(chunk)
                         
-                            upserted_count = len(upsert_result.data) if upsert_result.data else len(updated_positions)
                             total_positions_updated += upserted_count
                             total_funds_processed += 1
                             funds_completed.append(fund_name)  # Track successful completion

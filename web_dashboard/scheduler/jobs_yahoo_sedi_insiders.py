@@ -170,25 +170,29 @@ def yahoo_sedi_insiders_job() -> None:
                 if not rows:
                     continue
                 parsed += len(rows)
+                # ⚡ Bolt: Batch upserts instead of per-row to reduce round-trips
+                records_to_upsert = []
                 for record in rows:
+                    if _trade_exists(supabase, record):
+                        skipped_dupes += 1
+                        continue
+                    records_to_upsert.append(record)
+
+                if records_to_upsert:
                     try:
-                        if _trade_exists(supabase, record):
-                            skipped_dupes += 1
-                            continue
                         result = (
                             supabase.supabase.table("insider_trades")
-                            .upsert(record, on_conflict=_UPSERT_CONFLICT)
+                            .upsert(records_to_upsert, on_conflict=_UPSERT_CONFLICT)
                             .execute()
                         )
                         if result.data:
-                            inserted += 1
-                    except Exception as row_exc:
+                            inserted += len(result.data)
+                    except Exception as batch_exc:
                         errors += 1
                         logger.warning(
-                            "yahoo_sedi upsert failed %s %s: %s",
+                            "yahoo_sedi batch upsert failed for %s: %s",
                             ticker,
-                            record.get("insider_name"),
-                            row_exc,
+                            batch_exc,
                         )
             except Exception as ticker_exc:
                 errors += 1
