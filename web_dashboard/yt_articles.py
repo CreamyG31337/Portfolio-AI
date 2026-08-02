@@ -55,6 +55,15 @@ SOURCE_PREFIX = "youtube:"
 _CONTENT_MAX_CHARS_DEFAULT = 64_000
 _CONTENT_MAX_CHARS_ENV = "YOUTUBE_TRANSCRIPT_MAX_CHARS"
 
+# Floor on the stored body. A caption fetch that returns a couple of sentences is
+# a degenerate track (music-only, a stub auto-caption, a fetch that half-failed),
+# not a transcript. Landing one still costs a summarize call and produces a row
+# the scorer happily rates 0.80 off the source's expected_tickers alone — one such
+# row (78 chars) is already in ``research_articles``. 600 chars is ~100 words,
+# roughly 40 seconds of speech: below that there is nothing to summarize.
+_CONTENT_MIN_CHARS_DEFAULT = 600
+_CONTENT_MIN_CHARS_ENV = "YOUTUBE_TRANSCRIPT_MIN_CHARS"
+
 # ``research_articles.source`` is VARCHAR(100); UC channel ids are 24 chars.
 _SOURCE_MAX_LEN = 100
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
@@ -64,6 +73,7 @@ IngestStatus = Literal[
     "queued",  # row landed; enrichment enqueued on the AI task queue
     "skipped_exists",  # already ingested (idempotent re-run)
     "skipped_duration",  # outside the source's min/max duration window
+    "skipped_thin",  # caption body below YOUTUBE_TRANSCRIPT_MIN_CHARS
     "soft_fail",  # CaptionFetchError — blocked / no_captions / age_restricted / ...
     "error",  # unexpected failure; nothing persisted
 ]
@@ -93,6 +103,40 @@ def content_max_chars() -> int:
         )
         return _CONTENT_MAX_CHARS_DEFAULT
     return value
+
+
+def content_min_chars() -> int:
+    """Configured floor for the stored transcript body; 0 disables the guard."""
+    raw = (os.environ.get(_CONTENT_MIN_CHARS_ENV) or "").strip()
+    if not raw:
+        return _CONTENT_MIN_CHARS_DEFAULT
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Ignoring non-integer %s=%r; using %s",
+            _CONTENT_MIN_CHARS_ENV,
+            raw,
+            _CONTENT_MIN_CHARS_DEFAULT,
+        )
+        return _CONTENT_MIN_CHARS_DEFAULT
+    return max(value, 0)
+
+
+# Mechanisms where the publisher *is* the issuer, so the source's registered
+# ticker describes every video it posts. Everything else covers a beat.
+ISSUER_MECHANISMS = frozenset({"EARNINGS_IR"})
+
+
+def is_issuer_channel(row_or_metadata: Mapping[str, Any] | None) -> bool:
+    """True when ``alpha_mechanism`` marks an issuer-published source.
+
+    Accepts either a ``youtube_sources`` row or a stored ``source_metadata``
+    blob — ``normalize_transcript`` copies ``alpha_mechanism`` into the latter,
+    so the queued worker can decide this without re-reading the source table.
+    """
+    mechanism = (row_or_metadata or {}).get("alpha_mechanism")
+    return str(mechanism or "").strip().upper() in ISSUER_MECHANISMS
 
 
 def source_label(
@@ -247,9 +291,15 @@ def summarize_transcript(
     expected_tickers: Sequence[str] = (),
     owned_tickers: Sequence[str] | None = None,
     duration_s: int | None = None,
+    issuer_channel: bool = False,
     summarize_fn: Callable[..., Any] | None = None,
 ) -> EnrichmentResult:
     """Run the same summarize + ticker-extract path as ``symbol_article_scraper_job``.
+
+    ``issuer_channel`` marks a source the issuer itself publishes (``alpha_mechanism
+    = 'EARNINGS_IR'``), where the channel→ticker binding is a fact and
+    ``expected_tickers`` may lead. For every other source it is only a hint about
+    coverage, and tickers come from the transcript alone.
 
     Long transcripts still get the expanded GLM character budget; **all** YouTube
     transcripts now route to Z.AI GLM by default (see
@@ -300,13 +350,24 @@ def summarize_transcript(
         from ticker_validator import extract_and_validate_tickers
 
         validated = extract_and_validate_tickers(summary_data, title, content)
-        # Allowlist ``expected_tickers`` lead: an IR channel is registered against
-        # a known ticker, so keep it first even if the model missed it.
-        merged = list(expected_tickers)
-        for ticker in validated:
-            if ticker not in merged:
-                merged.append(ticker)
-        result.tickers = merged
+        if issuer_channel:
+            # An IR channel *is* the company: the channel→ticker binding is a
+            # fact about the publisher, so lead with it even if the model missed
+            # it in the body.
+            merged = list(expected_tickers)
+            for ticker in validated:
+                if ticker not in merged:
+                    merged.append(ticker)
+            result.tickers = merged
+        else:
+            # A topic channel's ``expected_tickers`` is a watchlist hint about
+            # what it tends to cover — not a claim about *this* video. Leading
+            # with it tagged all 8 early rows ASML/TSM/INTC/AMAT, including an
+            # Apple M1 teardown, and flattened relevance_score to 0.80 across the
+            # board. That silently destroys K5 source-ROI, which attributes
+            # outcomes per ticker: the signal would be the seed list, not the
+            # content. Trust the extractor.
+            result.tickers = list(validated)
 
         sectors = summary_data.get("sectors") or []
         if sectors:
@@ -315,7 +376,7 @@ def summarize_transcript(
         summary_data = {}
 
     result.summary_data = summary_data if isinstance(summary_data, dict) else {}
-    if not result.tickers and expected_tickers:
+    if not result.tickers and expected_tickers and issuer_channel:
         result.tickers = list(expected_tickers)
 
     from scheduler.jobs_common import calculate_relevance_score
@@ -435,6 +496,19 @@ def ingest_video(
             title=article.title,
         )
 
+    floor = content_min_chars()
+    if floor and len(article.content) < floor:
+        why = f"caption body {len(article.content)} chars below min {floor}"
+        logger.info("Skipping %s: %s", article.video_id, why)
+        return IngestOutcome(
+            status="skipped_thin",
+            video_id=article.video_id,
+            url=article.url,
+            reason="thin_captions",
+            message=why,
+            title=article.title,
+        )
+
     if not force:
         try:
             if research_repo.article_exists(article.url):
@@ -497,6 +571,7 @@ def _ingest_inline(
         expected_tickers=article.expected_tickers,
         owned_tickers=owned_tickers,
         duration_s=(article.source_metadata or {}).get("duration_s"),
+        issuer_channel=is_issuer_channel(article.source_metadata),
         summarize_fn=summarize_fn,
     )
     if not enrichment.ok:
@@ -573,8 +648,17 @@ def _ingest_queued(
     source_row: Mapping[str, Any] | None,
 ) -> IngestOutcome:
     """Persist the body now; enqueue summarize + ticker extraction for a worker."""
+    # Provisional tags only where they are true by construction (issuer channels).
+    # For a topic channel this row carries no tickers until the worker extracts
+    # them, which is the honest state — better than a wrong tag that sticks if
+    # the worker never runs.
+    provisional = (
+        list(article.expected_tickers)
+        if is_issuer_channel(article.source_metadata)
+        else None
+    )
     article_id = research_repo.save_article(
-        tickers=list(article.expected_tickers) or None,
+        tickers=provisional or None,
         sector=None,
         article_type=ARTICLE_TYPE,
         title=article.title,
@@ -648,6 +732,7 @@ def enrich_saved_transcript(
     expected_tickers: Sequence[str] = (),
     owned_tickers: Sequence[str] | None = None,
     duration_s: int | None = None,
+    issuer_channel: bool = False,
     ollama_client: Any | None = None,
     summarize_fn: Callable[..., Any] | None = None,
 ) -> EnrichmentResult:
@@ -663,6 +748,7 @@ def enrich_saved_transcript(
         expected_tickers=expected_tickers,
         owned_tickers=owned_tickers,
         duration_s=duration_s,
+        issuer_channel=issuer_channel,
         summarize_fn=summarize_fn,
     )
     if not enrichment.ok:

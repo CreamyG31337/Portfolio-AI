@@ -159,6 +159,8 @@ class SourcePollResult:
     landed: int = 0
     skipped_exists: int = 0
     skipped_duration: int = 0
+    # Caption body below the floor: a degenerate track, not a failure to retry.
+    skipped_thin: int = 0
     soft_failed: int = 0
     errors: int = 0
     listing_error: Optional[str] = None
@@ -177,6 +179,7 @@ class PollSummary:
     attempted: int = 0
     skipped_exists: int = 0
     skipped_duration: int = 0
+    skipped_thin: int = 0
     soft_failed: int = 0
     errors: int = 0
     listing_errors: int = 0
@@ -192,6 +195,7 @@ class PollSummary:
             f"{self.considered} considered",
             f"{self.skipped_exists} already",
             f"{self.skipped_duration} duration-skip",
+            f"{self.skipped_thin} thin-skip",
             f"{self.soft_failed} soft-fail",
             f"{self.errors} error",
             f"{self.listing_errors} listing-error",
@@ -500,6 +504,11 @@ def poll_source(
         elif status == "skipped_duration":
             result.skipped_duration += 1
             any_success = True
+        elif status == "skipped_thin":
+            # The fetch worked; the video just had nothing in it. Counting this
+            # as an error would drive consecutive_failures on a healthy source.
+            result.skipped_thin += 1
+            any_success = True
         elif status == "soft_fail":
             result.soft_failed += 1
             failure_reason = reason or "unknown"
@@ -632,6 +641,7 @@ def poll_youtube_sources(
         summary.considered += result.considered
         summary.skipped_exists += result.skipped_exists
         summary.skipped_duration += result.skipped_duration
+        summary.skipped_thin += result.skipped_thin
         summary.soft_failed += result.soft_failed
         summary.errors += result.errors
         if result.listing_error:

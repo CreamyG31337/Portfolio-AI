@@ -215,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
                     "considered": summary.considered,
                     "skipped_exists": summary.skipped_exists,
                     "skipped_duration": summary.skipped_duration,
+                    "skipped_thin": summary.skipped_thin,
                     "soft_failed": summary.soft_failed,
                     "errors": summary.errors,
                     "listing_errors": summary.listing_errors,

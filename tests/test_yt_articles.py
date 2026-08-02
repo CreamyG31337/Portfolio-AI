@@ -27,14 +27,27 @@ from yt_articles import (  # noqa: E402
     ARTICLE_TYPE,
     IngestOutcome,
     content_max_chars,
+    content_min_chars,
     enrich_saved_transcript,
     ingest_video,
+    is_issuer_channel,
     normalize_caption_kind,
     normalize_transcript,
     published_at_from_upload_date,
     source_label,
     summarize_transcript,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_thin_transcript_floor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the thin-caption floor for the shared fixture.
+
+    ``me_at_zoo.en.vtt`` is a 19-second clip well under the 600-char production
+    floor. These tests are about normalize/save/enqueue wiring, not the floor,
+    which has its own tests below.
+    """
+    monkeypatch.setenv("YOUTUBE_TRANSCRIPT_MIN_CHARS", "0")
 
 
 # ---------------------------------------------------------------------------
@@ -259,12 +272,13 @@ def test_summarize_transcript_uses_transcript_article_type() -> None:
     assert result.ok is True
 
 
-def test_summarize_transcript_keeps_expected_tickers_first() -> None:
+def test_summarize_transcript_keeps_expected_tickers_first_for_issuer_channel() -> None:
     result = summarize_transcript(
         title="NVDA Q4 call",
         content="body",
         expected_tickers=["NVDA"],
         owned_tickers=["NVDA"],
+        issuer_channel=True,
         summarize_fn=lambda text, article_type="": _summary_payload(),
     )
     assert result.tickers == ["NVDA", "SEAS"]
@@ -277,10 +291,84 @@ def test_summarize_transcript_falls_back_to_expected_tickers_on_empty_summary() 
         title="NVDA Q4 call",
         content="body",
         expected_tickers=["NVDA"],
+        issuer_channel=True,
         summarize_fn=lambda text, article_type="": {},
     )
     assert result.ok is False
     assert result.tickers == ["NVDA"]
+
+
+class TestExpectedTickersDoNotLeakOntoTopicChannels:
+    """A topic channel's ``expected_tickers`` is a coverage hint, not a claim.
+
+    The first 8 rows ingested in production all carried the source's full
+    ASML/TSM/INTC/AMAT list — including an Apple M1 teardown — and every one
+    scored a flat 0.80 relevance as a result. K5 source-ROI attributes outcomes
+    per ticker, so that turns the seed list into the measurement.
+    """
+
+    def test_topic_channel_uses_only_extracted_tickers(self) -> None:
+        result = summarize_transcript(
+            title="Apple M1 deep dive",
+            content="body",
+            expected_tickers=["ASML", "AMAT"],
+            summarize_fn=lambda text, article_type="": _summary_payload(),
+        )
+        assert result.tickers == ["SEAS"]
+
+    def test_topic_channel_gets_no_tickers_when_extraction_finds_none(self) -> None:
+        result = summarize_transcript(
+            title="Macro outlook",
+            content="body",
+            expected_tickers=["ASML", "AMAT"],
+            summarize_fn=lambda text, article_type="": {},
+        )
+        assert result.tickers == []
+
+    def test_issuer_mechanism_recognized_from_source_metadata(self) -> None:
+        assert is_issuer_channel({"alpha_mechanism": "EARNINGS_IR"}) is True
+        assert is_issuer_channel({"alpha_mechanism": "earnings_ir"}) is True
+        assert is_issuer_channel({"alpha_mechanism": "TEARDOWN"}) is False
+        assert is_issuer_channel({"alpha_mechanism": "ANALYSIS"}) is False
+        assert is_issuer_channel({}) is False
+        assert is_issuer_channel(None) is False
+
+
+class TestThinCaptionFloor:
+    """A two-sentence caption track is a degenerate fetch, not a transcript."""
+
+    def test_default_floor_is_positive(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("YOUTUBE_TRANSCRIPT_MIN_CHARS", raising=False)
+        assert content_min_chars() == 600
+
+    def test_floor_is_configurable_and_zero_disables(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YOUTUBE_TRANSCRIPT_MIN_CHARS", "1200")
+        assert content_min_chars() == 1200
+        monkeypatch.setenv("YOUTUBE_TRANSCRIPT_MIN_CHARS", "0")
+        assert content_min_chars() == 0
+
+    def test_thin_body_skips_before_summarize_or_save(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YOUTUBE_TRANSCRIPT_MIN_CHARS", "600")
+        repo = _fake_repo()
+
+        def exploding_summarize(*_a: Any, **_k: Any) -> dict[str, Any]:
+            raise AssertionError("thin transcripts must not reach the summarizer")
+
+        outcome = ingest_video(
+            "jNQXAC9IVRw",
+            research_repo=repo,
+            fetch_fn=lambda *_a, **_k: _fixture_caption_result(),
+            summarize_fn=exploding_summarize,
+        )
+
+        assert outcome.status == "skipped_thin"
+        assert outcome.reason == "thin_captions"
+        assert outcome.landed is False
+        repo.save_article.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -480,7 +568,8 @@ def test_enrich_saved_transcript_updates_without_touching_body() -> None:
     assert args[0] == "art-1"
     assert kwargs["conclusion"] == "Neutral for zoo-adjacent tickers."
     assert kwargs["sentiment"] == "NEUTRAL"
-    assert kwargs["tickers"] == ["NVDA", "SEAS"]
+    # Topic channel (no issuer_channel flag): tickers come from the body alone.
+    assert kwargs["tickers"] == ["SEAS"]
 
 
 def test_enrich_saved_transcript_raises_so_queue_retries() -> None:

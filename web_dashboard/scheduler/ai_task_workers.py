@@ -1562,7 +1562,7 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
     from postgres_client import PostgresClient
     from research_repository import ResearchRepository
     from yt_captions import watch_url_for
-    from yt_articles import enrich_saved_transcript
+    from yt_articles import enrich_saved_transcript, is_issuer_channel
 
     postgres = PostgresClient()
     repo = ResearchRepository(postgres_client=postgres)
@@ -1638,6 +1638,9 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
         expected_tickers=[str(t) for t in (payload.get("expected_tickers") or [])],
         owned_tickers=_production_holdings_tickers(),
         duration_s=duration_s,
+        # ``normalize_transcript`` stamped alpha_mechanism into source_metadata,
+        # so the ticker-lead decision does not need the youtube_sources row here.
+        issuer_channel=is_issuer_channel(meta if isinstance(meta, dict) else None),
         ollama_client=ollama,
         summarize_fn=_summarize,
     )
