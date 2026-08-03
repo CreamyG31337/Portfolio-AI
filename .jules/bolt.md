@@ -87,3 +87,7 @@
 **Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.## 2026-07-26 - Batch ETF Metadata Upserts
 **Learning:** Per-row `.upsert().execute()` inside a loop (like `upsert_etf_metadata` inside `etf_watchtower_job`) can cause excessive network round-trips to PostgREST, thrashing the database connection.
 **Action:** Removed the per-ETF `upsert().execute()` from inside the loop, accumulated successfully processed ETFs into a list (`successful_etfs`), and passed them to a modified `upsert_etf_metadata` function that performs a single batch upsert using `.upsert(records).execute()` at the end of the job.
+
+## 2026-07-28 - Batch Signal Analysis Upserts
+**Learning:** Per-row `.upsert().execute()` inside a loop (like `signal_analysis` and `ticker_state_snapshots` inside `signal_scan_job`) can cause excessive network round-trips to PostgREST, thrashing the database connection and potentially causing timeouts for large watchlists.
+**Action:** Removed the per-ticker `upsert().execute()` from inside the loop, accumulated records into lists (`signals_batch`, `snapshots_batch`), and performed a single batch upsert using `.upsert(batch).execute()` at the end of the job.

@@ -192,6 +192,10 @@ def signal_scan_job() -> None:
             ",".join(global_alert_policy.get("fear_levels", [])),
         )
         
+        # Initialize batch arrays for database operations
+        signals_batch = []
+        snapshots_batch = []
+
         # Pre-fetch fundamentals for all tickers to avoid N+1 queries
         fundamentals_map = {}
         all_tickers = sorted({t.get('ticker').upper() for t in watchlist if t.get('ticker')})
@@ -278,9 +282,9 @@ def signal_scan_job() -> None:
                     except Exception as ai_error:
                         logger.warning(f"AI explanation failed for {ticker}: {ai_error}")
                 
-                # Insert or update signal analysis
+                # Queue signal analysis for batch upsert
                 try:
-                    supabase_client.supabase.table("signal_analysis").upsert({
+                    signals_batch.append({
                         'ticker': ticker.upper(),
                         'analysis_date': analysis_date.isoformat(),
                         'structure_signal': signals.get('structure', {}),
@@ -291,7 +295,7 @@ def signal_scan_job() -> None:
                         'overall_signal': signals.get('overall_signal', 'HOLD'),
                         'confidence_score': signals.get('confidence', 0.0),
                         'explanation': explanation
-                    }, on_conflict='ticker,analysis_date').execute()
+                    })
                     
                     processed += 1
                     
@@ -299,25 +303,25 @@ def signal_scan_job() -> None:
                         alerts_sent += 1
                         logger.info(f"⚠️  Alert: {ticker} - {signals.get('overall_signal')} signal (confidence: {signals.get('confidence', 0):.2f})")
 
-                    # Store ticker state snapshot (best-effort)
+                    # Queue ticker state snapshot (best-effort)
                     if ticker_state:
                         try:
                             from web_dashboard.ticker_state import summarize_ticker_state
                             summary = summarize_ticker_state(ticker_state)
-                            supabase_client.supabase.table("ticker_state_snapshots").upsert({
+                            snapshots_batch.append({
                                 'ticker': ticker.upper(),
                                 'snapshot_date': analysis_date.isoformat(),
                                 'state': ticker_state,
                                 'summary': summary,
-                            }, on_conflict='ticker,snapshot_date').execute()
+                            })
                         except Exception as snap_err:
                             logger.debug(f"Failed to store state snapshot for {ticker}: {snap_err}")
                     
                     # Small delay to avoid rate limiting
                     time.sleep(0.5)
                     
-                except Exception as db_error:
-                    logger.error(f"Error storing signals for {ticker}: {db_error}")
+                except Exception as batch_error:
+                    logger.error(f"Error queuing signals for {ticker}: {batch_error}")
                     errors += 1
                     continue
                 
@@ -326,6 +330,28 @@ def signal_scan_job() -> None:
                 errors += 1
                 continue
         
+        # Execute batched database upserts
+        if signals_batch:
+            try:
+                # ⚡ Bolt: Replaced per-row upserts with a single batched upsert
+                supabase_client.supabase.table("signal_analysis").upsert(
+                    signals_batch, on_conflict='ticker,analysis_date'
+                ).execute()
+                logger.info(f"✅ Batched upsert completed for {len(signals_batch)} signal analysis records")
+            except Exception as e:
+                logger.error(f"Failed to batch upsert signal analysis: {e}")
+                errors += len(signals_batch)
+
+        if snapshots_batch:
+            try:
+                # ⚡ Bolt: Replaced per-row upserts with a single batched upsert
+                supabase_client.supabase.table("ticker_state_snapshots").upsert(
+                    snapshots_batch, on_conflict='ticker,snapshot_date'
+                ).execute()
+                logger.info(f"✅ Batched upsert completed for {len(snapshots_batch)} ticker snapshots")
+            except Exception as e:
+                logger.error(f"Failed to batch upsert ticker snapshots: {e}")
+
         duration_ms = int((time.time() - start_time) * 1000)
         message = f"Processed {processed} tickers, {errors} errors, {alerts_sent} alerts, {ai_explanations} AI notes"
         
