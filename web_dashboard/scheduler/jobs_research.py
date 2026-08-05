@@ -368,14 +368,15 @@ def rss_feed_ingest_job() -> None:
         # Get owned tickers for relevance scoring
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
-        funds_result = client.supabase.table("funds").select("name").eq("is_production", True).execute()
+        from supabase_pagination import fetch_all_rows
+        funds_data = fetch_all_rows(client, "funds", select="name", eq_col="is_production", eq_val=True)
         
         owned_tickers = set()
-        if funds_result.data:
-            prod_funds = [f['name'] for f in funds_result.data]
-            positions_result = client.supabase.table("latest_positions").select("ticker").in_("fund", prod_funds).execute()
-            if positions_result.data:
-                owned_tickers = set(pos['ticker'] for pos in positions_result.data)
+        if funds_data:
+            prod_funds = [f['name'] for f in funds_data]
+            positions_data = fetch_all_rows(client, "latest_positions", select="ticker", in_col="fund", in_vals=prod_funds)
+            if positions_data:
+                owned_tickers = set(pos['ticker'] for pos in positions_data)
         
         # Process each feed
         for feed in feeds_result:
@@ -864,14 +865,15 @@ def archive_retry_job() -> None:
         # Get owned tickers for relevance scoring
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
-        funds_result = client.supabase.table("funds").select("name").eq("is_production", True).execute()
+        from supabase_pagination import fetch_all_rows
+        funds_data = fetch_all_rows(client, "funds", select="name", eq_col="is_production", eq_val=True)
         
         owned_tickers = set()
-        if funds_result.data:
-            prod_funds = [f['name'] for f in funds_result.data]
-            positions_result = client.supabase.table("latest_positions").select("ticker").in_("fund", prod_funds).execute()
-            if positions_result.data:
-                owned_tickers = set(pos['ticker'] for pos in positions_result.data)
+        if funds_data:
+            prod_funds = [f['name'] for f in funds_data]
+            positions_data = fetch_all_rows(client, "latest_positions", select="ticker", in_col="fund", in_vals=prod_funds)
+            if positions_data:
+                owned_tickers = set(pos['ticker'] for pos in positions_data)
         
         # Get pending archive articles (submitted at least 5 minutes ago)
         pending_articles = research_repo.get_pending_archive_articles(min_wait_minutes=5)

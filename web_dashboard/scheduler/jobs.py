@@ -1093,8 +1093,8 @@ def cleanup_test_funds_job() -> None:
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
 
-        funds_result = client.supabase.table("funds").select("id, name, is_production").execute()
-        funds = funds_result.data or []
+        from supabase_pagination import fetch_all_rows
+        funds = fetch_all_rows(client, "funds", select="id, name, is_production")
 
         test_funds = []
         for fund in funds:

@@ -130,7 +130,7 @@ def test_yahoo_sedi_insiders_job_upserts(
     yahoo_sedi_insiders_job()
 
     upsert_call = sb.supabase.table.return_value.upsert.call_args
-    assert upsert_call[0][0]["source"] == "yahoo_sedi"
+    assert upsert_call[0][0][0]["source"] == "yahoo_sedi"
     mock_log.assert_called_once()
     assert mock_log.call_args[0][1] is True
 
