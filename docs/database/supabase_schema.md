@@ -8,8 +8,6 @@
 
 ## Table of Contents
 
-- [_deprecated_ui_ai_rollup_fund_20260520](#-deprecated-ui-ai-rollup-fund-20260520)
-- [_deprecated_ui_ai_summary_20260520](#-deprecated-ui-ai-summary-20260520)
 - [ai_analysis_queue](#ai-analysis-queue)
 - [ai_analysis_skip_list](#ai-analysis-skip-list)
 - [ai_task_queue](#ai-task-queue)
@@ -51,8 +49,6 @@
 
 ---
 
-## _deprecated_ui_ai_rollup_fund_20260520
-
 ### Columns
 
 | Column | Type | Nullable | Default |
@@ -66,19 +62,17 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `fund`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
 | `idx_ui_ai_rollup_fund_updated` | `updated_at` | ✗ |
 
 ---
-
-## _deprecated_ui_ai_summary_20260520
 
 ### Columns
 
@@ -94,11 +88,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -110,7 +104,7 @@
 
 ## ai_analysis_queue
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -125,11 +119,11 @@
 | `error_message` | TEXT | ✓ | - |
 | `retry_count` | INTEGER | ✓ | 0 |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -142,7 +136,7 @@
 
 ## ai_analysis_skip_list
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -156,11 +150,11 @@
 | `added_by` | VARCHAR(100) | ✓ | - |
 | `notes` | TEXT | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -172,7 +166,7 @@
 
 ## ai_task_queue
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -196,11 +190,11 @@
 | `completed_at` | TIMESTAMP | ✓ | - |
 | `attempted_backends` | ARRAY | ✗ | '{}'::character varying[] |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -213,7 +207,7 @@
 
 ## apscheduler_jobs
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -221,11 +215,11 @@
 | `next_run_time` | DOUBLE PRECISION | ✓ | - |
 | `job_state` | BYTEA | ✗ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -235,7 +229,7 @@
 
 ## benchmark_data
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -251,11 +245,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -266,7 +260,7 @@
 
 ## cash_balances
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -276,11 +270,11 @@
 | `amount` | NUMERIC(10, 2) | ✗ | 0 |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -291,7 +285,7 @@
 
 ## committee_assignments
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -303,18 +297,18 @@
 | `party` | VARCHAR(50) | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `committee_id` | `committees`.`id` | NO ACTION | NO ACTION |
 | `politician_id` | `politicians`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -327,7 +321,7 @@
 
 ## committees
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -339,11 +333,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -357,7 +351,7 @@
 
 ## congress_positions
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -378,17 +372,17 @@
 | `spy_pct_change` | NUMERIC(10, 2) | ✓ | - |
 | `last_computed` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `politician_id` | `politicians`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -403,7 +397,7 @@
 
 ## congress_trade_returns
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -415,17 +409,17 @@
 | `last_updated` | TIMESTAMP | ✓ | now() |
 | `price_source` | VARCHAR(20) | ✓ | 'yfinance'::character varying |
 
-### Primary Key
+#### Primary Key
 
 - `trade_id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `trade_id` | `congress_trades`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -436,7 +430,7 @@
 
 ## congress_trades
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -458,17 +452,17 @@
 | `politician_id` | INTEGER | ✓ | - |
 | `asset_description` | TEXT | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `politician_id` | `politicians`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -488,7 +482,7 @@
 
 ## contributor_access
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -501,11 +495,11 @@
 | `expires_at` | TIMESTAMP | ✓ | - |
 | `notes` | TEXT | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
@@ -513,7 +507,7 @@
 | `granted_by` | `users`.`id` | NO ACTION | NO ACTION |
 | `user_id` | `users`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -525,7 +519,7 @@
 
 ## contributors
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -538,11 +532,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -554,7 +548,7 @@
 
 ## dividend_log
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -574,11 +568,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
@@ -586,7 +580,7 @@
 | `trade_log_id` | `trade_log`.`id` | NO ACTION | NO ACTION |
 | `ticker` | `securities`.`ticker` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -602,7 +596,7 @@
 
 ## exchange_rates
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -613,11 +607,11 @@
 | `timestamp` | TIMESTAMP | ✗ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -630,7 +624,7 @@
 
 ## fund_contributions
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -647,11 +641,11 @@
 | `fund_id` | INTEGER | ✗ | - |
 | `contributor_id` | UUID | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
@@ -659,7 +653,7 @@
 | `contributor_id` | `contributors`.`id` | NO ACTION | NO ACTION |
 | `fund_id` | `funds`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -673,7 +667,7 @@
 
 ## fund_thesis
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -684,17 +678,17 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -705,7 +699,7 @@
 
 ## fund_thesis_pillars
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -718,17 +712,17 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `thesis_id` | `fund_thesis`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -738,7 +732,7 @@
 
 ## funds
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -752,11 +746,11 @@
 | `is_production` | BOOLEAN | ✓ | false |
 | `dividend_mode` | VARCHAR(20) | ✗ | 'reinvest'::character varying |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -768,7 +762,7 @@
 
 ## insider_trades
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -789,11 +783,11 @@
 | `updated_at` | TIMESTAMP | ✓ | now() |
 | `source` | TEXT | ✗ | 'sec_form4'::text |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -809,7 +803,7 @@
 
 ## job_executions
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -824,11 +818,11 @@
 | `error_message` | TEXT | ✓ | - |
 | `duration_ms` | INTEGER | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -841,7 +835,7 @@
 
 ## job_retry_queue
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -860,11 +854,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `resolved_at` | TIMESTAMP | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -878,7 +872,7 @@
 
 ## job_steps
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -891,11 +885,11 @@
 | `metadata` | JSONB | ✓ | - |
 | `created_at` | TIMESTAMP | ✗ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -905,7 +899,7 @@
 
 ## og_asset_ticker_map
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -916,11 +910,11 @@
 | `asset_type` | VARCHAR(20) | ✗ | 'Stock'::character varying |
 | `resolved_at` | TIMESTAMP | ✗ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `canonical_description`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -930,7 +924,7 @@
 
 ## performance_metrics
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -947,17 +941,17 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -969,7 +963,7 @@
 
 ## politicians
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -982,11 +976,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1000,7 +994,7 @@
 
 ## portfolio_positions
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1023,18 +1017,18 @@
 | `exchange_rate` | NUMERIC(10, 6) | ✓ | - |
 | `date_only` | DATE | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
 | `ticker` | `securities`.`ticker` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1056,7 +1050,7 @@
 
 ## research_domain_health
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1072,11 +1066,11 @@
 | `auto_blacklisted_at` | TIMESTAMP | ✓ | - |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `domain`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1087,7 +1081,7 @@
 
 ## rss_feeds
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1100,11 +1094,11 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1116,7 +1110,7 @@
 
 ## securities
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1155,11 +1149,11 @@
 | `use_alt_logo` | BOOLEAN | ✓ | false |
 | `website` | TEXT | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `ticker`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1173,7 +1167,7 @@
 
 ## signal_analysis
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1190,11 +1184,11 @@
 | `momentum_signal` | JSONB | ✓ | - |
 | `fundamental_signal` | JSONB | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1207,7 +1201,7 @@
 
 ## system_settings
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1217,17 +1211,17 @@
 | `updated_at` | TIMESTAMP | ✓ | now() |
 | `updated_by` | UUID | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `key`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `updated_by` | `users`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1237,7 +1231,7 @@
 
 ## ticker_state_snapshots
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1246,11 +1240,11 @@
 | `state` | JSONB | ✗ | - |
 | `summary` | TEXT | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `ticker`, `snapshot_date`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1261,7 +1255,7 @@
 
 ## trade_log
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1278,18 +1272,18 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `action` | TEXT | ✗ | 'BUY'::text |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
 | `ticker` | `securities`.`ticker` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1302,7 +1296,7 @@
 
 ## user_funds
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1312,18 +1306,18 @@
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `fund_id` | INTEGER | ✓ | - |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund_id` | `funds`.`id` | NO ACTION | NO ACTION |
 | `user_id` | `users`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1336,7 +1330,7 @@
 
 ## user_profiles
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1349,17 +1343,17 @@
 | `updated_at` | TIMESTAMP | ✓ | now() |
 | `preferences` | JSONB | ✓ | '{}'::jsonb |
 
-### Primary Key
+#### Primary Key
 
 - `id`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `user_id` | `users`.`id` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1371,7 +1365,7 @@
 
 ## watched_tickers
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1381,11 +1375,11 @@
 | `source` | VARCHAR(50) | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `ticker`
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|
@@ -1396,7 +1390,7 @@
 
 ## watched_tickers_v2
 
-### Columns
+#### Columns
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|----------|
@@ -1407,18 +1401,18 @@
 | `source` | VARCHAR(50) | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 
-### Primary Key
+#### Primary Key
 
 - `fund`, `ticker`
 
-### Foreign Keys
+#### Foreign Keys
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `fund` | `funds`.`name` | NO ACTION | NO ACTION |
 | `ticker` | `securities`.`ticker` | NO ACTION | NO ACTION |
 
-### Indexes
+#### Indexes
 
 | Name | Columns | Unique |
 |------|---------|--------|

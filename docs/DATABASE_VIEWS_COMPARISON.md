@@ -2,7 +2,7 @@
 
 ## Current Database Views
 
-### 1. `latest_positions` (from 05_current_positions_view.sql)
+### 1. `latest_positions` (from database/schema/supabase/views/latest_positions.sql)
 **Purpose**: Advanced position tracking with historical P&L calculations
 
 **Features**:
@@ -29,7 +29,7 @@
 }
 ```
 
-### 2. `current_positions` (from 06_pnl_views.sql) 
+### 2. `current_positions` (currently unapplied/abandoned)
 **Purpose**: Simple current position summary with basic P&L
 
 **Features**:
@@ -53,7 +53,7 @@
 }
 ```
 
-### 3. `daily_pnl_summary` (from 06_pnl_views.sql)
+### 3. `daily_pnl_summary` (currently unapplied/abandoned)
 **Purpose**: Daily portfolio performance summary
 
 **Features**:
@@ -77,7 +77,7 @@
 }
 ```
 
-### 4. `trade_performance` (from 06_pnl_views.sql)
+### 4. `trade_performance` (currently unapplied/abandoned)
 **Purpose**: Individual trade performance tracking
 
 **Features**:
@@ -101,7 +101,7 @@
 }
 ```
 
-### 5. `portfolio_summary` (from 06_pnl_views.sql)
+### 5. `portfolio_summary` (currently unapplied/abandoned)
 **Purpose**: High-level portfolio overview
 
 **Features**:
@@ -142,15 +142,15 @@
 - ✅ `latest_positions` - This is the one that's working (we saw it in the test)
 
 **Not Yet Applied**:
-- ❌ `current_positions` - From 06_pnl_views.sql (not applied yet)
-- ❌ `daily_pnl_summary` - From 06_pnl_views.sql (not applied yet)  
-- ❌ `trade_performance` - From 06_pnl_views.sql (not applied yet)
-- ❌ `portfolio_summary` - From 06_pnl_views.sql (not applied yet)
+- ❌ `current_positions` - from abandoned migration (not applied yet)
+- ❌ `daily_pnl_summary` - from abandoned migration (not applied yet)
+- ❌ `trade_performance` - from abandoned migration (not applied yet)
+- ❌ `portfolio_summary` - from abandoned migration (not applied yet)
 
 ## Recommendation
 
 1. **Use `latest_positions`** for advanced analytics (already working)
-2. **Apply the new views** from 06_pnl_views.sql for simpler use cases
+2. **Apply the new views** from abandoned migration for simpler use cases
 3. **Keep both sets** - they serve different purposes:
    - `latest_positions` = Complex historical analysis
    - `current_positions` = Simple current state
