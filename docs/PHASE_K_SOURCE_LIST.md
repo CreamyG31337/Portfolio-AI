@@ -2108,3 +2108,90 @@ only says `PHOS` without "First Phosphate" or `$PHOS` will miss — acceptable g
 (names dominate titles). Dual-listed US symbols in the old curated list (e.g. `DNN`) are
 not in the Canadian directory; Canadian aliases (e.g. Denison as `DML.TO` if present)
 cover name hits. No threshold or channel tuning after seeing prices.
+
+## 26. The corpus covers 8% of the book. Search reaches the rest — but not by view count
+## (2026-08-02)
+
+The ingest pipeline went live (13 sources, cursors sealed, ~17 fetches/day). Before
+spending 30 days accumulating toward the K5 source-ROI read, we measured what that read
+would actually be computed over. It would have come back "no value," and the reason would
+have been the sample frame, not YouTube.
+
+### 26.1 The measurement
+
+Production holdings: **100 positions** across TFSA / RRSP Lance Webull / Project Chimera.
+Enabled-source `expected_tickers`, unioned: **15 symbols**.
+
+| Set | Overlap with holdings |
+|---|---|
+| Tickers appearing in the 9-row corpus | 7 / 15 (`AMD CEG META MSFT MU NVDA QCOM`) |
+| Seed tickers across all 13 enabled sources | 8 / 15 (`AEM.TO AMAT AMD ASML NVDA QCOM TSM TXN`) |
+| **Holdings with any possible coverage** | **8 / 100 = 8%** |
+
+Every enabled source but one is a semiconductor or PC-hardware channel. The book is
+uranium and nuclear (`CCO.TO HURA.TO GLO.TO URNJ URNM LEU OKLO`), gold and base metals
+(`AEM.TO GMIN.TO XGD.TO TECK.B GLCC.TO`), Canadian rails, pipelines and utilities
+(`CNR.TO ENB.TO TRP.TO FTS.TO KEY.TO RY.TO`), grid and power equipment (`GEV VRT ETN`),
+and broad ETFs. **92% of it has no path to coverage from the current allowlist.**
+
+This is §24's sample-frame error a second time, in the opposite direction. There we built
+a *ticker universe* that excluded the phenomenon; here we built a *source list* that
+excludes the portfolio. Both times the pipeline was sound and the frame was wrong. The
+generalization worth keeping: **whenever a result is about to be computed, check what it
+is computed over before trusting the answer, not after.**
+
+Note also that `CEG` and `TLN` — power names, the sector §17 rejected as a caption sector
+— entered the corpus organically through *"How AI Datacenters Eat the World"* on a tech
+channel. Coverage is topic-shaped, not sector-list-shaped. Channel curation is a blunt
+instrument for aiming at a book.
+
+### 26.2 Search reaches the whole book (10 / 10 probes)
+
+`list_search_videos` is listing, not caption fetch, so this cost zero quota (§14). Ten
+uncovered holdings, queried by *company name* rather than symbol (§17: titles say
+"Cameco", not `CCO.TO`):
+
+Every probe returned hits — including `GMIN.TO` (G Mining Ventures), a name no channel in
+the allowlist would ever mention. The push model cannot reach these; the pull model can.
+
+### 26.3 But ranking by views selects for noise — the inverse correlation, 5th firing
+
+Sorting each probe's hits by view count returns almost pure junk:
+
+| Query | Top result by views | Views | Relevant? |
+|---|---|---|---|
+| Shopify | "I Tried AI Dropshipping For 7 Days" | 17,670,827 | no |
+| Cameco uranium | "How It's Made — Uranium Part 1" | 5,251,091 | no |
+| Oklo nuclear | "Earth's Two-Billion-Year-Old Nuclear Reactor" | 3,050,035 | no |
+| Eaton electrical | "Current Transformers (CT) \| Eaton PSEC" | 619,443 | no (vendor training) |
+| Vertiv | "VERTICAL \| LEV vs NRG — VCT Americas" | 111,027 | no (**esports name collision**) |
+
+The genuinely relevant hits are the *low*-view ones — Centrus CEO interview (4,604), the
+Teck / Anglo $70B tie-up (4,733), Enbridge CEO on tariffs (6,716), G Mining `TSX:GMIN`
+(8,349). The gap is two to three orders of magnitude.
+
+So the inverse-correlation regularity fires a **fifth** time (after §10 quality vs
+tradeability, §17 quality vs access, §22 reach vs float, §23/§24 reach vs
+company-specificity): **relevance vs views, on search**. High view counts on a
+company-name query mean the query matched something *other* than the company — a
+tutorial, a documentary, a training video, or an unrelated brand.
+
+This has a direct consequence for code already written: the `no_audience(median=N views)`
+structural reject in `scripts/yt_discover_channels.py` is correct for finding *channels*
+with retail reach (the ATTENTION mechanism, §19/§22) and **actively harmful** for finding
+*videos about a holding* (the INFORMATION mechanism). The two uses of the corpus (§20)
+need opposite view-count filters. Do not share one ranker between them.
+
+### 26.4 What this implies
+
+Adding mining/uranium *channels* is the wrong repair: §17 and §19 already rejected those
+sectors on access and disclosure-preemption grounds, and §26.1 shows channel curation
+aims poorly at a 100-position book regardless. The repair is **K8 pull retrieval**
+(PHASE_K_TREND_LAYER_PLAN.md §3): query per holding on a cadence, filter by
+ticker/company confirmation in the transcript, and rank by relevance with views used —
+if at all — only as a tiebreaker *within* already-confirmed hits.
+
+Kill criterion, pre-registered: if per-holding search cannot produce ≥1 confirmed
+company-specific video per month for at least 30 of the 100 positions, the pull model is
+no better aimed than the push model and Phase K reverts to a pure trend/sentiment layer
+(§20) with no per-security ambition.

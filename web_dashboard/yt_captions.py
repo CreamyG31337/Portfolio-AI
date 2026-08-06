@@ -238,17 +238,77 @@ def parse_vtt_text(vtt: str) -> str:
     return clean_caption_lines(cues)
 
 
+def _fetch_with_rotation(
+    url_or_id: str,
+    *,
+    languages: Sequence[str],
+    use_ytdlp_fallback: bool,
+    include_metadata: bool,
+) -> CaptionResult:
+    """Try the fetch; on an IP block, move to a new VPN exit and try again."""
+    from yt_proxy_rotation import (
+        RotationError,
+        max_rotations,
+        rotation_enabled,
+        rotate_exit,
+    )
+
+    attempts = max_rotations() + 1 if rotation_enabled() else 1
+    last: CaptionFetchError | None = None
+    for attempt in range(attempts):
+        try:
+            return fetch_caption_text(
+                url_or_id,
+                languages=languages,
+                use_ytdlp_fallback=use_ytdlp_fallback,
+                include_metadata=include_metadata,
+                allow_rotation=False,
+            )
+        except CaptionFetchError as exc:
+            # Only an IP block is worth rotating for. `no_captions`, `age_restricted`
+            # and friends are facts about the video and will fail from every exit.
+            if exc.reason != "blocked" or attempt == attempts - 1:
+                raise
+            last = exc
+            logger.warning(
+                "Blocked fetching %s (attempt %s/%s); rotating egress",
+                url_or_id,
+                attempt + 1,
+                attempts,
+            )
+            try:
+                rotate_exit()
+            except RotationError as rot_exc:
+                logger.error("Rotation failed, giving up on %s: %s", url_or_id, rot_exc)
+                raise last from rot_exc
+    raise last if last else CaptionFetchError("unknown", "no attempt was made", None)
+
+
 def fetch_caption_text(
     url_or_id: str,
     *,
     languages: Sequence[str] = _DEFAULT_LANGS,
     use_ytdlp_fallback: bool = True,
     include_metadata: bool = True,
+    allow_rotation: bool = True,
 ) -> CaptionResult:
     """Fetch + clean captions for a video.
 
     Raises ``CaptionFetchError`` with a stable ``reason`` for soft-fail jobs.
+
+    On ``blocked`` — YouTube rate-limiting the egress IP — this rotates the VPN
+    exit and retries, up to ``YOUTUBE_PROXY_MAX_ROTATIONS`` times, when rotation
+    is configured (see :mod:`yt_proxy_rotation`). A block is a property of the IP,
+    not of the video, so retrying from a new exit is the correct response; without
+    rotation configured the behaviour is unchanged.
     """
+    if allow_rotation:
+        return _fetch_with_rotation(
+            url_or_id,
+            languages=languages,
+            use_ytdlp_fallback=use_ytdlp_fallback,
+            include_metadata=include_metadata,
+        )
     video_id = parse_video_id(url_or_id)
     langs = tuple(languages) if languages else _DEFAULT_LANGS
 
