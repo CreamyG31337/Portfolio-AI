@@ -31,7 +31,20 @@ In Woodpecker: repository → **Settings** → **Secrets**
 - `webai_cookies_json` — initial WebAI cookies (sidecar refreshes after)
 - `ai_service_web_url` — cookie refresher target
 - `flask_secret_key`, `jwt_secret`, `supabase_jwt_secret`
+- `youtube_proxy_control_apikey` — Gluetun control-server key for VPN exit rotation (Phase K)
 - Mailgun / newsletter secrets as needed
+
+> **`youtube_proxy_control_apikey` must exist before the next push.** `.woodpecker.yml`
+> references it with `from_secret`, and Woodpecker fails the pipeline when a named secret is
+> missing — the same constraint as `ollama_base_url_2`. The value is the `trading-bot` role's
+> `apikey` in `/home/lance/gluetun/data/auth/config.toml` on the deploy host.
+>
+> It lets the app rotate the VPN exit when YouTube blocks the current IP instead of losing the
+> run. `YOUTUBE_PROXY_ROTATE_MODE` (`control`) and `YOUTUBE_PROXY_CONTROL_URL`
+> (`http://host.docker.internal:8001`) are not secrets and are defaulted in the deploy step.
+> Only `control` mode works inside the container — the `ssh` backend needs an agent key it does
+> not have. Without the key, rotation degrades to off and blocks simply stay blocks;
+> `yt_proxy_rotation.preflight()` logs which state it is in at the start of every YouTube job.
 
 ## Step 3: Verify Docker Socket Access
 

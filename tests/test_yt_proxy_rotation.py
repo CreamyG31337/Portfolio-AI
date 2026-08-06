@@ -66,6 +66,71 @@ class TestConfiguration:
             rot.rotate_exit()
 
 
+class TestPreflight:
+    """A misconfigured mode must be visible at job start, not during a block."""
+
+    def test_reports_disabled(self) -> None:
+        assert "disabled" in rot.preflight()
+
+    def test_ssh_without_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "ssh")
+        assert "SSH_HOST" in rot.preflight()
+
+    def test_ssh_auth_failure_points_at_control_mode(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The containerised app has no agent key; say so instead of failing later."""
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "ssh")
+        monkeypatch.setenv("YOUTUBE_PROXY_SSH_HOST", "lance@host")
+
+        class Proc:
+            returncode = 255
+            stderr = "Permission denied (publickey)."
+            stdout = ""
+
+        monkeypatch.setattr(rot.subprocess, "run", lambda *a, **k: Proc())
+        assert "control mode" in rot.preflight()
+
+    def test_ssh_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "ssh")
+        monkeypatch.setenv("YOUTUBE_PROXY_SSH_HOST", "lance@host")
+
+        class Proc:
+            returncode = 0
+            stderr = ""
+            stdout = ""
+
+        monkeypatch.setattr(rot.subprocess, "run", lambda *a, **k: Proc())
+        assert rot.preflight().startswith("ready:")
+
+    def test_control_without_key_is_reported_not_raised(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "control")
+        monkeypatch.setenv("YOUTUBE_PROXY_CONTROL_URL", "http://host:8001")
+        assert "CONTROL_APIKEY" in rot.preflight()
+
+    def test_control_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "control")
+        monkeypatch.setenv("YOUTUBE_PROXY_CONTROL_URL", "http://host:8001")
+        monkeypatch.setenv("YOUTUBE_PROXY_CONTROL_APIKEY", "k")
+        monkeypatch.setattr(rot, "_control_request", lambda *a, **k: None)
+        assert rot.preflight().startswith("ready:")
+
+    def test_never_raises_on_a_bad_control_server(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "control")
+        monkeypatch.setenv("YOUTUBE_PROXY_CONTROL_URL", "http://host:8001")
+        monkeypatch.setenv("YOUTUBE_PROXY_CONTROL_APIKEY", "k")
+
+        def boom(*_a: Any, **_k: Any) -> None:
+            raise rot.RotationError("401")
+
+        monkeypatch.setattr(rot, "_control_request", boom)
+        assert "not usable" in rot.preflight()
+
+
 class TestRotateExit:
     def test_reports_ip_change(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("YOUTUBE_PROXY_ROTATE_MODE", "ssh")

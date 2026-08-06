@@ -56,6 +56,17 @@
 #                      Routes Phase K YouTube caption fetches off the host's residential IP,
 #                      which YouTube rate-limits into multi-hour blocks after ~150 fetches.
 #                      Override only to repoint or disable it. See docs/PHASE_K_SOURCE_LIST.md §13.
+# - youtube_proxy_control_apikey: (REQUIRED once this file references it — Woodpecker errors
+#                      out if the secret name is missing, so create it BEFORE the next push.)
+#                      API key for the Gluetun control server's "trading-bot" role, which lets
+#                      the app rotate the VPN exit when YouTube blocks the current IP instead
+#                      of losing the run. The role is scoped to three routes only:
+#                      GET /v1/publicip/ip and GET+PUT /v1/vpn/status.
+#                      Value lives in /home/lance/gluetun/data/auth/config.toml on the host.
+#                      YOUTUBE_PROXY_ROTATE_MODE and YOUTUBE_PROXY_CONTROL_URL are NOT secrets
+#                      (a mode word and a host:port) and are defaulted in the deploy step.
+#                      Without the key, rotation degrades to off and blocks stay blocks — the
+#                      job logs say which, via yt_proxy_rotation.preflight().
 # - mailgun_api_key: (optional) Mailgun API key for newsletter webhook verification
 # - mailgun_webhook_signing_key: (optional) Mailgun webhook HMAC signing key
 # - newsletter_email: (optional) Newsletter receiving email (default: e.g. noreply@example.com)
@@ -182,6 +193,11 @@ steps:
       # Must exist as a Woodpecker secret named "ollama_base_url_2" — Woodpecker errors out if missing.
       OLLAMA_BASE_URL_2:
         from_secret: ollama_base_url_2
+      # Gluetun control-server key for VPN exit rotation (Phase K).
+      # Must exist as a Woodpecker secret named "youtube_proxy_control_apikey" —
+      # Woodpecker errors out if missing, same as ollama_base_url_2 above.
+      YOUTUBE_PROXY_CONTROL_APIKEY:
+        from_secret: youtube_proxy_control_apikey
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -437,6 +453,15 @@ steps:
         # -- host:port only -- so it is defaulted here like OLLAMA_BASE_URL rather than
         # coming from Woodpecker. Direct egress gets rate-limited into multi-hour blocks.
         FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_URL=\"${YOUTUBE_PROXY_URL:-http://host.docker.internal:8888}\""
+        # Phase K: rotate the VPN exit when YouTube blocks the current IP rather than
+        # rationing fetches. Mode and URL are not secrets, so they default here like
+        # YOUTUBE_PROXY_URL; only the API key comes from Woodpecker. "control" (the HTTP
+        # control server) is the only mode that works in here -- the "ssh" backend needs an
+        # agent key this container does not have. Without the key rotation degrades to off;
+        # yt_proxy_rotation.preflight() logs which at the start of every YouTube job.
+        FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_ROTATE_MODE=\"${YOUTUBE_PROXY_ROTATE_MODE:-control}\""
+        FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_CONTROL_URL=\"${YOUTUBE_PROXY_CONTROL_URL:-http://host.docker.internal:8001}\""
+        [ -n "$YOUTUBE_PROXY_CONTROL_APIKEY" ] && FLASK_CMD="$FLASK_CMD -e YOUTUBE_PROXY_CONTROL_APIKEY=\"$YOUTUBE_PROXY_CONTROL_APIKEY\""
         
         # Add WebAI cookies (same as Streamlit container)
         if [ -n "$WEBAI_COOKIES_JSON" ]; then

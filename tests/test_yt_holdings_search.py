@@ -85,6 +85,10 @@ class TestFundsAreSkipped:
             ("URNM", "SPROTT URANIUM MINERS ETF"),
             ("VOO", "Vanguard S&P 500 ETF"),
             ("SMH", "VanEck Semiconductor ETF"),
+            # The three the marker list missed: no "ETF" anywhere in the name.
+            ("FXD", "First Trust Consumer Staples AlphaDEX Fund"),
+            ("FXG", "First Trust Consumer Discretionary AlphaDEX Fund"),
+            ("FXL", "First Trust Technology AlphaDEX Fund"),
         ],
     )
     def test_detects_funds(self, ticker: str, name: str) -> None:
@@ -96,6 +100,11 @@ class TestFundsAreSkipped:
             ("CCO.TO", "Cameco Corporation"),
             ("OKLO", "Oklo Inc"),
             ("TECK.B", "Teck Resources Limited"),
+            # A REIT ends in "Trust" and is a real issuer: the ending test must
+            # not swallow it, which is why "trust" is not a fund ending.
+            ("REI.UN", "RioCan Real Estate Investment Trust"),
+            # "Fund" mid-name is an operating company, not a basket.
+            ("BX", "Blackstone Fund Services Inc"),
         ],
     )
     def test_operating_companies_are_not_funds(self, ticker: str, name: str) -> None:

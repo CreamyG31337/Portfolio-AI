@@ -598,6 +598,13 @@ def poll_youtube_sources(
         logger.info("No enabled youtube_sources rows to poll")
         return summary
 
+    try:
+        from yt_proxy_rotation import preflight
+
+        logger.info("VPN exit rotation: %s", preflight())
+    except Exception as exc:  # pragma: no cover - never block the poll on this
+        logger.warning("Rotation preflight unavailable: %s", exc)
+
     logger.info(
         "Polling %s enabled youtube_sources (global cap %s videos)%s",
         len(rows),

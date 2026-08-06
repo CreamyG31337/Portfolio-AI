@@ -437,6 +437,22 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 5, 'minute': 20, 'timezone': 'America/New_York'}
         ]
     },
+    'youtube_holdings_sweep': {
+        'name': '📺 YouTube Holdings Sweep',
+        'description': 'Search YouTube by company name for every production holding; land captions for confirmed hits (Phase K8 pull retrieval)',
+        'default_interval_minutes': 1440,  # Daily
+        # The allowlist poll (K3) reaches ~8% of the book; this reaches ~92%
+        # (docs/PHASE_K_SOURCE_LIST.md §26). Search is listing-only and free —
+        # only the ingest half spends quota, capped by YOUTUBE_SWEEP_MAX_FETCHES
+        # (default 15). Runs 40 min after the allowlist poll so the two never
+        # contend for the same egress IP; if one does get blocked, rotation
+        # (yt_proxy_rotation) moves the exit rather than failing the run.
+        'enabled_by_default': True,
+        'icon': '📺',
+        'cron_triggers': [
+            {'hour': 6, 'minute': 0, 'timezone': 'America/New_York'}
+        ]
+    },
     'alpha_research': {
         'name': '📚 Alpha Hunter',
         'description': 'Targeted research on high-value alpha domains',
@@ -825,6 +841,9 @@ from scheduler.jobs_symbol_articles import symbol_article_scraper_job
 # Import YouTube allowlist poll job (Phase K3)
 from scheduler.jobs_yt import youtube_caption_ingest_job
 
+# Import YouTube holdings sweep job (Phase K8 pull retrieval)
+from scheduler.jobs_yt_sweep import youtube_holdings_sweep_job
+
 # Import dividend processing job
 from scheduler.jobs_dividends import process_dividends_job
 
@@ -914,6 +933,8 @@ __all__ = [
     'symbol_article_scraper_job',
     # YouTube allowlist poll (Phase K3)
     'youtube_caption_ingest_job',
+    # YouTube holdings sweep (Phase K8)
+    'youtube_holdings_sweep_job',
     # Dividend processing
     'process_dividends_job',
     # Watchdog
@@ -1461,6 +1482,26 @@ def register_default_jobs(scheduler) -> None:
             coalesce=True
         )
         logger.info("Registered job: youtube_caption_ingest (daily at 5:20 AM ET)")
+
+    # YouTube holdings sweep (Phase K8): daily at 6:00 AM ET, 40 min after the
+    # allowlist poll so the two never share an egress IP within one window.
+    if AVAILABLE_JOBS.get('youtube_holdings_sweep', {}).get('enabled_by_default'):
+        sweep_triggers = AVAILABLE_JOBS['youtube_holdings_sweep'].get('cron_triggers', [])
+        sweep_trigger = sweep_triggers[0] if sweep_triggers else {}
+        scheduler.add_job(
+            youtube_holdings_sweep_job,
+            trigger=CronTrigger(
+                hour=sweep_trigger.get('hour', 6),
+                minute=sweep_trigger.get('minute', 0),
+                timezone=sweep_trigger.get('timezone', 'America/New_York')
+            ),
+            id='youtube_holdings_sweep',
+            name=f"{get_job_icon('youtube_holdings_sweep')} YouTube Holdings Sweep",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: youtube_holdings_sweep (daily at 6:00 AM ET)")
 
 
     # Benchmark refresh job - every 30 minutes during market hours (weekdays 9:30 AM - 4:00 PM EST)

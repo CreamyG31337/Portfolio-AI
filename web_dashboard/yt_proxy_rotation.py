@@ -167,6 +167,54 @@ def _rotate_via_ssh() -> None:
         )
 
 
+def preflight() -> str:
+    """One-line description of whether rotation would actually work right now.
+
+    Called at job start and logged. Without this, a misconfigured mode is only
+    discovered at the moment it is needed — during a block, at 5am, when the run
+    it was supposed to rescue is already failing. Never raises.
+    """
+    mode = rotation_mode()
+    if not rotation_enabled():
+        return f"rotation disabled ({_MODE_ENV}={mode!r})"
+
+    if mode == "ssh":
+        host = (os.environ.get(_SSH_HOST_ENV) or "").strip()
+        if not host:
+            return f"ssh mode but {_SSH_HOST_ENV} is unset — rotation will fail"
+        try:
+            proc = subprocess.run(
+                ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", host, "true"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except Exception as exc:
+            return f"ssh mode to {host} unusable: {exc}"
+        if proc.returncode != 0:
+            # The usual cause: ssh mode needs an agent key, and the containerised
+            # app has none. That is what `control` mode exists for.
+            return (
+                f"ssh mode to {host} cannot authenticate "
+                f"({(proc.stderr or '').strip()[:120]}) — use control mode here"
+            )
+        return f"ready: ssh to {host}"
+
+    if mode == "control":
+        base = (os.environ.get(_CONTROL_URL_ENV) or "").strip()
+        if not base:
+            return f"control mode but {_CONTROL_URL_ENV} is unset — rotation will fail"
+        if not (os.environ.get(_CONTROL_KEY_ENV) or "").strip():
+            return f"control mode but {_CONTROL_KEY_ENV} is unset — rotation will fail"
+        try:
+            _control_request("/v1/publicip/ip")
+        except Exception as exc:
+            return f"control mode at {base} not usable: {exc}"
+        return f"ready: control at {base}"
+
+    return f"unknown {_MODE_ENV}={mode!r} (use control, ssh, or off)"
+
+
 def rotate_exit(*, wait: bool = True) -> RotationResult:
     """Move to a new VPN exit. Raises :class:`RotationError` if it does not change.
 

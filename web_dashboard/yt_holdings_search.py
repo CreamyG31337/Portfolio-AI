@@ -69,6 +69,17 @@ _FUND_MARKERS = (
     "invesco",
     "horizons",
     "bmo ",
+    "first trust",
+)
+
+# Fund names *end* in a basket word: "First Trust Technology AlphaDEX Fund".
+# Matching the ending rather than the substring keeps operating companies whose
+# names merely contain one of these words. "trust" is deliberately absent — REITs
+# end in it and they are real issuers worth searching for.
+_FUND_NAME_ENDINGS = (
+    "fund",
+    "etf",
+    "portfolio",
 )
 
 # Titles that match a company name but are not *about* the company as an issuer.
@@ -141,7 +152,10 @@ def normalize_company_name(company_name: str) -> str:
 def is_fund(ticker: str, company_name: str, sector: str | None = None) -> bool:
     """True for ETFs / index baskets, which pull retrieval skips."""
     blob = f" {company_name or ''} {sector or ''} ".lower()
-    return any(marker in blob for marker in _FUND_MARKERS)
+    if any(marker in blob for marker in _FUND_MARKERS):
+        return True
+    name = str(company_name or "").lower().rstrip(" .,")
+    return any(name.endswith(" " + ending) for ending in _FUND_NAME_ENDINGS)
 
 
 @dataclass(frozen=True)

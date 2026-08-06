@@ -76,6 +76,7 @@ def main() -> int:
             "etf_group_analysis",
             "benchmark_refresh",
             "youtube_caption_ingest",
+            "youtube_holdings_sweep",
         ),
         help="Job id / function to invoke",
     )
@@ -175,6 +176,10 @@ def main() -> int:
             from scheduler.jobs_yt import youtube_caption_ingest_job
 
             youtube_caption_ingest_job()
+        elif args.job == "youtube_holdings_sweep":
+            from scheduler.jobs_yt_sweep import youtube_holdings_sweep_job
+
+            youtube_holdings_sweep_job()
         elif args.job == "etf_group_analysis":
             from scheduler.jobs_etf_analysis import etf_group_analysis_job
 

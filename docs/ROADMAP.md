@@ -799,7 +799,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1+K2+K3 shipped 2026-07-29** (poll job registered, off by default); K4/K5/K6 open |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K4 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 needs ~30d of outcomes; K6/K9/K10/K11 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1089,9 +1089,19 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   Holdings-scoped relevance filters `funds.is_production = true`. Deferred: ticker-expanding
   IR search, map-reduce chunking, retention. Details in
   [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) K3 notes.
-- [ ] **K4 · Enrichment parity** — ensure new rows hit existing summarize / ticker extraction
-  (queue-managed); confirm they appear in ticker meta article blocks and dossier evidence
-  timeline. Spot-check an earnings-call video end-to-end.
+- [x] **K4 · Enrichment parity** — **done 2026-08-06:** all 45 `YouTube Transcript` rows carry
+  summary + sentiment + claims. `AI_QUEUE_ENABLED` unset means enrichment runs inline, so no
+  queue wiring was needed. Embeddings were the one real gap: the K8 sweep landed 30 rows with
+  `embedding IS NULL` (no `ollama_client` passed), which silently excludes a row from every
+  similarity path — fixed and backfilled.
+- [x] **K8 · Pull retrieval (holdings sweep)** — **done 2026-08-06:**
+  `web_dashboard/yt_holdings_search.py` (name→video confirmation, §26) +
+  `web_dashboard/scheduler/jobs_yt_sweep.py` (`youtube_holdings_sweep` job, daily 6:00 AM ET)
+  + `scripts/yt_holdings_sweep.py` as the CLI over the same core. Reaches ~92% of the book vs
+  K3's 8%. Two things the job does that a hand-run does not need: pre-filter against
+  `research_articles` (`ingest_video` fetches captions *before* its own exists check, so a
+  nightly re-offer would burn the whole budget on known videos), and round-robin the fetch
+  budget across holdings so coverage wins over depth. Cap: `YOUTUBE_SWEEP_MAX_FETCHES` (15).
 - [ ] **K5 · Source-ROI slice** — after ~30d of outcomes, compare
   `YouTube Transcript` (and channel domains) vs other article sources in the H1 report; kill
   or shrink the allowlist if it never pays off.
