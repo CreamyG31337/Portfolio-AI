@@ -5,89 +5,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Session...</title>
-    <!-- TODO(palette): This standalone page bypasses the Tailwind build + semantic theme tokens
-         and reimplements light/dark mode with hardcoded hex values. Integrate into the Tailwind
-         pipeline so it matches the rest of the dashboard. (Palette audit PR #347, item 3) -->
-    <style>
-        /* Respect system theme preference */
-        :root {
-            color-scheme: light dark;
+    <link rel="stylesheet" href="/assets/css/theme.css">
+    <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
+    <script>
+        const theme = localStorage.getItem('theme');
+        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
         }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            margin: 0;
-            padding: 2rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            background-color: #ffffff;
-            color: #262730;
-            transition: background-color 0.2s, color 0.2s;
-        }
-
-        .message-container {
-            text-align: center;
-            max-width: 500px;
-            padding: 2rem;
-            border-radius: 8px;
-            background-color: #f8f9fa;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .message-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-        }
-
-        .message-text {
-            font-size: 1.1rem;
-            line-height: 1.6;
-            margin-bottom: 0.5rem;
-        }
-
-        .message-reason {
-            font-size: 0.95rem;
-            opacity: 0.8;
-            margin-top: 1.5rem;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(0, 0, 0, 0.1);
-        }
-
-        .error-message {
-            border-left: 4px solid #ef4444;
-        }
-
-        .success-message {
-            border-left: 4px solid #22c55e;
-        }
-
-        /* Dark mode styles */
-        @media (prefers-color-scheme: dark) {
-            body {
-                background-color: #0E1117;
-                color: #FAFAFA;
-            }
-
-            .message-container {
-                background-color: #262730;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-            }
-
-            .message-reason {
-                border-top-color: rgba(255, 255, 255, 0.1);
-            }
-        }
-    </style>
+    </script>
 </head>
 
-<body>
-    <div class="message-container" id="messageContainer">
-        <div class="message-title" id="messageTitle">Processing...</div>
-        <div class="message-text" id="messageText">Please wait...</div>
-        <div class="message-reason" id="messageReason" style="display: none;"></div>
+<body class="bg-dashboard-background text-text-primary min-h-screen flex items-center justify-center p-4">
+    <div class="bg-dashboard-surface p-8 rounded-lg shadow-md w-full max-w-md border border-border text-center border-l-4 border-l-border" id="messageContainer">
+        <div class="text-xl font-bold mb-2" id="messageTitle">Processing...</div>
+        <div class="text-text-secondary text-sm" id="messageText">Please wait...</div>
+        <div class="hidden mt-4 p-4 text-sm text-left break-words whitespace-pre-wrap font-mono text-xs max-h-40 overflow-y-auto rounded-lg border border-border bg-dashboard-background" id="messageReason"></div>
     </div>
     <script>
         (function () {
@@ -166,14 +100,15 @@
 
                 if (msg.showReason && msg.reason) {
                     reasonDiv.textContent = msg.reason;
-                    reasonDiv.style.display = 'block';
+                    reasonDiv.classList.remove('hidden');
                 }
 
-                // Add appropriate styling
+                // Success vs error accent on the container left border
+                container.classList.remove('border-l-theme-error-text', 'border-l-theme-success-text');
                 if (msg.isError) {
-                    container.classList.add('error-message');
+                    container.classList.add('border-l-theme-error-text');
                 } else {
-                    container.classList.add('success-message');
+                    container.classList.add('border-l-theme-success-text');
                 }
             }
 

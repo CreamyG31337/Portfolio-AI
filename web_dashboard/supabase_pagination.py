@@ -6,6 +6,11 @@ returns only the first 1000 — leaving gaps if you then jump to offset 5000.
 
 Use ``SUPABASE_MAX_ROWS`` / ``clamp_page_size`` / ``fetch_all_rows`` for any
 full-table or large filtered read.
+
+TODO(quota): Do not blindly replace every ``.limit()`` / chunked loop with
+``fetch_all_rows``. Intentional LLM context caps (e.g. ``.limit(50)`` in AI
+routes) and parallel 1000-row aggregations (e.g. congress stats in ``app.py``)
+are not truncation bugs — see ``.jules/quota.md``.
 """
 
 from __future__ import annotations
