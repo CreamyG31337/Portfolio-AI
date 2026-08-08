@@ -21,6 +21,8 @@ from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence
 logger = logging.getLogger(__name__)
 
 # Default for the desktop 3090 heretic Modelfile / Goose alignment.
+# Tuned for NVIDIA RTX 3090 / 24 GB VRAM — retune in model_config.json if you
+# run a different GPU (open-source / smaller cards usually need a lower num_ctx).
 HERETIC_PREFERRED_NUM_CTX = 32768
 DEFAULT_OUTPUT_RESERVE_TOKENS = 4096
 

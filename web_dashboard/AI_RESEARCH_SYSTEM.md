@@ -334,6 +334,15 @@ Higher `num_ctx` does **not** reliably upgrade an already-warm smaller runner.
 
 ### Picking `num_ctx` on a shared GPU (ts-desktop RTX 3090)
 
+**Hardware baseline:** the shipped `num_ctx` values for `qwen3.6:27b-heretic`
+(32k) are tuned for an **NVIDIA RTX 3090 with 24 GB VRAM**, often shared with
+Goose / other local agents. This project is open source — if you run a
+different GPU (less VRAM, multi-GPU, or a dedicated box), **lower or raise
+`num_ctx` in `model_config.json`** (or via `model_<name>_num_ctx` /
+`OLLAMA_NUM_CTX_*`) to fit weights + KV cache without CPU spill or OOM. 32k on
+a 12–16 GB card with a 27B quant will usually not fit; start smaller and watch
+`ollama ps` / VRAM.
+
 `num_ctx` × model size mostly determines KV-cache VRAM. The NVIDIA host
 (`OLLAMA_BASE_URL_NVIDIA` / ts-desktop) is shared with **Goose** and other
 local agents. Context is fixed at model *load* (`llama-server -c N`), not per
@@ -342,7 +351,7 @@ request — the first client to load a model name pins the runner until unload /
 
 | Model | `num_ctx` | Why |
 |---|---|---|
-| `qwen3.6:27b-heretic` | `32768` | Aligns with heretic Modelfile + Goose. **Was `20000`** — that left warm `-c 20000` runners and starved other clients of a ~28–32k window. |
+| `qwen3.6:27b-heretic` | `32768` | Tuned for **RTX 3090 / 24 GB**; aligns with heretic Modelfile + Goose. **Was `20000`** — that left warm `-c 20000` runners and starved other clients of a ~28–32k window. |
 
 Do **not** reintroduce `20000` for heretic on this host. Prefer sticky 32k so
 Goose and this app agree.

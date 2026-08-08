@@ -79,7 +79,7 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Sticky num_ctx 32768 aligns with heretic Modelfile + Goose on the shared GPU (was 20000; that left warm -c 20000 runners). Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt."
+            "desc": "Flagship Ollama model on the desktop RTX 3090 / 24GB VRAM (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Sticky num_ctx 32768 is tuned for that card + heretic Modelfile/Goose on the shared GPU (was 20000; that left warm -c 20000 runners). Open-source / other GPUs: retune num_ctx for your VRAM. Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt."
         },
         "batiai/qwen3.6-27b:iq3": {
             "num_ctx": 32768,
@@ -89,7 +89,7 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same sticky 32k ctx / chat predict policy as heretic so NVIDIA failover does not re-pin a 20k runner."
+            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same sticky 32k ctx / chat predict policy as heretic so NVIDIA failover does not re-pin a 20k runner. Retune num_ctx if your GPU is not 24GB-class."
         },
         "phi4:14b": {
             "num_ctx": 8192,
