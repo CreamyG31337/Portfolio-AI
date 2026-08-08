@@ -74,6 +74,27 @@ SUMMARY_CONTEXT_MARGIN = 256
 CHAT_MIN_PREDICT = 512
 CHAT_CONTEXT_MARGIN = 512
 
+try:
+    from ollama_ctx import (
+        apply_num_ctx_to_options,
+        clear_sticky_num_ctx,
+        compact_messages_to_budget,
+        compute_prompt_token_budget,
+        configured_num_ctx_from_env,
+        log_ollama_ctx_telemetry,
+        resolve_sticky_num_ctx,
+    )
+except ImportError:  # pragma: no cover - package layout / scripts
+    from web_dashboard.ollama_ctx import (  # type: ignore[no-redef]
+        apply_num_ctx_to_options,
+        clear_sticky_num_ctx,
+        compact_messages_to_budget,
+        compute_prompt_token_budget,
+        configured_num_ctx_from_env,
+        log_ollama_ctx_telemetry,
+        resolve_sticky_num_ctx,
+    )
+
 
 def _estimate_message_tokens(messages: List[Dict[str, Any]]) -> int:
     """Rough token estimate for chat messages (chars/4). Good enough for ctx fitting."""
@@ -388,20 +409,21 @@ class OllamaClient:
         Resolution order for each value:
           1. ``model_config.json`` (exact match on ``model_name`` or
              ``default_config``)
-          2. ``system_settings`` override row, key
+          2. Optional env: ``OLLAMA_NUM_CTX_<model>`` or ``OLLAMA_NUM_CTX``
+             (see ``ollama_ctx.configured_num_ctx_from_env``)
+          3. ``system_settings`` override row, key
              ``model_<model_name>_<param>`` (temperature, num_ctx, num_predict,
              base_url, fallback_base_url, streaming_timeout, …)
-          3. Env-var indirection: ``*_env`` keys (e.g. ``base_url_env``) are
+          4. Env-var indirection: ``*_env`` keys (e.g. ``base_url_env``) are
              popped and resolved through ``_pop_env_url`` against env vars.
 
-        This is the *single* source of truth for ``num_ctx`` etc. — callers
-        of ``query_ollama`` / ``generate_summary`` do not accept per-call
-        ``num_ctx`` overrides on purpose. Changing ``num_ctx`` between
-        requests forces Ollama to evict and reload the model weights
-        (~20–60s on a 24GB-class GPU), so the only supported way to change it
-        is to edit the config above and accept the single reload. See
-        ``web_dashboard/AI_RESEARCH_SYSTEM.md`` ("Ollama Operational Notes")
-        for the full rationale.
+        At request time, ``num_ctx`` is further pinned by process-sticky policy
+        (:func:`ollama_ctx.resolve_sticky_num_ctx`) so we never vary ctx across
+        jobs and force Ollama reloads. Callers of ``query_ollama`` /
+        ``generate_summary`` do not accept per-call ``num_ctx`` overrides.
+        To change ctx intentionally: edit config, call
+        :meth:`unload_model` (``keep_alive: 0``), then clear sticky. See
+        ``web_dashboard/AI_RESEARCH_SYSTEM.md`` ("Ollama Operational Notes").
 
         Args:
             model_name: Name of the model
@@ -420,6 +442,10 @@ class OllamaClient:
 
         _pop_env_url(settings, "base_url_env", "base_url")
         _pop_env_url(settings, "fallback_base_url_env", "fallback_base_url")
+
+        env_ctx = configured_num_ctx_from_env(model_name)
+        if env_ctx is not None:
+            settings["num_ctx"] = env_ctx
         
         # Check database for admin overrides
         try:
@@ -463,6 +489,46 @@ class OllamaClient:
             logger.debug(f"Could not load database overrides for {model_name}: {e}")
         
         return settings
+
+    def effective_num_ctx(self, model_name: str) -> int:
+        """Configured num_ctx after sticky pin (process lifetime, per model)."""
+        configured = int(self.get_model_settings(model_name).get("num_ctx", 4096))
+        return resolve_sticky_num_ctx(model_name, configured)
+
+    def unload_model(self, model: str, *, base_url: Optional[str] = None) -> bool:
+        """Unload a model so the next request can load at a new sticky num_ctx.
+
+        Sends ``POST /api/generate`` with ``keep_alive: 0`` (Ollama unload), then
+        clears process sticky ctx for ``model``. Higher num_ctx does not reliably
+        upgrade an already-warm smaller runner without this step.
+
+        Returns:
+            True if the unload request succeeded (HTTP 2xx).
+        """
+        model = (model or "").strip()
+        if not model:
+            return False
+        primary, _fallback = self._resolve_urls(model)
+        target = (base_url or primary or "").rstrip("/")
+        if not target:
+            logger.warning("[Ollama] unload_model: no base URL for model=%s", model)
+            return False
+        payload = {
+            "model": model,
+            "prompt": "",
+            "stream": False,
+            "keep_alive": 0,
+        }
+        try:
+            url = f"{target}/api/generate"
+            logger.info("[Ollama] unloading model=%s via keep_alive=0 at %s", model, target)
+            resp = self.session.post(url, json=payload, timeout=min(60, self.timeout))
+            resp.raise_for_status()
+            clear_sticky_num_ctx(model)
+            return True
+        except Exception as e:
+            logger.warning("[Ollama] unload_model failed model=%s: %s", model, e)
+            return False
         
     def get_model_description(self, model_name: str) -> str:
         """Get description for a model.
@@ -611,6 +677,8 @@ class OllamaClient:
         include_thinking: bool,
         request_start_time: float,
         progress_callback: Optional[Callable[[int, int], None]] = None,
+        model: Optional[str] = None,
+        requested_num_ctx: Optional[int] = None,
     ) -> Generator[str, None, None]:
         """Stream ``/api/generate`` lines with idle-based timeout and optional thinking chunks."""
         last_chunk_at = time.monotonic()
@@ -689,6 +757,12 @@ class OllamaClient:
                                     yield merged
                             if progress_callback:
                                 progress_callback(tokens_received, 100)
+                            if model is not None and requested_num_ctx is not None:
+                                log_ollama_ctx_telemetry(
+                                    model=model,
+                                    requested_num_ctx=int(requested_num_ctx),
+                                    response_data=chunk_data,
+                                )
                             elapsed = time.time() - request_start_time
                             logger.info(f"[OK] Ollama streaming completed in {elapsed:.2f}s")
                             break
@@ -709,6 +783,8 @@ class OllamaClient:
         idle_timeout_seconds: float,
         include_thinking: bool,
         request_start_time: float,
+        model: Optional[str] = None,
+        requested_num_ctx: Optional[int] = None,
     ) -> Generator[str, None, None]:
         """Stream ``/api/chat`` lines with idle-based timeout and optional thinking content."""
         last_chunk_at = time.monotonic()
@@ -786,6 +862,12 @@ class OllamaClient:
                                 yield (
                                     "\n\n*(Stopped: model hit max output tokens. "
                                     "Partial reply above — raise num_predict or ask a shorter question.)*"
+                                )
+                            if model is not None and requested_num_ctx is not None:
+                                log_ollama_ctx_telemetry(
+                                    model=model,
+                                    requested_num_ctx=int(requested_num_ctx),
+                                    response_data=chunk_data,
                                 )
                             elapsed = time.time() - request_start_time
                             logger.info(f"[OK] Ollama chat streaming completed in {elapsed:.2f}s reason={done_reason or 'n/a'}")
@@ -1020,23 +1102,25 @@ class OllamaClient:
         
         # Use provided values, or model specific defaults, or global defaults.
         # num_ctx is intentionally NOT a parameter — it always comes from
-        # model_config.json + system_settings to avoid Ollama model reloads.
+        # model_config.json + system_settings, then process-sticky pin
+        # (ollama_ctx.resolve_sticky_num_ctx) to avoid Ollama model reloads.
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
-        effective_ctx = model_settings.get('num_ctx', 4096)
+        configured_ctx = int(model_settings.get('num_ctx', 4096))
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
         
         # Prepare request payload
+        options: Dict[str, Any] = {
+            "temperature": effective_temp,
+            "num_predict": effective_max_tokens,
+        }
+        effective_ctx = apply_num_ctx_to_options(options, model, configured_ctx)
         payload = {
             "model": model,
             "prompt": full_prompt,
             "stream": stream,
-            "options": {
-                "temperature": effective_temp,
-                "num_predict": effective_max_tokens,
-                "num_ctx": effective_ctx
-            }
+            "options": options,
         }
         
         # Add system prompt if provided
@@ -1070,11 +1154,18 @@ class OllamaClient:
                     idle_timeout_seconds=effective_idle,
                     include_thinking=include_thinking,
                     request_start_time=request_start_time,
+                    model=model,
+                    requested_num_ctx=effective_ctx,
                 )
             else:
                 # Non-streaming response
                 data = response.json()
                 elapsed = time.time() - request_start_time
+                log_ollama_ctx_telemetry(
+                    model=model,
+                    requested_num_ctx=effective_ctx,
+                    response_data=data if isinstance(data, dict) else None,
+                )
                 logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
                 yield coalesce_ollama_generate_response_text(data)
                 _release_ollama_response_slot(response)
@@ -1492,12 +1583,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
         # Get model settings. num_ctx is intentionally the single source of truth
-        # from model_config.json + system_settings overrides — per-call overrides
-        # were removed because changing num_ctx forces Ollama to evict and reload
-        # the model, which is expensive and almost never what callers actually want.
+        # from model_config.json + env + system_settings, then process-sticky pin.
+        # Per-call overrides were removed because changing num_ctx forces Ollama
+        # to evict and reload the model.
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get('temperature', 0.3)
-        effective_ctx = model_settings.get('num_ctx', 4096)
+        configured_ctx = int(model_settings.get('num_ctx', 4096))
+        effective_ctx = resolve_sticky_num_ctx(model, configured_ctx)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -1526,16 +1618,17 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             )
 
         # Prepare request payload
+        options: Dict[str, Any] = {
+            "temperature": effective_temp,
+            "num_predict": effective_max_tokens,
+        }
+        apply_num_ctx_to_options(options, model, configured_ctx)
         payload = {
             "model": model,
             "prompt": safe_prompt_text,
             "stream": False,
             "system": system_prompt,
-            "options": {
-                "temperature": effective_temp,
-                "num_predict": effective_max_tokens,
-                "num_ctx": effective_ctx
-            }
+            "options": options,
         }
         self._apply_think_to_payload(payload, model_settings)
         
@@ -1548,6 +1641,11 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             logger.info(f"✅ Summary generated in {elapsed_time:.2f}s")
             
             data = response.json()
+            log_ollama_ctx_telemetry(
+                model=model,
+                requested_num_ctx=effective_ctx,
+                response_data=data if isinstance(data, dict) else None,
+            )
             raw_response = coalesce_ollama_generate_response_text(data).strip()
 
             if not raw_response:
@@ -1639,11 +1737,12 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
         system_prompt = get_summary_system_prompt(article_text=text, article_type=article_type)
 
-        # See note in generate_summary(): num_ctx comes from model_config.json +
-        # system_settings only; per-call overrides were removed to avoid model reloads.
+        # See note in generate_summary(): num_ctx comes from config + sticky pin;
+        # per-call overrides were removed to avoid model reloads.
         model_settings = self.get_model_settings(model)
         effective_temp = model_settings.get("temperature", 0.3)
-        effective_ctx = model_settings.get("num_ctx", 4096)
+        configured_ctx = int(model_settings.get("num_ctx", 4096))
+        effective_ctx = resolve_sticky_num_ctx(model, configured_ctx)
         requested_max_tokens = model_settings.get("num_predict", SUMMARY_DEFAULT_PREDICT)
 
         # Warn if skill-enhanced prompt + article + output may overflow context
@@ -1709,6 +1808,8 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 include_thinking=False,
                 request_start_time=start_time,
                 progress_callback=progress_callback,
+                model=model,
+                requested_num_ctx=effective_ctx,
             ):
                 _accumulate_chunk(piece)
             
@@ -1860,8 +1961,18 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         # Use provided values, or model specific defaults, or global defaults.
         # num_ctx is intentionally NOT a parameter (see query_ollama for rationale).
         effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
-        effective_ctx = model_settings.get('num_ctx', 4096)
+        configured_ctx = int(model_settings.get('num_ctx', 4096))
+        effective_ctx = resolve_sticky_num_ctx(str(model), configured_ctx)
         requested_predict = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
+        try:
+            from ollama_ctx import DEFAULT_OUTPUT_RESERVE_TOKENS as _out_reserve
+        except ImportError:
+            _out_reserve = 4096
+        budget = compute_prompt_token_budget(
+            effective_ctx,
+            reserved_for_output=max(CHAT_MIN_PREDICT, int(requested_predict or _out_reserve)),
+        )
+        messages = compact_messages_to_budget(messages, budget)
         prompt_tokens_est = _estimate_message_tokens(messages)
         effective_max_tokens = _fit_chat_num_predict(
             model=str(model),
@@ -1872,15 +1983,16 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else float(streaming_timeout)
         
+        options: Dict[str, Any] = {
+            "temperature": effective_temp,
+            "num_predict": effective_max_tokens,
+        }
+        apply_num_ctx_to_options(options, str(model), configured_ctx)
         payload = {
             "model": model,
             "messages": messages,
             "stream": stream,
-            "options": {
-                "temperature": effective_temp,
-                "num_predict": effective_max_tokens,
-                "num_ctx": effective_ctx
-            }
+            "options": options,
         }
         self._apply_think_to_payload(payload, model_settings)
 
@@ -1894,9 +2006,16 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                     idle_timeout_seconds=effective_idle,
                     include_thinking=include_thinking,
                     request_start_time=request_start_time,
+                    model=str(model),
+                    requested_num_ctx=effective_ctx,
                 )
             else:
                 data = response.json()
+                log_ollama_ctx_telemetry(
+                    model=str(model),
+                    requested_num_ctx=effective_ctx,
+                    response_data=data if isinstance(data, dict) else None,
+                )
                 msg = data.get("message") or {}
                 thinking = msg.get("thinking") or msg.get("think")
                 if thinking:

@@ -72,24 +72,24 @@
             "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. Hybrid-Mamba => low KV growth, 39k ctx fits with headroom. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
         },
         "qwen3.6:27b-heretic": {
-            "num_ctx": 20000,
+            "num_ctx": 32768,
             "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt so long answers are not cut early when the window has room."
+            "desc": "Flagship Ollama model on the desktop RTX 3090 (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Sticky num_ctx 32768 aligns with heretic Modelfile + Goose on the shared GPU (was 20000; that left warm -c 20000 runners). Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt."
         },
         "batiai/qwen3.6-27b:iq3": {
-            "num_ctx": 20000,
+            "num_ctx": 32768,
             "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same chat predict/ctx-fit policy as heretic."
+            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same sticky 32k ctx / chat predict policy as heretic so NVIDIA failover does not re-pin a 20k runner."
         },
         "phi4:14b": {
             "num_ctx": 8192,

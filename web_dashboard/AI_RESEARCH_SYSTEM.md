@@ -300,10 +300,14 @@ the primary and queue there. See the `TODO(ollama-hosts)` block in
 
 ### `num_ctx` is configured, not passed per-call
 
-The `num_ctx` value Ollama sees is resolved in exactly one place:
+The `num_ctx` value Ollama sees is resolved in one pipeline:
 
 ```
-model_config.json  →  system_settings override (model_<name>_num_ctx)  →  request
+model_config.json
+  → optional env OLLAMA_NUM_CTX_<model> / OLLAMA_NUM_CTX
+  → system_settings override (model_<name>_num_ctx)
+  → process-sticky pin (ollama_ctx.resolve_sticky_num_ctx)
+  → request options.num_ctx
 ```
 
 There is intentionally **no `num_ctx` / `num_ctx_override` parameter** on any
@@ -317,23 +321,49 @@ reload the model weights (typically 20–60s on a 24GB-class GPU), which:
   gone anyway because the ctx changed);
 - is almost never what callers actually want.
 
-If you genuinely need a different `num_ctx`, edit the config and accept the
-single reload. Per-call overrides are gone for good.
+**Sticky load policy:** the first effective `num_ctx` for a model name in this
+process is pinned for the life of the process. Config drift mid-process is
+logged and ignored so we do not churn reloads. To change intentionally:
 
-### Picking `num_ctx` on a shared GPU
+1. Edit `model_config.json` / system_settings / env.
+2. Call `OllamaClient.unload_model(name)` (`POST /api/generate` with
+   `keep_alive: 0`) — clears sticky and unloads the runner.
+3. Next request loads once at the new size.
 
-`num_ctx` × model size mostly determines KV-cache VRAM. On the
-single-3090 NVIDIA host this box also runs Plex transcoding, the IDE, browser,
-etc., so we deliberately undersize `num_ctx`:
+Higher `num_ctx` does **not** reliably upgrade an already-warm smaller runner.
+
+### Picking `num_ctx` on a shared GPU (ts-desktop RTX 3090)
+
+`num_ctx` × model size mostly determines KV-cache VRAM. The NVIDIA host
+(`OLLAMA_BASE_URL_NVIDIA` / ts-desktop) is shared with **Goose** and other
+local agents. Context is fixed at model *load* (`llama-server -c N`), not per
+request — the first client to load a model name pins the runner until unload /
+`keep_alive` expiry (~7m on that box).
 
 | Model | `num_ctx` | Why |
 |---|---|---|
-| `qwen3.6:27b-heretic` | `20000` | Leaves ~13k tokens slack over the ~6.5k-token worst-case summary input while keeping KV ≈ 2.5 GB so Plex/IDE can coexist. |
+| `qwen3.6:27b-heretic` | `32768` | Aligns with heretic Modelfile + Goose. **Was `20000`** — that left warm `-c 20000` runners and starved other clients of a ~28–32k window. |
 
-Powers-of-two are a llama.cpp lore thing; in practice round numbers like 20000
-work fine — there is no measurable benefit to 16384 or 32768 specifically.
-Operators with dedicated VRAM can raise the value via the
-`model_qwen3.6:27b-heretic_num_ctx` row in `system_settings` without redeploying.
+Do **not** reintroduce `20000` for heretic on this host. Prefer sticky 32k so
+Goose and this app agree.
+
+**Silent truncation:** past the *real* window, Ollama truncates from the
+**front** (system/tool preamble dies first) → empty/broken tool use, not a clean
+error. `/api/show` and `/api/ps` `context_length` often echo the configured /
+requested size and can lie vs the live slot. Prefer response
+`prompt_eval_count` (logged via `ollama_ctx.log_ollama_ctx_telemetry`) as a soft
+ceiling for that turn.
+
+**Client budget scaffold:** chat paths reserve output tokens
+(`compute_prompt_token_budget`) and drop oldest turns
+(`compact_messages_to_budget`) before send. This is not Goose compaction — it
+is our own lightweight guard.
+
+Operators can still override without redeploy via
+`model_qwen3.6:27b-heretic_num_ctx` in `system_settings` (then unload + clear
+sticky so the new value loads). Host-side `OLLAMA_CONTEXT_LENGTH` in Windows
+HKLM is a separate ops concern and can clamp below Modelfile/`num_ctx` until
+Ollama is restarted with the env cleared.
 
 ### Summarizer input pipeline
 
@@ -456,11 +486,18 @@ scheduler.add_job(
   it will expire.
 
 **"Changed `num_ctx` in `model_config.json` but the new value isn't being used"**
-- The model has to be unloaded for the new ctx to take effect. Either wait for
-  `keep_alive` to expire, or `ollama stop <model>` then issue any request.
+- The model has to be unloaded for the new ctx to take effect. Prefer
+  `OllamaClient.unload_model("<model>")` (`keep_alive: 0`), or wait for
+  `keep_alive` to expire / `ollama stop <model>`, then issue any request.
+- Process sticky pin: if this Python process already sent a different
+  `num_ctx`, unload clears sticky; otherwise the old value is retained.
 - Also check `system_settings` — `model_<name>_num_ctx` there overrides
   `model_config.json`. The admin UI (AI Settings page) is the easiest place to
   see the effective value.
+- Host `OLLAMA_CONTEXT_LENGTH` (e.g. Windows HKLM) can clamp below Modelfile /
+  request size until Ollama is restarted with that env cleared (ops track).
+- Verify on the Ollama host log that `-c 32768` dominates for heretic, not
+  `-c 20000` (legacy pin removed from `model_config.json`).
 
 ## Future Enhancements
 
