@@ -478,109 +478,165 @@ def get_fund_thesis_data_flask(fund_name: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-@cache_data(ttl=300)  # Cache for 5 minutes - same as positions data
-def calculate_performance_metrics_flask(fund: Optional[str] = None) -> Dict[str, Any]:
-    """Calculate key performance metrics (Flask version)
+def calculate_performance_metrics_flask(
+    fund: Optional[str] = None,
+    display_currency: Optional[str] = None,
+    _cache_version: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Calculate key performance metrics aligned with dashboard summary KPIs.
 
-    Cached for 5 minutes to avoid recalculating on every dashboard load.
-    Returns dict with performance metrics calculated from portfolio data.
+    Uses the same FX conversion + cash inclusion as ``compute_core_summary_metrics``
+    / ``get_dashboard_summary`` so AI Assistant context matches the main dashboard.
+    Cached for 5 minutes per user/fund/currency.
     """
+    if display_currency is None:
+        try:
+            from user_preferences import get_user_currency
+
+            display_currency = get_user_currency() or "CAD"
+        except Exception:
+            display_currency = "CAD"
+
+    user_id = get_flask_cache_scope_id()
+    return _calculate_performance_metrics_flask_cached(
+        fund=fund,
+        display_currency=str(display_currency).upper(),
+        user_id=user_id,
+        _cache_version=_cache_version,
+    )
+
+
+@cache_data(ttl=300)  # Cache for 5 minutes - same as positions data
+def _calculate_performance_metrics_flask_cached(
+    fund: Optional[str] = None,
+    display_currency: str = "CAD",
+    user_id: Optional[str] = None,
+    _cache_version: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Cached body for ``calculate_performance_metrics_flask`` (user-scoped key)."""
+    empty: Dict[str, Any] = {
+        "peak_date": None,
+        "peak_gain_pct": 0.0,
+        "max_drawdown_pct": 0.0,
+        "max_drawdown_date": None,
+        "total_return_pct": 0.0,
+        "current_value": 0.0,
+        "total_invested": 0.0,
+        "unrealized_pnl": 0.0,
+        "cash_balance": 0.0,
+        "display_currency": display_currency,
+        "holdings_count": 0,
+    }
     try:
-        # Get current positions to calculate current value
+        from portfolio_summary_math import compute_core_summary_metrics
+
         positions_df = get_current_positions_flask(fund)
-        
-        if positions_df.empty:
-            logger.warning(f"No positions found for fund: {fund}")
-            return {
-                'peak_date': None,
-                'peak_gain_pct': 0.0,
-                'max_drawdown_pct': 0.0,
-                'max_drawdown_date': None,
-                'total_return_pct': 0.0,
-                'current_value': 0.0,
-                'total_invested': 0.0
-            }
-        
-        # Calculate current value and total invested from positions (Vectorized)
-        
-        # Ensure Series handling for missing values/columns
-        # Using get() on DataFrame returns None if column missing, need fallback
-        shares = positions_df.get('shares', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
-
-        # Determine price column to use
-        if 'current_price' in positions_df.columns:
-            current_price_series = positions_df['current_price']
-        elif 'price' in positions_df.columns:
-            current_price_series = positions_df['price']
+        if positions_df is None:
+            positions_df = pd.DataFrame()
         else:
-            current_price_series = pd.Series(0, index=positions_df.index)
+            positions_df = positions_df.copy()
 
-        current_price = current_price_series.fillna(0).astype(float)
+        cash_balances = get_cash_balances_flask(fund) or {}
 
-        # Market value handling
-        market_value = positions_df.get('market_value', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
+        if positions_df.empty and not any(float(v or 0) > 0 for v in cash_balances.values()):
+            logger.warning(f"No positions or cash found for fund: {fund}")
+            return empty
 
-        # Vectorized calculation: Use market_value if available, else shares * price
-        # Using numpy.where is faster than Series.where or apply
-        calculated_value = shares * current_price
+        if not positions_df.empty:
+            if "currency" not in positions_df.columns:
+                positions_df["currency"] = "CAD"
 
-        # Note: If market_value is exactly 0, fallback to calculation (matches original logic)
-        # Original: if position_value == 0: position_value = shares * current_price
-        final_values = np.where(market_value != 0, market_value, calculated_value)
+            shares = (
+                positions_df.get("shares", pd.Series(0, index=positions_df.index))
+                .fillna(0)
+                .astype(float)
+            )
+            if "current_price" in positions_df.columns:
+                current_price_series = positions_df["current_price"]
+            elif "price" in positions_df.columns:
+                current_price_series = positions_df["price"]
+            else:
+                current_price_series = pd.Series(0, index=positions_df.index)
+            current_price = current_price_series.fillna(0).astype(float)
 
-        current_value = float(final_values.sum())
+            market_value = (
+                positions_df.get("market_value", pd.Series(0, index=positions_df.index))
+                .fillna(0)
+                .astype(float)
+            )
+            calculated_value = shares * current_price
+            # If market_value is exactly 0, fallback to shares * price (legacy behavior)
+            positions_df["market_value"] = np.where(
+                market_value != 0, market_value, calculated_value
+            )
 
-        # Cost basis handling
-        cost_basis = positions_df.get('cost_basis', pd.Series(0, index=positions_df.index)).fillna(0).astype(float)
-        total_cost = float(cost_basis.sum())
-        
-        # Calculate total return percentage
-        total_return_pct = ((current_value - total_cost) / total_cost * 100) if total_cost > 0 else 0.0
-        
-        # Get portfolio value over time for peak/drawdown calculation
-        portfolio_df = calculate_portfolio_value_over_time_flask(fund, days=365)
-        
+            if "unrealized_pnl" not in positions_df.columns:
+                cost_basis = (
+                    positions_df.get("cost_basis", pd.Series(0, index=positions_df.index))
+                    .fillna(0)
+                    .astype(float)
+                )
+                positions_df["unrealized_pnl"] = (
+                    positions_df["market_value"].astype(float) - cost_basis
+                )
+
+        all_currencies: set[str] = set()
+        if not positions_df.empty and "currency" in positions_df.columns:
+            all_currencies.update(
+                positions_df["currency"].fillna("CAD").astype(str).str.upper().unique().tolist()
+            )
+        all_currencies.update(str(c).upper() for c in cash_balances.keys())
+        rate_map = fetch_latest_rates_bulk_flask(list(all_currencies), display_currency)
+
+        core = compute_core_summary_metrics(
+            positions_df, cash_balances, rate_map, display_currency
+        )
+        total_value = float(core["total_value"])
+        cash_balance = float(core["cash_balance"])
+        unrealized_pnl = float(core["unrealized_pnl"])
+        total_return_pct = float(core["unrealized_pnl_pct"])
+        # FX-adjusted cost basis of positions (excludes cash)
+        total_invested = (total_value - cash_balance) - unrealized_pnl
+
+        portfolio_df = calculate_portfolio_value_over_time_flask(
+            fund, days=365, display_currency=display_currency
+        )
+
         peak_date = None
         peak_gain_pct = 0.0
         max_drawdown_pct = 0.0
         max_drawdown_date = None
-        
-        if not portfolio_df.empty and 'performance_pct' in portfolio_df.columns:
-            # Find peak gain
-            max_idx = portfolio_df['performance_pct'].idxmax()
-            peak_gain_pct = float(portfolio_df.loc[max_idx, 'performance_pct'])
-            peak_date = portfolio_df.loc[max_idx, 'date'].strftime('%Y-%m-%d')
-            
-            # Calculate running maximum for drawdown
-            portfolio_df['cummax'] = portfolio_df['performance_pct'].cummax()
-            portfolio_df['drawdown'] = portfolio_df['performance_pct'] - portfolio_df['cummax']
-            
-            # Find max drawdown
-            min_idx = portfolio_df['drawdown'].idxmin()
-            max_drawdown_pct = float(portfolio_df.loc[min_idx, 'drawdown'])
-            max_drawdown_date = portfolio_df.loc[min_idx, 'date'].strftime('%Y-%m-%d')
-        
+
+        if not portfolio_df.empty and "performance_pct" in portfolio_df.columns:
+            max_idx = portfolio_df["performance_pct"].idxmax()
+            peak_gain_pct = float(portfolio_df.loc[max_idx, "performance_pct"])
+            peak_date = portfolio_df.loc[max_idx, "date"].strftime("%Y-%m-%d")
+
+            portfolio_df = portfolio_df.copy()
+            portfolio_df["cummax"] = portfolio_df["performance_pct"].cummax()
+            portfolio_df["drawdown"] = portfolio_df["performance_pct"] - portfolio_df["cummax"]
+
+            min_idx = portfolio_df["drawdown"].idxmin()
+            max_drawdown_pct = float(portfolio_df.loc[min_idx, "drawdown"])
+            max_drawdown_date = portfolio_df.loc[min_idx, "date"].strftime("%Y-%m-%d")
+
         return {
-            'peak_date': peak_date,
-            'peak_gain_pct': peak_gain_pct,
-            'max_drawdown_pct': max_drawdown_pct,
-            'max_drawdown_date': max_drawdown_date,
-            'total_return_pct': total_return_pct,
-            'current_value': current_value,
-            'total_invested': total_cost
+            "peak_date": peak_date,
+            "peak_gain_pct": peak_gain_pct,
+            "max_drawdown_pct": max_drawdown_pct,
+            "max_drawdown_date": max_drawdown_date,
+            "total_return_pct": total_return_pct,
+            "current_value": total_value,
+            "total_invested": float(total_invested),
+            "unrealized_pnl": unrealized_pnl,
+            "cash_balance": cash_balance,
+            "display_currency": display_currency,
+            "holdings_count": int(core["holdings_count"]),
         }
-        
+
     except Exception as e:
         logger.error(f"Error calculating performance metrics: {e}", exc_info=True)
-        return {
-            'peak_date': None,
-            'peak_gain_pct': 0.0,
-            'max_drawdown_pct': 0.0,
-            'max_drawdown_date': None,
-            'total_return_pct': 0.0,
-            'current_value': 0.0,
-            'total_invested': 0.0
-        }
+        return empty
 
 
 @cache_data(ttl=300, skip_cache_if=skip_cache_if_empty_dataframe)

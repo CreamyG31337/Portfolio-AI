@@ -1275,9 +1275,13 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
                     debug_file.flush()
             pos_dict = position.to_dict()
 
-            # Calculate position weight
+            # Calculate position weight in CAD terms (total_portfolio_value is CAD-equivalent)
             if total_portfolio_value > 0 and position.market_value:
-                weight_percentage = (position.market_value / total_portfolio_value) * 100
+                if position.currency == 'USD':
+                    market_value_cad = convert_usd_to_cad(position.market_value, exchange_rates)
+                else:
+                    market_value_cad = position.market_value
+                weight_percentage = (market_value_cad / total_portfolio_value) * 100
                 pos_dict['position_weight'] = f"{weight_percentage:.1f}%"
             else:
                 pos_dict['position_weight'] = "N/A"
@@ -1876,13 +1880,15 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
             # Convert all Decimal values to float for JSON serialization
             # Note: Floats introduce potential precision loss but are required for JSON compatibility
             # All calculations are done with Decimals above this point for accuracy
+            # Use FX-adjusted unrealized from PositionCalculator (not raw PnLCalculator sums)
+            unrealized_pnl_cad = portfolio_metrics.get('total_unrealized_pnl', Decimal('0'))
             stats_data = {
                 'total_contributions': float(total_contributions),
                 'total_cost_basis': float(portfolio_metrics.get('total_cost_basis', Decimal('0'))),
                 'total_current_value': float(total_portfolio_value),
-                'total_pnl': float(pnl_metrics.get('total_absolute_pnl', Decimal('0'))),
+                'total_pnl': float(unrealized_pnl_cad),
                 'total_realized_pnl': float(total_realized_pnl),
-                'total_portfolio_pnl': float(pnl_metrics.get('total_absolute_pnl', Decimal('0')) + total_realized_pnl)
+                'total_portfolio_pnl': float(unrealized_pnl_cad + total_realized_pnl)
             }
 
             # Load cash balances and compute CAD-equivalent summary
@@ -1980,7 +1986,7 @@ def run_portfolio_workflow(args: argparse.Namespace, settings: Settings, reposit
             # All financial calculations above use Decimal for accuracy, only converted here for storage
             summary_data = {
                 'portfolio_value': float(net_portfolio_value),
-                'total_pnl': float(pnl_metrics.get('total_absolute_pnl', Decimal('0'))),
+                'total_pnl': float(unrealized_pnl_cad),
                 'cash_balance': float(cash_balance),
                 'cad_cash': float(cad_cash),
                 'usd_cash': float(usd_cash),

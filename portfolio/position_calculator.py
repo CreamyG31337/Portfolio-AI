@@ -332,10 +332,15 @@ class PositionCalculator:
             if total_cost_basis_cad > 0:
                 total_unrealized_pnl_percentage = (total_unrealized_pnl_cad / total_cost_basis_cad * Decimal('100'))
             
-            # Calculate position weights
-            for pos_metrics in position_metrics:
-                if pos_metrics['market_value'] and total_market_value_cad > 0:
-                    weight = (pos_metrics['market_value'] / total_market_value_cad * Decimal('100'))
+            # Calculate position weights (convert each position to CAD before dividing)
+            for i, pos_metrics in enumerate(position_metrics):
+                position = snapshot.positions[i] if i < len(snapshot.positions) else None
+                if pos_metrics['market_value'] and total_market_value_cad > 0 and position is not None:
+                    if position.currency == 'USD':
+                        mv_cad = convert_usd_to_cad(pos_metrics['market_value'], exchange_rates)
+                    else:
+                        mv_cad = pos_metrics['market_value']
+                    weight = (mv_cad / total_market_value_cad * Decimal('100'))
                     # Convert Decimal to float for JSON serialization
                     # WARNING: Float conversion may introduce precision loss but required for JSON compatibility
                     pos_metrics['portfolio_weight_percentage'] = float(weight.quantize(Decimal('0.1')))

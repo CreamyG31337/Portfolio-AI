@@ -799,22 +799,32 @@ def format_performance_metrics(metrics: Dict[str, Any], portfolio_df: Optional[p
         return "Performance Metrics: No metrics available."
     
     lines = ["Performance Metrics:", ""]
-    
-    # Key metrics
-    if 'total_return_pct' in metrics:
+    ccy = str(metrics.get("display_currency") or "").upper()
+    ccy_suffix = f" {ccy}" if ccy else ""
+
+    # Align labels with dashboard summary KPIs (FX + cash included in total value)
+    if "current_value" in metrics:
+        lines.append(f"Total Value: ${metrics['current_value']:,.2f}{ccy_suffix}")
+
+    if "total_invested" in metrics:
+        lines.append(f"Total Invested: ${metrics['total_invested']:,.2f}{ccy_suffix}")
+
+    if "unrealized_pnl" in metrics:
+        lines.append(f"Unrealized P&L: ${metrics['unrealized_pnl']:,.2f}{ccy_suffix}")
+
+    if "total_return_pct" in metrics:
         lines.append(f"Total Return: {metrics['total_return_pct']:.2f}%")
-    
-    if 'current_value' in metrics:
-        lines.append(f"Current Value: ${metrics['current_value']:,.2f}")
-    
-    if 'total_invested' in metrics:
-        lines.append(f"Total Invested: ${metrics['total_invested']:,.2f}")
-    
-    if 'peak_gain_pct' in metrics and 'peak_date' in metrics:
+
+    if "cash_balance" in metrics:
+        lines.append(f"Cash Balance: ${metrics['cash_balance']:,.2f}{ccy_suffix}")
+
+    if metrics.get("peak_gain_pct") is not None and metrics.get("peak_date"):
         lines.append(f"Peak Gain: {metrics['peak_gain_pct']:.2f}% (on {metrics['peak_date']})")
-    
-    if 'max_drawdown_pct' in metrics and 'max_drawdown_date' in metrics:
-        lines.append(f"Max Drawdown: {metrics['max_drawdown_pct']:.2f}% (on {metrics['max_drawdown_date']})")
+
+    if metrics.get("max_drawdown_pct") is not None and metrics.get("max_drawdown_date"):
+        lines.append(
+            f"Max Drawdown: {metrics['max_drawdown_pct']:.2f}% (on {metrics['max_drawdown_date']})"
+        )
 
     return "\n".join(lines)
 

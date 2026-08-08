@@ -444,7 +444,7 @@ class PromptGenerator:
             cost_basis = stats_data.get('total_cost_basis', Decimal('0'))
             unrealized_pnl = stats_data.get('total_unrealized_pnl', Decimal('0'))
             
-            # Load cash balance
+            # Load cash balance in CAD-equivalent (same approach as trading_script)
             cash_balance = Decimal('0')
             cad_cash = None
             usd_cash = None
@@ -453,33 +453,25 @@ class PromptGenerator:
             estimated_fx_fee_total_cad = None
             
             try:
-                import json
-                cash_file = self.data_dir / "cash_balances.json"
-                if cash_file.exists():
-                    with open(cash_file, 'r') as f:
-                        cash_data = json.load(f)
-                        cad_cash = Decimal(str(cash_data.get('cad', 0)))
-                        usd_cash = Decimal(str(cash_data.get('usd', 0)))
-                        cash_balance = cad_cash + usd_cash
-                        
-                        # Get exchange rate and calculate FX fees
-                        if _HAS_DUAL_CURRENCY:
-                            try:
-                                from dual_currency import load_cash_balances
-                                _, _, usd_to_cad_rate = load_cash_balances(self.data_dir)
-                                if usd_cash and usd_to_cad_rate:
-                                    # Calculate estimated FX fee (1.5% on USD holdings)
-                                    # Compute CAD fee directly and round once to 2 decimals
-                                    estimated_fx_fee_total_cad = (
-                                        usd_cash * usd_to_cad_rate * Decimal('0.015')
-                                    ).quantize(Decimal('0.01'))
-                                    # USD fee for display/reference (keep as is, rounded separately)
-                                    estimated_fx_fee_total_usd = (
-                                        usd_cash * Decimal('0.015')
-                                    ).quantize(Decimal('0.01'))
-                            except Exception:
-                                pass
-            except Exception as e:
+                from financial.currency_handler import CurrencyHandler
+
+                handler = CurrencyHandler(Path(self.data_dir))
+                balances = handler.load_cash_balances()
+                cad_cash = balances.cad
+                usd_cash = balances.usd
+                usd_to_cad_rate = handler.get_exchange_rate("USD", "CAD")
+                # Never sum CAD+USD nominally — convert USD cash to CAD first
+                cash_balance = balances.total_cad_equivalent(usd_to_cad_rate)
+
+                if usd_cash and usd_to_cad_rate:
+                    # Estimated FX fee (1.5% on USD cash) for display/reference
+                    estimated_fx_fee_total_usd = (usd_cash * Decimal("0.015")).quantize(
+                        Decimal("0.01")
+                    )
+                    estimated_fx_fee_total_cad = (
+                        usd_cash * usd_to_cad_rate * Decimal("0.015")
+                    ).quantize(Decimal("0.01"))
+            except Exception:
                 pass  # Cash balances not available
             
             # Calculate currency breakdown
@@ -1056,15 +1048,20 @@ class PromptGenerator:
             
             llm_portfolio = pd.DataFrame(portfolio_data)
             
-            # Load cash balance
+            # Load cash balance (CAD-equivalent fallback for _format_cash_info)
             cash = 0.0
             try:
-                import json
-                cash_file = self.data_dir / "cash_balances.json"
-                if cash_file.exists():
-                    with open(cash_file, 'r') as f:
-                        cash_data = json.load(f)
-                        cash = cash_data.get('cad', 0) + cash_data.get('usd', 0)
+                from dual_currency import load_cash_balances
+
+                balances = load_cash_balances(self.data_dir)
+                # Prefer live rate via CurrencyHandler when available
+                try:
+                    from financial.currency_handler import CurrencyHandler
+
+                    rate = float(CurrencyHandler(Path(self.data_dir)).get_exchange_rate("USD", "CAD"))
+                except Exception:
+                    rate = 1.35
+                cash = float(balances.total_cad_equivalent(rate))
             except Exception:
                 cash = 0.0
                 
@@ -1314,15 +1311,19 @@ class PromptGenerator:
             
             llm_portfolio = pd.DataFrame(portfolio_data)
             
-            # Load cash balance (same approach as daily prompt)
+            # Load cash balance (CAD-equivalent; same approach as daily prompt)
             cash = 0.0
             try:
-                import json
-                cash_file = self.data_dir / "cash_balances.json"
-                if cash_file.exists():
-                    with open(cash_file, 'r') as f:
-                        cash_data = json.load(f)
-                        cash = cash_data.get('cad', 0) + cash_data.get('usd', 0)
+                from dual_currency import load_cash_balances
+
+                balances = load_cash_balances(self.data_dir)
+                try:
+                    from financial.currency_handler import CurrencyHandler
+
+                    rate = float(CurrencyHandler(Path(self.data_dir)).get_exchange_rate("USD", "CAD"))
+                except Exception:
+                    rate = 1.35
+                cash = float(balances.total_cad_equivalent(rate))
             except Exception:
                 cash = 0.0
         except Exception as e:
@@ -1437,8 +1438,11 @@ class PromptGenerator:
         portfolio_tables.append(f"\n{Fore.CYAN}[ Fund Performance Summary ]{Style.RESET_ALL}")
         
         portfolio_tables.append(f"{Fore.GREEN}Portfolio Value:{Style.RESET_ALL} ${financial_data['total_portfolio_value']:,.2f}")
-        portfolio_tables.append(f"{Fore.GREEN}Cash Balance:{Style.RESET_ALL} ${cash:,.2f}")
-        portfolio_tables.append(f"{Fore.GREEN}Total Equity:{Style.RESET_ALL} ${total_equity:,.2f}")
+        portfolio_tables.append(f"{Fore.GREEN}Cash Balances:{Style.RESET_ALL} {cash_display}")
+        # Use FX+cash-aligned equity from financial overview (not cash-only from _format_cash_info)
+        portfolio_tables.append(
+            f"{Fore.GREEN}Total Equity:{Style.RESET_ALL} ${financial_data['total_equity']:,.2f}"
+        )
         
         portfolio_data_string = "\n".join(portfolio_tables)
 

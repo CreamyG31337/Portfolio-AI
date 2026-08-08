@@ -27,10 +27,23 @@ except ImportError:
             return ""
     Fore = Style = DummyColor()
 
-def calculate_position_metrics(portfolio_df, cash_balance):
-    """Calculate enhanced position metrics for portfolio display"""
+def calculate_position_metrics(portfolio_df, cash_balance, data_dir=None):
+    """Calculate enhanced position metrics for portfolio display.
+
+    When ``data_dir`` is provided, USD positions are converted to CAD for portfolio
+    totals / weights (same approach as PositionCalculator / trading_script).
+    """
     if portfolio_df.empty:
         return pd.DataFrame(), 0
+
+    from utils.currency_converter import convert_usd_to_cad, load_exchange_rates
+
+    exchange_rates = {}
+    if data_dir is not None:
+        try:
+            exchange_rates = load_exchange_rates(Path(data_dir))
+        except Exception:
+            exchange_rates = {}
 
     enhanced_df = portfolio_df.copy()
 
@@ -43,66 +56,76 @@ def calculate_position_metrics(portfolio_df, cash_balance):
     daily_pnl_percentages = []
     days_held = []
 
-    total_portfolio_value = 0
+    total_portfolio_value = 0.0
 
-    for row in portfolio_df.to_dict('records'):
-        ticker = str(row.get('ticker', ''))
+    for row in portfolio_df.to_dict("records"):
+        current_price = float(row.get("current_price", row.get("buy_price", 0)))
+        shares = float(row.get("shares", 0))
+        buy_price = float(row.get("buy_price", 0))
+        currency = str(row.get("currency", "CAD") or "CAD").upper()
 
-        # Get current price from the row data
-        current_price = float(row.get('current_price', row.get('buy_price', 0)))
-        shares = float(row.get('shares', 0))
-        buy_price = float(row.get('buy_price', 0))
-        cost_basis = float(row.get('cost_basis', 0))
-
-        # Use daily P&L from the data if available, otherwise calculate
-        daily_pnl_str = row.get('daily_pnl', '$0.00')
-        if daily_pnl_str and daily_pnl_str != 'N/A':
-            # Parse the daily P&L string (e.g., "$123.45" -> 123.45)
+        daily_pnl_str = row.get("daily_pnl", "$0.00")
+        if daily_pnl_str and daily_pnl_str != "N/A":
             try:
-                daily_pnl_amount = float(daily_pnl_str.replace('$', '').replace(',', '').replace('*', ''))
+                daily_pnl_amount = float(
+                    str(daily_pnl_str).replace("$", "").replace(",", "").replace("*", "")
+                )
             except (ValueError, AttributeError):
                 daily_pnl_amount = 0.0
         else:
             daily_pnl_amount = 0.0
 
-        # Calculate total P&L since purchase
         position_value = current_price * shares
         actual_cost_basis = buy_price * shares
         total_pnl_amount = position_value - actual_cost_basis
-        total_pnl_percent = (total_pnl_amount / actual_cost_basis * 100) if actual_cost_basis > 0 else 0
+        total_pnl_percent = (
+            (total_pnl_amount / actual_cost_basis * 100) if actual_cost_basis > 0 else 0
+        )
 
-        # Calculate daily P&L percentage from the amount
-        daily_pnl_percent = (daily_pnl_amount / position_value * 100) if position_value > 0 else 0
+        if currency == "USD" and exchange_rates:
+            try:
+                position_value_cad = float(convert_usd_to_cad(position_value, exchange_rates))
+                total_pnl_amount_cad = float(convert_usd_to_cad(total_pnl_amount, exchange_rates))
+                daily_pnl_amount_cad = float(convert_usd_to_cad(daily_pnl_amount, exchange_rates))
+            except Exception:
+                position_value_cad = position_value
+                total_pnl_amount_cad = total_pnl_amount
+                daily_pnl_amount_cad = daily_pnl_amount
+        else:
+            position_value_cad = position_value
+            total_pnl_amount_cad = total_pnl_amount
+            daily_pnl_amount_cad = daily_pnl_amount
 
-        # Calculate days held (simplified - in real system you'd track purchase dates)
-        days_held_approx = 1  # Default to 1 day for now
+        daily_pnl_percent = (
+            (daily_pnl_amount / position_value * 100) if position_value > 0 else 0
+        )
+        days_held_approx = 1
 
         current_prices.append(current_price)
-        pnl_amounts.append(total_pnl_amount)
+        pnl_amounts.append(total_pnl_amount_cad)
         pnl_percentages.append(total_pnl_percent)
-        position_values.append(position_value)
-        daily_pnl_amounts.append(daily_pnl_amount)
+        position_values.append(position_value_cad)
+        daily_pnl_amounts.append(daily_pnl_amount_cad)
         daily_pnl_percentages.append(daily_pnl_percent)
         days_held.append(days_held_approx)
 
-        total_portfolio_value += position_value
-    
-    # Calculate position weights
-    for i, value in enumerate(position_values):
+        total_portfolio_value += position_value_cad
+
+    for value in position_values:
         weight = (value / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
         position_weights.append(weight)
-    
-    # Add calculated columns
-    enhanced_df['Current_Price'] = current_prices
-    enhanced_df['Position_Value'] = position_values
-    enhanced_df['Total_PnL_Amount'] = pnl_amounts
-    enhanced_df['Total_PnL_Percent'] = pnl_percentages
-    enhanced_df['Daily_PnL_Amount'] = daily_pnl_amounts
-    enhanced_df['Daily_PnL_Percent'] = daily_pnl_percentages
-    enhanced_df['Days_Held'] = days_held
-    enhanced_df['Weight_Percent'] = position_weights
-    
+
+    enhanced_df["Current_Price"] = current_prices
+    enhanced_df["Position_Value"] = position_values
+    enhanced_df["Total_PnL_Amount"] = pnl_amounts
+    enhanced_df["Total_PnL_Percent"] = pnl_percentages
+    enhanced_df["Daily_PnL_Amount"] = daily_pnl_amounts
+    enhanced_df["Daily_PnL_Percent"] = daily_pnl_percentages
+    enhanced_df["Days_Held"] = days_held
+    enhanced_df["Weight_Percent"] = position_weights
+
     return enhanced_df, total_portfolio_value
+
 
 def format_enhanced_portfolio_display(enhanced_df):
     """Format the enhanced portfolio display with better metrics"""
@@ -410,14 +433,30 @@ def show_complete_prompt(data_dir: str = None):
             print(f"{Fore.YELLOW}📊 Converting to analysis format...{Style.RESET_ALL}")
             portfolio_df = pd.DataFrame(enhanced_positions)
             print(f"{Fore.GREEN}✅ Portfolio data ready for analysis{Style.RESET_ALL}")
-            cash = 0.0  # Will be loaded separately
+            cash = 0.0  # CAD-equivalent; loaded below before summary
         else:
             portfolio_df = pd.DataFrame()
             cash = 0.0
 
-        # Calculate enhanced metrics
+        # Load cash first so risk/summary metrics include CAD-equivalent cash
+        cash_balances = None
+        print(f"{Fore.YELLOW}💰 Loading cash balance data...{Style.RESET_ALL}")
+        if ACTIVE_MARKET == "NORTH_AMERICAN":
+            try:
+                cash_balances = load_cash_balances(Path(data_dir))
+                cash = float(cash_balances.total_cad_equivalent())
+                print(f"{Fore.GREEN}✅ Cash balances loaded{Style.RESET_ALL}")
+            except Exception:
+                print(f"{Fore.YELLOW}⚠️ Using default cash balance{Style.RESET_ALL}")
+                cash = 0.0
+        else:
+            cash = 0.0
+
+        # Calculate enhanced metrics (FX-adjust USD positions when data_dir available)
         print(f"{Fore.YELLOW}🗺️ Calculating portfolio metrics and risk analysis...{Style.RESET_ALL}")
-        enhanced_df, total_portfolio_value = calculate_position_metrics(portfolio_df, cash)
+        enhanced_df, total_portfolio_value = calculate_position_metrics(
+            portfolio_df, cash, data_dir=data_dir
+        )
         print(f"{Fore.CYAN}  ⚙️ Computing risk metrics...{Style.RESET_ALL}")
         risk_metrics = calculate_portfolio_risk_metrics(enhanced_df, total_portfolio_value, cash)
         print(f"{Fore.GREEN}✅ Portfolio analysis complete{Style.RESET_ALL}")
@@ -438,17 +477,9 @@ def show_complete_prompt(data_dir: str = None):
             print(f"Portfolio Volatility: {risk_metrics['portfolio_volatility']:.1f}%")
         print()
         
-        # Cash balance
-        print(f"{Fore.YELLOW}💰 Loading cash balance data...{Style.RESET_ALL}")
-        if ACTIVE_MARKET == "NORTH_AMERICAN":
-            try:
-                cash_balances = load_cash_balances(Path(data_dir))
-                print(f"{Fore.GREEN}✅ Cash balances loaded{Style.RESET_ALL}")
-                print(f"Cash Balances: {format_cash_display(cash_balances)}")
-                print(f"Total (CAD equiv): ${cash_balances.total_cad_equivalent():,.2f}")
-            except:
-                print(f"{Fore.YELLOW}⚠️ Using default cash balance{Style.RESET_ALL}")
-                print(f"Cash Balance: ${cash:,.2f}")
+        if cash_balances is not None:
+            print(f"Cash Balances: {format_cash_display(cash_balances)}")
+            print(f"Total (CAD equiv): ${cash:,.2f}")
         else:
             print(f"Cash Balance: ${cash:,.2f}")
         print()
