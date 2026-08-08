@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
 
 // Configuration interfaces
 interface AIAssistantConfig {
@@ -1143,36 +1144,50 @@ class AIAssistant {
         const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
         const currentModel = modelSelect ? modelSelect.value : (this.selectedModel || this.config.defaultModel);
 
-        let maxTokens = 4096; // Default safe fallback
+        let configuredCtx = 4096; // Default safe fallback
+        let labelSuffix = '';
 
-        // Check WebAI limits first
+        // Check WebAI limits first (full usable window — not Ollama half-split)
         if (this.config.hasWebai && this.config.webaiModels && this.config.webaiModels.includes(currentModel)) {
             if (currentModel.toLowerCase().includes('flash')) {
-                maxTokens = 1000000; // ~1M for Flash models
+                configuredCtx = 1000000; // ~1M for Flash models
             } else if (currentModel.toLowerCase().includes('pro')) {
-                maxTokens = 2000000; // ~2M for Pro models
+                configuredCtx = 2000000; // ~2M for Pro models
             } else {
-                maxTokens = 128000; // Conservative default for other WebAI
+                configuredCtx = 128000; // Conservative default for other WebAI
             }
         }
-        // Check Ollama config
+        // Check Ollama / model_config
         else if (this.config.modelConfig && this.config.modelConfig.models) {
             const modelSettings = this.config.modelConfig.models[currentModel];
             if (modelSettings && modelSettings.num_ctx) {
-                maxTokens = modelSettings.num_ctx;
+                configuredCtx = modelSettings.num_ctx;
             } else if (this.config.modelConfig.default_config && this.config.modelConfig.default_config.num_ctx) {
-                maxTokens = this.config.modelConfig.default_config.num_ctx;
+                configuredCtx = this.config.modelConfig.default_config.num_ctx;
             }
         }
 
-        const percentage = Math.min(100, Math.round((usedTokens / maxTokens) * 100));
+        // Ollama: usable prompt ≈ num_ctx/2 (heretic soft-cap 28k). Do not show full num_ctx.
+        const maxTokens = usablePromptTokenBudget(configuredCtx, currentModel);
+        if (
+            maxTokens > 0 &&
+            maxTokens < configuredCtx &&
+            !(this.config.hasWebai && this.config.webaiModels?.includes(currentModel))
+        ) {
+            labelSuffix = ` <span class="text-text-secondary text-[0.7rem]">(prompt budget; num_ctx ${configuredCtx.toLocaleString()})</span>`;
+        }
 
-        // Color coding
+        const percentage = maxTokens > 0
+            ? Math.min(100, Math.round((usedTokens / maxTokens) * 100))
+            : 0;
+
+        // Color coding against usable prompt budget (not full num_ctx)
         let colorClass = 'text-green-600 dark:text-green-400';
         if (percentage > 80) colorClass = 'text-red-600 dark:text-red-400';
         else if (percentage > 50) colorClass = 'text-yellow-600 dark:text-yellow-400';
 
-        usageElement.innerHTML = `Context: <span class="${colorClass}">${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)</span>`;
+        usageElement.innerHTML =
+            `Context: <span class="${colorClass}">${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)</span>${labelSuffix}`;
     }
 
     updateContextUI(): void {

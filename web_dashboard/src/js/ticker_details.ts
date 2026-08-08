@@ -5,6 +5,7 @@ import { getCsrfHeaders } from './csrf.js';
 import { showToast as showToastBase } from './toast.js';
 import { setupTickerSearch } from './ticker_search.js';
 import { sentimentBadgeClasses } from './sentiment_badges.js';
+import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
 
 // API Response interfaces
 interface TickerListResponse {
@@ -2757,7 +2758,7 @@ function updateContextUsage(): void {
     const percentage = maxTokens > 0 ? Math.min(100, Math.round((usedTokens / maxTokens) * 100)) : 0;
 
     usageEl.textContent = maxTokens > 0
-        ? `Context: ${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} tokens (${percentage}%)`
+        ? `Context: ${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()} prompt tokens (${percentage}%)`
         : `Context: ${usedTokens.toLocaleString()} tokens`;
 }
 
@@ -2766,25 +2767,25 @@ function estimateTokens(charCount: number): number {
 }
 
 function getMaxTokensForModel(modelName: string): number {
+    let configuredCtx = 0;
     if (!modelName) {
-        return modelConfig?.default_config?.num_ctx || 0;
-    }
-
-    if (modelName.startsWith('glm-')) {
+        configuredCtx = modelConfig?.default_config?.num_ctx || 0;
+    } else if (modelName.startsWith('glm-')) {
         if (modelName.includes('flash')) {
-            return 1000000;
+            configuredCtx = 1000000;
+        } else if (modelName.includes('pro')) {
+            configuredCtx = 2000000;
+        } else {
+            configuredCtx = 1000000;
         }
-        if (modelName.includes('pro')) {
-            return 2000000;
-        }
-        return 1000000;
+    } else if (modelConfig?.models && modelConfig.models[modelName]?.num_ctx) {
+        configuredCtx = modelConfig.models[modelName].num_ctx;
+    } else {
+        configuredCtx = modelConfig?.default_config?.num_ctx || 0;
     }
 
-    if (modelConfig?.models && modelConfig.models[modelName]?.num_ctx) {
-        return modelConfig.models[modelName].num_ctx;
-    }
-
-    return modelConfig?.default_config?.num_ctx || 0;
+    // Ollama usable prompt ≈ num_ctx/2 (heretic soft-cap 28k); GLM keeps full window.
+    return usablePromptTokenBudget(configuredCtx, modelName || '');
 }
 
 // Utility functions
