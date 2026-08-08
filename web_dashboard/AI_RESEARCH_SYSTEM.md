@@ -334,45 +334,42 @@ Higher `num_ctx` does **not** reliably upgrade an already-warm smaller runner.
 
 ### Picking `num_ctx` on a shared GPU (ts-desktop RTX 3090)
 
-**Hardware baseline:** the shipped `num_ctx` values for `qwen3.6:27b-heretic`
-(32k) are tuned for an **NVIDIA RTX 3090 with 24 GB VRAM**, often shared with
-Goose / other local agents. This project is open source — if you run a
-different GPU (less VRAM, multi-GPU, or a dedicated box), **lower or raise
-`num_ctx` in `model_config.json`** (or via `model_<name>_num_ctx` /
-`OLLAMA_NUM_CTX_*`) to fit weights + KV cache without CPU spill or OOM. 32k on
-a 12–16 GB card with a 27B quant will usually not fit; start smaller and watch
-`ollama ps` / VRAM.
+**Hardware baseline:** shipped `num_ctx` for `qwen3.6:27b-heretic` /
+`qwen3.6:27b-heretic-agentic` is **`65536`**, tuned for an **NVIDIA RTX 3090
+with 24 GB VRAM** (~17.4 GiB resident with that window), shared with Goose.
+This project is open source — if you run a different GPU, **retune `num_ctx`
+in `model_config.json`** (or `model_<name>_num_ctx` / `OLLAMA_NUM_CTX_*`).
+Do **not** blindly copy 65536 onto the AMD/`batiai` IQ3 host.
 
-`num_ctx` × model size mostly determines KV-cache VRAM. The NVIDIA host
-(`OLLAMA_BASE_URL_NVIDIA` / ts-desktop) is shared with **Goose** and other
-local agents. Context is fixed at model *load* (`llama-server -c N`), not per
-request — the first client to load a model name pins the runner until unload /
-`keep_alive` expiry (~7m on that box).
+**Verified Ollama split:** the prompt gets ~**half** of `num_ctx`; the other
+half is generation. So `num_ctx=65536` → ~**32k usable prompt** (Goose
+`GOOSE_CONTEXT_LIMIT=28000` under that). That is why workloads “died” around
+16–20k when the runner was loaded at 32k or 20k — `/api/show` and `/api/ps`
+report the *full* window, not usable prompt. **`OLLAMA_CONTEXT_LENGTH` is not
+the fix.** Prefer needle tests + response `prompt_eval_count`.
+
+`num_ctx` × model size mostly determines KV-cache VRAM. Context is fixed at
+model *load* (`llama-server -c N`), not per request — first client to load a
+model **name** pins that runner until unload / `keep_alive` expiry. Bot uses
+`qwen3.6:27b-heretic`; Goose uses `…-heretic-agentic` (separate runners, same
+VRAM). Prefer **65536 sticky on both** so either path hitting the 3090 agrees.
 
 | Model | `num_ctx` | Why |
 |---|---|---|
-| `qwen3.6:27b-heretic` | `32768` | Tuned for **RTX 3090 / 24 GB**; aligns with heretic Modelfile + Goose. **Was `20000`** — that left warm `-c 20000` runners and starved other clients of a ~28–32k window. |
+| `qwen3.6:27b-heretic` | `65536` | Match Goose `GOOSE_INPUT_LIMIT` + Modelfile. Usable prompt ≈ 32k; soft client budget ≈ 28k. **Never 20000 or 32768** on this shared runner (reload thrash ~5–15s). |
+| `qwen3.6:27b-heretic-agentic` | `65536` | Same sticky policy if this app ever calls Goose’s tag. |
+| `batiai/qwen3.6-27b:iq3` | `32768` | AMD host only — do not copy 65536 unless that GPU fits. |
 
-Do **not** reintroduce `20000` for heretic on this host. Prefer sticky 32k so
-Goose and this app agree.
-
-**Silent truncation:** past the *real* window, Ollama truncates from the
+**Silent truncation:** past the *real* prompt half, Ollama truncates from the
 **front** (system/tool preamble dies first) → empty/broken tool use, not a clean
-error. `/api/show` and `/api/ps` `context_length` often echo the configured /
-requested size and can lie vs the live slot. Prefer response
-`prompt_eval_count` (logged via `ollama_ctx.log_ollama_ctx_telemetry`) as a soft
-ceiling for that turn.
+error.
 
-**Client budget scaffold:** chat paths reserve output tokens
-(`compute_prompt_token_budget`) and drop oldest turns
-(`compact_messages_to_budget`) before send. This is not Goose compaction — it
-is our own lightweight guard.
+**Client budget scaffold:** chat paths use `compute_prompt_token_budget`
+(prompt half, heretic soft-cap 28000) and `compact_messages_to_budget`.
+`num_predict` is capped to the generation half (8192 is fine).
 
-Operators can still override without redeploy via
-`model_qwen3.6:27b-heretic_num_ctx` in `system_settings` (then unload + clear
-sticky so the new value loads). Host-side `OLLAMA_CONTEXT_LENGTH` in Windows
-HKLM is a separate ops concern and can clamp below Modelfile/`num_ctx` until
-Ollama is restarted with the env cleared.
+Operators can still override via `model_qwen3.6:27b-heretic_num_ctx` in
+`system_settings` (then `unload_model` so sticky clears and the new size loads).
 
 ### Summarizer input pipeline
 
@@ -505,8 +502,9 @@ scheduler.add_job(
   see the effective value.
 - Host `OLLAMA_CONTEXT_LENGTH` (e.g. Windows HKLM) can clamp below Modelfile /
   request size until Ollama is restarted with that env cleared (ops track).
-- Verify on the Ollama host log that `-c 32768` dominates for heretic, not
-  `-c 20000` (legacy pin removed from `model_config.json`).
+- Verify on the Ollama host log that `-c 65536` dominates for heretic, not
+  `-c 20000` / `-c 32768` (legacy pins removed from `model_config.json`).
+  Remember usable prompt ≈ half of that window (~32k), not the full `-c` value.
 
 ## Future Enhancements
 

@@ -82,6 +82,8 @@ try:
         compute_prompt_token_budget,
         configured_num_ctx_from_env,
         log_ollama_ctx_telemetry,
+        ollama_generation_half_tokens,
+        ollama_prompt_half_tokens,
         resolve_sticky_num_ctx,
     )
 except ImportError:  # pragma: no cover - package layout / scripts
@@ -92,6 +94,8 @@ except ImportError:  # pragma: no cover - package layout / scripts
         compute_prompt_token_budget,
         configured_num_ctx_from_env,
         log_ollama_ctx_telemetry,
+        ollama_generation_half_tokens,
+        ollama_prompt_half_tokens,
         resolve_sticky_num_ctx,
     )
 
@@ -118,20 +122,32 @@ def _fit_chat_num_predict(
     prompt_tokens_est: int,
     requested_num_predict: int,
 ) -> int:
-    """Fit chat ``num_predict`` into leftover context after the prompt.
+    """Fit chat ``num_predict`` into Ollama's ~generation half of ``num_ctx``.
 
-    Input context (portfolio + history) and output length share one ``num_ctx``
-    window. A fixed low ``num_predict`` truncates long answers even when the
-    prompt left plenty of room; fitting uses that leftover up to the configured cap.
+    Verified behavior: ~half of ``num_ctx`` is prompt, ~half is generation — not
+    "leftover after prompt" in a single shared pool. Cap ``num_predict`` at the
+    generation half; warn if the prompt estimate exceeds the prompt half.
     """
-    available = effective_ctx - prompt_tokens_est - CHAT_CONTEXT_MARGIN
+    prompt_half = ollama_prompt_half_tokens(effective_ctx)
+    gen_half = ollama_generation_half_tokens(effective_ctx)
+    if prompt_tokens_est > prompt_half:
+        logger.warning(
+            "Chat prompt≈%d exceeds Ollama prompt half≈%d for model=%s (num_ctx=%d). "
+            "Silent front truncation likely — compact history or raise num_ctx.",
+            prompt_tokens_est,
+            prompt_half,
+            model,
+            effective_ctx,
+        )
+
+    available = gen_half - CHAT_CONTEXT_MARGIN
     if available < CHAT_MIN_PREDICT:
         logger.warning(
-            "Tight chat context budget for model=%s: ctx=%d, prompt≈%d. "
+            "Tight chat generation half for model=%s: ctx=%d gen_half≈%d. "
             "Forcing num_predict=%d.",
             model,
             effective_ctx,
-            prompt_tokens_est,
+            gen_half,
             CHAT_MIN_PREDICT,
         )
         return CHAT_MIN_PREDICT
@@ -139,12 +155,14 @@ def _fit_chat_num_predict(
     fitted = min(int(requested_num_predict), available)
     if fitted < int(requested_num_predict):
         logger.info(
-            "Adjusted chat num_predict for model=%s: %d -> %d (ctx fit, prompt≈%d/%d)",
+            "Adjusted chat num_predict for model=%s: %d -> %d "
+            "(gen_half≈%d, prompt≈%d/%d)",
             model,
             requested_num_predict,
             fitted,
+            gen_half,
             prompt_tokens_est,
-            effective_ctx,
+            prompt_half,
         )
     return max(CHAT_MIN_PREDICT, fitted)
 
@@ -270,15 +288,28 @@ def _fit_summary_num_predict(
     article_tokens_est: int,
     requested_num_predict: int,
 ) -> int:
-    """Cap summary output tokens to reduce context overflow failures."""
-    # Reserve a small margin for tokenizer variance and response framing overhead.
-    available = effective_ctx - prompt_tokens_est - article_tokens_est - SUMMARY_CONTEXT_MARGIN
-    if available < SUMMARY_MIN_PREDICT:
+    """Cap summary output tokens to Ollama's ~generation half of ``num_ctx``."""
+    prompt_half = ollama_prompt_half_tokens(effective_ctx)
+    gen_half = ollama_generation_half_tokens(effective_ctx)
+    prompt_side = prompt_tokens_est + article_tokens_est
+    if prompt_side > prompt_half:
         logger.warning(
-            "Very tight context budget for model=%s: ctx=%d, system≈%d, article≈%d. "
-            "Forcing num_predict=%d.",
+            "Summary prompt+article≈%d exceeds Ollama prompt half≈%d for model=%s "
+            "(num_ctx=%d). Silent front truncation likely.",
+            prompt_side,
+            prompt_half,
             model,
             effective_ctx,
+        )
+
+    available = gen_half - SUMMARY_CONTEXT_MARGIN
+    if available < SUMMARY_MIN_PREDICT:
+        logger.warning(
+            "Very tight generation half for model=%s: ctx=%d, gen_half≈%d, "
+            "system≈%d, article≈%d. Forcing num_predict=%d.",
+            model,
+            effective_ctx,
+            gen_half,
             prompt_tokens_est,
             article_tokens_est,
             SUMMARY_MIN_PREDICT,
@@ -288,10 +319,11 @@ def _fit_summary_num_predict(
     fitted = min(requested_num_predict, available)
     if fitted < requested_num_predict:
         logger.info(
-            "Adjusted summary num_predict for model=%s: %d -> %d (ctx fit)",
+            "Adjusted summary num_predict for model=%s: %d -> %d (gen_half≈%d)",
             model,
             requested_num_predict,
             fitted,
+            gen_half,
         )
     return max(SUMMARY_MIN_PREDICT, fitted)
 
@@ -1603,18 +1635,20 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             requested_num_predict=requested_max_tokens,
         )
         total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
-        if total_est > effective_ctx:
+        prompt_side = prompt_tokens_est + article_tokens_est
+        prompt_half = ollama_prompt_half_tokens(effective_ctx)
+        if prompt_side > prompt_half:
             logger.warning(
-                "Context window likely exceeded for model=%s: "
-                "system≈%d + article≈%d + output=%d = ~%d tokens vs ctx=%d. "
-                "Consider increasing num_ctx or reducing skill budget.",
+                "Context prompt half likely exceeded for model=%s: "
+                "system≈%d + article≈%d = ~%d vs prompt_half≈%d (num_ctx=%d). "
+                "Ollama usable prompt is ~half of num_ctx — reduce skill budget.",
                 model, prompt_tokens_est, article_tokens_est,
-                effective_max_tokens, total_est, effective_ctx,
+                prompt_side, prompt_half, effective_ctx,
             )
-        elif total_est > effective_ctx * 0.85:
+        elif prompt_side > prompt_half * 0.85:
             logger.info(
-                "Context window >85%% full for model=%s: ~%d/%d tokens",
-                model, total_est, effective_ctx,
+                "Prompt half >85%% full for model=%s: ~%d/%d tokens (total≈%d/%d)",
+                model, prompt_side, prompt_half, total_est, effective_ctx,
             )
 
         # Prepare request payload
@@ -1756,34 +1790,37 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             requested_num_predict=requested_max_tokens,
         )
         total_est = prompt_tokens_est + article_tokens_est + effective_max_tokens
-        if total_est > effective_ctx:
+        prompt_side = prompt_tokens_est + article_tokens_est
+        prompt_half = ollama_prompt_half_tokens(effective_ctx)
+        if prompt_side > prompt_half:
             logger.warning(
-                "Context window likely exceeded (streaming) for model=%s: "
-                "system≈%d + article≈%d + output=%d = ~%d tokens vs ctx=%d. "
-                "Consider increasing num_ctx or reducing skill budget.",
+                "Context prompt half likely exceeded (streaming) for model=%s: "
+                "system≈%d + article≈%d = ~%d vs prompt_half≈%d (num_ctx=%d). "
+                "Ollama usable prompt is ~half of num_ctx — reduce skill budget.",
                 model, prompt_tokens_est, article_tokens_est,
-                effective_max_tokens, total_est, effective_ctx,
+                prompt_side, prompt_half, effective_ctx,
             )
-        elif total_est > effective_ctx * 0.85:
+        elif prompt_side > prompt_half * 0.85:
             logger.info(
-                "Context window >85%% full (streaming) for model=%s: ~%d/%d tokens",
-                model, total_est, effective_ctx,
+                "Prompt half >85%% full (streaming) for model=%s: ~%d/%d tokens (total≈%d/%d)",
+                model, prompt_side, prompt_half, total_est, effective_ctx,
             )
 
         # Prepare streaming request payload
         cfg_idle = model_settings.get("streaming_timeout")
         effective_idle = float(cfg_idle) if cfg_idle is not None else 90.0
 
+        options: Dict[str, Any] = {
+            "temperature": effective_temp,
+            "num_predict": effective_max_tokens,
+        }
+        apply_num_ctx_to_options(options, model, configured_ctx)
         payload = {
             "model": model,
             "prompt": text,
             "stream": True,  # Enable streaming!
             "system": system_prompt,
-            "options": {
-                "temperature": effective_temp,
-                "num_predict": effective_max_tokens,
-                "num_ctx": effective_ctx
-            }
+            "options": options,
         }
         self._apply_think_to_payload(payload, model_settings)
         
@@ -1964,13 +2001,11 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         configured_ctx = int(model_settings.get('num_ctx', 4096))
         effective_ctx = resolve_sticky_num_ctx(str(model), configured_ctx)
         requested_predict = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
-        try:
-            from ollama_ctx import DEFAULT_OUTPUT_RESERVE_TOKENS as _out_reserve
-        except ImportError:
-            _out_reserve = 4096
+        # Usable prompt ≈ num_ctx/2; heretic soft-caps ~28k (Goose GOOSE_CONTEXT_LIMIT).
         budget = compute_prompt_token_budget(
             effective_ctx,
-            reserved_for_output=max(CHAT_MIN_PREDICT, int(requested_predict or _out_reserve)),
+            reserved_for_output=0,
+            model_name=str(model),
         )
         messages = compact_messages_to_budget(messages, budget)
         prompt_tokens_est = _estimate_message_tokens(messages)
@@ -2015,6 +2050,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                     model=str(model),
                     requested_num_ctx=effective_ctx,
                     response_data=data if isinstance(data, dict) else None,
+                    prompt_tokens_est=prompt_tokens_est,
                 )
                 msg = data.get("message") or {}
                 thinking = msg.get("thinking") or msg.get("think")

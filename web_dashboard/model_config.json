@@ -72,14 +72,24 @@
             "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. Hybrid-Mamba => low KV growth, 39k ctx fits with headroom. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
         },
         "qwen3.6:27b-heretic": {
-            "num_ctx": 32768,
+            "num_ctx": 65536,
             "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Flagship Ollama model on the desktop RTX 3090 / 24GB VRAM (ts-desktop / OLLAMA_BASE_URL_NVIDIA). Sticky num_ctx 32768 is tuned for that card + heretic Modelfile/Goose on the shared GPU (was 20000; that left warm -c 20000 runners). Open-source / other GPUs: retune num_ctx for your VRAM. Chat num_predict 8192 is fitted down to leftover num_ctx after the portfolio+history prompt."
+            "desc": "Flagship Ollama model on desktop RTX 3090 / 24GB (ts-desktop). Sticky num_ctx 65536 matches Goose GOOSE_INPUT_LIMIT + heretic-agentic Modelfile (~17.4 GiB). Ollama usable prompt ≈ num_ctx/2 (~32k; soft budget ~28k). Never 20000/32768 on this shared runner (reload thrash). Open-source: retune for your VRAM. num_predict 8192 stays within generation half."
+        },
+        "qwen3.6:27b-heretic-agentic": {
+            "num_ctx": 65536,
+            "num_predict": 8192,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "Goose agentic heretic tag on the same 3090. Same sticky 65536 as qwen3.6:27b-heretic so either tag loading on NVIDIA agrees with Goose (separate runners, shared VRAM)."
         },
         "batiai/qwen3.6-27b:iq3": {
             "num_ctx": 32768,
@@ -89,7 +99,7 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "IQ3 quant of Qwen3.6 27B on the Ubuntu Ollama host (NOT the desktop 3090). Same sticky 32k ctx / chat predict policy as heretic so NVIDIA failover does not re-pin a 20k runner. Retune num_ctx if your GPU is not 24GB-class."
+            "desc": "IQ3 quant on the Ubuntu/AMD Ollama host — NOT the desktop 3090. Do not copy heretic 65536 here unless that GPU fits; 32768 is an AMD-side default (usable prompt ≈ 16k)."
         },
         "phi4:14b": {
             "num_ctx": 8192,

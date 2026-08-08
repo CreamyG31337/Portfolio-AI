@@ -1,14 +1,17 @@
 """Ollama context-window helpers: sticky num_ctx, unload, telemetry, budget scaffold.
 
-Shared-GPU note (ts-desktop RTX 3090): Goose and this app share one Ollama host.
-Context is fixed at model *load* (``llama-server -c N``), not per request. The first
-client to load a model name pins the runner until unload / ``keep_alive`` expiry.
-Sending ``num_ctx: 20000`` from this app used to leave a warm 20k runner that starved
-Goose of a ~32k window. Prefer sticky 32768 for ``qwen3.6:27b-heretic``.
+Shared-GPU note (ts-desktop RTX 3090 / 24 GB): Goose and this app share one Ollama
+host. Context is fixed at model *load* (``llama-server -c N``), not per request.
 
-``/api/show`` and ``/api/ps`` ``context_length`` can disagree with the live slot;
-prefer ``prompt_eval_count`` on completed responses as a soft ceiling for that turn.
-Truncation is silent and from the front (system/tool preamble dies first).
+**Verified Ollama split:** roughly half of ``num_ctx`` is for the prompt, half for
+generation. So ``num_ctx=65536`` → ~32k usable prompt (Goose budgets ~28k under
+that). ``/api/show`` and ``/api/ps`` report the *full* window, not usable prompt.
+``OLLAMA_CONTEXT_LENGTH`` is not the right fix for "died at 16–20k".
+
+Match Goose on the NVIDIA host: sticky ``options.num_ctx: 65536`` every request
+for ``qwen3.6:27b-heretic`` / ``…-heretic-agentic``. Never 20000 or 32768 on that
+shared runner (mismatched sizes force ~5–15s reloads). Truncation is silent and
+drops the **front**. Prefer ``prompt_eval_count`` / needle tests over ``/api/show``.
 """
 
 from __future__ import annotations
@@ -20,10 +23,12 @@ from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
-# Default for the desktop 3090 heretic Modelfile / Goose alignment.
-# Tuned for NVIDIA RTX 3090 / 24 GB VRAM — retune in model_config.json if you
-# run a different GPU (open-source / smaller cards usually need a lower num_ctx).
-HERETIC_PREFERRED_NUM_CTX = 32768
+# Sticky load on RTX 3090 / 24 GB — matches heretic-agentic Modelfile + Goose
+# GOOSE_INPUT_LIMIT=65536. Open-source / other GPUs: retune in model_config.json.
+HERETIC_PREFERRED_NUM_CTX = 65536
+# Goose GOOSE_CONTEXT_LIMIT under the ~32k prompt half of a 65k window.
+HERETIC_SOFT_PROMPT_BUDGET = 28000
+# Legacy name: generation has its own half; prefer not carving this from prompt half.
 DEFAULT_OUTPUT_RESERVE_TOKENS = 4096
 
 _STICKY_NUM_CTX: Dict[str, int] = {}
@@ -40,6 +45,23 @@ def _env_int(name: str) -> Optional[int]:
         logger.warning("Ignoring invalid %s=%r (expected int)", name, raw)
         return None
     return value if value > 0 else None
+
+
+def is_heretic_model(model_name: str) -> bool:
+    """True for qwen heretic tags that should stick to HERETIC_PREFERRED_NUM_CTX on NVIDIA."""
+    name = (model_name or "").strip().lower()
+    return "heretic" in name
+
+
+def ollama_prompt_half_tokens(num_ctx: int) -> int:
+    """Usable prompt tokens — Ollama allocates ~half of ``num_ctx`` to the prompt."""
+    return max(1, int(num_ctx) // 2)
+
+
+def ollama_generation_half_tokens(num_ctx: int) -> int:
+    """Tokens reserved for generation (the other ~half of ``num_ctx``)."""
+    n = int(num_ctx)
+    return max(1, n - ollama_prompt_half_tokens(n))
 
 
 def configured_num_ctx_from_env(model_name: str) -> Optional[int]:
@@ -77,15 +99,18 @@ def resolve_sticky_num_ctx(model_name: str, configured: int) -> int:
         if sticky is None:
             _STICKY_NUM_CTX[key] = configured_i
             logger.info(
-                "[Ollama ctx] sticky num_ctx set model=%s num_ctx=%d",
+                "[Ollama ctx] sticky num_ctx set model=%s num_ctx=%d "
+                "(prompt_half≈%d gen_half≈%d)",
                 key,
                 configured_i,
+                ollama_prompt_half_tokens(configured_i),
+                ollama_generation_half_tokens(configured_i),
             )
             return configured_i
         if sticky != configured_i:
             logger.warning(
                 "[Ollama ctx] sticky num_ctx retained model=%s sticky=%d configured=%d "
-                "(unload + clear_sticky_num_ctx to change)",
+                "(unload + clear_sticky_num_ctx to change; mismatch vs Goose causes reload thrash)",
                 key,
                 sticky,
                 configured_i,
@@ -119,17 +144,32 @@ def clear_sticky_num_ctx(model_name: Optional[str] = None) -> None:
 def compute_prompt_token_budget(
     num_ctx: int,
     *,
-    reserved_for_output: int = DEFAULT_OUTPUT_RESERVE_TOKENS,
+    reserved_for_output: int = 0,
     measured_ceiling: Optional[int] = None,
+    soft_prompt_cap: Optional[int] = None,
+    model_name: Optional[str] = None,
 ) -> int:
-    """Tokens available for prompt/history after reserving generation room.
+    """Tokens available for prompt/history under Ollama's ~half prompt window.
+
+    Do **not** treat ``num_ctx`` as fully usable prompt space. Generation owns the
+    other half, so ``reserved_for_output`` should usually stay 0 (or a small margin
+    *within* the prompt half). For 3090 heretic (65k), defaults soft-cap to
+    :data:`HERETIC_SOFT_PROMPT_BUDGET` (28000, Goose-aligned) unless overridden.
 
     ``measured_ceiling`` should be a hard observed limit (e.g. prior
-    ``prompt_eval_count``) when API-reported context looks wrong.
+    ``prompt_eval_count`` when you know truncation hit) when API-reported
+    context looks wrong.
     """
-    ceiling = int(num_ctx)
+    ceiling = ollama_prompt_half_tokens(num_ctx)
     if measured_ceiling is not None and int(measured_ceiling) > 0:
         ceiling = min(ceiling, int(measured_ceiling))
+
+    cap = soft_prompt_cap
+    if cap is None and model_name and is_heretic_model(model_name):
+        cap = HERETIC_SOFT_PROMPT_BUDGET
+    if cap is not None and int(cap) > 0:
+        ceiling = min(ceiling, int(cap))
+
     reserve = max(0, int(reserved_for_output))
     return max(0, ceiling - reserve)
 
@@ -206,11 +246,12 @@ def log_ollama_ctx_telemetry(
     requested_num_ctx: int,
     response_data: Optional[Mapping[str, Any]] = None,
     ps_context_length: Optional[int] = None,
+    prompt_tokens_est: Optional[int] = None,
 ) -> None:
     """Log requested num_ctx vs response ``prompt_eval_count`` (and optional /api/ps).
 
-    Do not treat ``ps_context_length`` as ground truth alone — it often echoes the
-    configured/requested size, not a clamped live slot.
+    Do not treat ``ps_context_length`` / ``/api/show`` as usable-prompt proof — they
+    report the full window. Prefer needle tests + ``prompt_eval_count``.
     """
     prompt_eval: Optional[int] = None
     eval_count: Optional[int] = None
@@ -226,27 +267,35 @@ def log_ollama_ctx_telemetry(
         except (TypeError, ValueError):
             eval_count = None
 
+    prompt_half = ollama_prompt_half_tokens(requested_num_ctx)
     logger.info(
-        "[Ollama ctx] telemetry model=%s requested_num_ctx=%d prompt_eval_count=%s "
-        "eval_count=%s ps_context_length=%s",
+        "[Ollama ctx] telemetry model=%s requested_num_ctx=%d prompt_half≈%d "
+        "prompt_eval_count=%s eval_count=%s ps_context_length=%s prompt_est=%s",
         model,
         requested_num_ctx,
+        prompt_half,
         prompt_eval if prompt_eval is not None else "n/a",
         eval_count if eval_count is not None else "n/a",
         ps_context_length if ps_context_length is not None else "n/a",
+        prompt_tokens_est if prompt_tokens_est is not None else "n/a",
     )
 
-    if prompt_eval is not None and requested_num_ctx > 0:
-        # Far below requested → likely clamped/inherited smaller runner.
-        if prompt_eval < int(requested_num_ctx * 0.5):
-            logger.warning(
-                "[Ollama ctx] prompt_eval_count=%d is far below requested_num_ctx=%d "
-                "for model=%s — live runner may be smaller than configured "
-                "(unload with keep_alive=0 then reload at sticky ctx)",
-                prompt_eval,
-                requested_num_ctx,
-                model,
-            )
+    if (
+        prompt_eval is not None
+        and prompt_tokens_est is not None
+        and int(prompt_tokens_est) > 0
+        and prompt_eval < int(prompt_tokens_est * 0.85)
+    ):
+        logger.warning(
+            "[Ollama ctx] prompt_eval_count=%d << prompt_est=%d for model=%s — "
+            "likely silent front truncation (usable prompt ≈ num_ctx/2=%d; "
+            "unload+reload if runner was loaded smaller than requested_num_ctx=%d)",
+            prompt_eval,
+            prompt_tokens_est,
+            model,
+            prompt_half,
+            requested_num_ctx,
+        )
 
 
 def apply_num_ctx_to_options(
