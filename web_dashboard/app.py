@@ -5388,10 +5388,29 @@ def _get_congress_trades_stats_cached(
             # C. Most Active (Last 31 Days)
             def _get_most_active():
                 cutoff = (datetime.now() - timedelta(days=31)).strftime('%Y-%m-%d')
-                q = _supabase_client.supabase.table("congress_trades_enriched").select("politician, owner")
-                q = _apply_filters_to_query(q)
-                q = q.gte("transaction_date", cutoff).limit(1000)
-                return q.execute().data
+
+                # Fetch count first to safely paginate
+                count_query = _supabase_client.supabase.table("congress_trades_enriched").select("id", count="exact", head=True)
+                count_query = _apply_filters_to_query(count_query)
+                count_query = count_query.gte("transaction_date", cutoff)
+                count_res = count_query.execute()
+                total = count_res.count if count_res.count is not None else 0
+
+                if total == 0:
+                    return []
+
+                # Paginate fetching all active rows
+                from supabase_pagination import page_ranges
+                all_data = []
+                for start, end in page_ranges(total, 1000):
+                    q = _supabase_client.supabase.table("congress_trades_enriched").select("politician, owner")
+                    q = _apply_filters_to_query(q)
+                    q = q.gte("transaction_date", cutoff).range(start, end)
+                    res = q.execute()
+                    if res.data:
+                        all_data.extend(res.data)
+
+                return all_data
 
             futures['most_active'] = executor.submit(_get_most_active)
 
