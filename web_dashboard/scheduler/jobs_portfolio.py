@@ -982,15 +982,12 @@ def update_portfolio_prices_job(
                     deleted_total = 0
                     while True:
                         # Get IDs of positions to delete (limit to avoid timeout)
-                        # We use 500 here because deleting 1000 rows at once might fail, but
-                        # using .limit(1000) and breaking on len < 1000 is dangerous because PostgREST
-                        # also silently caps the return at 1000, so we might break early if there are exactly 1000.
                         existing_result = client.supabase.table("portfolio_positions")\
                             .select("id")\
                             .eq("fund", fund_name)\
                             .gte("date", start_of_day)\
                             .lte("date", end_of_day)\
-                            .limit(500)\
+                            .limit(1000)\
                             .execute()
                         
                         if not existing_result.data:
@@ -1006,8 +1003,8 @@ def update_portfolio_prices_job(
                         deleted_count = len(delete_result.data) if delete_result.data else len(ids_to_delete)
                         deleted_total += deleted_count
                         
-                        # If we got fewer than our limit, we're done
-                        if len(existing_result.data) < 500:
+                        # If we got fewer than 1000, we're done
+                        if len(existing_result.data) < 1000:
                             break
                     
                     if deleted_total > 0:

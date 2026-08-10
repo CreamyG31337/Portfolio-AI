@@ -41,6 +41,8 @@ def fetch_all_rows(
     filters: Optional[Sequence[tuple[str, str, Any]]] = None,
     order: Optional[str] = None,
     order_desc: bool = False,
+    order_secondary: Optional[str] = None,
+    order_secondary_desc: bool = False,
     page_size: int = SUPABASE_MAX_ROWS,
     max_rows: int = 200_000,
     apply_query: Optional[Callable[[Any], Any]] = None,
@@ -50,6 +52,8 @@ def fetch_all_rows(
     ``filters`` entries are ``(column, op, value)`` where ``op`` is one of
     ``eq``, ``gte``, ``lte``, ``lt``, ``gt``, ``neq``.
     ``apply_query`` may add arbitrary PostgREST query transforms.
+    ``order_secondary`` adds a tie-breaker for stable range paging when the
+    primary ``order`` column is not unique.
     """
     size = clamp_page_size(page_size)
     all_rows: list[dict] = []
@@ -67,6 +71,8 @@ def fetch_all_rows(
             query = apply_query(query)
         if order:
             query = query.order(order, desc=order_desc)
+            if order_secondary:
+                query = query.order(order_secondary, desc=order_secondary_desc)
 
         result = query.range(offset, offset + size - 1).execute()
         batch = result.data or []

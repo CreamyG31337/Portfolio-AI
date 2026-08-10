@@ -4777,11 +4777,10 @@ def get_congress_trades_cached(
                 apply_query=apply_filters,
                 order="transaction_date",
                 order_desc=True,
+                order_secondary="id",
+                order_secondary_desc=True,
                 max_rows=100000,
             )
-
-            # Additional ordering by id (in memory since fetch_all_rows handles only 1 primary order field)
-            all_trades.sort(key=lambda x: (x.get("transaction_date") or "", x.get("id") or 0), reverse=True)
 
             # Post-process: filter by analysis status and score
             filtered_trades = []
@@ -5379,30 +5378,21 @@ def _get_congress_trades_stats_cached(
 
             # C. Most Active (Last 31 Days)
             def _get_most_active():
+                from supabase_pagination import fetch_all_rows
+
                 cutoff = (datetime.now() - timedelta(days=31)).strftime('%Y-%m-%d')
 
-                # Fetch count first to safely paginate
-                count_query = _supabase_client.supabase.table("congress_trades_enriched").select("id", count="exact", head=True)
-                count_query = _apply_filters_to_query(count_query)
-                count_query = count_query.gte("transaction_date", cutoff)
-                count_res = count_query.execute()
-                total = count_res.count if count_res.count is not None else 0
-
-                if total == 0:
-                    return []
-
-                # Paginate fetching all active rows
-                from supabase_pagination import page_ranges
-                all_data = []
-                for start, end in page_ranges(total, 1000):
-                    q = _supabase_client.supabase.table("congress_trades_enriched").select("politician, owner")
+                def apply_most_active(q):
                     q = _apply_filters_to_query(q)
-                    q = q.gte("transaction_date", cutoff).range(start, end)
-                    res = q.execute()
-                    if res.data:
-                        all_data.extend(res.data)
+                    return q.gte("transaction_date", cutoff)
 
-                return all_data
+                return fetch_all_rows(
+                    _supabase_client,
+                    "congress_trades_enriched",
+                    select="politician, owner",
+                    apply_query=apply_most_active,
+                    order="id",
+                )
 
             futures['most_active'] = executor.submit(_get_most_active)
 
@@ -6301,8 +6291,10 @@ def get_insider_trades_cached(
         elif sort_by == "Shares":
             sort_column = "shares"
 
-        # Get count first
-        count_query = _supabase_client.supabase.table("insider_trades").select("ticker", count="exact").limit(0)
+        # Get count first (head=True avoids downloading row bodies)
+        count_query = _supabase_client.supabase.table("insider_trades").select(
+            "ticker", count="exact", head=True
+        )
         count_query = apply_filters(count_query)
         count_result = count_query.execute()
         total = count_result.count if count_result.count is not None else 0

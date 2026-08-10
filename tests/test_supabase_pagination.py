@@ -77,6 +77,39 @@ def test_fetch_all_rows_pages_and_clamps_oversized_page_size() -> None:
     assert recorder == [(0, 999), (1000, 1999)]
 
 
+def test_fetch_all_rows_applies_secondary_order() -> None:
+    """Secondary order must be chained for stable paging on non-unique keys."""
+    import sys
+    from unittest.mock import MagicMock, call
+
+    sys.path.insert(0, str(WEB_DASHBOARD))
+    from supabase_pagination import fetch_all_rows
+
+    chain = MagicMock()
+    chain.select.return_value = chain
+    chain.order.return_value = chain
+    chain.range.return_value = chain
+    chain.execute.return_value = MagicMock(data=[{"id": 1}])
+
+    client = MagicMock()
+    client.supabase.table.return_value = chain
+
+    rows = fetch_all_rows(
+        client,
+        "congress_trades_enriched",
+        order="transaction_date",
+        order_desc=True,
+        order_secondary="id",
+        order_secondary_desc=True,
+    )
+
+    assert rows == [{"id": 1}]
+    assert chain.order.call_args_list == [
+        call("transaction_date", desc=True),
+        call("id", desc=True),
+    ]
+
+
 def test_no_oversized_supabase_chunks_in_web_dashboard() -> None:
     """Fail if production code asks PostgREST for more than 1000 rows per page.
 
