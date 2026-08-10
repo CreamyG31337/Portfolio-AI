@@ -4767,29 +4767,21 @@ def get_congress_trades_cached(
         needs_post_filter = analyzed_only or unanalyzed_only or min_score is not None or max_score is not None
 
         if needs_post_filter:
+            from supabase_pagination import fetch_all_rows
+
             # For analysis-based filters, we must fetch all matching trades first, then filter and paginate
-            query = _supabase_client.supabase.table("congress_trades_enriched").select(
-                "id, ticker, politician, chamber, party, state, transaction_date, disclosure_date, type, amount, owner, pct_change"
+            all_trades = fetch_all_rows(
+                _supabase_client,
+                "congress_trades_enriched",
+                select="id, ticker, politician, chamber, party, state, transaction_date, disclosure_date, type, amount, owner, pct_change",
+                apply_query=apply_filters,
+                order="transaction_date",
+                order_desc=True,
+                max_rows=100000,
             )
-            query = apply_filters(query)
-            query = query.order("transaction_date", desc=True).order("id", desc=True)
 
-            # Fetch all rows (with batching due to Supabase 1000 row limit)
-            all_trades = []
-            batch_size = 1000
-            batch_offset = 0
-
-            while True:
-                result = query.range(batch_offset, batch_offset + batch_size - 1).execute()
-                if not result.data:
-                    break
-                all_trades.extend(result.data)
-                if len(result.data) < batch_size:
-                    break
-                batch_offset += batch_size
-                if batch_offset > 100000:
-                    logger.warning("Reached 100,000 row safety limit in get_congress_trades_cached pagination")
-                    break
+            # Additional ordering by id (in memory since fetch_all_rows handles only 1 primary order field)
+            all_trades.sort(key=lambda x: (x.get("transaction_date") or "", x.get("id") or 0), reverse=True)
 
             # Post-process: filter by analysis status and score
             filtered_trades = []
@@ -6310,7 +6302,7 @@ def get_insider_trades_cached(
             sort_column = "shares"
 
         # Get count first
-        count_query = _supabase_client.supabase.table("insider_trades").select("ticker", count="exact")
+        count_query = _supabase_client.supabase.table("insider_trades").select("ticker", count="exact").limit(0)
         count_query = apply_filters(count_query)
         count_result = count_query.execute()
         total = count_result.count if count_result.count is not None else 0
