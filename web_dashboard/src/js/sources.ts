@@ -1,3 +1,4 @@
+import { Modal } from "flowbite";
 import { getCsrfHeaders } from "./csrf.js";
 import { showToast } from "./toast.js";
 
@@ -162,11 +163,23 @@ async function loadRss(): Promise<void> {
   }
 }
 
+const modals = new Map<string, Modal>();
+
 function showModal(id: string, show: boolean): void {
   const el = document.getElementById(id);
   if (!el) return;
-  el.classList.toggle("hidden", !show);
-  el.classList.toggle("flex", show);
+
+  let modal = modals.get(id);
+  if (!modal) {
+    modal = new Modal(el);
+    modals.set(id, modal);
+  }
+
+  if (show) {
+    modal.show();
+  } else {
+    modal.hide();
+  }
 }
 
 function confirmDelete(message: string): Promise<boolean> {
