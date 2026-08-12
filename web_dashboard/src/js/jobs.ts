@@ -1164,7 +1164,7 @@ function createJobCard(job: Job): string {
             <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${safeJobId}">
                 <div class="flex justify-between items-center mb-3">
                     <h4 class="text-sm font-bold text-text-primary">⚙️ Job Parameters</h4>
-                    <button class="text-xs text-text-secondary hover:text-text-primary" onclick="toggleParams('${safeJsJobId}')" aria-label="Close parameters">
+                    <button class="text-xs text-text-secondary hover:text-text-primary" data-collapse-toggle="params-${safeJobId}" aria-expanded="true" aria-controls="params-${safeJobId}" aria-label="Close parameters">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -1174,7 +1174,7 @@ function createJobCard(job: Job): string {
                 </div>
                 
                 <div class="mt-4 flex justify-end border-t border-border pt-3">
-                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" onclick="toggleParams('${safeJsJobId}')">Cancel</button>
+                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" data-collapse-toggle="params-${safeJobId}" aria-expanded="true" aria-controls="params-${safeJobId}">Cancel</button>
                      <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-hidden transition-colors duration-200 flex items-center run-btn" 
                         onclick="runJobWithParams('${safeJsJobId}', '${escapeJsString(job.actual_job_id || job.id)}')">
                         <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
@@ -1232,7 +1232,7 @@ function createJobCard(job: Job): string {
 
                     ${Object.keys(job.parameters || {}).length > 0
             ? `<button class="text-accent hover:text-accent-hover p-2"
-                                onclick="toggleParams('${safeJsJobId}')" title="Run with Parameters" aria-label="Run with Parameters">
+                                data-collapse-toggle="params-${safeJobId}" aria-expanded="false" aria-controls="params-${safeJobId}" title="Run with Parameters" aria-label="Run with Parameters">
                                 <i class="fas fa-cog"></i>
                            </button>`
             : `<button class="job-action-btn text-accent hover:text-accent-hover p-2"
@@ -1911,14 +1911,7 @@ async function startScheduler(): Promise<void> {
 }
 
 
-// TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
 // Global functions for inline onclick handlers
-function toggleParams(id: string): void {
-    const el = document.getElementById(`params-${id}`);
-    if (el) {
-        el.classList.toggle('hidden');
-    }
-}
 
 function toggleDateRange(jobId: string, checkbox: HTMLInputElement): void {
     const container = document.getElementById(`params-${jobId}`);
@@ -2002,7 +1995,7 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
         }
 
         // Hide params and refresh
-        toggleParams(id);
+        // toggleParams removed, handled by Flowbite data-collapse-toggle
         fetchStatus();
 
         // Show success toast/message
@@ -2024,8 +2017,8 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
 // Assign to window for inline handlers - must be done immediately, not in DOMContentLoaded
 if (typeof window !== 'undefined') {
     (window as any).refreshJobs = fetchStatus;
-    (window as any).toggleParams = toggleParams;
+
     (window as any).toggleDateRange = toggleDateRange;
     (window as any).runJobWithParams = runJobWithParams;
-    console.log('[Jobs] Global functions exposed: refreshJobs, toggleParams, toggleDateRange, runJobWithParams');
+    console.log('[Jobs] Global functions exposed: refreshJobs, toggleDateRange, runJobWithParams');
 }
