@@ -43,6 +43,7 @@ QUEUE_JOB_ETF_GROUP_ANALYSIS = "etf_group_analysis"
 QUEUE_JOB_EXECUTIVE_TICKER_RESOLVE = "executive_ticker_resolve"
 QUEUE_JOB_ANALYZE_CONGRESS_TRADES = "analyze_congress_trades"
 QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY = "youtube_transcript_summary"
+QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS = "social_sentiment_analysis"
 
 TERMINAL_ERROR_CLASSES = {
     ERROR_SCHEMA_VIOLATION,
@@ -1681,6 +1682,109 @@ def _production_holdings_tickers() -> list[str]:
         return []
 
 
+def enqueue_social_sentiment_analysis_tasks(
+    supabase_client: Any,
+    session_ids: Sequence[int],
+    *,
+    priority: int = 0,
+    enqueued_by: str = "cron",
+    max_attempts: int = 3,
+) -> Dict[str, int]:
+    """Enqueue one ``social_sentiment_analysis`` task per sentiment session.
+
+    Backfill bulk should use low ``priority`` (default 0) so cron work leases
+    first. ``target_key`` is the string session id, giving active-row dedupe
+    when the same session is enqueued twice.
+    """
+
+    stats = {"attempted": 0, "enqueued": 0, "failed": 0}
+    total = len(session_ids)
+    progress_every = 500
+    for raw_id in session_ids:
+        stats["attempted"] += 1
+        try:
+            session_id = int(raw_id)
+        except (TypeError, ValueError):
+            stats["failed"] += 1
+            continue
+        if session_id <= 0:
+            stats["failed"] += 1
+            continue
+        try:
+            enqueue_ai_task(
+                supabase_client,
+                analysis_type=QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS,
+                target_key=str(session_id),
+                payload={"session_id": session_id, "priority": int(priority)},
+                priority=int(priority),
+                enqueued_by=enqueued_by,
+                max_attempts=max_attempts,
+            )
+            stats["enqueued"] += 1
+        except Exception as exc:
+            stats["failed"] += 1
+            logger.warning(
+                "Failed to enqueue social_sentiment_analysis task for session_id=%s: %s",
+                session_id,
+                exc,
+            )
+        if total > progress_every and stats["attempted"] % progress_every == 0:
+            logger.info(
+                "Enqueue progress: %s/%s attempted (enqueued=%s failed=%s)",
+                stats["attempted"],
+                total,
+                stats["enqueued"],
+                stats["failed"],
+            )
+    return stats
+
+
+def social_sentiment_analysis_task_handler(task: Mapping[str, Any], backend: str) -> None:
+    """Analyze one sentiment session on the assigned backend."""
+
+    payload = task.get("payload") if isinstance(task.get("payload"), dict) else {}
+    raw_id = payload.get("session_id") or task.get("target_key")
+    try:
+        session_id = int(raw_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "social_sentiment_analysis task missing session_id "
+            f"(target_key={task.get('target_key')!r})"
+        ) from exc
+
+    model = model_for_backend(backend)
+
+    from ollama_client import OllamaClient
+    from social_service import SocialSentimentService
+
+    if backend == BACKEND_GLM:
+        # glm-* model ids route to Z.AI transport inside OllamaClient.
+        client = OllamaClient(force_base_url_only=True)
+    else:
+        base_url = ollama_base_url_for_backend(backend)
+        if not base_url:
+            raise RuntimeError(f"No Ollama base URL configured for backend={backend}")
+        client = OllamaClient(base_url=base_url, force_base_url_only=True)
+
+    service = SocialSentimentService(ollama_client=client)
+    service.analyze_sentiment_session(session_id, ollama=client, model=model)
+
+    # The service retires every session it is done with, including ones it can
+    # never analyze. Still pending means this attempt failed, so raise and let
+    # the queue apply its own backoff and attempt accounting.
+    rows = service.postgres.execute_query(
+        "SELECT needs_ai_analysis FROM sentiment_sessions WHERE id = %s",
+        (session_id,),
+    )
+    if not rows:
+        raise ValueError(f"sentiment session id={session_id} not found")
+    if rows[0]["needs_ai_analysis"]:
+        raise RuntimeError(
+            f"social_sentiment_analysis produced no result for session {session_id} "
+            f"on {backend}"
+        )
+
+
 def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandler]:
     """Build handlers for queue-managed jobs that are enabled in config."""
 
@@ -1703,6 +1807,10 @@ def build_task_handlers(enabled_jobs: Iterable[str] = ()) -> Dict[str, TaskHandl
     if QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY in jobs:
         handlers[QUEUE_JOB_YOUTUBE_TRANSCRIPT_SUMMARY] = (
             youtube_transcript_summary_task_handler
+        )
+    if QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS in jobs:
+        handlers[QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS] = (
+            social_sentiment_analysis_task_handler
         )
     return handlers
 

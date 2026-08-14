@@ -672,8 +672,12 @@ def api_latest_sentiment():
                 sentiment_label = p['sentiment_label'] if p['sentiment_label'] else 'N/A'
                 sentiment_icon = sentiment_icons.get(sentiment_label.upper(), '')
                 
-                # Format sentiment with icon
-                if sentiment_icon:
+                # Format sentiment with icon. A zero-volume poll found no posts
+                # at all, but many of those rows still carry a stored NEUTRAL
+                # label, which reads as a real reading rather than an absence.
+                if not p['volume']:
+                    sentiment_display = '— No data'
+                elif sentiment_icon:
                     sentiment_display = f"{sentiment_icon} {sentiment_label}"
                 else:
                     sentiment_display = sentiment_label

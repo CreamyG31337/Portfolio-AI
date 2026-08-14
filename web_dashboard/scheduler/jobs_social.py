@@ -520,8 +520,21 @@ def social_sentiment_ai_job() -> None:
         # Initialize service
         service = SocialSentimentService()
 
+        # Queue mode fans sessions out to the GLM + Ollama worker pool, so a
+        # local Ollama client is only required for the inline fallback path.
+        from scheduler.ai_task_workers import (
+            QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS,
+            is_ai_queue_job_enabled,
+        )
+
+        try:
+            queue_mode = is_ai_queue_job_enabled(QUEUE_JOB_SOCIAL_SENTIMENT_ANALYSIS)
+        except Exception as e:
+            logger.warning("AI queue mode check failed (using inline path): %s", e)
+            queue_mode = False
+
         # Check Ollama availability
-        if not service.ollama:
+        if not queue_mode and not service.ollama:
             duration_ms = int((time.time() - start_time) * 1000)
             message = "Ollama client unavailable - cannot perform AI analysis"
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
@@ -541,9 +554,60 @@ def social_sentiment_ai_job() -> None:
         logger.info("🧠 Step 3: Performing AI analysis...")
         analyses_completed = 0
 
-        # Get sessions that need analysis (limit to avoid timeouts)
         from postgres_client import PostgresClient
         pc = PostgresClient()
+
+        if queue_mode:
+            from scheduler.ai_task_workers import (
+                AIQueueConfig,
+                enqueue_social_sentiment_analysis_tasks,
+            )
+            from supabase_client import SupabaseClient
+
+            # Newest first: the dashboard only renders the last 7 days, so
+            # recent sessions are the ones that make the page non-empty.
+            pending_sessions = pc.execute_query("""
+                SELECT id FROM sentiment_sessions
+                WHERE needs_ai_analysis = TRUE
+                ORDER BY session_start DESC
+                LIMIT 200
+            """)
+            session_ids = [int(s['id']) for s in pending_sessions]
+
+            if not session_ids:
+                message = (
+                    f"Extracted {extraction_result['posts_created']} posts, "
+                    f"created {session_result['sessions_created']} sessions, "
+                    "no sessions pending analysis"
+                )
+            else:
+                config = AIQueueConfig.from_env()
+                enqueued_by = os.getenv("AI_QUEUE_ENQUEUED_BY", "cron").strip() or "cron"
+                # Above backfill bulk (priority 0) so cron work leases first.
+                stats = enqueue_social_sentiment_analysis_tasks(
+                    SupabaseClient(use_service_role=True),
+                    session_ids,
+                    priority=10,
+                    enqueued_by=enqueued_by,
+                    max_attempts=config.max_attempts,
+                )
+                message = (
+                    f"Extracted {extraction_result['posts_created']} posts, "
+                    f"created {session_result['sessions_created']} sessions, "
+                    f"enqueued {stats['enqueued']}/{stats['attempted']} analysis "
+                    f"task(s) (failed={stats['failed']})"
+                )
+
+            duration_ms = int((time.time() - start_time) * 1000)
+            log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
+            mark_job_completed(
+                'social_sentiment_ai', target_date, None, [],
+                duration_ms=duration_ms, message=message,
+            )
+            logger.info(f"✅ Social Sentiment AI Analysis job completed: {message} in {duration_ms/1000:.2f}s")
+            return
+
+        # Inline fallback: process a small batch so the job cannot overrun.
         pending_sessions = pc.execute_query("""
             SELECT id, ticker, platform FROM sentiment_sessions
             WHERE needs_ai_analysis = TRUE

@@ -1927,19 +1927,22 @@ def register_default_jobs(scheduler) -> None:
             )
             logger.info("Registered job: article_relevance (daily at 4:00 AM ET)")
 
-    # Social sentiment AI analysis job - every 2 hours
-    # DISABLED: Redundant with inline analysis in fetch_social_sentiment_job
-    # if AVAILABLE_JOBS['social_sentiment_ai']['enabled_by_default']:
-    #     scheduler.add_job(
-    #         social_sentiment_ai_job,
-    #         trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['social_sentiment_ai']['default_interval_minutes']),
-    #         id='social_sentiment_ai',
-    #         name=f"{get_job_icon('social_sentiment_ai')} Social Sentiment AI Analysis",
-    #         replace_existing=True,
-    #         max_instances=1,
-    #         coalesce=True
-    #     )
-    #     logger.info("Registered job: social_sentiment_ai (every 2 hours)")
+    # Social sentiment AI analysis job.
+    # Was disabled on the theory that fetch_social_sentiment_job analyzed inline.
+    # It does not: that job only fetches and calls save_metrics(), so nothing
+    # populated social_sentiment_analysis for the seven months it stayed off.
+    if AVAILABLE_JOBS['social_sentiment_ai']['enabled_by_default']:
+        interval = AVAILABLE_JOBS['social_sentiment_ai']['default_interval_minutes']
+        scheduler.add_job(
+            social_sentiment_ai_job,
+            trigger=IntervalTrigger(minutes=interval),
+            id='social_sentiment_ai',
+            name=f"{get_job_icon('social_sentiment_ai')} Social Sentiment AI Analysis",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: social_sentiment_ai (every %s minutes)", interval)
     
     # Social metrics cleanup job - daily at 3:00 AM
     scheduler.add_job(
