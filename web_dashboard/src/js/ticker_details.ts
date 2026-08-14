@@ -358,7 +358,7 @@ function appendFundParam(url: string): string {
 /** Extra query params for chart/price APIs: Yahoo vs portfolio, optional calendar years. */
 function buildTickerChartExtraQuery(): string {
     const psEl = document.getElementById('chart-price-source') as HTMLSelectElement | null;
-    const priceSource = psEl ? psEl.value : 'auto';
+    const priceSource = psEl ? psEl.value : 'market';
     const yfEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
     const ytEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
     const yf = yfEl?.value?.trim() ?? '';
