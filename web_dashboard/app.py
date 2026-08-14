@@ -2804,18 +2804,21 @@ def export_portfolio():
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
 
+        from supabase_pagination import fetch_all_rows
         # Get portfolio positions
-        query = client.supabase.table("portfolio_positions").select("*")
-        if fund:
-            query = query.eq("fund", fund)
-        query = query.limit(limit)
+        filters = [("fund", "eq", fund)] if fund else None
 
-        result = query.execute()
+        all_rows = fetch_all_rows(
+            client,
+            "portfolio_positions",
+            filters=filters,
+            max_rows=limit
+        )
 
         return jsonify({
             "success": True,
-            "data": result.data,
-            "count": len(result.data),
+            "data": all_rows,
+            "count": len(all_rows),
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
@@ -2839,18 +2842,23 @@ def export_trades():
         if not client:
             return jsonify({"error": "Database connection failed"}), 500
 
+        from supabase_pagination import fetch_all_rows
         # Get trade log
-        query = client.supabase.table("trade_log").select("*")
-        if fund:
-            query = query.eq("fund", fund)
-        query = query.order("date", desc=True).limit(limit)
+        filters = [("fund", "eq", fund)] if fund else None
 
-        result = query.execute()
+        all_rows = fetch_all_rows(
+            client,
+            "trade_log",
+            filters=filters,
+            order="date",
+            order_desc=True,
+            max_rows=limit
+        )
 
         return jsonify({
             "success": True,
-            "data": result.data,
-            "count": len(result.data),
+            "data": all_rows,
+            "count": len(all_rows),
             "fund": fund,
             "timestamp": datetime.now().isoformat()
         })
