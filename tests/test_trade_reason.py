@@ -4,6 +4,7 @@ from utils.trade_reason import (
     is_dividend_reason,
     is_sell_reason,
     is_trade_sell,
+    trade_display_action,
 )
 
 
@@ -28,6 +29,22 @@ def test_is_trade_sell_uses_action_column() -> None:
     assert is_trade_sell({"action": "SELL", "reason": "Thesis text without sell keyword"})
     assert not is_trade_sell({"action": "BUY", "reason": "Growth thesis"})
     assert is_trade_sell({"action": "BUY", "reason": "Rotate out - SELL"})
+
+
+def test_trade_display_action_prefers_persisted_action() -> None:
+    assert trade_display_action(
+        {"action": "BUY", "reason": "After the sell-off, adding WEB.V"}
+    ) == "BUY"
+    assert trade_display_action(
+        {"action": "SELL", "reason": "No keyword in thesis"}
+    ) == "SELL"
+    assert trade_display_action({"action": "DIVIDEND", "reason": "cash"}) == "DIVIDEND"
+
+
+def test_trade_display_action_infers_when_action_missing() -> None:
+    assert trade_display_action({"reason": "Limit Sell - Filled"}) == "SELL"
+    assert trade_display_action({"reason": "DRIP"}) == "DIVIDEND"
+    assert trade_display_action({"reason": "manual adjustment"}) == "BUY"
 
 
 def test_is_boilerplate_buy_rationale() -> None:

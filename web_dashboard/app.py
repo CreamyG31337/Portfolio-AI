@@ -3669,9 +3669,9 @@ def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
 
 def _ticker_price_request_params() -> Tuple[str, Optional[int], Optional[int]]:
     """Parse price_source, year_from, year_to from the current request query."""
-    ps = (request.args.get("price_source") or "auto").strip().lower()
+    ps = (request.args.get("price_source") or "market").strip().lower()
     if ps not in ("auto", "market"):
-        ps = "auto"
+        ps = "market"
     yf = request.args.get("year_from", type=int)
     yt = request.args.get("year_to", type=int)
     if yf is None or yt is None:
@@ -4139,7 +4139,7 @@ def _get_ticker_price_history_cached(
     user_is_admin: bool,
     auth_token: Optional[str],
     fund: Optional[str],
-    price_source: str = "auto",
+    price_source: str = "market",
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ):
@@ -4231,7 +4231,7 @@ def _get_ticker_chart_data_cached(
     auth_token: Optional[str],
     fund: Optional[str],
     range: str = '3m',
-    price_source: str = 'auto',
+    price_source: str = 'market',
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ):
@@ -4394,7 +4394,7 @@ def _get_ticker_chart_cached(
     fund: Optional[str],
     theme: Optional[str] = None,
     range: str = '3m',
-    price_source: str = 'auto',
+    price_source: str = 'market',
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ):
