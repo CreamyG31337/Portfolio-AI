@@ -670,8 +670,11 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                         currency = 'USD'
                     running_positions[ticker]['currency'] = currency
             
-                # Store current running positions for this date
-            date_positions[trading_day] = dict(running_positions)
+                # Store current running positions for this date (deep-copy per ticker —
+            # shallow dict() aliases inner dicts to the final share counts).
+            date_positions[trading_day] = {
+                ticker: dict(pos) for ticker, pos in running_positions.items()
+            }
             
             # Log progress every 10 days
             processed_days = len(date_positions)
