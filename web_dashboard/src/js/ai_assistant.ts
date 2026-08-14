@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { initCollapsesIn } from './collapse.js';
 import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
 
 // Configuration interfaces
@@ -2257,7 +2258,7 @@ class AIAssistant {
         header.setAttribute('data-collapse-toggle', `search-results-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `search-results-${randomId}`);
-        header.innerHTML = `<span class="font-semibold text-theme-info-text">🔍 Search Results (${searchData.results.length} found)</span><svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0 text-theme-info-text" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
+        header.innerHTML = `<span class="font-semibold text-theme-info-text">🔍 Search Results (${searchData.results.length} found)</span><svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-theme-info-text" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
 
         const content = document.createElement('div');
         content.id = `search-results-${randomId}`;
@@ -2274,11 +2275,11 @@ class AIAssistant {
             content.appendChild(resultItem);
         });
 
-        // Allow Collapse to initialize via DOM mutation or by user action
-
         resultsDiv.appendChild(header);
         resultsDiv.appendChild(content);
         chatMessages.appendChild(resultsDiv);
+        // Flowbite only auto-binds at DOMContentLoaded; bind this new subtree.
+        initCollapsesIn(resultsDiv);
         this.scrollToBottom();
         header.click();
     }
@@ -2298,7 +2299,7 @@ class AIAssistant {
         header.setAttribute('data-collapse-toggle', `research-articles-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `research-articles-${randomId}`);
-        header.innerHTML = `<span class="font-semibold text-accent">🧠 Research Articles (${articles.length} found)</span><svg data-accordion-icon class="w-3 h-3 rotate-180 shrink-0 text-accent" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
+        header.innerHTML = `<span class="font-semibold text-accent">🧠 Research Articles (${articles.length} found)</span><svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-accent" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
 
         const content = document.createElement('div');
         content.id = `research-articles-${randomId}`;
@@ -2325,11 +2326,10 @@ class AIAssistant {
             content.appendChild(articleItem);
         });
 
-        // Allow Collapse to initialize via DOM mutation or by user action
-
         articlesDiv.appendChild(header);
         articlesDiv.appendChild(content);
         chatMessages.appendChild(articlesDiv);
+        initCollapsesIn(articlesDiv);
         this.scrollToBottom();
         header.click();
     }

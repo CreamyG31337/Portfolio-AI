@@ -10,6 +10,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { initCollapsesIn, setCollapsed } from './collapse.js';
 
 console.log('[Jobs] jobs.ts file loaded and executing...');
 
@@ -931,11 +932,15 @@ function renderJobs(jobsData: Job[]): void {
         elements.jobsList.innerHTML = jobCards.join('');
         console.log('[Jobs] Rendered', jobs.length, 'job cards to element:', elements.jobsList.id);
 
+        // Cards are rebuilt on every refresh, long after Flowbite's one-time
+        // auto-init, so bind the collapse toggles on the new subtree.
+        initCollapsesIn(elements.jobsList);
+
         // Restore open parameter forms after re-rendering
         openParamForms.forEach(jobId => {
             const paramForm = document.getElementById(`params-${jobId}`);
             if (paramForm) {
-                paramForm.classList.remove('hidden');
+                setCollapsed(`params-${jobId}`, false);
                 console.log('[Jobs] Restored open parameter form for job:', jobId);
             }
         });
@@ -1995,7 +2000,7 @@ async function runJobWithParams(id: string, actualJobId: string): Promise<void> 
         }
 
         // Hide params and refresh
-        // toggleParams removed, handled by Flowbite data-collapse-toggle
+        setCollapsed(`params-${id}`, true);
         fetchStatus();
 
         // Show success toast/message

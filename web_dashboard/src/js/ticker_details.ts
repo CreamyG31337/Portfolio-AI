@@ -2,6 +2,7 @@ export { }; // Ensure file is treated as a module
 
 // Ticker search via shared setupTickerSearch (/api/v2/ticker/search)
 import { getCsrfHeaders } from './csrf.js';
+import { initCollapsesIn } from './collapse.js';
 import { showToast as showToastBase } from './toast.js';
 import { setupTickerSearch } from './ticker_search.js';
 import { sentimentBadgeClasses } from './sentiment_badges.js';
@@ -1649,6 +1650,9 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
 
         list.appendChild(row);
     });
+
+    // Rows are built after page load, so Flowbite never binds them itself.
+    initCollapsesIn(list);
 }
 
 // Render social sentiment
