@@ -38,11 +38,12 @@ def _last_pre_split_close(closes_unadjusted: float = 90.0 + (61 % 5) * 0.2) -> f
 def test_two_for_one_cliff_is_back_adjusted() -> None:
     df = _ohlcv_with_split_cliff()
     adjusted = apply_unadjusted_splits(df)
-    last_pre = float(adjusted.loc[adjusted.index < df.index[62], "Close"].iloc[-1])
+    split_day = df.index[62]
+    last_pre = float(adjusted.loc[adjusted.index < split_day, "Close"].iloc[-1])
     assert last_pre == pytest.approx(_last_pre_split_close())
-    assert float(adjusted.loc[adjusted.index < df.index[62], "Close"].max()) < 50.0
+    assert float(adjusted.loc[adjusted.index < split_day, "Close"].max()) < 50.0
     assert float(adjusted["Close"].iloc[-1]) == pytest.approx(45.6)
-    assert int(adjusted["Volume"].iloc[0]) == 1_000_000
+    assert int(adjusted["Volume"].iloc[0]) == 2_000_000
     assert int(adjusted["Volume"].iloc[-1]) == 1_000_000
 
 
@@ -89,7 +90,8 @@ def test_explicit_splits_series_matches_column() -> None:
     df = _ohlcv_with_split_cliff().drop(columns=["Stock Splits"])
     splits = pd.Series([2.0], index=pd.DatetimeIndex([df.index[62]]))
     adjusted = apply_unadjusted_splits(df, splits)
-    last_pre = float(adjusted.loc[adjusted.index < df.index[62], "Close"].iloc[-1])
+    split_day = df.index[62]
+    last_pre = float(adjusted.loc[adjusted.index < split_day, "Close"].iloc[-1])
     assert last_pre == pytest.approx(_last_pre_split_close())
 
 
@@ -116,3 +118,140 @@ def test_fear_and_trend_recover_after_split_adjust() -> None:
     adj_structure = StructureSignal().evaluate(adjusted)
     assert raw_structure["trend"] == "DOWNTREND"
     assert adj_structure["trend"] != "DOWNTREND"
+
+
+def test_small_ratio_105_dividend_no_adjust() -> None:
+    """1.05 stock-dividend marker plus ordinary -3% day must not adjust."""
+    idx = pd.bdate_range("2026-06-01", periods=5, freq="C")
+    closes = [100.0, 99.5, 99.0, 96.0, 95.5]
+    splits = [0.0, 0.0, 1.05, 0.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [500_000] * 5,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    pd.testing.assert_series_equal(adjusted["Close"], df["Close"])
+
+
+def test_crash_with_recorded_split_not_adjusted() -> None:
+    """Real ~60% crash with a 2:1 split marker must not match split tolerance."""
+    idx = pd.bdate_range("2026-06-01", periods=4, freq="C")
+    closes = [90.0, 89.0, 35.6, 35.0]
+    splits = [0.0, 0.0, 2.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [1_000_000] * 4,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    pd.testing.assert_series_equal(adjusted["Close"], df["Close"])
+
+
+def test_already_adjusted_series_no_double_adjust() -> None:
+    """Continuous post-split prices with a stale 2:1 marker must not adjust."""
+    idx = pd.bdate_range("2026-06-01", periods=4, freq="C")
+    closes = [22.5, 22.0, 22.5, 22.8]
+    splits = [0.0, 0.0, 2.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [1_000_000] * 4,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    pd.testing.assert_series_equal(adjusted["Close"], df["Close"])
+
+
+def test_duplicate_index_no_typeerror() -> None:
+    """Repeated timestamps must not raise when detecting cliffs."""
+    ts = pd.Timestamp("2026-06-01")
+    idx = pd.DatetimeIndex([ts, ts, ts + pd.Timedelta(days=1)])
+    closes = [90.0, 90.1, 45.0]
+    splits = [0.0, 0.0, 2.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [100, 100, 100],
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.0)
+    assert float(adjusted["Close"].iloc[1]) == pytest.approx(45.05)
+
+
+def test_cliff_on_next_trading_bar() -> None:
+    """Split-day close still pre-split; cliff appears on T+1."""
+    idx = pd.bdate_range("2026-06-01", periods=5, freq="C")
+    closes = [90.0, 90.2, 90.0, 90.1, 45.0]
+    splits = [0.0, 0.0, 2.0, 0.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [1_000_000] * 5,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    split_day = idx[2]
+    pre_bars = adjusted.loc[adjusted.index < split_day, "Close"]
+    assert float(pre_bars.iloc[-1]) == pytest.approx(45.1)
+    assert float(adjusted["Close"].iloc[-1]) == pytest.approx(45.0)
+
+
+def test_volume_scaled_on_pre_split_bars() -> None:
+    df = _ohlcv_with_split_cliff()
+    adjusted = apply_unadjusted_splits(df)
+    split_day = df.index[62]
+    pre_vol = adjusted.loc[adjusted.index < split_day, "Volume"]
+    post_vol = adjusted.loc[adjusted.index >= split_day, "Volume"]
+    assert int(pre_vol.iloc[0]) == 2_000_000
+    assert int(post_vol.iloc[-1]) == 1_000_000
+
+
+def test_adj_close_unchanged_when_present() -> None:
+    idx = pd.bdate_range("2026-06-01", periods=4, freq="C")
+    closes = [90.0, 90.0, 45.0, 45.5]
+    adj_close = [45.0, 45.0, 45.0, 45.5]
+    splits = [0.0, 0.0, 2.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Adj Close": adj_close,
+            "Volume": [1_000_000] * 4,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    pd.testing.assert_series_equal(adjusted["Adj Close"], df["Adj Close"])
+    assert float(adjusted.loc[adjusted.index < idx[2], "Close"].iloc[-1]) == pytest.approx(45.0)

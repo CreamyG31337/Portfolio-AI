@@ -66,12 +66,27 @@ def _evaluate(ticker: str):
     return signals, price_data
 
 
+def _prior_explanation(sb, ticker: str) -> str | None:
+    resp = (
+        sb.table("signal_analysis")
+        .select("explanation")
+        .eq("ticker", ticker)
+        .order("analysis_date", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not resp.data:
+        return None
+    prior = resp.data[0].get("explanation")
+    return prior if prior else None
+
+
 def _upsert_signals(ticker: str, signals: dict) -> None:
     from supabase_client import SupabaseClient
 
     sb = SupabaseClient(use_service_role=True).supabase
     analysis_date = datetime.now(timezone.utc)
-    row = {
+    row: dict = {
         "ticker": ticker,
         "analysis_date": analysis_date.isoformat(),
         "structure_signal": signals.get("structure", {}),
@@ -81,13 +96,16 @@ def _upsert_signals(ticker: str, signals: dict) -> None:
         "fundamental_signal": signals.get("fundamental", {}),
         "overall_signal": signals.get("overall_signal", "HOLD"),
         "confidence_score": signals.get("confidence", 0.0),
-        "explanation": None,
     }
+    prior_explanation = _prior_explanation(sb, ticker)
+    if prior_explanation is not None:
+        row["explanation"] = prior_explanation
     sb.table("signal_analysis").upsert(row, on_conflict="ticker,analysis_date").execute()
     print(f"upserted signal_analysis {ticker} @ {analysis_date.isoformat()}")
 
 
 def _run_ai(ticker: str) -> None:
+    from ai_skip_list_manager import AISkipListManager
     from ollama_client import OllamaClient
     from postgres_client import PostgresClient
     from supabase_client import SupabaseClient
@@ -97,7 +115,7 @@ def _run_ai(ticker: str) -> None:
     ollama = OllamaClient()
     supabase = SupabaseClient(use_service_role=True)
     postgres = PostgresClient()
-    ta = TickerAnalysisService(ollama, supabase, postgres)
+    ta = TickerAnalysisService(ollama, supabase, postgres, AISkipListManager(supabase))
     saved = ta.analyze_ticker(ticker, requested_by="split-adjust-rescore")
     if not saved:
         print(f"ticker_analysis failed for {ticker}")

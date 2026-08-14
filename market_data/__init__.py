@@ -12,6 +12,7 @@ from .market_hours import MarketHours
 from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
 from .price_cache import PriceCache
 from .split_adjust import apply_unadjusted_splits
+from .yahoo_history import prepare_unadjusted_yahoo_history
 
 __all__ = [
     'MarketDataFetcher',
@@ -21,4 +22,5 @@ __all__ = [
     'drop_invalid_ohlcv_bars',
     'get_last_valid_close',
     'apply_unadjusted_splits',
+    'prepare_unadjusted_yahoo_history',
 ]

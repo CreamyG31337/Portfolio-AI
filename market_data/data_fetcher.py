@@ -21,7 +21,7 @@ import pandas as pd
 from pathlib import Path
 
 from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
-from .split_adjust import apply_unadjusted_splits
+from .yahoo_history import flatten_yahoo_columns, prepare_unadjusted_yahoo_history
 
 logger = logging.getLogger(__name__)
 
@@ -576,9 +576,9 @@ class MarketDataFetcher:
         return start_ts, end_ts
 
     def _yahoo_ohlcv_frame(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Keep Stock Splits long enough to back-adjust an unadjusted cliff, then OHLCV."""
+        """Flatten, split-adjust, then normalize to standard OHLCV."""
         df = self._to_datetime_index(df)
-        df = apply_unadjusted_splits(df)
+        df = prepare_unadjusted_yahoo_history(df)
         ohlcv_columns = [col for col in ("Open", "High", "Low", "Close", "Volume") if col in df.columns]
         return self._normalize_ohlcv(df[ohlcv_columns])
     
@@ -827,20 +827,7 @@ class MarketDataFetcher:
         """Normalize OHLCV DataFrame to standard format with Decimal conversion."""
         from decimal import Decimal
         
-        # Flatten multiIndex frame so we can lazily lookup values by index.
-        if isinstance(df.columns, pd.MultiIndex):
-            try:
-                # If the second level is the same ticker for all cols, drop it     
-                if len(set(df.columns.get_level_values(1))) == 1:
-                    df = df.copy()
-                    df.columns = df.columns.get_level_values(0)
-                else:
-                    # multiple tickers: flatten with join
-                    df = df.copy()
-                    df.columns = ["_".join(map(str, t)).strip("_") for t in df.columns.to_flat_index()]
-            except Exception:
-                df = df.copy()
-                df.columns = ["_".join(map(str, t)).strip("_") for t in df.columns.to_flat_index()]
+        df = flatten_yahoo_columns(df)
         
         # Ensure required columns exist
         required_cols = ["Open", "High", "Low", "Close", "Volume"]
