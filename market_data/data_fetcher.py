@@ -21,6 +21,7 @@ import pandas as pd
 from pathlib import Path
 
 from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
+from .split_adjust import apply_unadjusted_splits
 
 logger = logging.getLogger(__name__)
 
@@ -573,6 +574,13 @@ class MarketDataFetcher:
         end_ts = now + timedelta(days=1)  # Include today
         
         return start_ts, end_ts
+
+    def _yahoo_ohlcv_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Keep Stock Splits long enough to back-adjust an unadjusted cliff, then OHLCV."""
+        df = self._to_datetime_index(df)
+        df = apply_unadjusted_splits(df)
+        ohlcv_columns = [col for col in ("Open", "High", "Low", "Close", "Volume") if col in df.columns]
+        return self._normalize_ohlcv(df[ohlcv_columns])
     
     def _fetch_yahoo_data(
         self,
@@ -603,10 +611,7 @@ class MarketDataFetcher:
                 )
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    # Remove extra columns that aren't OHLCV
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     return FetchResult(df, "yahoo")
             finally:
                 # Restore original logging level
@@ -628,9 +633,7 @@ class MarketDataFetcher:
                     df = ticker_obj.history(period="5d")
 
                     if isinstance(df, pd.DataFrame) and not df.empty:
-                        ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                        df = df[ohlcv_columns]
-                        df = self._normalize_ohlcv(self._to_datetime_index(df))
+                        df = self._yahoo_ohlcv_frame(df)
                         logger.info(f"{ticker}: Successfully retrieved price data via fallback method")
                         return FetchResult(df, "yahoo-retry")
                     else:
@@ -659,9 +662,7 @@ class MarketDataFetcher:
                 df = ticker_obj.history(period=period)
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     logger.info(f"{ticker}: Successfully retrieved price data using period-based approach")
                     return FetchResult(df, "yahoo-period")
             finally:
@@ -691,9 +692,7 @@ class MarketDataFetcher:
                 df = ticker_obj.history(period="5d", interval="1d")
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     logger.info(f"{ticker}: Successfully retrieved price data using minimal parameters approach")
                     return FetchResult(df, "yahoo-simple")
             finally:
