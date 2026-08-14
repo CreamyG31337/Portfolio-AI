@@ -66,19 +66,20 @@ def _evaluate(ticker: str):
     return signals, price_data
 
 
-def _prior_explanation(sb, ticker: str) -> str | None:
-    resp = (
-        sb.table("signal_analysis")
-        .select("explanation")
-        .eq("ticker", ticker)
-        .order("analysis_date", desc=True)
-        .limit(1)
-        .execute()
-    )
-    if not resp.data:
+def _fresh_explanation(ticker: str, signals: dict) -> str | None:
+    """Regenerate the narrative from the corrected signals.
+
+    The prior row's explanation was written from the pre-split-fix numbers, so
+    carrying it forward would staple the old story to the new signals. This is
+    the same generator the scan job and /signals route use.
+    """
+    try:
+        from web_dashboard.signals.ai_explainer import generate_signal_explanation
+
+        return generate_signal_explanation(ticker, signals)
+    except Exception as exc:
+        print(f"explanation regeneration failed: {exc}")
         return None
-    prior = resp.data[0].get("explanation")
-    return prior if prior else None
 
 
 def _upsert_signals(ticker: str, signals: dict) -> None:
@@ -97,9 +98,13 @@ def _upsert_signals(ticker: str, signals: dict) -> None:
         "overall_signal": signals.get("overall_signal", "HOLD"),
         "confidence_score": signals.get("confidence", 0.0),
     }
-    prior_explanation = _prior_explanation(sb, ticker)
-    if prior_explanation is not None:
-        row["explanation"] = prior_explanation
+    explanation = _fresh_explanation(ticker, signals)
+    row["explanation"] = explanation
+    if not explanation:
+        print(
+            "WARNING: no explanation generated; this row lands with explanation=NULL "
+            "and the watchlist will show the ticker as unanalyzed until the next scan"
+        )
     sb.table("signal_analysis").upsert(row, on_conflict="ticker,analysis_date").execute()
     print(f"upserted signal_analysis {ticker} @ {analysis_date.isoformat()}")
 
@@ -135,6 +140,8 @@ def main() -> int:
     parser.add_argument("--apply", action="store_true", help="Upsert signal_analysis")
     parser.add_argument("--with-ai", action="store_true", help="Re-run ticker_analysis + meta")
     args = parser.parse_args()
+    if args.with_ai and not args.apply:
+        parser.error("--with-ai writes ticker_analysis; pass --apply as well")
     ticker = str(args.ticker).upper().strip()
     signals, _price = _evaluate(ticker)
     if not args.apply:

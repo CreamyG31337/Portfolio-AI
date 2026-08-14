@@ -579,8 +579,11 @@ class MarketDataFetcher:
         """Flatten, split-adjust, then normalize to standard OHLCV."""
         df = self._to_datetime_index(df)
         df = prepare_unadjusted_yahoo_history(df)
-        ohlcv_columns = [col for col in ("Open", "High", "Low", "Close", "Volume") if col in df.columns]
-        return self._normalize_ohlcv(df[ohlcv_columns])
+        # Strict selection on purpose: a frame missing a column (or carrying
+        # per-ticker columns from a multi-ticker response) must raise so the
+        # caller falls through to the next strategy instead of caching a frame
+        # that later fails a downstream "Missing columns" check.
+        return self._normalize_ohlcv(df[["Open", "High", "Low", "Close", "Volume"]])
     
     def _fetch_yahoo_data(
         self,

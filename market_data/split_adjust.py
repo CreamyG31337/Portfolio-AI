@@ -1,32 +1,59 @@
 """Back-adjust OHLCV when Yahoo records a split but leaves the price cliff.
 
-Yahoo sometimes lists a split on the ``Stock Splits`` column while ``Close`` is
-still unadjusted (MNST 2:1 on 2026-08-11: ~$90 then ~$45). ``auto_adjust=True``
-does not help until Adj Close is populated, and it also dividend-adjusts.
+Yahoo sometimes lists a split on the ``Stock Splits`` column while the price
+history is still unadjusted (MNST 2:1 on 2026-08-11: ~$90 then ~$45). Verified
+against the live feed on 2026-08-14: for that window Yahoo returned
+``Adj Close == Close == 94.18`` on the pre-split bars, so *neither* column was
+back-adjusted and ``auto_adjust=True`` changed nothing. That is why the cliff
+has to be detected from the prices themselves rather than read off ``Adj Close``.
 
-Split-only ratios (≥1.5 or ≤0.667) are matched against close cliffs on the split
-date or the next trading bar using relative + absolute tolerance. Pre-split OHLC
-is divided by the ratio and ``Volume`` is multiplied. ``Adj Close`` is never
-adjusted (Yahoo already split-adjusts it under ``auto_adjust=False``).
+Only split-sized ratios (>=1.5 or <=0.667) are considered, so ordinary stock
+dividends (1.05) can never trigger an adjustment. The ratio is matched against
+the close gap **at the split boundary only** -- the split-date bar, or the bar
+after it when Yahoo stamps the split a day before the price actually moves.
+Searching further ahead would match any later move of a similar size and rewrite
+correct history, so the window is deliberately two bars wide.
+
+Pre-split OHLC is divided by the ratio and ``Volume`` is multiplied by it.
+``Adj Close`` is left alone: on the paths that request it, it tracks ``Close``
+(above), and callers that want dividend-adjusted prices should use
+``auto_adjust=True`` rather than have this helper rescale it.
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Iterable
 
 import numpy as np
 import pandas as pd
 
+from .ohlcv_quality import PRICE_COLS
+
 logger = logging.getLogger(__name__)
 
-PRICE_COLS: tuple[str, ...] = ("Open", "High", "Low", "Close")
 DEFAULT_CLIFF_TOLERANCE = 0.15
-_MIN_EXPECTED_MOVE = 0.20
+# Absolute floor so the accept window never shrinks onto an ordinary day's move.
+MIN_CLIFF_TOLERANCE = 0.05
+# Below this, a "split" is a stock dividend and its cliff is indistinguishable
+# from routine volatility; refuse to act on it at all.
 _MIN_SPLIT_RATIO = 1.5
 _MAX_SPLIT_RATIO = 1.0 / _MIN_SPLIT_RATIO
+# How many bars after the stamped split date the cliff may appear. Yahoo
+# occasionally stamps the split before the price actually moves. Kept tiny on
+# purpose: widen this and any later move of split-like size starts matching.
+_MAX_CLIFF_LAG_BARS = 2
 _SPLIT_COL_ALIASES: tuple[str, ...] = ("Stock Splits", "Stock Split", "Splits")
+
+__all__ = [
+    "PRICE_COLS",
+    "DEFAULT_CLIFF_TOLERANCE",
+    "apply_unadjusted_splits",
+    "splits_from_ohlcv",
+    "merge_split_sources",
+]
 
 
 def _to_date(value: object) -> date | None:
@@ -46,32 +73,27 @@ def _to_date(value: object) -> date | None:
 
 def _sort_by_calendar_date(df: pd.DataFrame) -> pd.DataFrame:
     """Return a copy sorted ascending by calendar date (callers may pass unsorted frames)."""
-    if df.empty:
-        return df.copy()
     out = df.copy()
-    if "Date" in out.columns:
-        out["_sort_key"] = pd.to_datetime(out["Date"], errors="coerce")
-        out = out.sort_values("_sort_key", kind="stable").drop(columns=["_sort_key"])
-    elif "date" in out.columns:
-        out["_sort_key"] = pd.to_datetime(out["date"], errors="coerce")
-        out = out.sort_values("_sort_key", kind="stable").drop(columns=["_sort_key"])
-    else:
-        out = out.sort_index(kind="stable")
-    return out
+    for col in ("Date", "date"):
+        if col in out.columns:
+            out["_sort_key"] = pd.to_datetime(out[col], errors="coerce")
+            return out.sort_values("_sort_key", kind="stable").drop(columns=["_sort_key"])
+    return out.sort_index(kind="stable")
 
 
 def _frame_dates(df: pd.DataFrame) -> pd.Series:
-    """Vectorized calendar dates aligned to ``df`` row order."""
-    if "Date" in df.columns:
-        raw = pd.to_datetime(df["Date"], errors="coerce")
-        return raw.dt.date
-    if "date" in df.columns:
-        raw = pd.to_datetime(df["date"], errors="coerce")
-        return raw.dt.date
+    """Vectorized calendar dates aligned to ``df`` row order.
+
+    Every branch keeps ``df.index`` so the boolean masks built from the result
+    stay alignable with the frame itself.
+    """
+    for col in ("Date", "date"):
+        if col in df.columns:
+            return pd.to_datetime(df[col], errors="coerce").dt.date
     idx = pd.to_datetime(df.index, errors="coerce")
     if isinstance(idx, pd.DatetimeIndex):
         return pd.Series(idx.date, index=df.index)
-    return pd.Series(idx).dt.date
+    return pd.Series([_to_date(value) for value in df.index], index=df.index)
 
 
 def _close_numeric(df: pd.DataFrame, close_col: str) -> pd.Series:
@@ -110,8 +132,11 @@ def splits_from_ohlcv(df: pd.DataFrame) -> pd.Series:
     col = next((name for name in _SPLIT_COL_ALIASES if name in df.columns), None)
     if col is None:
         return pd.Series(dtype=float)
-    dates = _frame_dates(df)
     ratios = pd.to_numeric(df[col], errors="coerce")
+    if not (ratios.fillna(0) != 0).any():
+        # Overwhelmingly common case: skip the per-row date conversion entirely.
+        return pd.Series(dtype=float)
+    dates = _frame_dates(df)
     series = pd.Series(ratios.values, index=pd.Index(dates.values))
     return _nonzero_splits(series)
 
@@ -123,64 +148,89 @@ def merge_split_sources(*sources: pd.Series | None) -> pd.Series:
         extra = _nonzero_splits(source)
         if extra.empty:
             continue
-        if combined.empty:
-            combined = extra
-        else:
-            combined = extra.combine_first(combined)
+        combined = extra if combined.empty else extra.combine_first(combined)
     return combined
 
 
-def _cliff_tolerance(expected: float, cliff_tolerance: float) -> float:
-    return max(cliff_tolerance * abs(expected), 0.05)
-
-
-def _find_prev_position(
+def _find_boundary_cliff(
     dates: np.ndarray,
     close: np.ndarray,
     split_day: date,
-) -> int | None:
-    """Last valid close strictly before split day."""
-    for i in range(len(close) - 1, -1, -1):
-        day = dates[i]
-        c = close[i]
-        if pd.isna(day) or pd.isna(c) or c <= 0:
-            continue
-        if day < split_day:
-            return i
-    return None
-
-
-def _find_matching_event_position(
-    dates: np.ndarray,
-    close: np.ndarray,
-    split_day: date,
-    prev_pos: int,
     ratio: float,
     cliff_tolerance: float,
-) -> int | None:
-    """First on/after split-day bar whose cliff vs ``prev_pos`` matches the ratio."""
+) -> tuple[int, int] | None:
+    """Positions ``(last_pre_split, event)`` of a split cliff at the boundary.
+
+    Considers the gap landing on the split date plus the next
+    ``_MAX_CLIFF_LAG_BARS``, since Yahoo sometimes stamps the split before the
+    price actually moves. Returns ``None`` when none matches, which is also how
+    an already-adjusted series is recognised -- it simply has no cliff there.
+    """
     expected = (1.0 / ratio) - 1.0
-    if abs(expected) < _MIN_EXPECTED_MOVE:
+    tol = max(cliff_tolerance * abs(expected), MIN_CLIFF_TOLERANCE)
+
+    valid = [
+        i
+        for i in range(len(close))
+        if dates[i] is not None
+        and not pd.isna(dates[i])
+        and not pd.isna(close[i])
+        and close[i] > 0
+    ]
+    first_after = next((k for k, i in enumerate(valid) if dates[i] >= split_day), None)
+    if first_after is None or first_after == 0:
         return None
 
-    prev_close = float(close[prev_pos])
-    if prev_close <= 0:
-        return None
-
-    tol = _cliff_tolerance(expected, cliff_tolerance)
-    n = len(close)
-    for i in range(n):
-        day = dates[i]
-        c = close[i]
-        if pd.isna(day) or pd.isna(c) or c <= 0 or day < split_day:
-            continue
-
-        event_close = float(c)
-
-        actual = (event_close / prev_close) - 1.0
+    for k in range(first_after, min(first_after + 1 + _MAX_CLIFF_LAG_BARS, len(valid))):
+        prev_pos, event_pos = valid[k - 1], valid[k]
+        actual = (float(close[event_pos]) / float(close[prev_pos])) - 1.0
         if abs(actual - expected) <= tol:
-            return i
+            return prev_pos, event_pos
     return None
+
+
+def _scale_column(
+    column: pd.Series,
+    mask: np.ndarray,
+    factor: float,
+    *,
+    keep_integer: bool = False,
+) -> pd.Series:
+    """Multiply masked rows by ``factor`` without corrupting the column dtype.
+
+    ``Decimal`` columns stay ``Decimal`` rather than ending up a mix of
+    ``Decimal`` and ``float``. Integer columns are promoted to float so a
+    scaled price is never truncated (91/2 must be 45.5, not 45); pass
+    ``keep_integer`` for counts like ``Volume``, which are rounded back instead.
+    """
+    if column.dtype == object:
+        values = column.to_numpy(dtype=object, copy=True)
+        dec_factor = Decimal(str(factor))
+        for i in np.flatnonzero(mask):
+            value = values[i]
+            if isinstance(value, Decimal):
+                try:
+                    values[i] = value * dec_factor
+                except InvalidOperation:
+                    values[i] = value
+            elif value is not None and not pd.isna(value):
+                try:
+                    values[i] = float(value) * factor
+                except (TypeError, ValueError):
+                    values[i] = value
+        return pd.Series(values, index=column.index, name=column.name)
+
+    scaled = pd.to_numeric(column, errors="coerce").to_numpy(dtype="float64", copy=True)
+    scaled[mask] = scaled[mask] * factor
+    if (
+        keep_integer
+        and pd.api.types.is_integer_dtype(column.dtype)
+        and not np.isnan(scaled).any()
+    ):
+        return pd.Series(
+            np.rint(scaled).astype(column.dtype), index=column.index, name=column.name
+        )
+    return pd.Series(scaled, index=column.index, name=column.name)
 
 
 def apply_unadjusted_splits(
@@ -198,24 +248,30 @@ def apply_unadjusted_splits(
         splits: Optional date -> ratio series merged with ``Stock Splits`` on ``df``.
         close_col: Column used to detect the cliff.
         price_cols: OHLC columns to divide on pre-split bars (not Adj Close).
-        cliff_tolerance: Relative factor vs ``1/ratio - 1`` (0.15 = 15%).
+        cliff_tolerance: Relative factor vs ``1/ratio - 1`` (0.15 = 15%), floored
+            at ``MIN_CLIFF_TOLERANCE`` in absolute terms.
 
     Returns:
-        A copy sorted by date with matching cliffs removed.
+        ``df`` itself when there is no split to act on (the common case, kept
+        allocation-free); otherwise a date-sorted copy with matching cliffs
+        removed. ``Volume`` on adjusted bars is multiplied by the ratio so it
+        stays continuous with the rescaled prices.
     """
     if df is None or df.empty:
         return df
 
-    result = _sort_by_calendar_date(df)
-    frame_splits = splits_from_ohlcv(result)
+    # Check for splits before copying: most frames have none and this runs on
+    # every price fetch.
+    frame_splits = splits_from_ohlcv(df)
     extra = _nonzero_splits(splits)
     if frame_splits.empty and extra.empty:
-        return result
+        return df
 
     combined = merge_split_sources(frame_splits, extra)
     if combined.empty:
-        return result
+        return df
 
+    result = _sort_by_calendar_date(df)
     dates = _frame_dates(result)
     if dates.isna().all():
         return result
@@ -229,49 +285,37 @@ def apply_unadjusted_splits(
         return result
 
     dates_arr = dates.to_numpy()
-    # Newest first so a later split is applied against still-unadjusted older bars.
-    ordered = combined.sort_index(ascending=False)
+    positions = np.arange(len(result))
     scale_volume = "Volume" in result.columns
 
-    for split_day, ratio in ordered.items():
-        if not _is_split_only_ratio(ratio):
-            continue
-
-        expected = (1.0 / ratio) - 1.0
-        if abs(expected) < _MIN_EXPECTED_MOVE:
-            continue
-
+    # Newest first so a later split is applied against still-unadjusted older bars.
+    for split_day, ratio in combined.sort_index(ascending=False).items():
         close_arr = close.to_numpy(dtype=float)
-        prev_pos = _find_prev_position(dates_arr, close_arr, split_day)
-        if prev_pos is None:
+        found = _find_boundary_cliff(dates_arr, close_arr, split_day, ratio, cliff_tolerance)
+        if found is None:
             continue
+        prev_pos, event_pos = found
 
-        event_pos = _find_matching_event_position(
-            dates_arr, close_arr, split_day, prev_pos, ratio, cliff_tolerance
-        )
-        if event_pos is None:
-            continue
+        # Mask by position, not by date: when Yahoo stamps the split a bar early
+        # the split-date bar is itself still pre-split and must be adjusted too.
+        adjust_mask = positions <= prev_pos
 
-        prev_close = float(close_arr[prev_pos])
-        event_close = float(close_arr[event_pos])
-
-        adjust_mask = dates < split_day
         for col in present_price_cols:
-            numeric = pd.to_numeric(result[col], errors="coerce").astype(float)
-            result.loc[adjust_mask, col] = numeric.loc[adjust_mask] / ratio
-
+            result[col] = _scale_column(result[col], adjust_mask, 1.0 / ratio)
         if scale_volume:
-            vol = pd.to_numeric(result["Volume"], errors="coerce").astype(float)
-            result.loc[adjust_mask, "Volume"] = vol.loc[adjust_mask] * ratio
+            result["Volume"] = _scale_column(
+                result["Volume"], adjust_mask, ratio, keep_integer=True
+            )
 
         close = _close_numeric(result, close_col)
-        n_adj = int(adjust_mask.sum())
-        actual = (event_close / prev_close) - 1.0
+        expected = (1.0 / ratio) - 1.0
+        actual = (float(close_arr[event_pos]) / float(close_arr[prev_pos])) - 1.0
         logger.info(
-            "Applied unadjusted split ratio=%s on %s (%s pre-split bars; cliff %.1f%% vs expected %.1f%%)",
+            "Applied unadjusted split ratio=%s on %s (%s pre-split bars; "
+            "cliff %.1f%% vs expected %.1f%%)",
             ratio,
             split_day.isoformat(),
-            n_adj,
+            int(adjust_mask.sum()),
             actual * 100.0,
             expected * 100.0,
         )

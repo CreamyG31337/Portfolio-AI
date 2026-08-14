@@ -34,6 +34,11 @@ def prepare_unadjusted_yahoo_history(df: pd.DataFrame) -> pd.DataFrame:
 
     Uses only ``Stock Splits`` already on the ``history()`` frame — no extra
     ``ticker.splits`` network round-trip.
+
+    Safe regardless of the caller's ``auto_adjust`` setting: when Yahoo has
+    already back-adjusted the history there is no cliff at the split boundary,
+    so :func:`apply_unadjusted_splits` finds nothing to do and returns the frame
+    untouched.
     """
     if df is None or df.empty:
         return df

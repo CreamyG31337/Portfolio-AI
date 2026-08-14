@@ -255,3 +255,116 @@ def test_adj_close_unchanged_when_present() -> None:
     adjusted = apply_unadjusted_splits(df)
     pd.testing.assert_series_equal(adjusted["Adj Close"], df["Adj Close"])
     assert float(adjusted.loc[adjusted.index < idx[2], "Close"].iloc[-1]) == pytest.approx(45.0)
+
+
+# --- Regression coverage for the PR review findings -------------------------
+
+
+def _flat_series_frame(closes, splits, volume=1_000_000) -> pd.DataFrame:
+    idx = pd.bdate_range("2026-01-01", periods=len(closes), freq="C")
+    return pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [volume] * len(closes),
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+
+
+def test_already_adjusted_series_survives_a_later_decline() -> None:
+    """A slow drift to half price months later must not be read as the split cliff."""
+    n = 200
+    closes = [45.0] * 60 + [45.0 - 21.0 * (i / (n - 61)) for i in range(n - 60)]
+    splits = [0.0] * n
+    splits[60] = 2.0
+    adjusted = apply_unadjusted_splits(_flat_series_frame(closes, splits))
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.0)
+
+
+def test_reverse_split_then_legitimate_double_is_untouched() -> None:
+    n = 200
+    closes = [10.0] * 60 + [10.0 + 10.0 * (i / (n - 61)) for i in range(n - 60)]
+    splits = [0.0] * n
+    splits[60] = 0.5
+    adjusted = apply_unadjusted_splits(_flat_series_frame(closes, splits))
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(10.0)
+
+
+def test_split_day_bar_is_adjusted_when_the_cliff_lags() -> None:
+    """No phantom spike: the stamped bar is pre-split too and must be scaled."""
+    closes = [90.0] * 61 + [45.0] * 59
+    splits = [0.0] * 120
+    splits[60] = 2.0
+    adjusted = apply_unadjusted_splits(_flat_series_frame(closes, splits))
+    window = [float(v) for v in adjusted["Close"].iloc[58:63]]
+    assert window == pytest.approx([45.0] * 5)
+
+
+def test_int64_price_columns_are_not_truncated() -> None:
+    df = _flat_series_frame([91, 91, 45, 45], [0.0, 0.0, 2.0, 0.0])
+    for col in ("Open", "High", "Low", "Close"):
+        df[col] = df[col].astype("int64")
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.5)
+
+
+def test_decimal_price_columns_stay_decimal() -> None:
+    from decimal import Decimal
+
+    values = [Decimal("90.10"), Decimal("90.10"), Decimal("45.05"), Decimal("45.05")]
+    df = _flat_series_frame(values, [0.0, 0.0, 2.0, 0.0])
+    adjusted = apply_unadjusted_splits(df)
+    assert all(isinstance(v, Decimal) for v in adjusted["Close"])
+    assert adjusted["Close"].iloc[0] == pytest.approx(Decimal("45.05"))
+
+
+def test_int64_volume_survives_a_lossy_reverse_split() -> None:
+    df = _flat_series_frame([1.0, 1.0, 10.0, 10.0], [0.0, 0.0, 0.1, 0.0])
+    df["Volume"] = pd.Series([1234567, 2345678, 3456789, 4567890], index=df.index).astype("int64")
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(10.0)
+    assert int(adjusted["Volume"].iloc[0]) == 123457
+    assert int(adjusted["Volume"].iloc[-1]) == 4567890
+
+
+def test_adj_close_is_never_rescaled() -> None:
+    df = _flat_series_frame([90.0, 90.0, 45.0, 45.0], [0.0, 0.0, 2.0, 0.0])
+    df["Adj Close"] = df["Close"]
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Adj Close"].iloc[0]) == pytest.approx(90.0)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.0)
+
+
+def test_frame_without_splits_is_returned_unchanged() -> None:
+    """Hot path: no split means no sort and no copy."""
+    df = _flat_series_frame([90.0, 90.5, 91.0, 90.2], [0.0, 0.0, 0.0, 0.0])
+    assert apply_unadjusted_splits(df) is df
+
+
+def test_stock_dividend_ratio_never_triggers() -> None:
+    closes = [100.0, 100.0, 95.5, 95.0]
+    df = _flat_series_frame(closes, [0.0, 0.0, 1.05, 0.0])
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(100.0)
+
+
+def test_unsorted_frame_with_date_column_is_handled() -> None:
+    closes = [90.0, 90.0, 45.0, 45.0]
+    df = pd.DataFrame(
+        {
+            "Date": pd.bdate_range("2026-01-01", periods=4, freq="C"),
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [1_000_000] * 4,
+            "Stock Splits": [0.0, 0.0, 2.0, 0.0],
+        }
+    ).iloc[::-1]
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.0)
+    assert float(adjusted["Close"].iloc[-1]) == pytest.approx(45.0)

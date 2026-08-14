@@ -64,3 +64,28 @@ def test_mnst_shaped_frame_fear_low_after_prepare() -> None:
     adj_fear = FearRiskSignal().evaluate(prepared)
     assert raw_fear["fear_level"] in {"HIGH", "EXTREME"}
     assert adj_fear["fear_level"] == "LOW"
+
+
+def test_yahoo_ohlcv_frame_raises_when_a_column_is_missing() -> None:
+    """A frame without Volume must fail so the caller falls through to the next source."""
+    idx = pd.bdate_range("2026-05-18", periods=30, freq="C")
+    closes = [90.0 + (i % 5) * 0.2 for i in range(30)]
+    df = pd.DataFrame(
+        {"Open": closes, "High": closes, "Low": closes, "Close": closes},
+        index=idx,
+    )
+    with pytest.raises(KeyError):
+        MarketDataFetcher()._yahoo_ohlcv_frame(df)
+
+
+def test_yahoo_ohlcv_frame_raises_on_multi_ticker_frame() -> None:
+    """Per-ticker columns are not a usable single-ticker OHLCV frame."""
+    idx = pd.bdate_range("2026-05-18", periods=30, freq="C")
+    closes = [90.0] * 30
+    df = pd.DataFrame(
+        {("Close", "AAA"): closes, ("Close", "BBB"): closes, ("Volume", "AAA"): [1] * 30},
+        index=idx,
+    )
+    df.columns = pd.MultiIndex.from_tuples(df.columns)
+    with pytest.raises(KeyError):
+        MarketDataFetcher()._yahoo_ohlcv_frame(df)
