@@ -1,3 +1,4 @@
 # Normalize line endings: repo and working copy use LF everywhere (no CRLF conversion).
 # Stops Windows from showing phantom "modified" when only line endings differ.
 * text=auto eol=lf
+graphify-out/graph.json merge=graphify
