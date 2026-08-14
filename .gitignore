@@ -403,6 +403,13 @@ mcps/mandrel/SERVER_METADATA.json
 .mcp.json
 .claude/**
 
+# graphify: share hooks + skill across machines (no secrets in these)
+# .claude/settings.local.json and .mcp.json above stay ignored.
+!.claude/settings.json
+!.claude/skills/
+!.claude/skills/**
+!.claude/CLAUDE.md
+
 # LLM benchmark artifacts (regenerate: OLLAMA_BENCH=1 pytest tests/benchmarks/llm_bench.py -m bench)
 verification/benchmarks/llm_bench_*.csv
 verification/benchmarks/llm_bench_*.md
