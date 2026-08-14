@@ -274,12 +274,12 @@
         <div class="flex items-center gap-4">
             <h2 class="text-xl font-bold text-text-primary">📋 Congress Trades</h2>
             <!-- Amount Legend Toggle -->
-            <button onclick="toggleAmountLegend()"
+            <button data-collapse-toggle="amount-legend" type="button" aria-expanded="false" aria-controls="amount-legend"
                 class="text-sm text-text-secondary hover:text-text-primary flex items-center gap-1">
                 <i class="fas fa-info-circle"></i>
                 <span>Amount Legend</span>
             </button>
-            <button onclick="toggleReturnInfo()"
+            <button data-collapse-toggle="return-info" type="button" aria-expanded="false" aria-controls="return-info"
                 class="text-sm text-text-secondary hover:text-text-primary flex items-center gap-1">
                 <i class="fas fa-percent"></i>
                 <span>Return % Info</span>
@@ -455,23 +455,7 @@
 </script>
 <script id="congress-politicians-data" type="application/json">{{ unique_politicians | default([]) | tojson }}</script>
 
-<script>
-    // Toggle amount legend visibility
-    function toggleAmountLegend() {
-        const legend = document.getElementById('amount-legend');
-        if (legend) {
-            legend.classList.toggle('hidden');
-        }
-    }
 
-    // Toggle return % info visibility
-    function toggleReturnInfo() {
-        const info = document.getElementById('return-info');
-        if (info) {
-            info.classList.toggle('hidden');
-        }
-    }
-</script>
 
 <!-- Ticker Autocomplete -->
 <script type="module">
