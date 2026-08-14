@@ -22,6 +22,7 @@ import pandas as pd
 import plotly.graph_objs as go
 from typing import Optional, List, Dict, Tuple, Any
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import colorsys
 import logging
 import yfinance as yf
@@ -484,20 +485,59 @@ def _add_weekend_shading(fig: go.Figure, start_date: datetime, end_date: datetim
 
 
 @log_execution_time()
-def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime) -> Optional[pd.DataFrame]:
+# Cache is a hit only if it covers both ends of the requested window.
+# Nightly ingest used to store ~400 days; a fresh last bar is not enough for 5Y.
+_BENCHMARK_CACHE_START_SLACK_DAYS = 10
+_BENCHMARK_CACHE_END_SLACK_DAYS = 1
+
+
+def _naive_normalize(value: Any) -> pd.Timestamp:
+    """Timezone-naive midnight timestamp for cache window comparisons."""
+    ts = pd.Timestamp(value)
+    if ts.tzinfo is not None:
+        ts = ts.tz_convert("UTC").tz_localize(None)
+    return ts.normalize()
+
+
+def _benchmark_cache_covers_window(
+    data: pd.DataFrame,
+    start_date: datetime,
+    end_date: datetime,
+    *,
+    start_slack_days: int = _BENCHMARK_CACHE_START_SLACK_DAYS,
+    end_slack_days: int = _BENCHMARK_CACHE_END_SLACK_DAYS,
+) -> bool:
+    """True when cached bars start near start_date and end near end_date."""
+    if data.empty or "Date" not in data.columns:
+        return False
+    min_d = _naive_normalize(data["Date"].min())
+    max_d = _naive_normalize(data["Date"].max())
+    start_d = _naive_normalize(start_date)
+    end_d = _naive_normalize(end_date)
+    start_gap = (min_d - start_d).days
+    end_gap = (end_d - max_d).days
+    return start_gap <= start_slack_days and end_gap <= end_slack_days
+
+
+def _fetch_benchmark_data(
+    ticker: str,
+    start_date: datetime,
+    end_date: datetime,
+    client: Optional[Any] = None,
+) -> Optional[pd.DataFrame]:
     """Fetch benchmark data with database caching.
     
     Cache-first approach:
     1. Check database cache
-    2. If cache hit and recent, use cached data
-    3. If cache miss or stale, fetch from Yahoo Finance and cache
+    2. If cache covers the requested start AND end, use cached data
+    3. If cache miss, stale end, or missing start, fetch from Yahoo Finance and cache
     """
-    client = None  # Initialize to avoid NameError
     try:
         # Try to get from cache first
         try:
-            from dashboard_data_clients import get_user_scoped_supabase_client
-            client = get_user_scoped_supabase_client()
+            if client is None:
+                from dashboard_data_clients import get_user_scoped_supabase_client
+                client = get_user_scoped_supabase_client()
             
             if client:
                 cached_data = client.get_benchmark_data(ticker, start_date, end_date)
@@ -510,23 +550,17 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
                     data['Close'] = pd.to_numeric(data['Close'], errors='coerce')
                     data = _drop_isolated_close_outliers_df(data, 'Date', 'Close')
                     
-                    # Check if data is recent enough (has data within 1 day of end_date)
-                    max_cached_date = data['Date'].max() if not data.empty else None
-                    # Normalize timezones for comparison
-                    if max_cached_date is not None:
-                        if max_cached_date.tzinfo is None and end_date.tzinfo is not None:
-                            max_cached_date = max_cached_date.replace(tzinfo=end_date.tzinfo)
-                        elif max_cached_date.tzinfo is not None and end_date.tzinfo is None:
-                            end_date = end_date.replace(tzinfo=max_cached_date.tzinfo)
-                    
-                    days_diff = (end_date - max_cached_date).days if max_cached_date is not None else 999
-                    
-                    if not data.empty and days_diff <= 1:
-                        # Cache hit with recent data - use it
+                    if data.empty:
+                        print(f"⚠️ Cached data for {ticker} unusable after outlier filter, fetching fresh data")
+                    elif _benchmark_cache_covers_window(data, start_date, end_date):
                         print(f"📦 Using cached benchmark data for {ticker}")
                         
                         # Normalize to 100 baseline
-                        baseline_data = data[data['Date'].dt.date <= start_date.date()]
+                        start_day = _naive_normalize(start_date).date()
+                        series_dates = pd.to_datetime(data['Date'])
+                        if series_dates.dt.tz is not None:
+                            series_dates = series_dates.dt.tz_convert('UTC').dt.tz_localize(None)
+                        baseline_data = data[series_dates.dt.date <= start_day]
                         if not baseline_data.empty:
                             baseline_close = baseline_data['Close'].iloc[-1]
                         else:
@@ -542,10 +576,17 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
                             # Normalize to noon (12:00) to match portfolio data
                             data['Date'] = data['Date'].dt.normalize() + timedelta(hours=12)
                             return data[['Date', 'Close', 'normalized']]
-                    elif data.empty:
-                        print(f"⚠️ Cached data for {ticker} unusable after outlier filter, fetching fresh data")
                     else:
-                        print(f"⚠️ Cached data for {ticker} is stale ({days_diff} days old), fetching fresh data")
+                        min_d = _naive_normalize(data['Date'].min())
+                        max_d = _naive_normalize(data['Date'].max())
+                        start_d = _naive_normalize(start_date)
+                        end_d = _naive_normalize(end_date)
+                        start_gap = (min_d - start_d).days
+                        end_gap = (end_d - max_d).days
+                        print(
+                            f"⚠️ Cached data for {ticker} does not cover window "
+                            f"(start_gap={start_gap}d, end_gap={end_gap}d), fetching fresh data"
+                        )
         except Exception as cache_error:
             print(f"Cache lookup failed (will fetch from API): {cache_error}")
         
@@ -633,6 +674,48 @@ def _fetch_benchmark_data(ticker: str, start_date: datetime, end_date: datetime)
         print(f"Error fetching benchmark {ticker}: {e}")
         return None
 
+
+def _fetch_benchmarks_parallel(
+    bench_keys: List[str],
+    start_date: datetime,
+    end_date: datetime,
+) -> Dict[str, Optional[pd.DataFrame]]:
+    """Fetch ticker-page benchmarks concurrently, reusing one DB client.
+
+    Worker threads do not have Flask request context, so the client is resolved
+    on the calling thread and passed in.
+    """
+    keys = [k for k in bench_keys if k in BENCHMARK_CONFIG]
+    if not keys:
+        return {}
+
+    client: Optional[Any] = None
+    try:
+        from dashboard_data_clients import get_user_scoped_supabase_client
+        client = get_user_scoped_supabase_client()
+    except Exception:
+        client = None
+
+    def _one(key: str) -> Tuple[str, Optional[pd.DataFrame]]:
+        ticker = BENCHMARK_CONFIG[key]["ticker"]
+        return key, _fetch_benchmark_data(ticker, start_date, end_date, client=client)
+
+    if len(keys) == 1:
+        key, data = _one(keys[0])
+        return {key: data}
+
+    fetched: Dict[str, Optional[pd.DataFrame]] = {}
+    with ThreadPoolExecutor(max_workers=min(4, len(keys))) as executor:
+        future_map = {executor.submit(_one, k): k for k in keys}
+        for fut in as_completed(future_map):
+            k = future_map[fut]
+            try:
+                key, data = fut.result()
+                fetched[key] = data
+            except Exception as exc:
+                logger.warning("Benchmark fetch failed for %s: %s", k, exc)
+                fetched[k] = None
+    return fetched
 
 
 @log_execution_time()
@@ -1831,16 +1914,13 @@ def create_ticker_price_chart(
         # Normalize to date-only (midnight) for comparison with benchmark data
         start_date_normalized = pd.Timestamp(start_date).normalize()
         end_date_normalized = pd.Timestamp(end_date).normalize() + timedelta(days=1)
+
+        bench_keys = [k for k in show_benchmarks if k in BENCHMARK_CONFIG]
+        fetched = _fetch_benchmarks_parallel(bench_keys, start_date, end_date)
         
-        for bench_key in show_benchmarks:
-            if bench_key not in BENCHMARK_CONFIG:
-                continue
-            
-            bench_t0 = time.time()
+        for bench_key in bench_keys:
             config = BENCHMARK_CONFIG[bench_key]
-            bench_data = _fetch_benchmark_data(config['ticker'], start_date, end_date)
-            bench_fetch_time = time.time() - bench_t0
-            logger.info(f"⏱️ create_ticker_price_chart - Fetch benchmark {bench_key}: {bench_fetch_time:.2f}s")
+            bench_data = fetched.get(bench_key)
             
             if bench_data is not None and not bench_data.empty:
                 # Normalize bench_data dates to midnight for comparison

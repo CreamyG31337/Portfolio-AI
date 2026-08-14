@@ -8,6 +8,7 @@ Part of Phase 2: Social Sentiment Tracking.
 """
 
 import os
+import hashlib
 import json
 import logging
 import time
@@ -50,6 +51,17 @@ STOCK_SUBREDDITS = [
 ]
 
 STOCK_SUBREDDIT_SET = {subreddit.lower() for subreddit in STOCK_SUBREDDITS}
+
+# How many posts of a single poll get persisted into social_metrics.raw_data.
+# This used to be 3, which threw away ~69% of what StockTwits actually returned
+# while the volume column still reported the true count. Observed maximum per
+# poll is 30 (StockTwits) and 17 (Reddit), so this keeps everything real
+# responses contain while still bounding a pathological one.
+MAX_STORED_POSTS_PER_POLL = 50
+
+# sentiment_sessions.platform value for a merged StockTwits + Reddit session.
+# Sessions are now one per ticker per UTC day across both platforms.
+SESSION_PLATFORM_COMBINED = "combined"
 
 COMMON_TICKER_WORDS = {
     "AI",
@@ -269,6 +281,10 @@ class SocialSentimentService:
                     "created_utc": created_utc,
                     "url": post_data.get("url", ""),
                     "subreddit": subreddit,
+                    # Carried so storage can key on a stable post identity and
+                    # attribute the author; the RSS path already supplies both.
+                    "id": str(post_data.get("id") or ""),
+                    "author": str(post_data.get("author") or ""),
                 }
             )
 
@@ -444,8 +460,8 @@ class SocialSentimentService:
             else:
                 bull_bear_ratio = 0.0
             
-            # Get top 3 posts for raw_data
-            top_posts = recent_messages[:3]
+            # Persist what the API actually returned, not just the head of it.
+            top_posts = recent_messages[:MAX_STORED_POSTS_PER_POLL]
             raw_data = None
             if top_posts:
                 raw_data = [
@@ -697,19 +713,24 @@ class SocialSentimentService:
                     except Exception:
                         pass
             
-            # Prepare raw_data (top 3 posts)
+            # Prepare raw_data. id/author/created_utc are what let extraction
+            # dedupe across polls and bucket on real post time -- dropping them
+            # here is what stamped every stored Reddit post 1970-01-01.
             raw_data = None
             if unique_posts:
                 raw_data = [
                     {
+                        'id': str(post.get('id') or ''),
                         'title': post.get('title', ''),
                         'selftext': str(post.get('selftext', ''))[:500],
                         'score': post.get('score', 0),
                         'num_comments': post.get('num_comments', 0),
                         'subreddit': post.get('subreddit', ''),
                         'url': post.get('url', ''),
+                        'author': str(post.get('author') or ''),
+                        'created_utc': post.get('created_utc', 0),
                     }
-                    for post in unique_posts[:3]
+                    for post in unique_posts[:MAX_STORED_POSTS_PER_POLL]
                 ]
             
             logger.debug(f"Reddit {ticker}: volume={len(unique_posts)}, sentiment={sentiment_label} ({sentiment_score:.1f})")
@@ -1004,28 +1025,59 @@ OUTPUT JSON ONLY:
             
         return opportunities
     
-    def extract_posts_from_raw_data(self) -> Dict[str, int]:
-        """Extract individual posts from social_metrics.raw_posts JSONB into social_posts table
-        
+    def extract_posts_from_raw_data(
+        self,
+        *,
+        limit: int = 100,
+        since_days: Optional[int] = None,
+        platform: Optional[str] = None,
+    ) -> Dict[str, int]:
+        """Extract individual posts from social_metrics.raw_data JSONB into social_posts table
+
         Migrates existing raw_data to structured format for AI analysis.
-        
+
+        Args:
+            limit: Maximum social_metrics rows to process in this pass.
+            since_days: Only consider metrics newer than this many days.
+                ``None`` considers all retained history.
+            platform: Restrict to one platform. Historical Reddit rows predate
+                the collector keeping created_utc, so a backfill may want
+                'stocktwits' only.
+
         Returns:
             Dictionary with counts of processed records
         """
         try:
             logger.info("🔄 Starting post extraction from raw_data...")
             
-            # Get metrics with raw_data data that haven't been processed
-            query = """
-                SELECT id, ticker, platform, raw_data, created_at
-                FROM social_metrics 
-                WHERE raw_data IS NOT NULL 
-                  AND raw_data != '{}'
-                  AND id NOT IN (SELECT DISTINCT metric_id FROM social_posts)
-                ORDER BY created_at DESC
-                LIMIT 100  -- Process in batches
+            # Get metrics with raw_data that haven't been processed.
+            # NOT EXISTS beats NOT IN here: it stops at the first match instead
+            # of materializing every metric_id in social_posts per batch.
+            params: List[Any] = []
+            age_clause = ""
+            if since_days is not None:
+                age_clause = "AND sm.created_at > NOW() - (%s * INTERVAL '1 day')"
+                params.append(int(since_days))
+            platform_clause = ""
+            if platform:
+                platform_clause = "AND sm.platform = %s"
+                params.append(platform)
+            params.append(int(limit))
+            query = f"""
+                SELECT sm.id, sm.ticker, sm.platform, sm.raw_data, sm.created_at
+                FROM social_metrics sm
+                WHERE sm.raw_data IS NOT NULL
+                  AND jsonb_typeof(sm.raw_data) = 'array'
+                  AND jsonb_array_length(sm.raw_data) > 0
+                  {age_clause}
+                  {platform_clause}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM social_posts sp WHERE sp.metric_id = sm.id
+                  )
+                ORDER BY sm.created_at DESC
+                LIMIT %s
             """
-            metrics = self.postgres.execute_query(query)
+            metrics = self.postgres.execute_query(query, tuple(params))
             
             if not metrics:
                 logger.info("✅ No new raw_data data to extract")
@@ -1033,6 +1085,7 @@ OUTPUT JSON ONLY:
             
             posts_created = 0
             posts_filtered = 0
+            posts_duplicate = 0
             
             for metric in metrics:
                 metric_id = metric['id']
@@ -1049,10 +1102,10 @@ OUTPUT JSON ONLY:
                             post_record = {
                                 'metric_id': metric_id,
                                 'platform': platform,
-                                'post_id': post_data.get('id'),  # StockTwits now captures IDs
+                                'post_id': self._stable_post_id(platform, post_data),
                                 'content': content,
                                 'author': post_data.get('user', ''),
-                                'posted_at': post_data.get('created_at'),
+                                'posted_at': post_data.get('created_at') or metric['created_at'],
                                 'engagement_score': 0,  # Not available in current StockTwits data
                                 'url': f"https://stocktwits.com/{post_data.get('user', 'Unknown')}/message/{post_data.get('id')}" if post_data.get('id') else None,
                                 'extracted_tickers': self._extract_tickers_basic(content)
@@ -1076,47 +1129,121 @@ OUTPUT JSON ONLY:
                                 logger.debug(f"Filtered out post for {ticker}: '{title[:50]}...' (no ticker mention)")
                                 continue
                             
+                            author = str(post_data.get('author') or '').strip()
                             post_record = {
                                 'metric_id': metric_id,
                                 'platform': platform,
-                                'post_id': post_data.get('id') or str(hash(post_data.get('url', ''))),
+                                'post_id': self._stable_post_id(platform, post_data),
                                 'content': content,
-                                'author': 'u/' + post_data.get('author', 'unknown'),
-                                'posted_at': datetime.fromtimestamp(post_data.get('created_utc', 0), tz=timezone.utc).isoformat(),
+                                'author': f"u/{author}" if author else None,
+                                # Fall back to when we observed the post rather
+                                # than epoch. Rows collected before the
+                                # collector kept created_utc have no post time
+                                # at all, and 1970-01-01 silently collapsed
+                                # every one of them into a single session.
+                                'posted_at': self._post_timestamp(
+                                    post_data.get('created_utc'), metric['created_at']
+                                ),
                                 'engagement_score': (post_data.get('score', 0) + post_data.get('num_comments', 0) * 2),
                                 'url': post_data.get('url', ''),
                                 'extracted_tickers': self._extract_tickers_basic(title + ' ' + selftext)
                             }
                         
-                        # Insert post record
+                        else:
+                            # Unknown platform: post_record would be unbound.
+                            continue
+
+                        # Every ticker is re-polled roughly 20x a day and the
+                        # API keeps returning the same recent posts, so without
+                        # this the same post lands once per poll. Reddit had
+                        # 17,763 stored rows for 251 real posts before it.
                         insert_query = """
-                            INSERT INTO social_posts 
-                            (metric_id, platform, post_id, content, author, posted_at, 
+                            INSERT INTO social_posts
+                            (metric_id, platform, post_id, content, author, posted_at,
                              engagement_score, url, extracted_tickers)
                             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (platform, post_id) DO NOTHING
                         """
-                        self.postgres.execute_update(insert_query, (
+                        inserted = self.postgres.execute_update(insert_query, (
                             post_record['metric_id'], post_record['platform'], post_record['post_id'],
                             post_record['content'], post_record['author'], post_record['posted_at'],
                             post_record['engagement_score'], post_record['url'], post_record['extracted_tickers']
                         ))
-                        
-                        posts_created += 1
-                        
+
+                        if inserted:
+                            posts_created += 1
+                        else:
+                            posts_duplicate += 1
+
                     except Exception as e:
                         logger.warning(f"Error extracting post for metric {metric_id}: {e}")
                         continue
-            
+
             if posts_filtered > 0:
                 logger.info(f"⚠️  Filtered out {posts_filtered} posts that didn't mention their ticker")
-            
+            if posts_duplicate > 0:
+                logger.info(f"♻️  Skipped {posts_duplicate} posts already seen on an earlier poll")
+
             logger.info(f"✅ Post extraction complete: processed {len(metrics)} metrics, created {posts_created} posts")
-            return {'processed': len(metrics), 'posts_created': posts_created}
+            return {
+                'processed': len(metrics),
+                'posts_created': posts_created,
+                'posts_duplicate': posts_duplicate,
+                'posts_filtered': posts_filtered,
+            }
             
         except Exception as e:
             logger.error(f"❌ Error during post extraction: {e}", exc_info=True)
             raise
     
+    def _stable_post_id(self, platform: str, post_data: Dict[str, Any]) -> str:
+        """Return a post identity that survives across polls and restarts.
+
+        The old Reddit fallback was ``str(hash(url))``. Python randomizes the
+        hash seed per process, so the same post got a different id after every
+        restart and could never be deduplicated.
+
+        Args:
+            platform: 'stocktwits' or 'reddit'
+            post_data: One element of social_metrics.raw_data
+
+        Returns:
+            A post id, truncated to the social_posts.post_id width.
+        """
+        native = str(post_data.get('id') or '').strip()
+        if native:
+            return native[:100]
+
+        url = str(post_data.get('url') or '').strip()
+        if url:
+            return f"{platform}:{hashlib.sha1(url.encode('utf-8')).hexdigest()}"[:100]
+
+        # No identity available: fall back to the content digest so at least
+        # identical text from repeated polls collapses.
+        body = str(post_data.get('body') or post_data.get('title') or '')
+        return f"{platform}:c:{hashlib.sha1(body.encode('utf-8')).hexdigest()}"[:100]
+
+    def _post_timestamp(self, created_utc: Any, observed_at: Any) -> Any:
+        """Resolve a post's timestamp, falling back to when we observed it.
+
+        Args:
+            created_utc: Epoch seconds from the platform, if it supplied any.
+            observed_at: social_metrics.created_at for the poll that saw it.
+
+        Returns:
+            An ISO timestamp string, or ``observed_at`` when no post time
+            exists. Never epoch 0 -- sessions bucket on this column, and
+            1970-01-01 collapsed every affected post into one session.
+        """
+        try:
+            if created_utc:
+                return datetime.fromtimestamp(
+                    float(created_utc), tz=timezone.utc
+                ).isoformat()
+        except (TypeError, ValueError, OSError):
+            pass
+        return observed_at
+
     def _extract_tickers_basic(self, text: str) -> List[str]:
         """Basic ticker extraction using regex patterns
         
@@ -1148,100 +1275,131 @@ OUTPUT JSON ONLY:
         return list(tickers)
     
     def create_sentiment_sessions(self) -> Dict[str, int]:
-        """Create sentiment analysis sessions by grouping related posts
-        
-        Groups posts within time windows similar to congress trades sessions.
-        Uses 4-hour windows for social sentiment (more frequent than 7-day congress windows).
-        
+        """Group unassigned posts into one session per ticker per UTC day.
+
+        Both platforms land in the same session. A ticker's StockTwits and
+        Reddit chatter for a day is one conversation, and splitting it into six
+        windows per platform multiplied the LLM call count by roughly 12 while
+        giving each call less context to work with.
+
+        Posts are claimed via social_posts.session_id. The old link went
+        social_metrics.analysis_session_id -> session, which cannot express
+        this grouping: a single poll routinely returns posts from several
+        different days, and a metric row can only point at one session.
+
         Returns:
-            Dictionary with counts of sessions created
+            Dictionary with counts of sessions created and posts assigned
         """
         try:
             logger.info("🎯 Creating sentiment analysis sessions...")
-            
-            # Get posts that haven't been assigned to sessions yet
+
             query = """
-                SELECT sp.id, sp.metric_id, sm.ticker, sp.platform, sp.posted_at, sp.engagement_score
+                SELECT sp.id, sp.metric_id, sm.ticker, sp.platform,
+                       sp.posted_at, sp.engagement_score
                 FROM social_posts sp
                 JOIN social_metrics sm ON sp.metric_id = sm.id
-                WHERE sp.id NOT IN (
-                    SELECT DISTINCT sp2.id
-                    FROM social_posts sp2
-                    JOIN sentiment_sessions ss ON ss.ticker = (
-                        SELECT sm2.ticker FROM social_metrics sm2 WHERE sm2.id = sp2.metric_id
-                    ) AND ss.platform = sp2.platform
-                    AND sp2.posted_at >= ss.session_start 
-                    AND sp2.posted_at <= ss.session_end
-                )
+                WHERE sp.session_id IS NULL
+                  AND sp.posted_at IS NOT NULL
                 ORDER BY sp.posted_at DESC
-                LIMIT 500  -- Process in batches
+                LIMIT 2000  -- Process in batches
             """
             unassigned_posts = self.postgres.execute_query(query)
-            
+
             if not unassigned_posts:
                 logger.info("✅ No new posts to assign to sessions")
                 return {'sessions_created': 0, 'posts_assigned': 0}
-            
+
             sessions_created = 0
             posts_assigned = 0
-            
-            # Group posts by ticker-platform and 4-hour windows
+
             from collections import defaultdict
             session_groups = defaultdict(list)
-            
+
             for post in unassigned_posts:
-                ticker = post['ticker']
-                platform = post['platform']
                 posted_at = post['posted_at']
-                
                 if isinstance(posted_at, str):
                     posted_at = datetime.fromisoformat(posted_at.replace('Z', '+00:00'))
-                
-                # Round to 4-hour window
-                window_start = posted_at.replace(hour=posted_at.hour // 4 * 4, minute=0, second=0, microsecond=0)
-                window_end = window_start + timedelta(hours=4)
-                
-                key = (ticker, platform, window_start, window_end)
-                session_groups[key].append(post)
-            
-            # Create sessions for each group
-            for (ticker, platform, start, end), posts in session_groups.items():
+                if posted_at.tzinfo is None:
+                    posted_at = posted_at.replace(tzinfo=timezone.utc)
+
+                day_start = posted_at.astimezone(timezone.utc).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                session_groups[(post['ticker'], day_start)].append(post)
+
+            for (ticker, day_start), posts in session_groups.items():
                 try:
-                    # Calculate session metrics
-                    post_count = len(posts)
+                    post_ids = [p['id'] for p in posts]
                     total_engagement = sum(p['engagement_score'] or 0 for p in posts)
-                    
-                    # Create session
-                    insert_query = """
-                        INSERT INTO sentiment_sessions 
-                        (ticker, platform, session_start, session_end, post_count, total_engagement)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        RETURNING id
-                    """
-                    result = self.postgres.execute_query(insert_query, (
-                        ticker, platform, start, end, post_count, total_engagement
-                    ))
-                    
-                    if result:
-                        session_id = result[0]['id']
-                        
-                        # Update social_metrics with session_id
-                        if posts:
-                            metric_ids = tuple(p['metric_id'] for p in posts)
-                            update_query = """
-                                UPDATE social_metrics 
-                                SET analysis_session_id = %s, has_ai_analysis = FALSE
-                                WHERE id IN %s
+
+                    # A session created earlier for this ticker/day should
+                    # absorb late-arriving posts instead of spawning a rival
+                    # session covering the same window.
+                    existing = self.postgres.execute_query(
+                        """
+                        SELECT id FROM sentiment_sessions
+                        WHERE ticker = %s AND platform = %s AND session_start = %s
+                        LIMIT 1
+                        """,
+                        (ticker, SESSION_PLATFORM_COMBINED, day_start),
+                    )
+
+                    if existing:
+                        session_id = existing[0]['id']
+                        self.postgres.execute_update(
                             """
-                            self.postgres.execute_update(update_query, (session_id, metric_ids))
-                        
+                            UPDATE sentiment_sessions
+                            SET post_count = post_count + %s,
+                                total_engagement = total_engagement + %s,
+                                needs_ai_analysis = TRUE
+                            WHERE id = %s
+                            """,
+                            (len(posts), total_engagement, session_id),
+                        )
+                    else:
+                        result = self.postgres.execute_query(
+                            """
+                            INSERT INTO sentiment_sessions
+                            (ticker, platform, session_start, session_end, post_count, total_engagement)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                            """,
+                            (
+                                ticker,
+                                SESSION_PLATFORM_COMBINED,
+                                day_start,
+                                day_start + timedelta(days=1),
+                                len(posts),
+                                total_engagement,
+                            ),
+                        )
+                        if not result:
+                            logger.warning("No session id returned for %s on %s", ticker, day_start)
+                            continue
+                        session_id = result[0]['id']
                         sessions_created += 1
-                        posts_assigned += post_count
-                        
+
+                    self.postgres.execute_update(
+                        "UPDATE social_posts SET session_id = %s WHERE id = ANY(%s)",
+                        (session_id, post_ids),
+                    )
+                    # Kept in sync for the has_ai_analysis flag and older
+                    # reporting; social_posts.session_id is authoritative.
+                    self.postgres.execute_update(
+                        """
+                        UPDATE social_metrics
+                        SET analysis_session_id = %s, has_ai_analysis = FALSE
+                        WHERE id = ANY(%s) AND analysis_session_id IS NULL
+                        """,
+                        (session_id, [p['metric_id'] for p in posts]),
+                    )
+
+                    posts_assigned += len(posts)
+
                 except Exception as e:
-                    logger.warning(f"Error creating session for {ticker}-{platform}: {e}")
+                    logger.warning(f"Error creating session for {ticker} on {day_start}: {e}")
                     continue
-            
+
             logger.info(f"✅ Session creation complete: {sessions_created} sessions, {posts_assigned} posts assigned")
             return {'sessions_created': sessions_created, 'posts_assigned': posts_assigned}
             
@@ -1249,55 +1407,91 @@ OUTPUT JSON ONLY:
             logger.error(f"❌ Error during session creation: {e}", exc_info=True)
             raise
     
-    def analyze_sentiment_session(self, session_id: int) -> Optional[Dict[str, Any]]:
+    def analyze_sentiment_session(
+        self,
+        session_id: int,
+        *,
+        ollama: Optional[Any] = None,
+        model: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Perform AI analysis on a sentiment session
         
-        Similar to congress trades analysis but for social sentiment.
-        Uses Ollama to analyze post content and extract insights.
+        Sentiment scoring and ticker extraction come back from one call. The
+        model already has the post content in front of it, so the old second
+        round-trip doubled cost to re-read the same input.
         
         Args:
             session_id: ID of the sentiment session to analyze
+            ollama: Backend-bound client. Queue workers pin one host per
+                worker; defaults to the service's shared client.
+            model: Model id to use. ``glm-*`` ids route to Z.AI inside
+                OllamaClient, anything else goes to Ollama.
             
         Returns:
-            Dictionary with analysis results or None if failed
+            Dictionary with analysis results, or None if the session could not
+            be analyzed. Sessions with no recoverable content are retired
+            rather than left pending, so a dead session cannot block the queue.
         """
+        client = ollama or self.ollama
+        model_name = model or get_summarizing_model()
         try:
-            # Get session details
-            session_query = """
-                SELECT ss.*, 
-                       array_agg(sp.content) as post_contents,
-                       json_agg(sp.extracted_tickers) as ticker_arrays
-                FROM sentiment_sessions ss
-                LEFT JOIN social_posts sp ON sp.metric_id IN (
-                    SELECT id FROM social_metrics 
-                    WHERE analysis_session_id = ss.id
+            # An earlier attempt may have inserted before its status update
+            # landed. There is no unique key on session_id, so a re-leased
+            # task would otherwise double-insert.
+            existing = self.postgres.execute_query(
+                "SELECT id FROM social_sentiment_analysis WHERE session_id = %s LIMIT 1",
+                (session_id,),
+            )
+            if existing:
+                logger.info(
+                    "Session %s already analyzed (id=%s); retiring",
+                    session_id,
+                    existing[0]["id"],
                 )
+                self._retire_session(session_id)
+                return None
+
+            # Get session details. Posts are claimed directly via
+            # social_posts.session_id -- the old route hopped through
+            # social_metrics.analysis_session_id, whose rows the 60-day cleanup
+            # deletes out from under still-pending sessions.
+            session_query = """
+                SELECT ss.*,
+                       array_agg(sp.content ORDER BY sp.posted_at) FILTER (
+                           WHERE sp.content IS NOT NULL
+                       ) AS post_contents,
+                       array_agg(DISTINCT sp.platform) FILTER (
+                           WHERE sp.platform IS NOT NULL
+                       ) AS platforms
+                FROM sentiment_sessions ss
+                LEFT JOIN social_posts sp ON sp.session_id = ss.id
                 WHERE ss.id = %s
                 GROUP BY ss.id
             """
             session_data = self.postgres.execute_query(session_query, (session_id,))
-            
+
             if not session_data:
                 logger.warning(f"No session found with ID {session_id}")
                 return None
-            
+
             session = session_data[0]
             post_contents = session['post_contents'] or []
-            ticker_arrays = session['ticker_arrays'] or []
-            
+
             # Combine all post content
             all_content = '\n\n---\n\n'.join([c for c in post_contents if c])
-            
+
             if not all_content.strip():
-                logger.warning(f"No content to analyze for session {session_id}")
+                # A session with no posts left is permanent, not transient.
+                # Leaving it pending would starve the oldest-first queue.
+                logger.warning(
+                    "Session %s has no recoverable post content; retiring it", session_id
+                )
+                self._retire_session(session_id)
                 return None
             
-            # Extract all mentioned tickers
-            all_tickers = set()
-            for ticker_array in ticker_arrays:
-                if ticker_array:
-                    all_tickers.update(ticker_array)
-            
+            # A merged session spans both platforms; name the ones present.
+            sources = ', '.join(session.get('platforms') or []) or session['platform']
+
             # AI analysis using untrusted social content wrapped in explicit delimiters.
             safe_social_content = prepare_untrusted_for_prompt(
                 all_content,
@@ -1305,7 +1499,7 @@ OUTPUT JSON ONLY:
                 max_chars=4000,
             )
             analysis_prompt = f"""
-Analyze these social media posts about {session['ticker']} from {session['platform']}.
+Analyze these social media posts about {session['ticker']} from {sources}, covering {session['session_start']:%Y-%m-%d}.
 
 Posts:
 {safe_social_content}
@@ -1317,17 +1511,28 @@ Provide analysis in JSON format:
     "sentiment_label": "EUPHORIC|BULLISH|NEUTRAL|BEARISH|FEARFUL",
     "summary": "Brief summary of overall sentiment",
     "key_themes": ["theme1", "theme2"],
-    "reasoning": "Detailed explanation of the analysis"
+    "reasoning": "Detailed explanation of the analysis",
+    "tickers": [
+        {{
+            "ticker": "SYMBOL",
+            "confidence": 0.0 to 1.0,
+            "context": "sentence where mentioned",
+            "is_primary": true/false,
+            "company_name": "Company Name if obvious"
+        }}
+    ]
 }}
+
+Only list a ticker under "tickers" when the text really refers to that listed
+company. Ordinary words that happen to look like symbols are not tickers.
 """
-            
-            if not self.ollama:
-                logger.warning("Ollama client not available for AI analysis")
+
+            if not client:
+                logger.warning("No LLM client available for AI analysis")
                 return None
-            
+
             # Get AI analysis
-            model_name = get_summarizing_model()
-            ai_response = self.ollama.generate_completion(
+            ai_response = client.generate_completion(
                 prompt=analysis_prompt,
                 model=model_name,
                 json_mode=True
@@ -1375,95 +1580,97 @@ Provide analysis in JSON format:
                 analysis_record['model_used'], analysis_record['analysis_version']
             ))
             
-            if result:
-                analysis_id = result[0]['id']
-                
-                # Extract and validate tickers with AI
-                self._extract_tickers_with_ai(analysis_id, all_content, list(all_tickers))
-                
-                # Update session as analyzed
-                update_query = "UPDATE sentiment_sessions SET needs_ai_analysis = FALSE WHERE id = %s"
-                self.postgres.execute_update(update_query, (session_id,))
-                
-                logger.info(f"✅ AI analysis complete for session {session_id}")
-                return analysis_record
-            
+            if not result:
+                raise RuntimeError(
+                    f"social_sentiment_analysis insert returned no id for session {session_id}"
+                )
+
+            analysis_id = result[0]['id']
+            analysis_record['analysis_id'] = analysis_id
+
+            # Tickers rode along on the same response -- no second call.
+            ticker_rows = self._persist_extracted_tickers(
+                analysis_id, analysis_result.get('tickers')
+            )
+
+            self._retire_session(session_id)
+
+            logger.info(
+                "✅ AI analysis complete for session %s (analysis_id=%s, %s ticker rows, model=%s)",
+                session_id,
+                analysis_id,
+                ticker_rows,
+                model_name,
+            )
+            return analysis_record
+
         except Exception as e:
             logger.error(f"❌ Error during AI analysis of session {session_id}: {e}", exc_info=True)
             return None
     
-    def _extract_tickers_with_ai(self, analysis_id: int, content: str, basic_tickers: List[str]) -> None:
-        """Use AI to validate and extract tickers with context
-        
+    def _retire_session(self, session_id: int) -> None:
+        """Clear needs_ai_analysis so a session stops being re-leased.
+
+        Used for finished sessions and for ones that can never be analyzed.
+        The pending queue is ordered oldest-first, so a permanently failing
+        session at the front starves every session behind it.
+
         Args:
-            analysis_id: ID of the analysis record
-            content: Full post content
-            basic_tickers: Tickers found via basic regex
+            session_id: ID of the sentiment session to retire
         """
         try:
-            if not basic_tickers:
-                return
-            
-            extraction_prompt = f"""
-Analyze this social media content and validate/extract stock tickers.
-
-Content:
-{prepare_untrusted_for_prompt(content, source="social_posts_extract", max_chars=2000)}
-
-Basic tickers found: {', '.join(basic_tickers)}
-
-For each ticker, provide JSON validation:
-[{{
-    "ticker": "SYMBOL",
-    "confidence": 0.0-1.0,
-    "context": "sentence where mentioned",
-    "is_primary": true/false,
-    "company_name": "Company Name if obvious"
-}}]
-"""
-            
-            model_name = get_summarizing_model()
-            ai_response = self.ollama.generate_completion(
-                prompt=extraction_prompt,
-                model=model_name,
-                json_mode=True
+            self.postgres.execute_update(
+                "UPDATE sentiment_sessions SET needs_ai_analysis = FALSE WHERE id = %s",
+                (session_id,),
             )
-            
-            if ai_response:
-                validated_tickers = _extract_json_array(ai_response)
-                if not validated_tickers:
-                    logger.warning("Could not parse AI ticker extraction as JSON array")
-                else:
-                    for ticker_data in validated_tickers:
-                        if not isinstance(ticker_data, dict):
-                            continue
-                        sym = ticker_data.get("ticker")
-                        if not sym:
-                            continue
-                        try:
-                            company_info = self._lookup_company_info(str(sym))
-                            
-                            insert_query = """
-                                INSERT INTO extracted_tickers 
-                                (analysis_id, ticker, confidence, context, is_primary, 
-                                 company_name, sector)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                            """
-                            self.postgres.execute_update(insert_query, (
-                                analysis_id,
-                                str(sym),
-                                ticker_data.get('confidence', 0.5),
-                                ticker_data.get('context', ''),
-                                ticker_data.get('is_primary', False),
-                                ticker_data.get('company_name') or company_info.get('company_name'),
-                                company_info.get('sector')
-                            ))
-                        except Exception as e:
-                            logger.warning("Error inserting extracted ticker row: %s", e)
-                    
         except Exception as e:
-            logger.warning(f"Error during AI ticker extraction: {e}")
-    
+            logger.warning("Failed to retire session %s: %s", session_id, e)
+
+    def _persist_extracted_tickers(self, analysis_id: int, tickers: Any) -> int:
+        """Store the ticker list that came back with the sentiment analysis.
+
+        Args:
+            analysis_id: ID of the analysis record the tickers belong to
+            tickers: ``tickers`` array from the model response
+
+        Returns:
+            Number of ticker rows inserted.
+        """
+        if not isinstance(tickers, list):
+            return 0
+
+        inserted = 0
+        seen: set = set()
+        for ticker_data in tickers:
+            if not isinstance(ticker_data, dict):
+                continue
+            sym = str(ticker_data.get("ticker") or "").strip().upper()
+            # ticker is VARCHAR(20); a model can hand back a sentence.
+            if not sym or len(sym) > 20 or sym in seen:
+                continue
+            seen.add(sym)
+            try:
+                company_info = self._lookup_company_info(sym)
+                insert_query = """
+                    INSERT INTO extracted_tickers
+                    (analysis_id, ticker, confidence, context, is_primary,
+                     company_name, sector)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                self.postgres.execute_update(insert_query, (
+                    analysis_id,
+                    sym,
+                    ticker_data.get('confidence', 0.5),
+                    ticker_data.get('context', ''),
+                    ticker_data.get('is_primary', False),
+                    ticker_data.get('company_name') or company_info.get('company_name'),
+                    company_info.get('sector'),
+                ))
+                inserted += 1
+            except Exception as e:
+                logger.warning("Error inserting extracted ticker row for %s: %s", sym, e)
+        return inserted
+
     def _lookup_company_info(self, ticker: str) -> Dict[str, str]:
         """Look up company information from Supabase securities table
         

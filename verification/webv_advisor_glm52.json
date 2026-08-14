@@ -1,0 +1,146 @@
+{
+  "fund": "RRSP Lance Webull",
+  "pulse_candidate_count": 8,
+  "market": {
+    "brief_date": "2026-08-13",
+    "headline": "Risk-On Continues: Growth Outpaces Small Caps in Broad Rally",
+    "risk_regime": "RISK_ON",
+    "breadth_proxy": "LEADERSHIP_NARROW",
+    "volatility_state": "CALM",
+    "regime_confidence": 0.82,
+    "macro_themes": [
+      "Growth leadership persistence",
+      "Low volatility environment",
+      "Large-cap dominance",
+      "Continued risk appetite"
+    ]
+  },
+  "candidates": [
+    {
+      "ticker": "MNST",
+      "advise": "WATCH",
+      "confidence": 0.6,
+      "is_held": true,
+      "reason": "signal:WATCH fear=HIGH",
+      "fear_level": "HIGH",
+      "source": "signal_fallback",
+      "sector": "Consumer Staples",
+      "entry_zone": "$45-47",
+      "stance": "SELL"
+    },
+    {
+      "ticker": "HLIT.TO",
+      "advise": "WATCH",
+      "confidence": 0.48,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Materials",
+      "entry_zone": "$21.40-$22.00",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "VRT",
+      "advise": "WATCH",
+      "confidence": 0.46,
+      "is_held": true,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Industrials",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "QCOM",
+      "advise": "WATCH",
+      "confidence": 0.46,
+      "is_held": false,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$155-$160",
+      "stance": "BUY"
+    },
+    {
+      "ticker": "RMBS",
+      "advise": "WATCH",
+      "confidence": 0.45,
+      "is_held": true,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "AKAM",
+      "advise": "WATCH",
+      "confidence": 0.45,
+      "is_held": true,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "COST",
+      "advise": "WATCH",
+      "confidence": 0.45,
+      "is_held": true,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Consumer Staples",
+      "entry_zone": "$935-$945",
+      "stance": "HOLD"
+    },
+    {
+      "ticker": "MCHP",
+      "advise": "WATCH",
+      "confidence": 0.45,
+      "is_held": true,
+      "reason": "signal:WATCH fear=MODERATE",
+      "fear_level": "MODERATE",
+      "source": "signal_fallback",
+      "sector": "Information Technology",
+      "entry_zone": "$74.00-$76.00",
+      "stance": "HOLD"
+    }
+  ],
+  "chat": [
+    {
+      "family": "ad_hoc",
+      "query": "help me research web.v westbridge renewables -- it's doing bad this year and i probably held too long. but now maybe i should hold",
+      "tools": [
+        "get_ticker_fundamentals({\"ticker\": \"WEB.V\"})",
+        "get_price_history({\"ticker\": \"WEB.V\", \"window\": \"1y\"})",
+        "get_holdings_snapshot({\"tickers\": [\"WEB.V\"]})",
+        "get_ticker_setup({\"ticker\": \"WEB.V\"})",
+        "get_trade_history({\"ticker\": \"WEB.V\"})",
+        "search_web({\"tickers\": [\"WEB.V\"], \"query\": \"Westbridge Renewable Energy WEB.V stock 2026 news Georgetown project\", \"time_range\": \"month\"})",
+        "get_trade_history({\"ticker\": \"WEB.V\", \"limit\": 25})",
+        "search_research({\"query\": \"Westbridge Renewable WEB.V solar project pipeline\"})",
+        "get_theses_attention({\"ticker\": \"WEB.V\"})",
+        "get_confluence({\"ticker\": \"WEB.V\"})"
+      ],
+      "tool_ok": [
+        true,
+        true,
+        false,
+        true,
+        false,
+        true,
+        false,
+        true,
+        true,
+        false
+      ],
+      "answer": "Here's the full picture on **Westbridge Renewable Energy (WEB.V)** \u2014 what happened, where it stands, and the hold/sell question.\n\n---\n\n## What happened this year: brutal drawdown\n\n| Metric | Value |\n|---|---|\n| Price 1 year ago (Aug 14, 2025) | **$2.29** |\n| Current price (Aug 13, 2026) | **$0.97** |\n| **Change** | **\u221257.6%** |\n| 52-week high | $3.14 (Sep 26, 2025) |\n| 52-week low | $0.80 (Jul 27, 2026) |\n\nThe decline was a steady grind lower, not a single blowup \u2014 there was no single structural collapse event. Notable mechanics:\n- **Reverse split (1:4)** on Aug 22, 2025 \u2014 splits are already baked into the closes, so no visible gap, but dilution/concentration effects remain.\n- **$0.20 dividend** (ex-date Oct 3, 2025) \u2014 caused a ~9% single-day drop, but the $0.20 payout only accounts for a small fraction of the total decline. The rest is **structural repricing, not mechanical**.\n- Biggest single-day moves were modest (\u00b18-13%), confirming the downtrend was **grinding illiquid selling**, not a headline shock.\n\n---\n\n## Fundamentals: effectively debt-free, but no revenue yet\n\n- **Sector**: Utilities \u2013 Renewable (Canada, TSXV)\n- **Market cap**: ~C$25.5M (micro-cap)\n- **D/E ratio**: 0.03x (~3.2%) \u2014 **effectively debt-free**\n- **Total revenue (latest annual)**: $0 (reported zero). This is normal for project developers \u2014 monetization comes via lumpy asset/project sales, not recurring revenue.\n- **Free cash flow**: \u2212C$2.5M (burning cash)\n- **Current ratio**: 16.5x (comfortable short-term liquidity buffer)\n- **Pipeline**: Accalia (221 MWdc, Texas), Dolcy (300 MWac + 100 MW BESS, Alberta), Eastervale (300 MWac + 400 MWh BESS), plus UK and Italy projects and a Georgetown project cited as a near-term catalyst.\n\n**Net**: Balance sheet is clean (low debt, decent cash buffer), but the company is burning ~$2.5M/yr with no recurring revenue. Every dollar of value rests on **executing project sales/monetization**.\n\n---\n\n## Stored research setup: HOLD with major caveats\n\n| Field | Value |\n|---|---|\n| Stance | **HOLD** (NEUTRAL conviction) |\n| Key support | **$0.90, $0.80** |\n| Key resistance | **$1.00, $1.10** |\n| Invalidation | Break below **$0.80** \u2192 deeper downtrend |\n| Catalysts to watch | Georgetown monetization milestones, potential TSX/NASDAQ uplisting, green hydrogen |\n| Updated | Aug 14, 2026 |\n\n**Internal contradictions flagged** (these matter):\n1. **Prior stance was AVOID** (extreme illiquidity + confirmed downtrend) vs. the new HOLD \u2014 a direct conflict in the research layer.\n2. **LLM thesis review verdict: TENSION** \u2014 a stale, weak-context thesis thread on Westbridge's \"moat\" that hasn't been reconciled in 31 days. The system is explicitly telling you the bull case is not well-supported.\n3. **Liquidity risk**: thin volume (daily swings of 0% on some days per web data). Exiting is not costless at this size.\n\n---\n\n## Your position\n\n- The holdings snapshot returned **no matching position** for WEB.V in the *RRSP Lance Webull* fund account the tools see.\n- Trade history also errored out, so I can't confirm entry price or P&L from tools. **If you hold this in a different account**, that's outside what I can see \u2014 tell me and I can still reason about levels.\n\n---\n\n## Hold or sell \u2014 framework, not a decision\n\n**Arguments for holding**:\n- Balance sheet is clean (debt-free, 16.5x current ratio) \u2014 no immediate solvency risk.\n- Sitting just above $0.90 support; $0.80 is the line that invalidates the setup.\n- Catalysts (Georgetown sale, uplisting) are real and would be material if executed.\n- You've already absorbed most of the drawdown \u2014 selling at $0.97 locks in the loss.\n\n**Arguments for selling / cutting**:\n- \u221257.6% in a year with no revenue and negative free cash flow \u2014 the market is pricing execution risk, not just sentiment.\n- Stored research has **TENSION** and a prior AVOID stance \u2014 the bull case is internally disputed.\n- Micro-cap with extreme illiquidity \u2014 exits are costly and slow.\n- Free cash flow burn means the clock is ticking on the cash buffer.\n- Current price ($0.97) is sitting right at the **$1.00 resistance** \u2014 not a clean \"bottom\" signal.\n\n**Practical levels to manage against**:\n- **If $0.80 breaks** \u2192 the setup is invalidated per stored research; that's the line where \"hold and hope\" becomes \"the downtrend has resumed.\"\n- **Between $0.80\u2013$1.10** \u2192 you're in the neutral watch zone the research describes.\n- **Above $1.10** \u2192 first sign the downtrend is breaking.\n\n**My read**: This isn't a \"hold because it's cheap\" situation \u2014 it's a \"hold only if you still believe in a specific monetization catalyst within a reasonable timeframe.\" Given the FCF burn and TENSION flag, I'd treat any hold as **time-boxed**: if Georgetown or an uplisting doesn't materialize within your horizon, the cash-burn math gets worse, not better.\n\nWant me to dig deeper into any specific catalyst (Georgetown, Dolcy sale history, uplisting timeline), or set a concrete review date / level alert?",
+      "error": null,
+      "elapsed_s": 69.6
+    }
+  ]
+}

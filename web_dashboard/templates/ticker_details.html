@@ -211,8 +211,8 @@
                 <label for="chart-price-source" class="block text-xs text-text-secondary mb-1">Price data</label>
                 <select id="chart-price-source"
                     class="min-w-[12rem] px-3 py-1 bg-dashboard-background border border-border rounded text-sm text-text-primary">
-                    <option value="auto">Auto (portfolio if held)</option>
-                    <option value="market">Market (Yahoo)</option>
+                    <option value="market" selected>Market (Yahoo)</option>
+                    <option value="auto">Auto (since purchase)</option>
                 </select>
             </div>
             <div>
@@ -227,10 +227,10 @@
             </div>
         </div>
         <p class="text-xs text-text-secondary max-w-3xl">
-            Set both years to use a <span class="text-text-primary font-medium">calendar window</span> (Yahoo prices).
-            Leave as “—” to use the rolling range above. <span class="text-text-primary font-medium">Auto</span> prefers
-            your portfolio history when you hold the name; pick <span class="text-text-primary font-medium">Market</span>
-            for full Yahoo history in that window.
+            Rolling range (3M–5Y) uses <span class="text-text-primary font-medium">Yahoo</span> market history
+            by default, including before the buy. Set both years for a
+            <span class="text-text-primary font-medium">calendar window</span> (also Yahoo).
+            Pick <span class="text-text-primary font-medium">Auto</span> to plot portfolio snapshots from first buy.
         </p>
     </div>
     <p class="text-sm text-text-secondary mb-3 max-w-3xl">
