@@ -32,6 +32,7 @@ from ai_context_builder import (
     format_trades
 )
 from settings import get_summarizing_model
+from market_data.split_adjust import apply_unadjusted_splits
 try:
     from web_dashboard.watchlist_access import get_active_watchlist_tickers
 except ImportError:
@@ -480,6 +481,13 @@ class TickerAnalysisService:
             if hist.empty:
                 logger.warning(f"No price data available for {ticker_upper}")
                 return None
+
+            extra_splits = None
+            try:
+                extra_splits = ticker_obj.splits
+            except Exception:
+                extra_splits = None
+            hist = apply_unadjusted_splits(hist, extra_splits)
             
             # Current price info
             current_price = float(hist['Close'].iloc[-1])
@@ -529,6 +537,7 @@ class TickerAnalysisService:
             try:
                 hist_52w = ticker_obj.history(period="1y", auto_adjust=False)
                 if not hist_52w.empty:
+                    hist_52w = apply_unadjusted_splits(hist_52w, extra_splits)
                     high_52w = float(hist_52w['High'].max())
                     low_52w = float(hist_52w['Low'].min())
                     pct_from_52w_high = ((current_price - high_52w) / high_52w) * 100
