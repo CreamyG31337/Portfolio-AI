@@ -107,6 +107,15 @@
     </div>
 </div>
 
+<!-- Hidden Flowbite triggers: scripts open these modals by clicking them, which
+     registers the modal with Flowbite so data-modal-hide works. -->
+<button id="yt-bulk-modal-trigger" type="button" class="hidden" data-modal-target="yt-bulk-modal"
+    data-modal-toggle="yt-bulk-modal" aria-label="Open bulk import">Open</button>
+<button id="yt-edit-modal-trigger" type="button" class="hidden" data-modal-target="yt-edit-modal"
+    data-modal-toggle="yt-edit-modal" aria-label="Open YouTube source editor">Open</button>
+<button id="yt-test-modal-trigger" type="button" class="hidden" data-modal-target="yt-test-modal"
+    data-modal-toggle="yt-test-modal" aria-label="Open caption test">Open</button>
+
 <!-- Bulk import modal -->
 <div id="yt-bulk-modal" tabindex="-1" aria-hidden="true" class="fixed top-0 left-0 right-0 z-50 hidden w-full p-4 overflow-x-hidden overflow-y-auto md:inset-0 h-[calc(100%-1rem)] max-h-full">
     <div class="relative w-full max-w-3xl max-h-full">
