@@ -162,11 +162,21 @@ async function loadRss(): Promise<void> {
   }
 }
 
+// Drive the modals through Flowbite's own data-attribute triggers so they stay
+// in Flowbite's registry (required for data-modal-hide). Do not
+// `import { Modal } from "flowbite"` — tsc emits a bare specifier and the
+// browser never runs this module.
 function showModal(id: string, show: boolean): void {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.toggle("hidden", !show);
-  el.classList.toggle("flex", show);
+  if (show) {
+    const trigger = document.getElementById(`${id}-trigger`);
+    if (trigger) {
+      trigger.click();
+    } else {
+      console.error(`[Sources] Modal trigger not found for ${id}`);
+    }
+    return;
+  }
+  document.querySelector<HTMLElement>(`[data-modal-hide="${id}"]`)?.click();
 }
 
 function confirmDelete(message: string): Promise<boolean> {
@@ -280,9 +290,7 @@ function openYtEdit(source?: YoutubeSource): void {
 
 function wireYoutube(): void {
   document.getElementById("yt-add-btn")?.addEventListener("click", () => openYtEdit());
-  document.getElementById("yt-edit-cancel")?.addEventListener("click", () =>
-    showModal("yt-edit-modal", false)
-  );
+  // Cancel/close buttons carry data-modal-hide; Flowbite closes them natively.
   document.getElementById("yt-edit-save")?.addEventListener("click", async () => {
     const id = (document.getElementById("yt-edit-id") as HTMLInputElement).value;
     const body = {
@@ -356,9 +364,6 @@ function wireYoutube(): void {
     }
   });
 
-  document.getElementById("yt-test-cancel")?.addEventListener("click", () =>
-    showModal("yt-test-modal", false)
-  );
   document.getElementById("yt-test-run")?.addEventListener("click", async () => {
     const id = (document.getElementById("yt-test-source-id") as HTMLInputElement).value;
     const url_or_id = (document.getElementById("yt-test-url") as HTMLInputElement).value.trim();
@@ -404,9 +409,6 @@ function wireBulk(): void {
     if (commitBtn) commitBtn.disabled = true;
     showModal("yt-bulk-modal", true);
   });
-  document.getElementById("yt-bulk-close")?.addEventListener("click", () =>
-    showModal("yt-bulk-modal", false)
-  );
 
   document.getElementById("yt-bulk-preview-btn")?.addEventListener("click", async () => {
     const format =
