@@ -4,7 +4,6 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
-import { Modal } from "flowbite";
 import { showToast as showToastBase } from './toast.js';
 
 // Type definitions
@@ -99,19 +98,13 @@ function updateFundIndicators(): void {
 }
 
 function closeEditModal(): void {
-    const modalEl = document.getElementById('edit-fund-modal');
-    if (modalEl) {
-        const modal = new Modal(modalEl);
-        modal.hide();
-    }
+    // tsc does not bundle bare "flowbite" imports; click the data-modal-hide
+    // trigger so Flowbite (loaded globally) closes the modal and backdrop.
+    document.querySelector<HTMLElement>('[data-modal-hide="edit-fund-modal"]')?.click();
 }
 
 function closeCreateModal(): void {
-    const modalEl = document.getElementById('create-fund-modal');
-    if (modalEl) {
-        const modal = new Modal(modalEl);
-        modal.hide();
-    }
+    document.querySelector<HTMLElement>('[data-modal-hide="create-fund-modal"]')?.click();
 }
 
 // Load funds from API
@@ -266,12 +259,14 @@ function openEditModal(fundName: string): void {
         elements.deleteConfirmInput.value = '';
     }
 
-    const modalEl = document.getElementById('edit-fund-modal');
-    if (modalEl) {
-        const modal = new Modal(modalEl);
-        modal.show();
+    // Open via Flowbite's trigger so the modal is in Flowbite's registry
+    // (required for data-modal-hide). Do not `import { Modal } from "flowbite"` —
+    // tsc emits a bare specifier and the browser never runs this module.
+    const trigger = document.getElementById('edit-fund-modal-trigger');
+    if (trigger) {
+        trigger.click();
     } else {
-        console.error('[Funds] Edit fund modal not found');
+        console.error('[Funds] Edit fund modal trigger not found');
     }
 }
 
