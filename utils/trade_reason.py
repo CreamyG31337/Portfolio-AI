@@ -8,6 +8,12 @@ from typing import Optional
 _SELL_PATTERN = re.compile(r"\b(sell|limit sell|market sell)\b", re.IGNORECASE)
 _BUY_PATTERN = re.compile(r"\bbuy\b", re.IGNORECASE)
 _DIVIDEND_PATTERN = re.compile(r"\b(drip|dividend)\b", re.IGNORECASE)
+# Investment-thesis collocations — not a cash/DRIP event (V4 / FTS.TO, KO, PEP).
+_DIVIDEND_THESIS_PATTERN = re.compile(
+    r"\bdividend[\s-]+(growth|aristocrat|aristocrats|yield|payer|payers|paying|stock|stocks)\b"
+    r"|\b(growth|quality|high)[\s-]+dividend\b",
+    re.IGNORECASE,
+)
 # Broker / import stubs — not an investment thesis (initial-buy quality checks)
 _EMAIL_TRADE_BUY = re.compile(r"^\s*email trade\s*-\s*buy\b", re.IGNORECASE)
 _MANUAL_BUY = re.compile(r"\bmanual buy\b", re.IGNORECASE)
@@ -22,8 +28,14 @@ def normalize_reason_text(reason: Optional[str]) -> str:
 
 
 def is_dividend_reason(reason: Optional[str]) -> bool:
-    """Return True when reason indicates a dividend event (cash or DRIP)."""
-    return bool(_DIVIDEND_PATTERN.search(normalize_reason_text(reason)))
+    """Return True when reason indicates a dividend event (cash or DRIP).
+
+    Does not match investment-thesis prose such as "dividend growth" (V4).
+    """
+    text = normalize_reason_text(reason)
+    if _DIVIDEND_THESIS_PATTERN.search(text):
+        return False
+    return bool(_DIVIDEND_PATTERN.search(text))
 
 
 def is_sell_reason(reason: Optional[str]) -> bool:

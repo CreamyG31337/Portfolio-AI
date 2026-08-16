@@ -2493,6 +2493,9 @@ def api_submit_trade():
              final_reason = f"{final_reason} - BUY"
              
         # 4. Insert Trade Log
+        # Prefer the explicit action. infer_trade_action used to classify
+        # "dividend growth" theses as DIVIDEND (V4: FTS.TO / KO). Do not rely
+        # on reason prose when the client already sent BUY/SELL/DIVIDEND.
         act = str(action or "BUY").strip().upper()
         if act not in ("BUY", "SELL", "DIVIDEND"):
             act = infer_trade_action(final_reason, default="BUY")
@@ -2656,7 +2659,13 @@ def api_update_trade(trade_id):
         except Exception as e:
             logger.warning(f"Metadata fetch warning for {ticker}: {e}")
         
-        act_raw = data.get("action", old_trade.get("action"))
+        # Keep the stored action when the payload omits it or sends blank.
+        # Empty-string .get() would skip the default and re-infer from reason,
+        # which re-corrupts FTS.TO / KO (repaired in Phase 4.3) if the thesis
+        # still contains the word "dividend".
+        act_raw = data.get("action")
+        if act_raw is None or str(act_raw).strip() == "":
+            act_raw = old_trade.get("action")
         act = str(act_raw or "").strip().upper()
         if act not in ("BUY", "SELL", "DIVIDEND"):
             act = infer_trade_action(reason, default="BUY")
