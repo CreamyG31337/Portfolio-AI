@@ -100,32 +100,33 @@ Convenience script to activate the virtual environment.
 - Use debug scripts to verify data accuracy
 - Manually correct historical data if needed
 
-## ⚠️ Known Issues Requiring Manual Monitoring
+## Corporate actions (stock splits)
 
-### Corporate Actions (Stock Splits & Dividend Reinvestments)
-**Issue**: Wealthsimple automatically handles stock splits and dividend reinvestments, but these events are not captured in the trade log, causing discrepancies between the bot's records and actual holdings.
+Use `debug/apply_stock_split.py` to split-adjust `trade_log` rows. It never
+rebuilds positions.
 
-**Examples**:
-- **Stock Split**: CRWD 2:1 split → 0.7261 shares becomes 1.4522 shares
-- **Dividend Reinvestment**: CRWD pays $0.50 dividend → automatically reinvested as additional fractional shares
-- **Mixed Holdings**: Personal + Bot holdings in same TFSA account make tracking complex
+```powershell
+.\venv\Scripts\python.exe debug\apply_stock_split.py --fund "TEST MNST RRSP" --ticker MNST --ratio 2 --dry-run
+.\venv\Scripts\python.exe debug\apply_stock_split.py --fund "TEST MNST RRSP" --ticker MNST --ratio 2 --apply
+# production funds also require --i-know-this-is-prod
+```
 
-**Current Workaround**:
-- Monitor Wealthsimple emails for corporate action notifications
-- Manually adjust portfolio CSV when discrepancies are detected
-- Use `recalculate_portfolio_data.py` to sync data after manual corrections
+**A split adjustment must be paired with a targeted `portfolio_positions`
+repair, not a full historical rebuild**, until the price provider has
+back-adjusted its series. Yahoo currently records the MNST 2:1 (ex 2026-08-11)
+but has **not** back-adjusted history, so a rebuild from `trade_log` would pair
+post-split share counts with pre-split closes (~2x overstatement). See
+`docs/corporate_actions.md`.
 
-**Future Solutions** (TODO):
-- Create manual correction tool for corporate actions
-- Integrate with Wealthsimple data export
-- Implement corporate actions database
-- Add automatic detection and adjustment
+The script prints the follow-up UPDATE. Use a `shares = <pre-split>` guard —
+`shares * 2` is not idempotent while the daily job is live.
 
-**Monitoring Required**:
-- Check share counts against Wealthsimple holdings regularly
-- Watch for unexpected changes in total share counts
-- Verify cost basis calculations after corporate actions
-- Keep trade log and portfolio CSV synchronized
+Do **not** use `recalculate_portfolio_data.py` / `manual_rebuild.py --apply` as
+the split fix. Dry-run a rebuild only to confirm the overstatement.
+
+**Still manual:** Wealthsimple DRIPs/splits that never hit `trade_log`; mixed
+personal + bot holdings in one account. Monitor share counts against the
+broker.
 
 ## File Organization
 

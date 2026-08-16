@@ -19,6 +19,20 @@ def test_infer_trade_action_dividend_variants() -> None:
     assert is_dividend_reason("monthly dividend")
 
 
+def test_infer_trade_action_dividend_growth_thesis_is_buy() -> None:
+    """V4: a BUY thesis mentioning dividend growth must not become DIVIDEND."""
+    fts = "Wide moat utility with decades of dividend growth and predictable cash flows."
+    ko = "KO offers core stability with a wide economic moat and dividend growth."
+    pep = "Quality compounder with a long runway of dividend growth."
+    assert infer_trade_action(fts) == "BUY"
+    assert infer_trade_action(ko) == "BUY"
+    assert infer_trade_action(pep) == "BUY"
+    assert not is_dividend_reason(fts)
+    assert not is_dividend_reason(pep)
+    assert is_dividend_reason("Cash Dividend Payment")
+    assert is_dividend_reason("DRIP")
+
+
 def test_infer_trade_action_defaults_to_buy_for_unknown() -> None:
     assert infer_trade_action("manual adjustment", default="BUY") == "BUY"
     assert infer_trade_action(None, default="BUY") == "BUY"
