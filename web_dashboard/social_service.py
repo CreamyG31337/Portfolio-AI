@@ -1050,9 +1050,13 @@ OUTPUT JSON ONLY:
         try:
             logger.info("🔄 Starting post extraction from raw_data...")
             
-            # Get metrics with raw_data that haven't been processed.
-            # NOT EXISTS beats NOT IN here: it stops at the first match instead
-            # of materializing every metric_id in social_posts per batch.
+            # Get metrics whose raw_data has not been walked yet.
+            #
+            # This keys on posts_extracted_at rather than "has rows in
+            # social_posts". With cross-poll dedupe a metric can legitimately
+            # produce zero new rows -- every post in it was already stored by
+            # an earlier poll -- and a presence test would then re-select that
+            # same metric forever without ever making progress.
             params: List[Any] = []
             age_clause = ""
             if since_days is not None:
@@ -1071,9 +1075,7 @@ OUTPUT JSON ONLY:
                   AND jsonb_array_length(sm.raw_data) > 0
                   {age_clause}
                   {platform_clause}
-                  AND NOT EXISTS (
-                      SELECT 1 FROM social_posts sp WHERE sp.metric_id = sm.id
-                  )
+                  AND sm.posts_extracted_at IS NULL
                 ORDER BY sm.created_at DESC
                 LIMIT %s
             """
@@ -1178,6 +1180,13 @@ OUTPUT JSON ONLY:
                     except Exception as e:
                         logger.warning(f"Error extracting post for metric {metric_id}: {e}")
                         continue
+
+                # Mark the metric walked even when it yielded nothing new, so
+                # the next batch moves on instead of re-selecting it forever.
+                self.postgres.execute_update(
+                    "UPDATE social_metrics SET posts_extracted_at = NOW() WHERE id = %s",
+                    (metric_id,),
+                )
 
             if posts_filtered > 0:
                 logger.info(f"⚠️  Filtered out {posts_filtered} posts that didn't mention their ticker")
