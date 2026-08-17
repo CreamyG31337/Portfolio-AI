@@ -139,7 +139,7 @@ def test_legacy_mode_unchanged_when_queue_disabled(monkeypatch):
     monkeypatch.setattr(job_module, "TickerMetaAnalysisService", lambda *args: fake_service)
     monkeypatch.setattr(job_module, "get_ollama_client", lambda: SimpleNamespace())
     monkeypatch.setattr(job_module, "OllamaClient", lambda: SimpleNamespace())
-    monkeypatch.setattr(job_module, "get_summarizing_model", lambda key: "qwen3.6:27b-heretic")
+    monkeypatch.setattr(job_module, "get_summarizing_model", lambda key: "qwen3.8:27b-mtp-q4_K_M")
 
     # Queue mode OFF: only ticker_analysis is queue-managed, not meta.
     monkeypatch.setenv("AI_QUEUE_ENABLED", "true")

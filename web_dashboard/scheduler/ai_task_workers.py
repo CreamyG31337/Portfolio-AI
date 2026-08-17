@@ -254,7 +254,7 @@ def model_for_backend(backend: str) -> str:
 
             return get_ollama_queue_secondary_model()
         except ImportError:
-            return "qwen3.6:27b-heretic"
+            return "qwen3.8:27b-mtp-q4_K_M"
     try:
         from model_registry import get_ollama_queue_primary_model
 

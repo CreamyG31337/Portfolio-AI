@@ -253,7 +253,7 @@ SEARXNG_TIMEOUT=10
 
 # Ollama
 OLLAMA_BASE_URL=http://host.docker.internal:11434
-# Second host for models that use OLLAMA_BASE_URL_2 (e.g. qwen3.6:27b-heretic) when that model runs on a different machine
+# Second host for models that use OLLAMA_BASE_URL_2 (e.g. qwen3.8:27b-mtp-q4_K_M) when that model runs on a different machine
 # than OLLAMA_BASE_URL.
 # OLLAMA_BASE_URL_2=http://second-ollama-host:11434
 OLLAMA_MODEL=llama3
@@ -290,7 +290,7 @@ We support two Ollama hosts via four env-var aliases that collapse to two slots:
 | Env var | Alias of | Models that prefer it (primary) |
 |---|---|---|
 | `OLLAMA_BASE_URL_AMD` | `OLLAMA_BASE_URL` | `granite4.1:8b` |
-| `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.6:27b-heretic` |
+| `OLLAMA_BASE_URL_NVIDIA` | `OLLAMA_BASE_URL_2` | `qwen3.8:27b-mtp-q4_K_M` |
 
 `fallback_base_url` in `model_config.json` is **host-down failover** (HTTP 404
 or 5xx triggers a single retry on the other host inside `_post_ollama`). It is
@@ -334,12 +334,17 @@ Higher `num_ctx` does **not** reliably upgrade an already-warm smaller runner.
 
 ### Picking `num_ctx` on a shared GPU (ts-desktop RTX 3090)
 
-**Hardware baseline:** shipped `num_ctx` for `qwen3.6:27b-heretic` /
-`qwen3.6:27b-heretic-agentic` is **`65536`**, tuned for an **NVIDIA RTX 3090
-with 24 GB VRAM** (~17.4 GiB resident with that window), shared with Goose.
-This project is open source — if you run a different GPU, **retune `num_ctx`
-in `model_config.json`** (or `model_<name>_num_ctx` / `OLLAMA_NUM_CTX_*`).
-Do **not** blindly copy 65536 onto the AMD/`batiai` IQ3 host.
+**Hardware baseline:** shipped `num_ctx` for `qwen3.8:27b-mtp-q4_K_M` is
+**`65536`**, tuned for an **NVIDIA RTX 3090 with 24 GB VRAM**, shared with Goose.
+Qwen3.8 GGUFs no longer bake `num_ctx`, so without an explicit `options.num_ctx`
+the runner inherits `OLLAMA_CONTEXT_LENGTH=32768` (~16k usable prompt). Sticky
+65536 keeps the old effective window. This project is open source — if you run a
+different GPU, **retune `num_ctx` in `model_config.json`** (or
+`model_<name>_num_ctx` / `OLLAMA_NUM_CTX_*`). Do **not** blindly copy 65536 onto
+the AMD/`batiai` IQ3 host.
+
+Requires **Ollama ≥ 0.32.12** (host **0.32.13**); older servers return HTTP 412
+for Qwen3.8.
 
 **Verified Ollama split:** the prompt gets ~**half** of `num_ctx`; the other
 half is generation. So `num_ctx=65536` → ~**32k usable prompt** (Goose
@@ -350,14 +355,16 @@ the fix.** Prefer needle tests + response `prompt_eval_count`.
 
 `num_ctx` × model size mostly determines KV-cache VRAM. Context is fixed at
 model *load* (`llama-server -c N`), not per request — first client to load a
-model **name** pins that runner until unload / `keep_alive` expiry. Bot uses
-`qwen3.6:27b-heretic`; Goose uses `…-heretic-agentic` (separate runners, same
-VRAM). Prefer **65536 sticky on both** so either path hitting the 3090 agrees.
+model **name** pins that runner until unload / `keep_alive` expiry. Default bot
+/ queue secondary is stock `qwen3.8:27b-mtp-q4_K_M` (MTP draft, vision, native
+tools). This app does **not** ship an abliterated/heretic tag — financial
+research prompts are unlikely to hit refusals. Deleted Qwen3.6 tags
+(`…-heretic`, `…-heretic-agentic`) and any leftover `qwen3.8:27b-heretic` remap
+to stock on read.
 
 | Model | `num_ctx` | Why |
 |---|---|---|
-| `qwen3.6:27b-heretic` | `65536` | Match Goose `GOOSE_INPUT_LIMIT` + Modelfile. Usable prompt ≈ 32k; soft client budget ≈ 28k. **Never 20000 or 32768** on this shared runner (reload thrash ~5–15s). |
-| `qwen3.6:27b-heretic-agentic` | `65536` | Same sticky policy if this app ever calls Goose’s tag. |
+| `qwen3.8:27b-mtp-q4_K_M` | `65536` | Default. Match Goose `GOOSE_INPUT_LIMIT`. Usable prompt ≈ 32k; soft client budget ≈ 28k. **Never 20000 or 32768** on this shared runner (reload thrash ~5–15s). |
 | `batiai/qwen3.6-27b:iq3` | `32768` | AMD host only — do not copy 65536 unless that GPU fits. |
 
 **Silent truncation:** past the *real* prompt half, Ollama truncates from the
@@ -365,10 +372,10 @@ VRAM). Prefer **65536 sticky on both** so either path hitting the 3090 agrees.
 error.
 
 **Client budget scaffold:** chat paths use `compute_prompt_token_budget`
-(prompt half, heretic soft-cap 28000) and `compact_messages_to_budget`.
+(prompt half, Qwen3.8 27B soft-cap 28000) and `compact_messages_to_budget`.
 `num_predict` is capped to the generation half (8192 is fine).
 
-Operators can still override via `model_qwen3.6:27b-heretic_num_ctx` in
+Operators can still override via `model_qwen3.8:27b-mtp-q4_K_M_num_ctx` in
 `system_settings` (then `unload_model` so sticky clears and the new size loads).
 
 ### Summarizer input pipeline
@@ -502,9 +509,10 @@ scheduler.add_job(
   see the effective value.
 - Host `OLLAMA_CONTEXT_LENGTH` (e.g. Windows HKLM) can clamp below Modelfile /
   request size until Ollama is restarted with that env cleared (ops track).
-- Verify on the Ollama host log that `-c 65536` dominates for heretic, not
-  `-c 20000` / `-c 32768` (legacy pins removed from `model_config.json`).
-  Remember usable prompt ≈ half of that window (~32k), not the full `-c` value.
+- Verify on the Ollama host log that `-c 65536` dominates for
+  `qwen3.8:27b-mtp-q4_K_M`, not `-c 20000` / `-c 32768` (legacy pins removed
+  from `model_config.json`). Remember usable prompt ≈ half of that window
+  (~32k), not the full `-c` value.
 
 ## Future Enhancements
 

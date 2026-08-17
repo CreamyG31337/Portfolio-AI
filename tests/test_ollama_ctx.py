@@ -1,4 +1,4 @@
-"""Tests for sticky Ollama num_ctx, half-window budget, and heretic 65k config."""
+"""Tests for sticky Ollama num_ctx, half-window budget, and Qwen3.8 65k config."""
 
 from __future__ import annotations
 
@@ -24,26 +24,25 @@ def _clear_sticky() -> None:
     ollama_ctx.clear_sticky_num_ctx()
 
 
-def test_heretic_num_ctx_is_65536_not_legacy() -> None:
+def test_qwen38_num_ctx_is_65536_not_legacy() -> None:
     """Regression: 20k/32k left warm smaller runners and thrashed vs Goose 65k."""
     cfg_path = WEB_DASHBOARD / "model_config.json"
     cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-    heretic = cfg["models"]["qwen3.6:27b-heretic"]
-    assert heretic["num_ctx"] == 65536
-    assert heretic["num_ctx"] not in (20000, 32768)
-    assert heretic["num_predict"] <= 32768  # generation half of 65k
-    agentic = cfg["models"]["qwen3.6:27b-heretic-agentic"]
-    assert agentic["num_ctx"] == 65536
+    stock = cfg["models"]["qwen3.8:27b-mtp-q4_K_M"]
+    assert stock["num_ctx"] == 65536
+    assert stock["num_ctx"] not in (20000, 32768)
+    assert stock["num_predict"] <= 32768  # generation half of 65k
+    assert "qwen3.8:27b-heretic" not in cfg["models"]
     # AMD IQ3 must not blindly copy 65536.
     iq3 = cfg["models"]["batiai/qwen3.6-27b:iq3"]
     assert iq3["num_ctx"] != 65536
-    assert ollama_ctx.HERETIC_PREFERRED_NUM_CTX == 65536
+    assert ollama_ctx.QWEN38_PREFERRED_NUM_CTX == 65536
 
 
 def test_sticky_num_ctx_first_wins() -> None:
-    assert ollama_ctx.resolve_sticky_num_ctx("qwen3.6:27b-heretic", 65536) == 65536
-    assert ollama_ctx.resolve_sticky_num_ctx("qwen3.6:27b-heretic", 32768) == 65536
-    assert ollama_ctx.get_sticky_num_ctx("qwen3.6:27b-heretic") == 65536
+    assert ollama_ctx.resolve_sticky_num_ctx("qwen3.8:27b-mtp-q4_K_M", 65536) == 65536
+    assert ollama_ctx.resolve_sticky_num_ctx("qwen3.8:27b-mtp-q4_K_M", 32768) == 65536
+    assert ollama_ctx.get_sticky_num_ctx("qwen3.8:27b-mtp-q4_K_M") == 65536
 
 
 def test_clear_sticky_allows_new_ctx() -> None:
@@ -52,13 +51,13 @@ def test_clear_sticky_allows_new_ctx() -> None:
     assert ollama_ctx.resolve_sticky_num_ctx("m", 65536) == 65536
 
 
-def test_prompt_budget_uses_half_window_not_full_ctx() -> None:
-    # Full 65k is NOT usable prompt space — half ≈ 32k, heretic soft-cap 28k.
+def test_prompt_budget_soft_caps_qwen38_27b() -> None:
+    # Full 65k is NOT usable prompt space — half ≈ 32k, soft-cap 28k.
     budget = ollama_ctx.compute_prompt_token_budget(
         65536,
-        model_name="qwen3.6:27b-heretic",
+        model_name="qwen3.8:27b-mtp-q4_K_M",
     )
-    assert budget == ollama_ctx.HERETIC_SOFT_PROMPT_BUDGET
+    assert budget == ollama_ctx.QWEN38_SOFT_PROMPT_BUDGET
     assert budget == 28000
     assert ollama_ctx.ollama_prompt_half_tokens(65536) == 32768
     assert ollama_ctx.ollama_generation_half_tokens(65536) == 32768
@@ -92,7 +91,7 @@ def test_log_telemetry_warns_when_prompt_eval_below_estimate(
 ) -> None:
     with caplog.at_level(logging.WARNING, logger="ollama_ctx"):
         ollama_ctx.log_ollama_ctx_telemetry(
-            model="qwen3.6:27b-heretic",
+            model="qwen3.8:27b-mtp-q4_K_M",
             requested_num_ctx=65536,
             response_data={"prompt_eval_count": 8000, "eval_count": 10},
             prompt_tokens_est=20000,
@@ -102,7 +101,7 @@ def test_log_telemetry_warns_when_prompt_eval_below_estimate(
 
 def test_apply_num_ctx_to_options_sets_sticky() -> None:
     options: dict[str, Any] = {"temperature": 0.2}
-    n = ollama_ctx.apply_num_ctx_to_options(options, "qwen3.6:27b-heretic", 65536)
+    n = ollama_ctx.apply_num_ctx_to_options(options, "qwen3.8:27b-mtp-q4_K_M", 65536)
     assert n == 65536
     assert options["num_ctx"] == 65536
 
@@ -128,9 +127,9 @@ def test_unload_model_posts_keep_alive_zero(monkeypatch: pytest.MonkeyPatch) -> 
     client.model_config = {"models": {}}
     monkeypatch.setattr(client, "_resolve_urls", lambda _m: ("http://nvidia:11434", None))
 
-    ollama_ctx.resolve_sticky_num_ctx("qwen3.6:27b-heretic", 32768)
-    ok = client.unload_model("qwen3.6:27b-heretic")
+    ollama_ctx.resolve_sticky_num_ctx("qwen3.8:27b-mtp-q4_K_M", 32768)
+    ok = client.unload_model("qwen3.8:27b-mtp-q4_K_M")
     assert ok is True
     assert posted and posted[0][0].endswith("/api/generate")
     assert posted[0][1].get("keep_alive") == 0
-    assert ollama_ctx.get_sticky_num_ctx("qwen3.6:27b-heretic") is None
+    assert ollama_ctx.get_sticky_num_ctx("qwen3.8:27b-mtp-q4_K_M") is None

@@ -81,7 +81,7 @@
 #   - Put in /home/lance/trading-dashboard-optional.env (sourced for BOTH Streamlit + Flask deploy steps)
 # Recommended dual-GPU (see web_dashboard/model_config.json + ollama_client semantic aliases):
 #   OLLAMA_BASE_URL=http://amd-host:11434          # legacy: primary for granite when using aliases
-#   OLLAMA_BASE_URL_2=http://nvidia-3090:11434    # legacy: primary for qwen3.6 when using aliases
+#   OLLAMA_BASE_URL_2=http://nvidia-3090:11434    # legacy: primary for qwen3.8 when using aliases
 # Optional explicit names (override without swapping the legacy pair):
 #   OLLAMA_BASE_URL_AMD=...   OLLAMA_BASE_URL_NVIDIA=...
 # Also supported: OLLAMA_MODEL, OLLAMA_ENABLED, OLLAMA_SUMMARIZING_MODEL, etc.

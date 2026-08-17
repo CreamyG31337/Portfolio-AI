@@ -9,9 +9,11 @@ that). ``/api/show`` and ``/api/ps`` report the *full* window, not usable prompt
 ``OLLAMA_CONTEXT_LENGTH`` is not the right fix for "died at 16–20k".
 
 Match Goose on the NVIDIA host: sticky ``options.num_ctx: 65536`` every request
-for ``qwen3.6:27b-heretic`` / ``…-heretic-agentic``. Never 20000 or 32768 on that
-shared runner (mismatched sizes force ~5–15s reloads). Truncation is silent and
-drops the **front**. Prefer ``prompt_eval_count`` / needle tests over ``/api/show``.
+for ``qwen3.8:27b-mtp-q4_K_M``. Qwen3.8 no longer bakes num_ctx into the GGUF,
+so without an explicit options.num_ctx it inherits ``OLLAMA_CONTEXT_LENGTH=32768``.
+Never 20000 or 32768 on that shared runner (mismatched sizes force ~5–15s
+reloads). Truncation is silent and drops the **front**. Prefer
+``prompt_eval_count`` / needle tests over ``/api/show``.
 """
 
 from __future__ import annotations
@@ -23,11 +25,14 @@ from typing import Any, Dict, List, Mapping, MutableMapping, Optional, Sequence
 
 logger = logging.getLogger(__name__)
 
-# Sticky load on RTX 3090 / 24 GB — matches heretic-agentic Modelfile + Goose
-# GOOSE_INPUT_LIMIT=65536. Open-source / other GPUs: retune in model_config.json.
-HERETIC_PREFERRED_NUM_CTX = 65536
+# Sticky load on RTX 3090 / 24 GB — matches Goose GOOSE_INPUT_LIMIT=65536.
+# Open-source / other GPUs: retune in model_config.json.
+QWEN38_PREFERRED_NUM_CTX = 65536
 # Goose GOOSE_CONTEXT_LIMIT under the ~32k prompt half of a 65k window.
-HERETIC_SOFT_PROMPT_BUDGET = 28000
+QWEN38_SOFT_PROMPT_BUDGET = 28000
+# Legacy aliases (older call sites / tests).
+HERETIC_PREFERRED_NUM_CTX = QWEN38_PREFERRED_NUM_CTX
+HERETIC_SOFT_PROMPT_BUDGET = QWEN38_SOFT_PROMPT_BUDGET
 # Legacy name: generation has its own half; prefer not carving this from prompt half.
 DEFAULT_OUTPUT_RESERVE_TOKENS = 4096
 
@@ -47,10 +52,10 @@ def _env_int(name: str) -> Optional[int]:
     return value if value > 0 else None
 
 
-def is_heretic_model(model_name: str) -> bool:
-    """True for qwen heretic tags that should stick to HERETIC_PREFERRED_NUM_CTX on NVIDIA."""
+def is_qwen38_27b_model(model_name: str) -> bool:
+    """True for NVIDIA Qwen3.8 27B stock tag that uses the 65k sticky / 28k soft budget."""
     name = (model_name or "").strip().lower()
-    return "heretic" in name
+    return name.startswith("qwen3.8:27b")
 
 
 def ollama_prompt_half_tokens(num_ctx: int) -> int:
@@ -153,8 +158,8 @@ def compute_prompt_token_budget(
 
     Do **not** treat ``num_ctx`` as fully usable prompt space. Generation owns the
     other half, so ``reserved_for_output`` should usually stay 0 (or a small margin
-    *within* the prompt half). For 3090 heretic (65k), defaults soft-cap to
-    :data:`HERETIC_SOFT_PROMPT_BUDGET` (28000, Goose-aligned) unless overridden.
+    *within* the prompt half). For NVIDIA Qwen3.8 27B (65k), defaults soft-cap to
+    :data:`QWEN38_SOFT_PROMPT_BUDGET` (28000, Goose-aligned) unless overridden.
 
     ``measured_ceiling`` should be a hard observed limit (e.g. prior
     ``prompt_eval_count`` when you know truncation hit) when API-reported
@@ -165,8 +170,8 @@ def compute_prompt_token_budget(
         ceiling = min(ceiling, int(measured_ceiling))
 
     cap = soft_prompt_cap
-    if cap is None and model_name and is_heretic_model(model_name):
-        cap = HERETIC_SOFT_PROMPT_BUDGET
+    if cap is None and model_name and is_qwen38_27b_model(model_name):
+        cap = QWEN38_SOFT_PROMPT_BUDGET
     if cap is not None and int(cap) > 0:
         ceiling = min(ceiling, int(cap))
 

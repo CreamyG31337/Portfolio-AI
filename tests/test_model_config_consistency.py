@@ -2,7 +2,7 @@
 
 These tests do **not** touch a live Ollama. They guard against a class of bugs
 that nothing else in the suite catches: a typo or stale name in a default
-constant (e.g. renaming ``qwen3.6:27b`` -> ``qwen3.6:27b-heretic`` in code but
+constant (e.g. renaming ``qwen3.6:27b-heretic`` -> ``qwen3.8:27b-mtp-q4_K_M`` in code but
 forgetting to update ``model_config.json``, or vice versa). Mocked unit tests
 happily echo whatever default string we hand them, so the rename "passes"
 even when the model would 404 in production.
@@ -138,7 +138,7 @@ def test_admin_detailed_ollama_probe_reports_primary_and_fallback_hosts(
             if "amd" in url:
                 return _Response(["granite4.1:8b"])
             if "nvidia" in url:
-                return _Response(["qwen3.6:27b-heretic"])
+                return _Response(["qwen3.8:27b-mtp-q4_K_M"])
             raise AssertionError(f"unexpected probe URL: {url}")
 
     class _Client:
@@ -153,13 +153,13 @@ def test_admin_detailed_ollama_probe_reports_primary_and_fallback_hosts(
     monkeypatch.setattr(
         admin_routes,
         "_ollama_models_to_probe",
-        lambda: ["granite4.1:8b", "qwen3.6:27b-heretic"],
+        lambda: ["granite4.1:8b", "qwen3.8:27b-mtp-q4_K_M"],
     )
     monkeypatch.setattr(ollama_client, "get_ollama_client", lambda: _Client())
 
     rows = admin_routes._ollama_per_model_health()
 
-    assert {row["model"] for row in rows} == {"granite4.1:8b", "qwen3.6:27b-heretic"}
+    assert {row["model"] for row in rows} == {"granite4.1:8b", "qwen3.8:27b-mtp-q4_K_M"}
     for row in rows:
         servers = row["servers"]
         assert len(servers) == 2

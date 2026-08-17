@@ -57,7 +57,7 @@ else:
 try:
     from model_registry import OLLAMA_SUMMARIZING_DEFAULT
 except ImportError:
-    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
+    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.8:27b-mtp-q4_K_M"
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 # Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
@@ -219,11 +219,17 @@ def _release_ollama_response_slot(response: Any) -> None:
         sem.release()
 
 
-def coalesce_ollama_generate_response_text(data: Any) -> str:
+def coalesce_ollama_generate_response_text(
+    data: Any,
+    *,
+    allow_thinking_fallback: bool = True,
+) -> str:
     """Return assistant text from a single Ollama ``/api/generate`` JSON object (non-streaming).
 
     Reasoning/thinking models (e.g. Qwen3 family) sometimes leave ``response`` empty and
     emit content under ``thinking`` or ``think``. Prefer ``response`` when present.
+    For JSON / structured summarization, pass ``allow_thinking_fallback=False`` so
+    thinking traces are not mistaken for the answer body.
     """
     if not isinstance(data, dict):
         return ""
@@ -233,6 +239,8 @@ def coalesce_ollama_generate_response_text(data: Any) -> str:
     primary = data.get("response")
     if isinstance(primary, str) and primary.strip():
         return primary
+    if not allow_thinking_fallback:
+        return ""
     for key in ("thinking", "think"):
         alt = data.get(key)
         if alt is not None and str(alt).strip():
@@ -592,7 +600,7 @@ class OllamaClient:
         if primary != default_norm:
             return primary, default_norm
         # When the model uses the default Ollama URL only, still try the optional second host
-        # (same pattern as qwen3.6:27b-heretic in model_config). _post_ollama retries 404/5xx on fallback.
+        # (same pattern as qwen3.8:27b-mtp-q4_K_M in model_config). _post_ollama retries 404/5xx on fallback.
         env_secondary = os.getenv("OLLAMA_BASE_URL_2", "").strip().rstrip("/")
         if env_secondary and env_secondary != primary:
             return primary, env_secondary
@@ -711,6 +719,7 @@ class OllamaClient:
         progress_callback: Optional[Callable[[int, int], None]] = None,
         model: Optional[str] = None,
         requested_num_ctx: Optional[int] = None,
+        coalesce_thinking_fallback: bool = True,
     ) -> Generator[str, None, None]:
         """Stream ``/api/generate`` lines with idle-based timeout and optional thinking chunks."""
         last_chunk_at = time.monotonic()
@@ -775,7 +784,8 @@ class OllamaClient:
                                 progress_callback(tokens_received, estimated_progress)
                         if chunk_data.get("done", False):
                             if (
-                                not yielded_response_text
+                                coalesce_thinking_fallback
+                                and not yielded_response_text
                                 and not include_thinking
                                 and thinking_parts
                             ):
@@ -914,6 +924,34 @@ class OllamaClient:
                 pass
             _release_ollama_response_slot(response)
     
+    def _warn_if_ollama_version_too_old(self, base_url: str) -> None:
+        """Log if host Ollama reports a version below 0.32.12 (Qwen3.8 needs that floor)."""
+        try:
+            response = self.session.get(f"{base_url.rstrip('/')}/api/version", timeout=5)
+            if response.status_code != 200:
+                return
+            raw = response.json() if response.content else {}
+            ver = str((raw or {}).get("version") or "").strip()
+            if not ver:
+                return
+            parts = []
+            for piece in ver.split("."):
+                digits = "".join(ch for ch in piece if ch.isdigit())
+                if not digits:
+                    break
+                parts.append(int(digits))
+            while len(parts) < 3:
+                parts.append(0)
+            if tuple(parts[:3]) < (0, 32, 12):
+                logger.warning(
+                    "Ollama at %s reports version %s; Qwen3.8 requires >= 0.32.12 "
+                    "(older hosts return HTTP 412). Host should be 0.32.13+.",
+                    base_url,
+                    ver,
+                )
+        except Exception as e:
+            logger.debug("Could not read Ollama /api/version at %s: %s", base_url, e)
+
     def check_health(self) -> bool:
         """Check if Ollama API is available.
         
@@ -929,6 +967,7 @@ class OllamaClient:
                 timeout=5
             )
             if response.status_code == 200:
+                self._warn_if_ollama_version_too_old(self.base_url)
                 return True
             else:
                 logger.warning(f"Ollama health check failed: HTTP {response.status_code}")
@@ -978,7 +1017,7 @@ class OllamaClient:
         """List available Ollama model names from the primary host and optional secondary.
 
         Secondary is ``OLLAMA_BASE_URL_2`` / NVIDIA when set, so desktop-only models
-        (e.g. ``qwen3.6:27b-heretic`` on the 3090) appear in the AI Assistant picker
+        (e.g. ``qwen3.8:27b-mtp-q4_K_M`` on the 3090) appear in the AI Assistant picker
         even when the default URL is the Ubuntu host.
         """
         if not self.enabled:
@@ -1136,7 +1175,15 @@ class OllamaClient:
         # num_ctx is intentionally NOT a parameter — it always comes from
         # model_config.json + system_settings, then process-sticky pin
         # (ollama_ctx.resolve_sticky_num_ctx) to avoid Ollama model reloads.
-        effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
+        # Qwen3.8 stock default sampling is temp=1; keep structured paths cool.
+        if temperature is not None:
+            effective_temp = temperature
+        elif json_mode:
+            effective_temp = float(model_settings.get("temperature", 0.1))
+            if effective_temp > 0.1:
+                effective_temp = 0.1
+        else:
+            effective_temp = model_settings.get("temperature", 0.2)
         configured_ctx = int(model_settings.get('num_ctx', 4096))
         effective_max_tokens = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
         cfg_idle = model_settings.get("streaming_timeout")
@@ -1188,6 +1235,7 @@ class OllamaClient:
                     request_start_time=request_start_time,
                     model=model,
                     requested_num_ctx=effective_ctx,
+                    coalesce_thinking_fallback=not json_mode,
                 )
             else:
                 # Non-streaming response
@@ -1199,7 +1247,10 @@ class OllamaClient:
                     response_data=data if isinstance(data, dict) else None,
                 )
                 logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
-                yield coalesce_ollama_generate_response_text(data)
+                yield coalesce_ollama_generate_response_text(
+                    data,
+                    allow_thinking_fallback=not json_mode,
+                )
                 _release_ollama_response_slot(response)
                 
         except OllamaHostBusyError:
@@ -1220,6 +1271,17 @@ class OllamaClient:
                 # 404 usually means model doesn't exist
                 logger.error(f"[ERROR] Ollama API HTTP 404 after {elapsed:.2f}s: Model '{model}' not found. Available models: {', '.join(self.list_available_models()[:5])}")
                 yield f"Model '{model}' not found. Please ensure the model is installed: ollama pull {model}"
+            elif e.response and e.response.status_code == 412:
+                logger.error(
+                    "[ERROR] Ollama API HTTP 412 after %.2fs for model=%s — "
+                    "host Ollama is too old for this model (need >= 0.32.12; current host should be 0.32.13).",
+                    elapsed,
+                    model,
+                )
+                yield (
+                    f"Ollama on the host is too old for model '{model}' (HTTP 412). "
+                    "Upgrade Ollama to >= 0.32.12 (recommended 0.32.13)."
+                )
             else:
                 logger.error(f"[ERROR] Ollama API HTTP error after {elapsed:.2f}s: {e}")
                 yield f"AI assistant error: {str(e)}"
@@ -1680,10 +1742,13 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 requested_num_ctx=effective_ctx,
                 response_data=data if isinstance(data, dict) else None,
             )
-            raw_response = coalesce_ollama_generate_response_text(data).strip()
+            raw_response = coalesce_ollama_generate_response_text(
+                data,
+                allow_thinking_fallback=False,
+            ).strip()
 
             if not raw_response:
-                logger.warning("Empty response from Ollama (no response/thinking text)")
+                logger.warning("Empty response from Ollama (no response text; thinking ignored for summaries)")
                 return {}
 
             return parse_summary_response(raw_response)
@@ -1847,6 +1912,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 progress_callback=progress_callback,
                 model=model,
                 requested_num_ctx=effective_ctx,
+                coalesce_thinking_fallback=False,
             ):
                 _accumulate_chunk(piece)
             
@@ -1997,11 +2063,11 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         
         # Use provided values, or model specific defaults, or global defaults.
         # num_ctx is intentionally NOT a parameter (see query_ollama for rationale).
-        effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.7)
+        # Usable prompt ≈ num_ctx/2; Qwen3.8 27B soft-caps ~28k (Goose GOOSE_CONTEXT_LIMIT).
+        effective_temp = temperature if temperature is not None else model_settings.get('temperature', 0.2)
         configured_ctx = int(model_settings.get('num_ctx', 4096))
         effective_ctx = resolve_sticky_num_ctx(str(model), configured_ctx)
         requested_predict = max_tokens if max_tokens is not None else model_settings.get('num_predict', 2048)
-        # Usable prompt ≈ num_ctx/2; heretic soft-caps ~28k (Goose GOOSE_CONTEXT_LIMIT).
         budget = compute_prompt_token_budget(
             effective_ctx,
             reserved_for_output=0,
@@ -2482,7 +2548,14 @@ def _has_summary_output(result: Any) -> bool:
 
 def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     """Build ordered model chain: primary model followed by configured (DB/env) fallbacks only."""
-    primary = requested_model
+    try:
+        from model_registry import remap_deprecated_model
+    except ImportError:
+
+        def remap_deprecated_model(model_id: Optional[str]) -> str:  # type: ignore[misc]
+            return (model_id or "").strip()
+
+    primary = remap_deprecated_model(requested_model) if requested_model else None
     fallback_models: List[str] = []
     try:
         from settings import get_summarizing_model, get_summarizing_fallback_models
@@ -2504,7 +2577,7 @@ def _get_summary_model_chain(requested_model: Optional[str]) -> List[str]:
     for m in chain:
         if not m:
             continue
-        s = str(m).strip()
+        s = remap_deprecated_model(str(m).strip())
         if not s or s in seen:
             continue
         seen.add(s)

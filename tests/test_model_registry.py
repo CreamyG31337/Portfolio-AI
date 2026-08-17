@@ -13,7 +13,9 @@ if str(WEB_DASHBOARD_ROOT) not in sys.path:
     sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
 
 from model_registry import (  # noqa: E402
+    OLLAMA_QWEN38_STOCK,
     PRIMARY_MODEL_DEFAULT,
+    remap_deprecated_model,
     resolve_ai_model_preference,
 )
 
@@ -26,6 +28,8 @@ from model_registry import (  # noqa: E402
         ("glm-4.7", ["granite4.1:8b"], "granite4.1:8b"),
         ("glm-5.2", ["glm-5.2", "glm-5.1"], "glm-5.2"),
         (None, ["granite4.1:8b"], "granite4.1:8b"),
+        ("qwen3.6:27b-heretic", None, OLLAMA_QWEN38_STOCK),
+        ("qwen3.6:27b-heretic-agentic", ["qwen3.8:27b-mtp-q4_K_M"], OLLAMA_QWEN38_STOCK),
     ],
 )
 def test_resolve_ai_model_preference(
@@ -34,6 +38,13 @@ def test_resolve_ai_model_preference(
     expected: str,
 ) -> None:
     assert resolve_ai_model_preference(stored, available) == expected
+
+
+def test_remap_deprecated_qwen36_tags() -> None:
+    assert remap_deprecated_model("qwen3.6:27b-heretic") == OLLAMA_QWEN38_STOCK
+    assert remap_deprecated_model("qwen3.6:27b-heretic-agentic") == OLLAMA_QWEN38_STOCK
+    assert remap_deprecated_model("qwen3.8:27b-heretic") == OLLAMA_QWEN38_STOCK
+    assert remap_deprecated_model(OLLAMA_QWEN38_STOCK) == OLLAMA_QWEN38_STOCK
 
 
 def test_get_user_ai_model_migrates_deprecated_preference() -> None:

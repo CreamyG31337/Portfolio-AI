@@ -21,7 +21,7 @@ def _sector_row(**overrides):
         "risk_flags": ["r"],
         "as_of": datetime(2026, 5, 10, 8, 0, tzinfo=UTC),
         "updated_at": datetime(2026, 5, 10, 8, 5, tzinfo=UTC),
-        "model_used": "qwen3.6:27b-heretic",
+        "model_used": "qwen3.8:27b-mtp-q4_K_M",
     }
     base.update(overrides)
     return base
@@ -237,7 +237,7 @@ def test_sector_insights_primary_sector_meta_rows(client, auth_ok):
             "key_drivers": ["ETF flows skew constructive"],
             "risk_flags": ["sample risk"],
             "as_of": datetime(2026, 5, 10, 8, 0, tzinfo=UTC),
-            "model_used": "qwen3.6:27b-heretic",
+            "model_used": "qwen3.8:27b-mtp-q4_K_M",
             "updated_at": datetime(2026, 5, 10, 8, 5, tzinfo=UTC),
             "full_result": {},
         }

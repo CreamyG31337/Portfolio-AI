@@ -355,22 +355,22 @@ def get_summarizing_model(scope: Optional[str] = None) -> str:
     import os
     import re
 
-    from model_registry import OLLAMA_SUMMARIZING_DEFAULT
+    from model_registry import OLLAMA_SUMMARIZING_DEFAULT, remap_deprecated_model
 
     if scope and str(scope).strip():
         suffix = re.sub(r"[^a-zA-Z0-9]+", "_", str(scope).strip()).strip("_").lower()
         if suffix:
             scoped = get_system_setting(f"ai_summarizing_model_{suffix}", default=None)
             if scoped:
-                return str(scoped).strip()
+                return remap_deprecated_model(str(scoped).strip())
 
     model = get_system_setting("ai_summarizing_model", default=None)
     if model:
-        return str(model).strip()
+        return remap_deprecated_model(str(model).strip())
 
     env_model = os.getenv("OLLAMA_SUMMARIZING_MODEL")
     if env_model:
-        return env_model.strip()
+        return remap_deprecated_model(env_model.strip())
 
     return OLLAMA_SUMMARIZING_DEFAULT
 
@@ -383,7 +383,7 @@ def get_summarizing_fallback_models() -> list[str]:
     2. ``OLLAMA_SUMMARIZING_FALLBACK_MODELS`` (comma-separated) when (1) is empty
     3. Built-in queue Ollama pair then primary GLM (``get_builtin_summarizing_fallback_models()``) when still empty
     """
-    from model_registry import get_builtin_summarizing_fallback_models
+    from model_registry import get_builtin_summarizing_fallback_models, remap_deprecated_model
 
     configured = get_system_setting("ai_summarizing_fallback_models", default=None)
     models: list[str] = []
@@ -409,13 +409,14 @@ def get_summarizing_fallback_models() -> list[str]:
     if not models:
         models = get_builtin_summarizing_fallback_models()
 
-    # Stable de-dup preserving order
+    # Stable de-dup preserving order; remap deleted Qwen3.6 tags etc.
     seen: set[str] = set()
     unique: list[str] = []
     for m in models:
-        if m not in seen:
-            seen.add(m)
-            unique.append(m)
+        remapped = remap_deprecated_model(m)
+        if remapped and remapped not in seen:
+            seen.add(remapped)
+            unique.append(remapped)
     return unique
 
 
