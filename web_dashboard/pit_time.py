@@ -85,27 +85,72 @@ def social_metrics_have_available_at(postgres: Any) -> bool:
 def article_as_of_expr(postgres: Any) -> str:
     """SQL expression for "when did we first know this article", for lookbacks."""
     if research_articles_have_available_at(postgres):
-        return _coalesce_expr("available_at", "fetched_at")
+        return _coalesce_expr(postgres, "research_articles", "available_at", "fetched_at")
     return "fetched_at"
 
 
 def social_as_of_expr(postgres: Any) -> str:
     """SQL expression for "when did we first know this metric", for lookbacks."""
     if social_metrics_have_available_at(postgres):
-        return _coalesce_expr("available_at", "created_at")
+        return _coalesce_expr(postgres, "social_metrics", "available_at", "created_at")
     return "created_at"
 
 
-def _coalesce_expr(available_col: str, fallback_col: str) -> str:
+def _is_naive_timestamp(postgres: Any, table: str, column: str) -> bool:
+    """True when the column is TIMESTAMP WITHOUT TIME ZONE.
+
+    Probed rather than assumed: the two legacy ingest clocks disagree in prod.
+    ``research_articles.fetched_at`` is naive while ``social_metrics.created_at`` is
+    already timestamptz, and the checked-in schema files describe both as naive.
+    """
+    key = f"{table}.{column}.is_naive"
+    cached = _column_cache.get(key)
+    if cached is not None:
+        return cached[0]
+
+    try:
+        rows = postgres.execute_query(
+            """
+            SELECT data_type
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+            LIMIT 1
+            """,
+            (table, column),
+        )
+    except Exception:
+        logger.warning(
+            "type probe failed for %s.%s; assuming timestamptz (no cast)",
+            table,
+            column,
+            exc_info=True,
+        )
+        return False
+
+    if not rows:
+        return False
+    raw = rows[0]
+    value = raw.get("data_type") if isinstance(raw, dict) else raw[0]
+    naive = str(value or "").strip().lower() == "timestamp without time zone"
+    _column_cache[key] = (naive, None)
+    return naive
+
+
+def _coalesce_expr(postgres: Any, table: str, available_col: str, fallback_col: str) -> str:
     """COALESCE the PIT column with the legacy ingest clock, without a silent cast.
 
-    ``available_at`` is TIMESTAMPTZ while ``fetched_at`` / ``created_at`` are naive
-    TIMESTAMP. A bare COALESCE resolves to timestamptz and reinterprets the naive
-    value in the session TimeZone, shifting every lookback boundary by the server's
-    UTC offset -- roughly 8 hours on a Vancouver-local server, which silently moves
-    articles across the boundary this module exists to enforce.
+    ``available_at`` is TIMESTAMPTZ. When the fallback column is *naive* TIMESTAMP a
+    bare COALESCE resolves to timestamptz and reinterprets the naive value in the
+    session TimeZone, shifting every lookback boundary by the server's UTC offset --
+    roughly 8 hours on a Vancouver-local server, silently moving rows across the
+    boundary this module exists to enforce. Those columns store UTC (the repository
+    stamps ``tzinfo=utc`` on read), so the cast is pinned explicitly.
 
-    The naive columns are stored UTC, so the fallback is pinned to UTC explicitly
-    rather than inheriting whatever ``TimeZone`` the session happens to carry.
+    When the fallback is *already* timestamptz the cast must be omitted: applied to a
+    timestamptz, ``AT TIME ZONE 'UTC'`` performs the opposite conversion and strips
+    the zone. It happens to round-trip while the server runs UTC, which is exactly the
+    kind of accident that breaks the day someone changes ``TimeZone``.
     """
-    return f"COALESCE({available_col}, {fallback_col} AT TIME ZONE 'UTC')"
+    if _is_naive_timestamp(postgres, table, fallback_col):
+        return f"COALESCE({available_col}, {fallback_col} AT TIME ZONE 'UTC')"
+    return f"COALESCE({available_col}, {fallback_col})"

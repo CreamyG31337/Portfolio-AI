@@ -25,13 +25,25 @@ class _FakeClient:
     truthy, so the "column absent" branch would silently never be exercised.
     """
 
-    def __init__(self, *, has_available_at: bool) -> None:
+    def __init__(self, *, has_available_at: bool, fetched_at_naive: bool = True) -> None:
         self.has_available_at = has_available_at
+        self.fetched_at_naive = fetched_at_naive
         self.rows: list[dict[str, Any]] = []
         self.calls: list[tuple[str, Any]] = []
 
     def execute_query(self, query: str, params: Any = None) -> list[Any]:
         if "information_schema.columns" in query:
+            if "data_type" in query:
+                # Type probe for the fallback column.
+                return [
+                    {
+                        "data_type": (
+                            "timestamp without time zone"
+                            if self.fetched_at_naive
+                            else "timestamp with time zone"
+                        )
+                    }
+                ]
             return [(1,)] if self.has_available_at else []
         self.calls.append((query, params))
         return list(self.rows)
@@ -53,9 +65,16 @@ def _clear_pit_cache():
     reset_pit_column_cache()
 
 
-def _repo(*, available_at: bool = True, source_metadata: bool = False) -> ResearchRepository:
+def _repo(
+    *,
+    available_at: bool = True,
+    source_metadata: bool = False,
+    fetched_at_naive: bool = True,
+) -> ResearchRepository:
     repo = object.__new__(ResearchRepository)  # bypass __init__ DB checks
-    repo.client = _FakeClient(has_available_at=available_at)
+    repo.client = _FakeClient(
+        has_available_at=available_at, fetched_at_naive=fetched_at_naive
+    )
     repo._has_tickers_column = True
     repo._has_source_metadata_column = source_metadata
     repo._has_available_at_column = available_at
@@ -85,17 +104,28 @@ def test_as_of_expr_falls_back_when_column_absent() -> None:
     assert repo._as_of_time_column() == "fetched_at"
 
 
-def test_as_of_expr_pins_the_naive_fallback_to_utc() -> None:
-    """available_at is TIMESTAMPTZ; fetched_at is naive TIMESTAMP.
+def test_as_of_expr_pins_a_naive_fallback_to_utc() -> None:
+    """available_at is TIMESTAMPTZ; research_articles.fetched_at is naive TIMESTAMP.
 
     A bare COALESCE of the two resolves to timestamptz and reinterprets the naive
     value in the session TimeZone, moving every lookback boundary by the server's UTC
     offset (~8h on a Vancouver-local server). The cast must be explicit.
     """
-    repo = _repo(available_at=True)
+    repo = _repo(available_at=True, fetched_at_naive=True)
     expr = repo._as_of_time_column()
     assert "AT TIME ZONE 'UTC'" in expr
     assert "COALESCE(available_at, fetched_at)" not in expr
+
+
+def test_as_of_expr_omits_the_cast_for_a_timestamptz_fallback() -> None:
+    """The mirror hazard, and the reason the cast is probed rather than assumed.
+
+    social_metrics.created_at is ALREADY timestamptz in the live Research DB.
+    ``AT TIME ZONE 'UTC'`` applied to a timestamptz performs the opposite conversion
+    and strips the zone; it round-trips only while the server runs UTC.
+    """
+    repo = _repo(available_at=True, fetched_at_naive=False)
+    assert repo._as_of_time_column() == "COALESCE(available_at, fetched_at)"
 
 
 def test_save_article_insert_sets_available_at_not_on_conflict() -> None:

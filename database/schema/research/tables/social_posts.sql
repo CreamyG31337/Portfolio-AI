@@ -12,7 +12,8 @@ CREATE TABLE social_posts (
     engagement_score INTEGER DEFAULT 0,
     url TEXT,
     extracted_tickers ARRAY,
-    created_at TIMESTAMP DEFAULT now(),
+    -- Both timestamptz in the live Research DB; see the note in social_metrics.sql.
+    created_at TIMESTAMPTZ DEFAULT now(),
     available_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (id)
 );

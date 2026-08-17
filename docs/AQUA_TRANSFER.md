@@ -18,7 +18,7 @@ This project steals research **governance** from [AQuA](https://arxiv.org/abs/26
 
 | Table | Clock | Notes |
 |-------|--------|--------|
-| `research_articles.available_at` | Immutable first-known | Set once on insert; **never** updated on `ON CONFLICT`. Analysis lookbacks use `COALESCE(available_at, fetched_at AT TIME ZONE 'UTC')`, not `published_at`. The explicit UTC cast is required: `available_at` is TIMESTAMPTZ while `fetched_at` is a naive TIMESTAMP, and a bare `COALESCE` reinterprets the naive value in the session TimeZone — shifting every lookback boundary by the server's UTC offset. One implementation, in `web_dashboard/pit_time.py`; `research_repository` delegates to it rather than building its own predicate. |
+| `research_articles.available_at` | Immutable first-known | Set once on insert; **never** updated on `ON CONFLICT`. Analysis lookbacks `COALESCE` onto the legacy ingest clock, never `published_at`. One implementation, in `web_dashboard/pit_time.py`; `research_repository` delegates to it rather than building its own predicate. |
 | `social_metrics.available_at` / `social_posts.available_at` | Same idea | Lookbacks honor analysis windows; social sentiment no longer ignores `start_date`. |
 
 Migrations:
@@ -34,6 +34,34 @@ python web_dashboard/scripts/apply_social_available_at_migration.py --apply
 ```
 
 **Still open (documented, not fixed in v1):** late ticker assignment via `backfill_missing_tickers` can attach tickers after the fact without an `article_tickers(assigned_at)` junction. That remains a leakage channel until a follow-up.
+
+#### The COALESCE cast is per-column, not universal
+
+`available_at` is TIMESTAMPTZ everywhere, but the legacy ingest clocks it falls back
+to are **not** the same type, so `pit_time` probes `information_schema` and emits one
+of two expressions:
+
+| Table | Fallback column | Actual type | Expression |
+|---|---|---|---|
+| `research_articles` | `fetched_at` | `timestamp without time zone` | `COALESCE(available_at, fetched_at AT TIME ZONE 'UTC')` |
+| `social_metrics` / `social_posts` | `created_at` | `timestamp with time zone` | `COALESCE(available_at, created_at)` |
+
+Both halves matter. On a **naive** column, a bare `COALESCE` resolves to timestamptz
+and reinterprets the value in the session `TimeZone`, shifting every lookback boundary
+by the server's UTC offset. On a column that is **already** timestamptz,
+`AT TIME ZONE 'UTC'` performs the *opposite* conversion and strips the zone — which
+round-trips correctly only while the server happens to run UTC, and breaks silently
+the day it does not.
+
+The Research DB currently runs `TimeZone = Etc/UTC`, verified along with the column
+types by `web_dashboard/scripts/diagnose_available_at_state.py` (read-only). That
+script also confirmed the applied backfill wrote correct values — zero offset across
+12,935 article rows and 265,691 social rows, and zero NULL `available_at` — so no
+re-backfill was required.
+
+> The checked-in schema files described both `created_at` columns as naive `TIMESTAMP`
+> and were wrong; they have been corrected. Trust `information_schema`, not the
+> schema dumps, when the two disagree.
 
 ### 2. Falsifiable proposals
 

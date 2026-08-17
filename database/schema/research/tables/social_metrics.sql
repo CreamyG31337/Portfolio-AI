@@ -10,7 +10,12 @@ CREATE TABLE social_metrics (
     sentiment_label VARCHAR(20),
     sentiment_score DOUBLE PRECISION,
     raw_data JSONB,
-    created_at TIMESTAMP DEFAULT now(),
+    -- Both timestamptz. Do NOT "correct" created_at to TIMESTAMP: it is timestamptz
+    -- in the live Research DB, and pit_time's COALESCE omits the AT TIME ZONE 'UTC'
+    -- cast for this table on that basis (applying it to a timestamptz would strip the
+    -- zone instead of adding one). research_articles.fetched_at, by contrast, really
+    -- is naive and does take the cast.
+    created_at TIMESTAMPTZ DEFAULT now(),
     available_at TIMESTAMPTZ DEFAULT now(),
     basic_sentiment_score NUMERIC(3, 2),
     has_ai_analysis BOOLEAN DEFAULT false,
