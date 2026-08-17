@@ -480,6 +480,10 @@ class TickerAnalysisService:
             if hist.empty:
                 logger.warning(f"No price data available for {ticker_upper}")
                 return None
+
+            from market_data.yahoo_history import prepare_unadjusted_yahoo_history
+
+            hist = prepare_unadjusted_yahoo_history(hist)
             
             # Current price info
             current_price = float(hist['Close'].iloc[-1])
@@ -529,6 +533,7 @@ class TickerAnalysisService:
             try:
                 hist_52w = ticker_obj.history(period="1y", auto_adjust=False)
                 if not hist_52w.empty:
+                    hist_52w = prepare_unadjusted_yahoo_history(hist_52w)
                     high_52w = float(hist_52w['High'].max())
                     low_52w = float(hist_52w['Low'].min())
                     pct_from_52w_high = ((current_price - high_52w) / high_52w) * 100

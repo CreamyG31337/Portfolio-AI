@@ -21,6 +21,7 @@ import pandas as pd
 from pathlib import Path
 
 from .ohlcv_quality import drop_invalid_ohlcv_bars, get_last_valid_close
+from .yahoo_history import flatten_yahoo_columns, prepare_unadjusted_yahoo_history
 
 logger = logging.getLogger(__name__)
 
@@ -573,6 +574,16 @@ class MarketDataFetcher:
         end_ts = now + timedelta(days=1)  # Include today
         
         return start_ts, end_ts
+
+    def _yahoo_ohlcv_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Flatten, split-adjust, then normalize to standard OHLCV."""
+        df = self._to_datetime_index(df)
+        df = prepare_unadjusted_yahoo_history(df)
+        # Strict selection on purpose: a frame missing a column (or carrying
+        # per-ticker columns from a multi-ticker response) must raise so the
+        # caller falls through to the next strategy instead of caching a frame
+        # that later fails a downstream "Missing columns" check.
+        return self._normalize_ohlcv(df[["Open", "High", "Low", "Close", "Volume"]])
     
     def _fetch_yahoo_data(
         self,
@@ -603,10 +614,7 @@ class MarketDataFetcher:
                 )
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    # Remove extra columns that aren't OHLCV
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     return FetchResult(df, "yahoo")
             finally:
                 # Restore original logging level
@@ -628,9 +636,7 @@ class MarketDataFetcher:
                     df = ticker_obj.history(period="5d")
 
                     if isinstance(df, pd.DataFrame) and not df.empty:
-                        ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                        df = df[ohlcv_columns]
-                        df = self._normalize_ohlcv(self._to_datetime_index(df))
+                        df = self._yahoo_ohlcv_frame(df)
                         logger.info(f"{ticker}: Successfully retrieved price data via fallback method")
                         return FetchResult(df, "yahoo-retry")
                     else:
@@ -659,9 +665,7 @@ class MarketDataFetcher:
                 df = ticker_obj.history(period=period)
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     logger.info(f"{ticker}: Successfully retrieved price data using period-based approach")
                     return FetchResult(df, "yahoo-period")
             finally:
@@ -691,9 +695,7 @@ class MarketDataFetcher:
                 df = ticker_obj.history(period="5d", interval="1d")
 
                 if isinstance(df, pd.DataFrame) and not df.empty:
-                    ohlcv_columns = ['Open', 'High', 'Low', 'Close', 'Volume']
-                    df = df[ohlcv_columns]
-                    df = self._normalize_ohlcv(self._to_datetime_index(df))
+                    df = self._yahoo_ohlcv_frame(df)
                     logger.info(f"{ticker}: Successfully retrieved price data using minimal parameters approach")
                     return FetchResult(df, "yahoo-simple")
             finally:
@@ -828,20 +830,7 @@ class MarketDataFetcher:
         """Normalize OHLCV DataFrame to standard format with Decimal conversion."""
         from decimal import Decimal
         
-        # Flatten multiIndex frame so we can lazily lookup values by index.
-        if isinstance(df.columns, pd.MultiIndex):
-            try:
-                # If the second level is the same ticker for all cols, drop it     
-                if len(set(df.columns.get_level_values(1))) == 1:
-                    df = df.copy()
-                    df.columns = df.columns.get_level_values(0)
-                else:
-                    # multiple tickers: flatten with join
-                    df = df.copy()
-                    df.columns = ["_".join(map(str, t)).strip("_") for t in df.columns.to_flat_index()]
-            except Exception:
-                df = df.copy()
-                df.columns = ["_".join(map(str, t)).strip("_") for t in df.columns.to_flat_index()]
+        df = flatten_yahoo_columns(df)
         
         # Ensure required columns exist
         required_cols = ["Open", "High", "Low", "Close", "Volume"]

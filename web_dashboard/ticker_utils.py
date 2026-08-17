@@ -1045,6 +1045,16 @@ def get_ticker_price_history(
     # Yahoo Finance (required for market mode, calendar years, or when portfolio data is thin)
     try:
         import yfinance as yf
+        try:
+            from market_data.yahoo_history import prepare_unadjusted_yahoo_history
+        except Exception as import_err:
+            # Degrade to raw Yahoo prices rather than losing every chart: this
+            # import sits inside the broad handler that wraps the whole branch.
+            logger.error(
+                f"Split adjustment unavailable ({import_err}); "
+                f"charts will use unadjusted Yahoo prices"
+            )
+            prepare_unadjusted_yahoo_history = None
         yf_candidates = _get_yfinance_ticker_candidates(ticker_upper)
         logger.info(
             f"Fetching {ticker_upper} price history from Yahoo Finance candidates: {yf_candidates} (last {days} days)"
@@ -1062,6 +1072,9 @@ def get_ticker_price_history(
                 if data.empty:
                     logger.debug(f"No Yahoo Finance data for candidate {yf_symbol}")
                     continue
+
+                if prepare_unadjusted_yahoo_history is not None:
+                    data = prepare_unadjusted_yahoo_history(data)
 
                 # Convert to DataFrame
                 data = data.reset_index()
