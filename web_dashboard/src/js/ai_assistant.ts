@@ -4,7 +4,6 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
-import { initCollapsesIn } from './collapse.js';
 import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
 
 // Configuration interfaces
@@ -2251,17 +2250,11 @@ class AIAssistant {
         const resultsDiv = document.createElement('div');
         resultsDiv.className = 'mb-4 border rounded-lg border-theme-info-text/30 bg-theme-info-bg/10';
 
-        const randomId = Math.random().toString(36).substring(2, 9);
-        const header = document.createElement('button');
-        header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-theme-info-bg/20 transition-colors focus:ring-4 focus:ring-theme-info-text/20 focus:outline-none';
-        header.setAttribute('data-collapse-toggle', `search-results-${randomId}`);
-        header.setAttribute('aria-expanded', 'false');
-        header.setAttribute('aria-controls', `search-results-${randomId}`);
-        header.innerHTML = `<span class="font-semibold text-theme-info-text">🔍 Search Results (${searchData.results.length} found)</span><svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-theme-info-text" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
+        const header = document.createElement('div');
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-theme-info-bg/20 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-theme-info-text">🔍 Search Results (${searchData.results.length} found)</span><span class="text-theme-info-text text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.id = `search-results-${randomId}`;
         content.className = 'hidden p-3 border-t border-theme-info-text/30 space-y-2';
 
         const maxResults = Math.min(5, searchData.results.length);
@@ -2275,11 +2268,16 @@ class AIAssistant {
             content.appendChild(resultItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+        header.addEventListener('click', () => {
+            content.classList.toggle('hidden');
+            const arrow = header.querySelector('span:last-child');
+            if (arrow) arrow.textContent = content.classList.contains('hidden') ? 'Click to expand ▼' : 'Click to collapse ▲';
+        });
+
         resultsDiv.appendChild(header);
         resultsDiv.appendChild(content);
         chatMessages.appendChild(resultsDiv);
-        // Flowbite only auto-binds at DOMContentLoaded; bind this new subtree.
-        initCollapsesIn(resultsDiv);
         this.scrollToBottom();
         header.click();
     }
@@ -2292,17 +2290,11 @@ class AIAssistant {
         const articlesDiv = document.createElement('div');
         articlesDiv.className = 'mb-4 border rounded-lg border-accent/30 bg-accent/10';
 
-        const randomId = Math.random().toString(36).substring(2, 9);
-        const header = document.createElement('button');
-        header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-accent/20 transition-colors focus:ring-4 focus:ring-accent/20 focus:outline-none';
-        header.setAttribute('data-collapse-toggle', `research-articles-${randomId}`);
-        header.setAttribute('aria-expanded', 'false');
-        header.setAttribute('aria-controls', `research-articles-${randomId}`);
-        header.innerHTML = `<span class="font-semibold text-accent">🧠 Research Articles (${articles.length} found)</span><svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-accent" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>`;
+        const header = document.createElement('div');
+        header.className = 'p-3 cursor-pointer rounded-t-lg hover:bg-accent/20 transition-colors';
+        header.innerHTML = `<div class="flex justify-between items-center"><span class="font-semibold text-accent">🧠 Research Articles (${articles.length} found)</span><span class="text-accent text-sm">Click to expand ▼</span></div>`;
 
         const content = document.createElement('div');
-        content.id = `research-articles-${randomId}`;
         content.className = 'hidden p-3 border-t border-accent/30 space-y-2';
 
         articles.forEach((article: any, idx: number) => {
@@ -2326,10 +2318,16 @@ class AIAssistant {
             content.appendChild(articleItem);
         });
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+        header.addEventListener('click', () => {
+            content.classList.toggle('hidden');
+            const arrow = header.querySelector('span:last-child');
+            if (arrow) arrow.textContent = content.classList.contains('hidden') ? 'Click to expand ▼' : 'Click to collapse ▲';
+        });
+
         articlesDiv.appendChild(header);
         articlesDiv.appendChild(content);
         chatMessages.appendChild(articlesDiv);
-        initCollapsesIn(articlesDiv);
         this.scrollToBottom();
         header.click();
     }

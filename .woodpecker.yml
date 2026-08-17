@@ -496,10 +496,9 @@ steps:
         # any of these by setting the same name in
         # /home/lance/trading-dashboard-optional.env on the host, then redeploy.
         # To temporarily disable, set AI_QUEUE_ENABLED=false in that file.
-        # Migrated jobs (Q2 ticker_analysis, Q4a–c meta/ETF, congress catch-up,
-        # social sentiment sessions) are queue-managed by default.
+        # Migrated jobs (Q2 ticker_analysis, Q4a–c meta/ETF, congress catch-up) are queue-managed by default.
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_ENABLED=\"${AI_QUEUE_ENABLED:-true}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades,social_sentiment_analysis}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_PRIMARY=\"${AI_QUEUE_WORKERS_OLLAMA_PRIMARY:-1}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"${AI_QUEUE_WORKERS_GLM:-1}\""

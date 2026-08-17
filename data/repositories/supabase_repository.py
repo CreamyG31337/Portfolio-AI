@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional, Tuple, Dict, Any, Set
+from typing import List, Optional, Tuple, Dict, Any
 import logging
 
 from .base_repository import BaseRepository, RepositoryError, DataValidationError, DataNotFoundError
@@ -76,14 +76,6 @@ class SupabaseRepository(BaseRepository):
             )
         self.fund = fund_name  # Keep for backward compatibility
         self.fund_name = fund_name
-
-        # Per-instance caches for rebuild write-path (Phase 2.5).
-        # Verified tickers: only populate on successful ensure_ticker_in_securities.
-        self._verified_tickers: Set[str] = set()
-        # Fund base_currency is immutable for a repository lifetime.
-        self._base_currency: Optional[str] = None
-        # FX: one row per calendar day; key is (date, from_ccy, to_ccy).
-        self._fx_cache: Dict[Tuple[date, str, str], Optional[Any]] = {}
         
         # Add data_dir for compatibility with code expecting it (exchange rates, etc.)
         # Point to the common shared data directory where exchange rates are stored
@@ -128,8 +120,6 @@ class SupabaseRepository(BaseRepository):
         Returns:
             True if successful, False otherwise
         """
-        if ticker in self._verified_tickers:
-            return True
         try:
             # Check if ticker already exists with complete metadata
             existing = self.supabase.table("securities").select("ticker, company_name, sector, industry").eq("ticker", ticker).execute()
@@ -156,7 +146,6 @@ class SupabaseRepository(BaseRepository):
             # If ticker exists with complete metadata, no need to update
             if has_complete_metadata:
                 logger.debug(f"Ticker {ticker} already exists in securities table with complete metadata")
-                self._verified_tickers.add(ticker)
                 return True
 
             # Need to fetch/update metadata from yfinance
@@ -208,7 +197,6 @@ class SupabaseRepository(BaseRepository):
             result = self.supabase.table("securities").upsert(metadata, on_conflict="ticker").execute()
 
             logger.info(f"✅ Ensured {ticker} in securities table: {metadata.get('company_name')}")
-            self._verified_tickers.add(ticker)
             return True
 
         except Exception as e:
@@ -320,44 +308,6 @@ class SupabaseRepository(BaseRepository):
             logger.error(f"Failed to get portfolio data: {e}")
             raise RepositoryError(f"Failed to get portfolio data: {e}")
     
-    def _get_base_currency(self) -> str:
-        """Return this fund's base currency, fetching once per repository instance."""
-        if self._base_currency is not None:
-            return self._base_currency
-        try:
-            fund_result = (
-                self.supabase.table("funds")
-                .select("base_currency")
-                .eq("name", self.fund)
-                .limit(1)
-                .execute()
-            )
-            if fund_result.data:
-                raw = fund_result.data[0].get("base_currency")
-                self._base_currency = (raw or "CAD").upper()
-                return self._base_currency
-        except Exception as e:
-            logger.warning(
-                f"Could not get base_currency for fund {self.fund}, using default CAD: {e}"
-            )
-        return "CAD"
-
-    def _cached_fx_rate(
-        self,
-        getter: Any,
-        snapshot_ts: datetime,
-        from_curr: str,
-        to_curr: str,
-    ) -> Optional[Any]:
-        """Memoize get_exchange_rate_for_date_from_db by (date, from, to)."""
-        day = snapshot_ts.date() if hasattr(snapshot_ts, "date") else snapshot_ts
-        key = (day, from_curr, to_curr)
-        if key in self._fx_cache:
-            return self._fx_cache[key]
-        rate = getter(snapshot_ts, from_curr, to_curr)
-        self._fx_cache[key] = rate
-        return rate
-
     def save_portfolio_snapshot(self, snapshot: PortfolioSnapshot, is_trade_execution: bool = False) -> None:
         """Save portfolio data to Supabase with duplicate detection.
         
@@ -405,8 +355,18 @@ class SupabaseRepository(BaseRepository):
                     logger.warning(f"   Skipping save to preserve market close snapshot at 16:00:00")
                     return  # Don't save, preserve market close snapshot
             
-            # Get fund's base currency for pre-conversion (cached for this instance)
-            base_currency = self._get_base_currency()
+            # Get fund's base currency for pre-conversion
+            base_currency = 'CAD'  # Default
+            try:
+                fund_result = self.supabase.table("funds")\
+                    .select("base_currency")\
+                    .eq("name", self.fund)\
+                    .limit(1)\
+                    .execute()
+                if fund_result.data and fund_result.data[0].get('base_currency'):
+                    base_currency = fund_result.data[0]['base_currency'].upper()
+            except Exception as e:
+                logger.warning(f"Could not get base_currency for fund {self.fund}, using default CAD: {e}")
             
             # Get exchange rates for this date (for currency conversion)
             # Import exchange rate utility
@@ -440,38 +400,35 @@ class SupabaseRepository(BaseRepository):
 
                 exchange_rate = None
                 
-                # Calculate exchange rate if needed (memoized per calendar day)
+                # Calculate exchange rate if needed
                 if base_currency and currency != base_currency:
                     if get_exchange_rate_for_date_from_db:
                         try:
                             # Get exchange rate for this date
                             if currency == 'USD' and base_currency != 'USD':
                                 # Converting USD to base currency
-                                rate = self._cached_fx_rate(
-                                    get_exchange_rate_for_date_from_db,
+                                rate = get_exchange_rate_for_date_from_db(
                                     snapshot.timestamp,
                                     'USD',
-                                    base_currency,
+                                    base_currency
                                 )
                                 if rate is not None:
                                     exchange_rate = float(rate)
                             elif base_currency == 'USD' and currency != 'USD':
                                 # Converting from position currency to USD
-                                rate = self._cached_fx_rate(
-                                    get_exchange_rate_for_date_from_db,
+                                rate = get_exchange_rate_for_date_from_db(
                                     snapshot.timestamp,
                                     currency,
-                                    'USD',
+                                    'USD'
                                 )
                                 if rate is not None:
                                     exchange_rate = float(rate)
                                 else:
                                     # Try inverse rate
-                                    inverse_rate = self._cached_fx_rate(
-                                        get_exchange_rate_for_date_from_db,
+                                    inverse_rate = get_exchange_rate_for_date_from_db(
                                         snapshot.timestamp,
                                         'USD',
-                                        currency,
+                                        currency
                                     )
                                     if inverse_rate is not None and inverse_rate != 0:
                                         exchange_rate = 1.0 / float(inverse_rate)

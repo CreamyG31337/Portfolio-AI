@@ -962,15 +962,14 @@ def get_ticker_price_history(
     supabase_client=None,
     days: int = 90,
     fund: Optional[str] = None,
-    price_source: str = "market",
+    price_source: str = "auto",
     year_from: Optional[int] = None,
     year_to: Optional[int] = None,
 ) -> pd.DataFrame:
-    """Get historical price data for a ticker from yfinance or portfolio_positions.
+    """Get historical price data for a ticker from portfolio_positions or yfinance.
 
-    Default is Yahoo market history for the requested window so rolling ranges
-    (including 5Y) can go back before the first buy. Portfolio snapshots are
-    only used when ``price_source='auto'``.
+    Fetches price history for the last N days, using portfolio_positions table
+    if available, otherwise falling back to yfinance API.
     
     Args:
         ticker: Ticker symbol (e.g., "AAPL")
@@ -979,8 +978,8 @@ def get_ticker_price_history(
             earliest date when reading portfolio_positions and Yahoo history when
             not using a calendar year range.
         fund: Optional fund name to filter portfolio data
-        price_source: ``market`` = always Yahoo for the requested window (default).
-            ``auto`` = try portfolio snapshots first (holding period), then Yahoo.
+        price_source: ``auto`` = try portfolio snapshots first, then Yahoo (default).
+            ``market`` = always Yahoo for the requested window (full calendar history).
         year_from / year_to: Inclusive calendar years (e.g. 2020, 2024). When both set,
             the window is Jan 1 ``year_from`` through end of ``year_to`` (clipped to now)
             and Yahoo is always used (portfolio is skipped).
@@ -1012,8 +1011,8 @@ def get_ticker_price_history(
     else:
         end_date = now_utc
         start_date = end_date - timedelta(days=max(1, int(days)))
-        ps = str(price_source or "market").strip().lower()
-        try_portfolio = ps == "auto"
+        ps = str(price_source or "auto").strip().lower()
+        try_portfolio = ps != "market"
     
     # Try portfolio_positions first (only when allowed — matches "from first buy" behavior)
     if supabase_client and try_portfolio:

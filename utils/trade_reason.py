@@ -75,19 +75,3 @@ def infer_trade_action(reason: Optional[str], default: str = "BUY") -> str:
     if _BUY_PATTERN.search(text):
         return "BUY"
     return default.upper()
-
-
-def trade_display_action(trade: dict[str, object]) -> str:
-    """Prefer persisted trade_log.action; otherwise infer from reason.
-
-    Returns one of: BUY, SELL, DIVIDEND. Matches the ticker-page trades table
-    and Trade Entry badges so a buy thesis that mentions "sell-off" stays a buy.
-    """
-    action = str(trade.get("action") or "").strip().upper()
-    if action in ("BUY", "SELL", "DIVIDEND"):
-        return action
-    reason = trade.get("reason")
-    return infer_trade_action(
-        reason if isinstance(reason, str) else str(reason or ""),
-        default="BUY",
-    )

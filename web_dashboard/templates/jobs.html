@@ -185,7 +185,11 @@
         } else {
             console.error('[Jobs Template] ✗ refreshJobs function NOT available');
         }
-
+        if (typeof window.toggleParams === 'function') {
+            console.log('[Jobs Template] ✓ toggleParams function is available');
+        } else {
+            console.error('[Jobs Template] ✗ toggleParams function NOT available');
+        }
         if (typeof window.runJobWithParams === 'function') {
             console.log('[Jobs Template] ✓ runJobWithParams function is available');
         } else {

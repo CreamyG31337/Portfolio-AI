@@ -2,7 +2,6 @@ export { }; // Ensure file is treated as a module
 
 // Ticker search via shared setupTickerSearch (/api/v2/ticker/search)
 import { getCsrfHeaders } from './csrf.js';
-import { initCollapsesIn } from './collapse.js';
 import { showToast as showToastBase } from './toast.js';
 import { setupTickerSearch } from './ticker_search.js';
 import { sentimentBadgeClasses } from './sentiment_badges.js';
@@ -359,7 +358,7 @@ function appendFundParam(url: string): string {
 /** Extra query params for chart/price APIs: Yahoo vs portfolio, optional calendar years. */
 function buildTickerChartExtraQuery(): string {
     const psEl = document.getElementById('chart-price-source') as HTMLSelectElement | null;
-    const priceSource = psEl ? psEl.value : 'market';
+    const priceSource = psEl ? psEl.value : 'auto';
     const yfEl = document.getElementById('chart-year-from') as HTMLSelectElement | null;
     const ytEl = document.getElementById('chart-year-to') as HTMLSelectElement | null;
     const yf = yfEl?.value?.trim() ?? '';
@@ -1625,15 +1624,15 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
         row.className = 'bg-dashboard-surface hover:bg-dashboard-surface-alt transition-colors duration-150';
 
         row.innerHTML = `
-            <button type="button" class="w-full text-left flex items-center gap-2 px-3 py-2 cursor-pointer select-none focus:outline-none focus:ring-4 focus:ring-accent/20" data-collapse-toggle="${rowId}" aria-expanded="false" aria-controls="${rowId}">
-                <svg data-accordion-icon id="${rowId}-chevron" class="w-3 h-3 text-text-tertiary shrink-0 transition-transform duration-200" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6"><path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/></svg>
+            <div class="research-row-toggle flex items-center gap-2 px-3 py-2 cursor-pointer select-none">
+                <i id="${rowId}-chevron" class="fas fa-chevron-right text-[10px] text-text-tertiary transition-transform duration-200 w-3 shrink-0"></i>
                 ${source ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-theme-info-bg text-theme-info-text border border-theme-info-text shrink-0">${escapedSource}</span>` : ''}
                 ${articleType ? `<span class="text-[11px] font-medium px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-text-secondary border border-border shrink-0">${escapedArticleType}</span>` : ''}
                 ${sentBadge}
                 <span class="text-sm font-medium text-text-primary truncate flex-1 min-w-0">${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hover:text-accent hover:underline" onclick="event.stopPropagation()">${escapedTitle}</a>` : escapedTitle}</span>
                 <span class="text-[11px] text-text-tertiary whitespace-nowrap shrink-0 ml-auto">${escapedRelTime}</span>
                 ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-text-tertiary hover:text-accent shrink-0 ml-1" onclick="event.stopPropagation()" title="Open article"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : ''}
-            </button>
+            </div>
             <div id="${rowId}" class="hidden px-3 pb-3 pt-0">
                 <div class="ml-5 pl-3 border-l-2 border-border">
                     ${summary ? `<p class="text-sm text-text-secondary leading-relaxed whitespace-pre-line">${escapedSummary}</p>` : '<p class="text-sm text-text-tertiary italic">No summary available.</p>'}
@@ -1647,12 +1646,22 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
             </div>
         `;
 
+        // TODO(palette): Use Flowbite Collapse API for aria-expanded/controls instead of manual .hidden toggles.
+        row.querySelector('.research-row-toggle')?.addEventListener('click', () => {
+            const chevron = document.getElementById(`${rowId}-chevron`);
+            const detail = document.getElementById(rowId);
+            if (chevron && detail) {
+                detail.classList.toggle('hidden');
+                if (detail.classList.contains('hidden')) {
+                    chevron.classList.remove('rotate-90');
+                } else {
+                    chevron.classList.add('rotate-90');
+                }
+            }
+        });
 
         list.appendChild(row);
     });
-
-    // Rows are built after page load, so Flowbite never binds them itself.
-    initCollapsesIn(list);
 }
 
 // Render social sentiment

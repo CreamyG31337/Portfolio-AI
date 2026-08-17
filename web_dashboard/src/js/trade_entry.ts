@@ -4,6 +4,7 @@
  */
 
 import { getCsrfHeaders } from './csrf.js';
+import { Modal } from "flowbite";
 import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
 import { showToast as showToastBase } from './toast.js';
 
@@ -679,14 +680,19 @@ function openEditModal(trade: Trade): void {
     const name = getCompanyName(trade.ticker || '');
     updateEditCompanyName(name);
 
-    // Open via Flowbite's hidden trigger (data-modal-toggle). Do not
-    // `import { Modal } from "flowbite"` — tsc emits a bare specifier and the
-    // browser never runs this module (spinners hang forever).
-    document.getElementById('edit-trade-modal-trigger')?.click();
+    const modalEl = document.getElementById('edit-trade-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.show();
+    }
 }
 
 function closeEditModal(): void {
-    document.querySelector<HTMLElement>('[data-modal-hide="edit-trade-modal"]')?.click();
+    const modalEl = document.getElementById('edit-trade-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.hide();
+    }
 }
 
 async function handleEditSubmit(e: Event): Promise<void> {
@@ -791,11 +797,19 @@ function openDeleteModal(trade: Trade): void {
         summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${trade.price.toFixed(2)} on ${dateStr}`;
     }
 
-    document.getElementById('delete-trade-modal-trigger')?.click();
+    const modalEl = document.getElementById('delete-trade-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.show();
+    }
 }
 
 function closeDeleteModal(): void {
-    document.querySelector<HTMLElement>('[data-modal-hide="delete-trade-modal"]')?.click();
+    const modalEl = document.getElementById('delete-trade-modal');
+    if (modalEl) {
+        const modal = new Modal(modalEl);
+        modal.hide();
+    }
 }
 
 async function handleDeleteConfirm(): Promise<void> {

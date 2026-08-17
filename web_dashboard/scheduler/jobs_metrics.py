@@ -50,12 +50,11 @@ from scheduler.scheduler_core import log_job_execution
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-# Calendar lookback for Yahoo benchmark download. Must cover the ticker-page 5Y
-# window (1825 days). A naive "~12 months" lookback from late Q1 lands around the
-# last day of November prior year, so yfinance's first bar is often December —
-# all of early/mid November never refreshes and stale bad ticks (e.g. SI=F ~4000)
-# stay in benchmark_data forever.
-BENCHMARK_REFRESH_LOOKBACK_DAYS = 1825
+# Calendar lookback for Yahoo benchmark download. Must cover >~12 months: a naive
+# "120 days back" from late Q1 lands around the last day of November prior year,
+# so yfinance's first bar is often December — all of early/mid November never refreshes
+# and stale bad ticks (e.g. SI=F ~4000) stay in benchmark_data forever.
+BENCHMARK_REFRESH_LOOKBACK_DAYS = 400
 
 
 def _default_performance_metrics_target_date() -> date:
