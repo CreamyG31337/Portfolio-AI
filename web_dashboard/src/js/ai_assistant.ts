@@ -1168,7 +1168,7 @@ class AIAssistant {
             }
         }
 
-        // Ollama: usable prompt ≈ num_ctx/2 (heretic soft-cap 28k). Do not show full num_ctx.
+        // Ollama: usable prompt ≈ num_ctx/2 (Qwen3.8 soft-cap 28k). Do not show full num_ctx.
         const maxTokens = usablePromptTokenBudget(configuredCtx, currentModel);
         if (
             maxTokens > 0 &&

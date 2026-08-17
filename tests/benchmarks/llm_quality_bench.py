@@ -283,7 +283,7 @@ def test_bench_llm_quality_judge() -> None:
 
     models_env = os.getenv(
         "OLLAMA_QUALITY_MODELS",
-        "qwen3.6:27b-heretic,granite4.1:8b,glm-5.1,glm-5-turbo,glm-4.5-air",
+        "qwen3.8:27b-mtp-q4_K_M,granite4.1:8b,glm-5.1,glm-5-turbo,glm-4.5-air",
     )
     models = [m.strip() for m in models_env.split(",") if m.strip()]
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")

@@ -2775,7 +2775,7 @@ function getMaxTokensForModel(modelName: string): number {
         configuredCtx = modelConfig?.default_config?.num_ctx || 0;
     }
 
-    // Ollama usable prompt ≈ num_ctx/2 (heretic soft-cap 28k); GLM keeps full window.
+    // Ollama usable prompt ≈ num_ctx/2 (Qwen3.8 soft-cap 28k); GLM keeps full window.
     return usablePromptTokenBudget(configuredCtx, modelName || '');
 }
 

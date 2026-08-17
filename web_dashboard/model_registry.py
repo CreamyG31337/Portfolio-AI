@@ -25,17 +25,23 @@ SUPPORTED_GLM_MODELS: List[str] = [
     "glm-4.5-air",
 ]
 
-# Retired GLM ids mapped to the current primary on read.
+# Stock Qwen3.8 27B (vision+tools+thinking+MTP). No heretic tag in this app.
+OLLAMA_QWEN38_STOCK = "qwen3.8:27b-mtp-q4_K_M"
+
+# Retired GLM ids + deleted Qwen3.6 / unused heretic tags mapped on read.
 DEPRECATED_MODEL_MAP: dict[str, str] = {
     "glm-4.7": PRIMARY_MODEL_DEFAULT,
     "glm-4.6": PRIMARY_MODEL_DEFAULT,
     "glm-4.5": PRIMARY_MODEL_DEFAULT,
     "glm-5": PRIMARY_MODEL_DEFAULT,
+    "qwen3.6:27b-heretic": OLLAMA_QWEN38_STOCK,
+    "qwen3.6:27b-heretic-agentic": OLLAMA_QWEN38_STOCK,
+    "qwen3.8:27b-heretic": OLLAMA_QWEN38_STOCK,
 }
 # Local Ollama roles (summarization primary + queue worker defaults).
-OLLAMA_SUMMARIZING_DEFAULT = "qwen3.6:27b-heretic"
+OLLAMA_SUMMARIZING_DEFAULT = OLLAMA_QWEN38_STOCK
 OLLAMA_QUEUE_PRIMARY_DEFAULT = "granite4.1:8b"
-OLLAMA_QUEUE_SECONDARY_DEFAULT = "qwen3.6:27b-heretic"
+OLLAMA_QUEUE_SECONDARY_DEFAULT = OLLAMA_QWEN38_STOCK
 EMBED_MODEL_DEFAULT = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 EMBED_DIM_DEFAULT = int(os.getenv("AI_EMBED_DIM", "1024"))
 EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))
@@ -62,6 +68,14 @@ PROBE_DEFAULT_MODELS: List[str] = [
 ]
 
 
+def remap_deprecated_model(model_id: Optional[str]) -> str:
+    """Map deleted/retired model tags to their replacements (identity if unknown)."""
+    candidate = (model_id or "").strip()
+    if not candidate:
+        return ""
+    return DEPRECATED_MODEL_MAP.get(candidate, candidate)
+
+
 def resolve_ai_model_preference(
     stored: Optional[str],
     available_ids: Optional[List[str]] = None,
@@ -71,7 +85,7 @@ def resolve_ai_model_preference(
     if not candidate:
         candidate = get_primary_model()
 
-    candidate = DEPRECATED_MODEL_MAP.get(candidate, candidate)
+    candidate = remap_deprecated_model(candidate)
 
     if available_ids is not None:
         available = [m for m in available_ids if m]
@@ -119,13 +133,13 @@ def get_cheap_model() -> str:
 def get_ollama_queue_primary_model() -> str:
     """Ollama model pinned to AI queue ``ollama_primary`` workers."""
     env = os.getenv("AI_QUEUE_MODEL_OLLAMA_PRIMARY", "").strip()
-    return env or OLLAMA_QUEUE_PRIMARY_DEFAULT
+    return remap_deprecated_model(env) or OLLAMA_QUEUE_PRIMARY_DEFAULT
 
 
 def get_ollama_queue_secondary_model() -> str:
     """Ollama model pinned to AI queue ``ollama_secondary`` workers."""
     env = os.getenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", "").strip()
-    return env or OLLAMA_QUEUE_SECONDARY_DEFAULT
+    return remap_deprecated_model(env) or OLLAMA_QUEUE_SECONDARY_DEFAULT
 
 
 def get_builtin_summarizing_fallback_models() -> List[str]:
