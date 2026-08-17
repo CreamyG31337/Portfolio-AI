@@ -202,6 +202,28 @@ def test_duplicate_index_no_typeerror() -> None:
     assert float(adjusted["Close"].iloc[1]) == pytest.approx(45.05)
 
 
+def test_split_on_first_bar_of_short_window_still_adjusts() -> None:
+    """5d retry starting on the ex-date must still catch the next-bar cliff."""
+    idx = pd.bdate_range("2026-08-11", periods=4, freq="C")
+    closes = [90.0, 45.0, 45.2, 45.4]
+    splits = [2.0, 0.0, 0.0, 0.0]
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": closes,
+            "Low": closes,
+            "Close": closes,
+            "Volume": [1_000_000] * 4,
+            "Stock Splits": splits,
+        },
+        index=idx,
+    )
+    adjusted = apply_unadjusted_splits(df)
+    assert float(adjusted["Close"].iloc[0]) == pytest.approx(45.0)
+    assert float(adjusted["Close"].iloc[-1]) == pytest.approx(45.4)
+    assert int(adjusted["Volume"].iloc[0]) == 2_000_000
+
+
 def test_cliff_on_next_trading_bar() -> None:
     """Split-day close still pre-split; cliff appears on T+1."""
     idx = pd.bdate_range("2026-06-01", periods=5, freq="C")

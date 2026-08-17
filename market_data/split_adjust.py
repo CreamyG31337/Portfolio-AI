@@ -163,8 +163,10 @@ def _find_boundary_cliff(
 
     Considers the gap landing on the split date plus the next
     ``_MAX_CLIFF_LAG_BARS``, since Yahoo sometimes stamps the split before the
-    price actually moves. Returns ``None`` when none matches, which is also how
-    an already-adjusted series is recognised -- it simply has no cliff there.
+    price actually moves. A split stamped on the first in-window bar (common
+    for ``period="5d"`` retries) still matches a cliff on the following bars.
+    Returns ``None`` when none matches, which is also how an already-adjusted
+    series is recognised -- it simply has no cliff there.
     """
     expected = (1.0 / ratio) - 1.0
     tol = max(cliff_tolerance * abs(expected), MIN_CLIFF_TOLERANCE)
@@ -178,10 +180,18 @@ def _find_boundary_cliff(
         and close[i] > 0
     ]
     first_after = next((k for k, i in enumerate(valid) if dates[i] >= split_day), None)
-    if first_after is None or first_after == 0:
+    if first_after is None:
         return None
 
-    for k in range(first_after, min(first_after + 1 + _MAX_CLIFF_LAG_BARS, len(valid))):
+    # A 5d Yahoo retry often starts on the ex-date, so the split is stamped on
+    # the first in-window bar. Still look at the following bars for a cliff;
+    # there is just no earlier bar to treat as pre-split.
+    start_k = max(first_after, 1)
+    end_k = min(first_after + 1 + _MAX_CLIFF_LAG_BARS, len(valid))
+    if start_k >= end_k:
+        return None
+
+    for k in range(start_k, end_k):
         prev_pos, event_pos = valid[k - 1], valid[k]
         actual = (float(close[event_pos]) / float(close[prev_pos])) - 1.0
         if abs(actual - expected) <= tol:
