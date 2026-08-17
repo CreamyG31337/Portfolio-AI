@@ -184,7 +184,15 @@ Enums for "risk_pattern":
   "conflict_score": 0.1,
   "confidence_score": 0.95,
   "risk_pattern": "ROUTINE_DIVESTMENT",
-  "reasoning": "Subject sits on Science Committee (Nuclear AI Regulation), which links to Microsoft. HOWEVER, the trade is a small sale (<$15k). This fits the pattern of ethical divestment rather than insider profit-taking."
+  "reasoning": "Subject sits on Science Committee (Nuclear AI Regulation), which links to Microsoft. HOWEVER, the trade is a small sale (<$15k). This fits the pattern of ethical divestment rather than insider profit-taking.",
+  "falsifiable_proposal": {{
+    "hypothesis": "Large sells by members with jurisdiction predict underperformance of the name",
+    "mechanism": "Informed selling ahead of adverse regulatory or policy outcomes",
+    "expected_direction": "bearish",
+    "horizon_days": 30,
+    "falsification_criteria": ["excess vs benchmark > 0 at 30d after the session"],
+    "expected_failure_modes": ["routine rebalancing misread as dumping"]
+  }}
 }}
 
 The confidence_score (0.0-1.0) indicates how certain you are.
@@ -246,7 +254,15 @@ Enums for "risk_pattern":
   "conflict_score": 0.1,
   "confidence_score": 0.7,
   "risk_pattern": "ROUTINE_DIVESTMENT",
-  "reasoning": "Subject is Executive chamber. Sector has tariff exposure, but the trade is a small sale (<$15k), consistent with routine rebalancing rather than policy-timed profit-taking."
+  "reasoning": "Subject is Executive chamber. Sector has tariff exposure, but the trade is a small sale (<$15k), consistent with routine rebalancing rather than policy-timed profit-taking.",
+  "falsifiable_proposal": {{
+    "hypothesis": "Executive-linked large sells predict underperformance of the name",
+    "mechanism": "Policy or contract information advantage ahead of adverse outcomes",
+    "expected_direction": "bearish",
+    "horizon_days": 30,
+    "falsification_criteria": ["excess vs benchmark > 0 at 30d after the session"],
+    "expected_failure_modes": ["routine rebalancing misread as dumping"]
+  }}
 }}
 
 The confidence_score (0.0-1.0) indicates how certain you are. Prefer ≤0.75 when timing
@@ -271,7 +287,7 @@ def build_session_conflict_prompt(
 ) -> str:
     """Build the session LLM prompt; executive chamber skips committee rubric."""
     if is_executive_chamber(chamber):
-        return EXECUTIVE_SESSION_PROMPT_TEMPLATE.format(
+        prompt = EXECUTIVE_SESSION_PROMPT_TEMPLATE.format(
             trade_count=trade_count,
             politician=politician,
             party=party,
@@ -279,16 +295,24 @@ def build_session_conflict_prompt(
             chamber=chamber,
             trades_table=trades_table,
         )
-    committee_descriptions = get_committee_context(committees or "Unknown")
-    return SESSION_PROMPT_TEMPLATE.format(
-        trade_count=trade_count,
-        politician=politician,
-        party=party,
-        state=state,
-        chamber=chamber,
-        committee_descriptions=committee_descriptions,
-        trades_table=trades_table,
-    )
+    else:
+        committee_descriptions = get_committee_context(committees or "Unknown")
+        prompt = SESSION_PROMPT_TEMPLATE.format(
+            trade_count=trade_count,
+            politician=politician,
+            party=party,
+            state=state,
+            chamber=chamber,
+            committee_descriptions=committee_descriptions,
+            trades_table=trades_table,
+        )
+    try:
+        from skill_loader import build_enhanced_prompt
+
+        prompt = build_enhanced_prompt(prompt, trades_table, "analyze_congress_trades")
+    except Exception as exc:
+        logger.warning("Skill injection failed for congress session prompt: %s", exc)
+    return prompt
 
 
 # Legacy prompt for single-trade analysis (kept for backward compatibility if needed)
@@ -1052,6 +1076,12 @@ def analyze_session(
         # Call AI with session prompt
         system_prompt = "You are a financial ethics analyzer. Return ONLY valid JSON with the exact fields specified."
 
+        def _congress_ok(raw: str) -> bool:
+            from falsifiable_proposal import has_valid_falsifiable_proposal
+
+            parsed = extract_json(raw)
+            return isinstance(parsed, dict) and has_valid_falsifiable_proposal(parsed)
+
         full_response, model = collect_with_summary_model_chain(
             ollama,
             prompt=prompt,
@@ -1059,8 +1089,8 @@ def analyze_session(
             stream=True,
             system_prompt=system_prompt,
             temperature=0.1,
-            response_ok=lambda s: extract_json(s) is not None,
-            function_name="rescore_congress_sessions",
+            response_ok=_congress_ok,
+            function_name="analyze_congress_trades",
             audit_extra={"politician": politician_name, "trade_count": trade_count},
         )
         full_response = full_response or ""
@@ -1083,6 +1113,13 @@ def analyze_session(
         if not result:
             logger.error(f"AI Response was not valid JSON for session {session_id}")
             logger.debug(f"Full response: {full_response}")
+            return False
+
+        from falsifiable_proposal import validate_falsifiable_proposal
+
+        ok, err = validate_falsifiable_proposal(result)
+        if not ok:
+            logger.error("Falsifiable proposal invalid for session %s: %s", session_id, err)
             return False
             
         if 'conflict_score' not in result:

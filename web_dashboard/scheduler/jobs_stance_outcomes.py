@@ -437,6 +437,8 @@ def score_stance_row(
             "benchmark_return": returns["benchmark_return"],
             "excess_return": returns["excess_return"],
             "benchmark_symbol": benchmark_symbol,
+            "stance": row.get("stance"),
+            "ticker": (row.get("ticker") or "").upper(),
         },
         None,
     )
@@ -555,27 +557,75 @@ def _run_stance_outcomes_job() -> None:
                         )
                         continue
                     payload = result.payload
-                    postgres.execute_update(
-                        """
-                        INSERT INTO stance_outcomes (
-                            stance_id, horizon_days, baseline_price, end_price,
-                            ticker_return, benchmark_return, excess_return,
-                            benchmark_symbol, scoring_version
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (stance_id, horizon_days) DO NOTHING
-                        """,
-                        (
-                            str(payload["stance_id"]),
-                            payload["horizon_days"],
-                            payload["baseline_price"],
-                            payload["end_price"],
-                            payload["ticker_return"],
-                            payload["benchmark_return"],
-                            payload["excess_return"],
-                            payload["benchmark_symbol"],
-                            SCORING_VERSION,
-                        ),
+                    from microcap_cost_model import (
+                        belief_from_excess_after_cost,
+                        excess_after_cost,
+                        round_trip_cost_bps,
                     )
+
+                    meta = sec_meta.get(ticker) or {}
+                    cost_bps = round_trip_cost_bps(market_cap=meta.get("market_cap"))
+                    eac = excess_after_cost(
+                        payload["excess_return"],
+                        cost_bps,
+                        stance=str(payload.get("stance") or ""),
+                    )
+                    belief = belief_from_excess_after_cost(
+                        excess_after_cost_pct=eac,
+                        stance=str(payload.get("stance") or ""),
+                    )
+                    try:
+                        postgres.execute_update(
+                            """
+                            INSERT INTO stance_outcomes (
+                                stance_id, horizon_days, baseline_price, end_price,
+                                ticker_return, benchmark_return, excess_return,
+                                benchmark_symbol, scoring_version,
+                                cost_bps, excess_after_cost, belief_status
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (stance_id, horizon_days) DO NOTHING
+                            """,
+                            (
+                                str(payload["stance_id"]),
+                                payload["horizon_days"],
+                                payload["baseline_price"],
+                                payload["end_price"],
+                                payload["ticker_return"],
+                                payload["benchmark_return"],
+                                payload["excess_return"],
+                                payload["benchmark_symbol"],
+                                SCORING_VERSION,
+                                cost_bps,
+                                eac,
+                                belief,
+                            ),
+                        )
+                    except Exception as insert_exc:
+                        # Pre-migration DBs: fall back to columns without cost fields.
+                        if "cost_bps" in str(insert_exc) or "excess_after_cost" in str(insert_exc):
+                            postgres.execute_update(
+                                """
+                                INSERT INTO stance_outcomes (
+                                    stance_id, horizon_days, baseline_price, end_price,
+                                    ticker_return, benchmark_return, excess_return,
+                                    benchmark_symbol, scoring_version
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (stance_id, horizon_days) DO NOTHING
+                                """,
+                                (
+                                    str(payload["stance_id"]),
+                                    payload["horizon_days"],
+                                    payload["baseline_price"],
+                                    payload["end_price"],
+                                    payload["ticker_return"],
+                                    payload["benchmark_return"],
+                                    payload["excess_return"],
+                                    payload["benchmark_symbol"],
+                                    SCORING_VERSION,
+                                ),
+                            )
+                        else:
+                            raise
                     scored += 1
                 except Exception as row_exc:
                     errors += 1

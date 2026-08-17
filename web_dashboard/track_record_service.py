@@ -217,9 +217,48 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
     }
 
 
+def _mechanism_key_from_metadata(meta: dict[str, Any]) -> str:
+    proposal = meta.get("falsifiable_proposal")
+    if isinstance(proposal, dict):
+        key = str(proposal.get("mechanism_key") or "").strip()
+        if key:
+            return key
+        mech = str(proposal.get("mechanism") or "").strip()
+        if mech:
+            from falsifiable_proposal import mechanism_key
+
+            return mechanism_key(mech) or "unspecified"
+    return "unspecified"
+
+
+def _hit_from_row_after_cost(row: dict[str, Any]) -> bool | None:
+    """Prefer belief_status / directional excess_after_cost when present."""
+    belief = (row.get("belief_status") or "").strip().lower()
+    if belief == "supported":
+        return True
+    if belief == "refuted":
+        return False
+    if belief == "inconclusive":
+        return None
+    eac = _finite_decimal(row.get("excess_after_cost"))
+    if eac is not None:
+        if abs(eac) < Decimal("0.25"):
+            return None
+        return eac > 0
+    return _hit_from_row(row)
+
+
 def _parse_metadata(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            import json
+
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
     return {}
 
 
@@ -309,24 +348,42 @@ def build_track_record_summary(
     # across them reintroduces exactly the apples-to-oranges problem the per-ticker
     # benchmark work fixed. A future scheme change bumps the version and this query
     # keeps returning a self-consistent set.
-    rows = pg.execute_query(
-        """
-        SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
-               so.excess_return, so.ticker_return, so.benchmark_return,
-               so.benchmark_symbol, sh.ticker, sh.as_of
-        FROM stance_outcomes so
-        JOIN stance_history sh ON sh.id = so.stance_id
-        WHERE so.horizon_days = %s
-          AND COALESCE(so.scoring_version, 1) = %s
-        ORDER BY so.scored_at DESC
-        """,
-        (horizon_days, scoring_version),
-    )
+    try:
+        rows = pg.execute_query(
+            """
+            SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
+                   so.excess_return, so.excess_after_cost, so.belief_status, so.cost_bps,
+                   so.ticker_return, so.benchmark_return,
+                   so.benchmark_symbol, sh.ticker, sh.as_of
+            FROM stance_outcomes so
+            JOIN stance_history sh ON sh.id = so.stance_id
+            WHERE so.horizon_days = %s
+              AND COALESCE(so.scoring_version, 1) = %s
+            ORDER BY so.scored_at DESC
+            """,
+            (horizon_days, scoring_version),
+        )
+    except Exception:
+        rows = pg.execute_query(
+            """
+            SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
+                   so.excess_return, so.ticker_return, so.benchmark_return,
+                   so.benchmark_symbol, sh.ticker, sh.as_of
+            FROM stance_outcomes so
+            JOIN stance_history sh ON sh.id = so.stance_id
+            WHERE so.horizon_days = %s
+              AND COALESCE(so.scoring_version, 1) = %s
+            ORDER BY so.scored_at DESC
+            """,
+            (horizon_days, scoring_version),
+        )
 
     by_source: dict[str, dict[str, int]] = {}
     by_verdict: dict[str, dict[str, int]] = {}
     by_conf_band: dict[str, dict[str, int]] = {}
+    by_mechanism: dict[str, dict[str, int]] = {}
     excess_by_source: dict[str, list[float]] = defaultdict(list)
+    excess_after_cost_by_mechanism: dict[str, list[float]] = defaultdict(list)
     hits: list[dict[str, Any]] = []
     misses: list[dict[str, Any]] = []
 
@@ -361,7 +418,7 @@ def build_track_record_summary(
 
         source = row.get("source") or "unknown"
         bucket = by_source.setdefault(source, _empty_count_bucket())
-        hit = _hit_from_row(row)
+        hit = _hit_from_row_after_cost(row)
         _bump(bucket, hit)
         if hit is True:
             hits.append(dict(row))
@@ -369,6 +426,13 @@ def build_track_record_summary(
             misses.append(dict(row))
 
         meta = _parse_metadata(row.get("metadata"))
+        mech_key = _mechanism_key_from_metadata(meta)
+        mb = by_mechanism.setdefault(mech_key, _empty_count_bucket())
+        _bump(mb, hit)
+        eac = _finite_decimal(row.get("excess_after_cost"))
+        if hit is not None and eac is not None:
+            excess_after_cost_by_mechanism[mech_key].append(float(eac))
+
         verdict = (meta.get("verdict") or "").upper() or "UNKNOWN"
         vb = by_verdict.setdefault(verdict, _empty_count_bucket())
         _bump(vb, hit)
@@ -518,20 +582,46 @@ def build_track_record_summary(
         else None
     )
 
+    # Multiple-testing note: without N you cannot deflate. Expected false
+    # positives at alpha=0.05 if every claim were noise.
+    candidates_tested = overall_scored
+    expected_false_positives_alpha_05 = (
+        round(0.05 * candidates_tested, 2) if candidates_tested else 0.0
+    )
+
+    by_mechanism_rows: list[dict[str, Any]] = []
+    for mech, counts in by_mechanism.items():
+        scored_m = int(counts.get("scored") or 0)
+        mean_eac, _med = _mean_median(excess_after_cost_by_mechanism.get(mech) or [])
+        by_mechanism_rows.append(
+            {
+                "mechanism_key": mech,
+                "n": scored_m,
+                "hits": int(counts.get("hits") or 0),
+                "hit_rate": _rate_from_counts(counts),
+                "mean_excess_after_cost": mean_eac,
+                "expected_false_positives_alpha_05": round(0.05 * scored_m, 2),
+            }
+        )
+    by_mechanism_rows.sort(key=lambda r: (-int(r["n"]), str(r["mechanism_key"])))
+
     return {
         "horizon_days": horizon_days,
         "total_scored": len(rows),
+        "candidates_tested": candidates_tested,
+        "expected_false_positives_alpha_05": expected_false_positives_alpha_05,
         "baselines": baselines,
         # Excess-return keys below are DIRECTIONAL: positive always means the call
         # was right, for bearish stances too. Declared in the payload so downstream
         # consumers (including the AI assistant, which reads this dict verbatim)
         # cannot mistake it for raw benchmark-relative excess.
-        "excess_metric": "directional",
+        "excess_metric": "directional_after_cost",
         "scoring_version": scoring_version,
         "broad_index_etf_excluded": broad_index_etf_excluded,
-        "hit_rate_by_source": {k: _rate(v) for k, v in by_source.items()},
-        "hit_rate_by_verdict": {k: _rate(v) for k, v in by_verdict.items()},
+        "hit_rate_by_source": {k: _rate_from_counts(v) for k, v in by_source.items()},
+        "hit_rate_by_verdict": {k: _rate_from_counts(v) for k, v in by_verdict.items()},
         "hit_rate_by_confidence_band": hit_rate_by_confidence_band,
+        "by_mechanism": by_mechanism_rows,
         "avg_excess_by_source": avg_excess_by_source,
         "median_excess_by_source": median_excess_by_source,
         "best_calls": hits[:5],

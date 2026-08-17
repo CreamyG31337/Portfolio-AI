@@ -36,7 +36,14 @@ class ResearchRepository:
             self._has_tickers_column = self._check_tickers_column_exists()
             # Phase K2 collector provenance; additive column may not be migrated yet.
             self._has_source_metadata_column = self._check_column_exists("source_metadata")
-            logger.debug(f"ResearchRepository initialized successfully (tickers column: {self._has_tickers_column})")
+            # AQuA PIT: first-known clock; additive until migration applied.
+            self._has_available_at_column = self._check_column_exists("available_at")
+            logger.debug(
+                "ResearchRepository initialized successfully "
+                "(tickers column: %s, available_at: %s)",
+                self._has_tickers_column,
+                self._has_available_at_column,
+            )
         except Exception as e:
             logger.error(f"ResearchRepository initialization failed: {e}")
             raise
@@ -76,6 +83,12 @@ class ResearchRepository:
         except Exception:
             return False
 
+    def _as_of_time_column(self) -> str:
+        """Column used for analysis lookbacks (point-in-time first-known).
+
+        Prefer immutable ``available_at`` when migrated; fall back to ``fetched_at``.
+        """
+        return "available_at" if self._has_available_at_column else "fetched_at"
 
     def _normalize_ticker_data(self, article: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize ticker data to always use 'tickers' key (array format).
@@ -246,6 +259,13 @@ class ResearchRepository:
                 meta_col = meta_value = meta_update = ""
                 meta_params = ()
 
+            # Point-in-time first-known clock: set on INSERT only; never on conflict.
+            if self._has_available_at_column:
+                avail_col = "available_at,"
+                avail_value = "NOW(),"
+            else:
+                avail_col = avail_value = ""
+
             # Build query dynamically based on whether embedding is provided
             if embedding_str:
                 query = f"""
@@ -253,11 +273,11 @@ class ResearchRepository:
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, embedding, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        {meta_col} ticker_validated_at
+                        {meta_col} {avail_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        {meta_value} NOW()
+                        {meta_value} {avail_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -278,8 +298,7 @@ class ResearchRepository:
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
                         {meta_update}
-                        ticker_validated_at = NOW(),
-                        fetched_at = CURRENT_TIMESTAMP
+                        ticker_validated_at = NOW()
                     RETURNING id
                 """
                 params = (
@@ -308,11 +327,11 @@ class ResearchRepository:
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        {meta_col} ticker_validated_at
+                        {meta_col} {avail_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        {meta_value} NOW()
+                        {meta_value} {avail_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -332,8 +351,7 @@ class ResearchRepository:
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
                         {meta_update}
-                        ticker_validated_at = NOW(),
-                        fetched_at = CURRENT_TIMESTAMP
+                        ticker_validated_at = NOW()
                     RETURNING id
                 """
                 params = (
@@ -600,13 +618,15 @@ class ResearchRepository:
             
             # Select appropriate ticker column based on schema version
             ticker_column = "tickers" if self._has_tickers_column else "ticker"
+            as_of_col = self._as_of_time_column()
+            avail_select = ", available_at" if self._has_available_at_column else ""
             query = f"""
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
-                       source, published_at, fetched_at, relevance_score, fund,
+                       source, published_at, fetched_at{avail_select}, relevance_score, fund,
                        archive_url, archive_submitted_at, archive_checked_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
-                WHERE fetched_at >= %s
+                WHERE {as_of_col} >= %s
             """
             params = [cutoff_date.isoformat()]
             
@@ -639,7 +659,7 @@ class ResearchRepository:
                     query += " AND %s = ANY(tickers)"
                     params.append(ticker)
             
-            query += " ORDER BY fetched_at DESC LIMIT %s"
+            query += f" ORDER BY {as_of_col} DESC LIMIT %s"
             params.append(limit)
             
             results = self.client.execute_query(query, tuple(params))
@@ -1446,16 +1466,18 @@ class ResearchRepository:
             
             # Select appropriate ticker column based on schema version
             ticker_column = "tickers" if self._has_tickers_column else "ticker"
+            as_of_col = self._as_of_time_column()
+            avail_select = ", available_at" if self._has_available_at_column else ""
             query = f"""
                 SELECT id, {ticker_column}, sector, article_type, title, url, summary, content,
-                       source, published_at, fetched_at, relevance_score, fund,
+                       source, published_at, fetched_at{avail_select}, relevance_score, fund,
                        claims, fact_check, conclusion, sentiment, sentiment_score,
                        logic_check, ticker_sentiment,
                        archive_url, archive_submitted_at, archive_checked_at,
                        ticker_validated_at,
                        (embedding IS NOT NULL) as has_embedding
                 FROM research_articles
-                WHERE fetched_at >= %s AND fetched_at <= %s
+                WHERE {as_of_col} >= %s AND {as_of_col} <= %s
             """
             # Convert to ISO format strings for PostgreSQL
             params = [start_date.isoformat(), end_date.isoformat()]
@@ -1485,7 +1507,7 @@ class ResearchRepository:
                 query += " AND tickers && %s::text[]"
                 params.append(list(tickers_filter))
             
-            query += " ORDER BY fetched_at DESC LIMIT %s OFFSET %s"
+            query += f" ORDER BY {as_of_col} DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
             
             results = self.client.execute_query(query, tuple(params))

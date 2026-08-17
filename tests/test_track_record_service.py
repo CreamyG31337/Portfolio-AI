@@ -219,7 +219,7 @@ def test_correct_bearish_call_contributes_positive_excess() -> None:
     # Both calls were correct, so both must pull the mean UP: (5.0 + 3.0) / 2.
     assert summary["hit_rate_by_source"]["action_queue_ai_review"] == 1.0
     assert summary["avg_excess_by_source"]["action_queue_ai_review"] == 4.0
-    assert summary["excess_metric"] == "directional"
+    assert summary["excess_metric"] == "directional_after_cost"
     # The bearish winner is the better call and must rank first.
     assert summary["best_calls"][0]["ticker"] == "AAA"
 

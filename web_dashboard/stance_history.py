@@ -201,6 +201,9 @@ def format_prior_stance_for_meta_bundle(
 
     Returns None when there is no ledger history for the ticker.
     ``track_summary`` should be ``build_track_record_summary`` output (caller-cached).
+
+    Only matured mechanism outcomes (from track_summary.by_mechanism) are injected —
+    never in-flight validation trophies.
     """
     rows = fetch_recent_meta_stances(postgres, ticker, limit=2)
     if not rows:
@@ -237,11 +240,32 @@ def format_prior_stance_for_meta_bundle(
             rate_s = f"{100.0 * rate:.1f}%" if rate is not None else "—"
             ex_s = f"{avg_ex:+.2f}" if avg_ex is not None else "—"
             horizon = summary.get("horizon_days")
+            n_tested = summary.get("candidates_tested")
             lines.append(
                 f"- Global {source} track record ({horizon}d): "
                 f"hit_rate={rate_s} mean_directional_excess={ex_s} scored={scored} "
+                f"N={n_tested} "
                 f"(source calibration — not this ticker alone; excess is signed to "
-                f"the call's direction, so positive means the call was right)"
+                f"the call's direction after cost, so positive means the call was right)"
             )
+
+        # Matured mechanism beliefs only (AQuA §4.3 analogue).
+        mechanisms = summary.get("by_mechanism") or []
+        if isinstance(mechanisms, list) and mechanisms:
+            lines.append("- Matured mechanisms (after cost; do not treat as live IC):")
+            for mech in mechanisms[:8]:
+                if not isinstance(mech, dict):
+                    continue
+                key = mech.get("mechanism_key") or "unspecified"
+                n = int(mech.get("n") or 0)
+                if n <= 0:
+                    continue
+                hr = mech.get("hit_rate")
+                hr_s = f"{100.0 * hr:.0f}%" if hr is not None else "—"
+                mean_eac = mech.get("mean_excess_after_cost")
+                eac_s = f"{mean_eac:+.2f}" if mean_eac is not None else "—"
+                lines.append(
+                    f"  - {key}: n={n} hit_rate={hr_s} mean_excess_after_cost={eac_s}"
+                )
 
     return "\n".join(lines)

@@ -13,6 +13,7 @@ CREATE TABLE research_articles (
     source VARCHAR(100),
     published_at TIMESTAMP,
     fetched_at TIMESTAMP DEFAULT now(),
+    available_at TIMESTAMPTZ DEFAULT now(),
     relevance_score NUMERIC(3, 2),
     embedding vector(1024),
     tickers ARRAY,
@@ -39,8 +40,10 @@ CREATE TABLE research_articles (
 CREATE INDEX idx_research_articles_archive_submitted ON research_articles (archive_submitted_at);
 CREATE INDEX idx_research_articles_archive_url ON research_articles (archive_url);
 CREATE INDEX idx_research_articles_unvalidated ON research_articles (fetched_at DESC) WHERE ticker_validated_at IS NULL AND tickers IS NOT NULL;
+CREATE INDEX idx_research_articles_available_unvalidated ON research_articles (available_at DESC) WHERE ticker_validated_at IS NULL AND tickers IS NOT NULL;
 CREATE INDEX idx_research_claims ON research_articles (claims);
 CREATE INDEX idx_research_fetched ON research_articles (fetched_at);
+CREATE INDEX idx_research_available_at ON research_articles (available_at DESC);
 CREATE INDEX idx_research_fund ON research_articles (fund);
 CREATE INDEX idx_research_logic_check ON research_articles (logic_check);
 CREATE INDEX idx_research_sentiment ON research_articles (sentiment);

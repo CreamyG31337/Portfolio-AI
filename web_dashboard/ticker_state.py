@@ -246,13 +246,16 @@ def _fetch_fundamentals(sb: Any, ticker: str) -> Dict[str, Any]:
 def _fetch_social(pg: Any, ticker: str, lookback_days: int) -> Dict[str, Any]:
     """Get recent social sentiment from the research DB."""
     try:
-        rows = pg.execute_query("""
+        from pit_time import social_as_of_expr
+
+        as_of = social_as_of_expr(pg)
+        rows = pg.execute_query(f"""
             SELECT platform, bull_bear_ratio, sentiment_label,
                    sentiment_score, post_count, volume, created_at
             FROM social_metrics
             WHERE ticker = %s
-              AND created_at > NOW() - INTERVAL '%s days'
-            ORDER BY created_at DESC
+              AND {as_of} > NOW() - INTERVAL '%s days'
+            ORDER BY {as_of} DESC
             LIMIT 20
         """, (ticker, lookback_days))
 

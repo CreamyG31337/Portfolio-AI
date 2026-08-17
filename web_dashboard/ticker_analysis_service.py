@@ -397,13 +397,16 @@ class TickerAnalysisService:
         """
         try:
             start_str = start_date.isoformat()
-            result = self.postgres.execute_query("""
+            from pit_time import article_as_of_expr
+
+            as_of = article_as_of_expr(self.postgres)
+            result = self.postgres.execute_query(f"""
                 SELECT id, title, url, summary, source, published_at, fetched_at,
                        relevance_score, sentiment, sentiment_score, article_type
                 FROM research_articles
                 WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
-                  AND fetched_at >= %s
-                ORDER BY fetched_at DESC
+                  AND {as_of} >= %s
+                ORDER BY {as_of} DESC
                 LIMIT %s
             """, (ticker.upper(), ticker.upper(), start_str, self.MAX_RESEARCH_ARTICLES))
             return result or []
@@ -423,28 +426,33 @@ class TickerAnalysisService:
         """
         try:
             start_str = start_date.isoformat()
-            # Latest metrics per platform
-            latest = self.postgres.execute_query("""
+            from pit_time import social_as_of_expr
+
+            as_of = social_as_of_expr(self.postgres)
+            # Latest metrics per platform within the analysis lookback (first-known clock).
+            latest = self.postgres.execute_query(f"""
                 SELECT DISTINCT ON (platform)
                     ticker, platform, volume, sentiment_label, sentiment_score,
                     bull_bear_ratio, created_at
                 FROM social_metrics
                 WHERE ticker = %s
-                ORDER BY platform, created_at DESC
+                  AND {as_of} >= %s
+                ORDER BY platform, {as_of} DESC
                 LIMIT 10
-            """, (ticker.upper(),))
+            """, (ticker.upper(), start_str))
             
-            # Extreme alerts (last 24 hours)
-            alerts = self.postgres.execute_query("""
+            # Extreme alerts within lookback (capped at 24h of lookback window)
+            alerts = self.postgres.execute_query(f"""
                 SELECT DISTINCT ON (platform, sentiment_label)
                     ticker, platform, sentiment_label, sentiment_score, created_at
                 FROM social_metrics
                 WHERE ticker = %s
                   AND sentiment_label IN ('EUPHORIC', 'FEARFUL', 'BULLISH')
-                  AND created_at > NOW() - INTERVAL '24 hours'
-                ORDER BY platform, sentiment_label, created_at DESC
+                  AND {as_of} >= %s
+                  AND {as_of} > NOW() - INTERVAL '24 hours'
+                ORDER BY platform, sentiment_label, {as_of} DESC
                 LIMIT 10
-            """, (ticker.upper(),))
+            """, (ticker.upper(), start_str))
             
             return {
                 'latest_metrics': latest or [],
@@ -1077,6 +1085,12 @@ class TickerAnalysisService:
             model = self._resolve_analysis_model(model_override)
             system_prompt = "You are a financial analyst. Return ONLY valid JSON with the exact fields specified."
 
+            def _ticker_analysis_ok(raw: str) -> bool:
+                from falsifiable_proposal import has_valid_falsifiable_proposal
+
+                parsed = extract_json(raw)
+                return isinstance(parsed, dict) and has_valid_falsifiable_proposal(parsed)
+
             full_response, model = collect_with_summary_model_chain(
                 self.ollama,
                 prompt=prompt,
@@ -1085,7 +1099,7 @@ class TickerAnalysisService:
                 system_prompt=system_prompt,
                 json_mode=True,
                 temperature=0.1,
-                response_ok=lambda s: extract_json(s) is not None,
+                response_ok=_ticker_analysis_ok,
                 function_name="ticker_analysis",
                 audit_extra={
                     "tickers_extracted": [ticker_upper],
@@ -1101,6 +1115,13 @@ class TickerAnalysisService:
             response = extract_json(full_response)
             if not response:
                 logger.error(f"Failed to parse JSON response for {ticker_upper}")
+                return None
+
+            from falsifiable_proposal import validate_falsifiable_proposal
+
+            ok, err = validate_falsifiable_proposal(response)
+            if not ok:
+                logger.error("Falsifiable proposal invalid for %s: %s", ticker_upper, err)
                 return None
 
             # Save analysis
@@ -1271,6 +1292,18 @@ class TickerAnalysisService:
                 if data.get('social_sentiment'):
                     artifact_types.append('social')
 
+                from falsifiable_proposal import proposal_metadata
+
+                stance_meta: dict[str, Any] = {
+                    "sentiment": sentiment_value,
+                    "sentiment_score": _normalize_score(response.get('sentiment_score')),
+                    "evidence": {
+                        "article_ids": article_ids,
+                        "artifact_types": artifact_types,
+                    },
+                }
+                stance_meta.update(proposal_metadata(response))
+
                 record_stance_safe(
                     self.postgres,
                     ticker=ticker,
@@ -1282,14 +1315,7 @@ class TickerAnalysisService:
                     risks=risks_list if risks_list else None,
                     model_used=model_used,
                     requested_by=requested_by,
-                    metadata={
-                        "sentiment": sentiment_value,
-                        "sentiment_score": _normalize_score(response.get('sentiment_score')),
-                        "evidence": {
-                            "article_ids": article_ids,
-                            "artifact_types": artifact_types,
-                        },
-                    },
+                    metadata=stance_meta,
                 )
             except Exception as ledger_exc:
                 logger.warning("stance_history hook failed for %s: %s", ticker, ledger_exc)
