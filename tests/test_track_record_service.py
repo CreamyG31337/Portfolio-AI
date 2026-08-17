@@ -83,11 +83,14 @@ def test_baselines_detect_a_perfect_model() -> None:
     """A model that puts every label on the right row must beat the shuffled null."""
     from web_dashboard.track_record_service import compute_baselines
 
+    # cost_bps=0 throughout: these tests pin the permutation math, not the haircut.
+    # A zero haircut makes the after-cost rule collapse to the pre-cost sign rule,
+    # so the invariants below are unchanged by the after-cost parity work.
     rows = [
-        ("BULLISH", 5.0, "2026-07-01"),
-        ("BULLISH", 3.0, "2026-07-01"),
-        ("BEARISH", -4.0, "2026-07-01"),
-        ("BEARISH", -2.0, "2026-07-01"),
+        ("BULLISH", 5.0, 0, "2026-07-01"),
+        ("BULLISH", 3.0, 0, "2026-07-01"),
+        ("BEARISH", -4.0, 0, "2026-07-01"),
+        ("BEARISH", -2.0, 0, "2026-07-01"),
     ]
     b = compute_baselines(rows)
     # Every call correct: 2 winners called bullish, 2 losers called bearish.
@@ -102,10 +105,10 @@ def test_baselines_flat_when_labels_carry_no_information() -> None:
     from web_dashboard.track_record_service import compute_baselines
 
     rows = [
-        ("BULLISH", 5.0, "2026-07-01"),
-        ("BULLISH", -5.0, "2026-07-01"),
-        ("BEARISH", 5.0, "2026-07-01"),
-        ("BEARISH", -5.0, "2026-07-01"),
+        ("BULLISH", 5.0, 0, "2026-07-01"),
+        ("BULLISH", -5.0, 0, "2026-07-01"),
+        ("BEARISH", 5.0, 0, "2026-07-01"),
+        ("BEARISH", -5.0, 0, "2026-07-01"),
     ]
     b = compute_baselines(rows)
     actual = 2 / 4  # one bullish winner + one bearish loser
@@ -121,10 +124,10 @@ def test_baselines_bucket_by_day_to_respect_correlated_moves() -> None:
     from web_dashboard.track_record_service import compute_baselines
 
     rows = [
-        ("BULLISH", 2.0, "2026-07-01"),
-        ("BEARISH", 3.0, "2026-07-01"),   # everything up that day
-        ("BULLISH", -2.0, "2026-07-02"),
-        ("BEARISH", -3.0, "2026-07-02"),  # everything down that day
+        ("BULLISH", 2.0, 0, "2026-07-01"),
+        ("BEARISH", 3.0, 0, "2026-07-01"),   # everything up that day
+        ("BULLISH", -2.0, 0, "2026-07-02"),
+        ("BEARISH", -3.0, 0, "2026-07-02"),  # everything down that day
     ]
     b = compute_baselines(rows)
     assert b["day_buckets"] == 2
@@ -139,11 +142,11 @@ def test_by_direction_expected_hits_sum_to_pooled_shuffled_null() -> None:
     from web_dashboard.track_record_service import compute_baselines
 
     rows = [
-        ("BULLISH", 5.0, "2026-07-01"),
-        ("BULLISH", -1.0, "2026-07-01"),
-        ("BEARISH", -4.0, "2026-07-01"),
-        ("BULLISH", 2.0, "2026-07-02"),
-        ("BEARISH", -3.0, "2026-07-02"),
+        ("BULLISH", 5.0, 0, "2026-07-01"),
+        ("BULLISH", -1.0, 0, "2026-07-01"),
+        ("BEARISH", -4.0, 0, "2026-07-01"),
+        ("BULLISH", 2.0, 0, "2026-07-02"),
+        ("BEARISH", -3.0, 0, "2026-07-02"),
     ]
     b = compute_baselines(rows)
     d = b["by_direction"]
@@ -165,9 +168,9 @@ def test_by_direction_isolates_a_minority_class_edge() -> None:
     """
     from web_dashboard.track_record_service import compute_baselines
 
-    rows = [("BULLISH", 1.0, "2026-07-01"), ("BULLISH", -1.0, "2026-07-01")]
-    rows += [("BULLISH", 1.0, "2026-07-01"), ("BULLISH", -1.0, "2026-07-01")]
-    rows += [("BEARISH", -1.0, "2026-07-01")]  # correct bearish call
+    rows = [("BULLISH", 1.0, 0, "2026-07-01"), ("BULLISH", -1.0, 0, "2026-07-01")]
+    rows += [("BULLISH", 1.0, 0, "2026-07-01"), ("BULLISH", -1.0, 0, "2026-07-01")]
+    rows += [("BEARISH", -1.0, 0, "2026-07-01")]  # correct bearish call
     b = compute_baselines(rows)
     assert b["by_direction"]["bearish"]["hit_rate"] == 1.0
     assert b["by_direction"]["bearish"]["edge"] > 0
@@ -180,6 +183,60 @@ def test_baselines_empty_input() -> None:
     b = compute_baselines([])
     assert b["n"] == 0
     assert b["shuffled_hit_rate"] is None
+
+
+def test_baselines_apply_the_same_haircut_as_the_actual_rate() -> None:
+    """The units-mismatch bug: costs must hit the null models too, or edge goes negative.
+
+    A book of small correct calls on expensive names. Every label is on the right
+    row, so a skill-free null model must NOT beat it. If the haircut is applied only
+    to the actual rate and not to the baselines, the actual rate collapses while the
+    shuffled rate stays at its pre-cost level and the edge reads negative -- reporting
+    a units mismatch as destroyed skill.
+    """
+    from web_dashboard.track_record_service import compute_baselines
+
+    # +2.0pp calls against a 300bps round trip: after cost every call is -1.0pp.
+    rows = [
+        ("BULLISH", 2.0, 300, "2026-07-01"),
+        ("BULLISH", 2.0, 300, "2026-07-01"),
+        ("BEARISH", -2.0, 300, "2026-07-01"),
+        ("BEARISH", -2.0, 300, "2026-07-01"),
+    ]
+    b = compute_baselines(rows)
+    # After a 3.0pp haircut nothing clears, in either direction, under any label.
+    # The null models must report that too -- not a pre-cost 0.5.
+    assert b["always_bullish_hit_rate"] == 0.0
+    assert b["always_bearish_hit_rate"] == 0.0
+    assert b["shuffled_hit_rate"] == 0.0
+
+
+def test_baselines_exclude_rows_with_unknown_cost() -> None:
+    """A row with no cost verdict cannot be scored after cost under any label."""
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 5.0, None, "2026-07-01"),
+        ("BULLISH", 5.0, 0, "2026-07-01"),
+    ]
+    b = compute_baselines(rows)
+    # n counts every row supplied, but only the row with a known haircut is scored.
+    assert b["n"] == 2
+    assert b["always_bullish_scored"] == 1.0
+    assert b["always_bullish_hit_rate"] == 1.0
+
+
+def test_baselines_drop_rows_inside_the_inconclusive_band() -> None:
+    """A result too small to call is not a miss -- it leaves the denominator."""
+    from web_dashboard.track_record_service import compute_baselines
+
+    rows = [
+        ("BULLISH", 0.1, 0, "2026-07-01"),   # inside +/-0.25pp -> not scored
+        ("BULLISH", 5.0, 0, "2026-07-01"),
+    ]
+    b = compute_baselines(rows)
+    assert b["always_bullish_scored"] == 1.0
+    assert b["always_bullish_hit_rate"] == 1.0
 
 
 def test_correct_bearish_call_contributes_positive_excess() -> None:
@@ -219,9 +276,85 @@ def test_correct_bearish_call_contributes_positive_excess() -> None:
     # Both calls were correct, so both must pull the mean UP: (5.0 + 3.0) / 2.
     assert summary["hit_rate_by_source"]["action_queue_ai_review"] == 1.0
     assert summary["avg_excess_by_source"]["action_queue_ai_review"] == 4.0
-    assert summary["excess_metric"] == "directional_after_cost"
+    # These rows carry no cost columns, so nothing was haircut and the label must say
+    # so. Publishing pre-cost numbers under "directional_after_cost" is exactly the
+    # mislabelling this assertion exists to catch.
+    assert summary["excess_metric"] == "directional"
+    assert summary["after_cost_coverage"]["rows_after_cost"] == 0
+    assert summary["after_cost_coverage"]["rows_pre_cost_only"] == 2
     # The bearish winner is the better call and must rank first.
     assert summary["best_calls"][0]["ticker"] == "AAA"
+
+
+def test_avg_excess_is_after_cost_when_rows_carry_a_haircut() -> None:
+    """`excess_metric` must describe the numbers actually published.
+
+    The regression it guards: the label was switched to "directional_after_cost"
+    while the aggregates were still built from raw pre-cost `excess_return`, so the
+    payload advertised a haircut it had not applied -- to an AI assistant that reads
+    this dict verbatim.
+    """
+    pg = _FakePg(
+        [
+            {
+                "source": "ticker_meta_analysis",
+                "stance": "BULLISH",
+                "confidence": 0.7,
+                "metadata": {},
+                "excess_return": Decimal("5.0"),
+                "excess_after_cost": Decimal("2.0"),  # 5.0 less a 300bps round trip
+                "cost_bps": 300,
+                "belief_status": "supported",
+                "ticker_return": Decimal("6.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "AAA",
+                "as_of": "2026-07-01",
+            },
+            {
+                "source": "ticker_meta_analysis",
+                "stance": "BULLISH",
+                "confidence": 0.7,
+                "metadata": {},
+                "excess_return": Decimal("7.0"),
+                "excess_after_cost": Decimal("4.0"),
+                "cost_bps": 300,
+                "belief_status": "supported",
+                "ticker_return": Decimal("8.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "BBB",
+                "as_of": "2026-07-01",
+            },
+        ]
+    )
+    summary = build_track_record_summary(pg, horizon_days=30)
+    assert summary["excess_metric"] == "directional_after_cost"
+    # After cost: (2.0 + 4.0) / 2 = 3.0. Pre-cost would have been (5.0 + 7.0) / 2 = 6.0.
+    assert summary["avg_excess_by_source"]["ticker_meta_analysis"] == 3.0
+    assert summary["after_cost_coverage"]["rows_after_cost"] == 2
+    assert summary["after_cost_coverage"]["pct_after_cost"] == 100.0
+
+
+def test_unspecified_mechanism_is_not_presented_as_a_matured_belief() -> None:
+    """Pre-proposal history must not head the mechanism block fed to the meta prompt."""
+    pg = _FakePg(
+        [
+            {
+                "source": "ticker_meta_analysis",
+                "stance": "BULLISH",
+                "confidence": 0.7,
+                "metadata": {},  # no falsifiable_proposal -> "unspecified"
+                "excess_return": Decimal("2.0"),
+                "ticker_return": Decimal("3.0"),
+                "benchmark_return": Decimal("1.0"),
+                "ticker": "OLD",
+                "as_of": "2026-07-01",
+            },
+        ]
+    )
+    summary = build_track_record_summary(pg, horizon_days=30)
+    assert [r["mechanism_key"] for r in summary["by_mechanism"]] == []
+    # Still reported, just not as a mechanism belief.
+    assert summary["mechanism_unspecified"]["n"] == 1
 
 
 def test_broad_index_etfs_excluded_from_aggregates() -> None:

@@ -36,8 +36,15 @@ class ResearchRepository:
             self._has_tickers_column = self._check_tickers_column_exists()
             # Phase K2 collector provenance; additive column may not be migrated yet.
             self._has_source_metadata_column = self._check_column_exists("source_metadata")
-            # AQuA PIT: first-known clock; additive until migration applied.
-            self._has_available_at_column = self._check_column_exists("available_at")
+            # AQuA PIT: first-known clock; additive until migration applied. Probed
+            # through pit_time so this class and the analysis services share one
+            # answer -- two independent probes of the same column could disagree
+            # within a single process.
+            from pit_time import research_articles_have_available_at
+
+            self._has_available_at_column = research_articles_have_available_at(
+                self.client
+            )
             logger.debug(
                 "ResearchRepository initialized successfully "
                 "(tickers column: %s, available_at: %s)",
@@ -84,11 +91,19 @@ class ResearchRepository:
             return False
 
     def _as_of_time_column(self) -> str:
-        """Column used for analysis lookbacks (point-in-time first-known).
+        """SQL expression for analysis lookbacks (point-in-time first-known).
 
-        Prefer immutable ``available_at`` when migrated; fall back to ``fetched_at``.
+        Delegates to :mod:`pit_time` so this repository and the analysis services
+        cannot disagree about the rule. They previously did: this returned a bare
+        ``available_at`` while ``pit_time.article_as_of_expr`` returned a COALESCE,
+        so any row with a NULL ``available_at`` (a restore from a pre-migration
+        dump, a replica where the DEFAULT did not replay, an external writer
+        inserting NULL) was completely invisible here -- the dashboard showing zero
+        articles, with no error -- while remaining visible to ticker analysis.
         """
-        return "available_at" if self._has_available_at_column else "fetched_at"
+        from pit_time import article_as_of_expr
+
+        return article_as_of_expr(self.client)
 
     def _normalize_ticker_data(self, article: Dict[str, Any]) -> Dict[str, Any]:
         """Normalize ticker data to always use 'tickers' key (array format).

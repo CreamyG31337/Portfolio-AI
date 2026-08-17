@@ -26,7 +26,20 @@ import yaml
 logger = logging.getLogger(__name__)
 
 SKILLS_DIR = Path(__file__).resolve().parent / "skills"
-DEFAULT_MAX_TOTAL_TOKENS = 1500
+
+# Raised from 1500 when falsifiable_proposal was added as an always-on priority-1
+# skill. The budget is spent in (priority, name) order and anything that overflows
+# is dropped with only a WARNING, so a new always-on skill silently evicts the
+# lowest-priority domain skills from every prompt rather than failing loudly.
+#
+# For ticker_analysis the always=True floor is what actually squeezes: it was
+# multi_source_synthesis(250) + technical_analysis(220) = 470, leaving 1030 of the
+# 1500 for keyword-matched domain skills. falsifiable_proposal(420) lifts that
+# floor to 890 and leaves only 610 -- so a biotech micro-cap, whose priority-1 set
+# alone is biotech_catalyst(380) + earnings_analysis(330) + falsifiable(420) +
+# microcap_red_flags(360) = 1490, loses canadian_market and everything below it.
+# 2200 restores roughly the pre-existing domain headroom on top of the new floor.
+DEFAULT_MAX_TOTAL_TOKENS = 2200
 
 
 @dataclass(frozen=True)

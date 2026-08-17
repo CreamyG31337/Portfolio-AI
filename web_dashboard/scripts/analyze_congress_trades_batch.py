@@ -1076,11 +1076,10 @@ def analyze_session(
         # Call AI with session prompt
         system_prompt = "You are a financial ethics analyzer. Return ONLY valid JSON with the exact fields specified."
 
-        def _congress_ok(raw: str) -> bool:
-            from falsifiable_proposal import has_valid_falsifiable_proposal
+        from falsifiable_proposal import response_has_proposal
 
-            parsed = extract_json(raw)
-            return isinstance(parsed, dict) and has_valid_falsifiable_proposal(parsed)
+        def _congress_ok(raw: str) -> bool:
+            return response_has_proposal(raw, extract_json)
 
         full_response, model = collect_with_summary_model_chain(
             ollama,

@@ -1,68 +1,111 @@
 """Point-in-time SQL helpers (AQuA transfer Phase 1).
 
 Analysis lookbacks prefer immutable ``available_at`` when the column exists.
+
+The whole point of these helpers is to stop late-ingested rows leaking backwards
+into historical windows, so the failure mode that matters is *failing open*:
+quietly falling back to the mutable ``fetched_at`` / ``created_at`` clock and
+reporting nothing. Two rules follow from that, and both are load-bearing:
+
+1. **Only successful probes are cached.** A transient connection error must not
+   pin support to False for the life of the process. Previously one pool hiccup
+   during the first analysis after a deploy disabled point-in-time filtering
+   until restart, silently.
+2. **A negative probe is re-checked.** ``ALTER TABLE`` can land while the app is
+   running, so "column absent" is cached only briefly; "column present" is
+   permanent, because a column that exists does not disappear under a live app.
 """
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
-_article_has_available_at: bool | None = None
-_social_has_available_at: bool | None = None
+logger = logging.getLogger(__name__)
+
+# Seconds to trust a *negative* probe. Short enough that applying the migration on
+# a running app takes effect without a restart, long enough that a table missing
+# the column does not re-query information_schema on every lookback.
+_NEGATIVE_TTL_SECONDS = 300.0
+
+# table -> (has_column, checked_at_monotonic). Positive results store None for the
+# timestamp and are never re-probed.
+_column_cache: dict[str, tuple[bool, float | None]] = {}
 
 
 def reset_pit_column_cache() -> None:
-    """Test helper."""
-    global _article_has_available_at, _social_has_available_at
-    _article_has_available_at = None
-    _social_has_available_at = None
+    """Drop memoized probe results. Call between tests that use different clients."""
+    _column_cache.clear()
+
+
+def _has_available_at(postgres: Any, table: str) -> bool:
+    cached = _column_cache.get(table)
+    if cached is not None:
+        present, checked_at = cached
+        if present or checked_at is None:
+            return present
+        if (time.monotonic() - checked_at) < _NEGATIVE_TTL_SECONDS:
+            return False
+
+    try:
+        rows = postgres.execute_query(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_name = %s AND column_name = 'available_at'
+            LIMIT 1
+            """,
+            (table,),
+        )
+    except Exception:
+        # Do NOT cache. Caching this is what turns one transient error into a
+        # process-lifetime silent downgrade of every point-in-time lookback.
+        logger.warning(
+            "available_at probe failed for %s; falling back to the mutable "
+            "ingest clock for this call only",
+            table,
+            exc_info=True,
+        )
+        return False
+
+    present = bool(rows)
+    _column_cache[table] = (present, None if present else time.monotonic())
+    return present
 
 
 def research_articles_have_available_at(postgres: Any) -> bool:
-    global _article_has_available_at
-    if _article_has_available_at is not None:
-        return _article_has_available_at
-    try:
-        rows = postgres.execute_query(
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_name = 'research_articles' AND column_name = 'available_at'
-            LIMIT 1
-            """
-        )
-        _article_has_available_at = bool(rows)
-    except Exception:
-        _article_has_available_at = False
-    return _article_has_available_at
+    return _has_available_at(postgres, "research_articles")
 
 
 def social_metrics_have_available_at(postgres: Any) -> bool:
-    global _social_has_available_at
-    if _social_has_available_at is not None:
-        return _social_has_available_at
-    try:
-        rows = postgres.execute_query(
-            """
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_name = 'social_metrics' AND column_name = 'available_at'
-            LIMIT 1
-            """
-        )
-        _social_has_available_at = bool(rows)
-    except Exception:
-        _social_has_available_at = False
-    return _social_has_available_at
+    return _has_available_at(postgres, "social_metrics")
 
 
 def article_as_of_expr(postgres: Any) -> str:
+    """SQL expression for "when did we first know this article", for lookbacks."""
     if research_articles_have_available_at(postgres):
-        return "COALESCE(available_at, fetched_at)"
+        return _coalesce_expr("available_at", "fetched_at")
     return "fetched_at"
 
 
 def social_as_of_expr(postgres: Any) -> str:
+    """SQL expression for "when did we first know this metric", for lookbacks."""
     if social_metrics_have_available_at(postgres):
-        return "COALESCE(available_at, created_at)"
+        return _coalesce_expr("available_at", "created_at")
     return "created_at"
+
+
+def _coalesce_expr(available_col: str, fallback_col: str) -> str:
+    """COALESCE the PIT column with the legacy ingest clock, without a silent cast.
+
+    ``available_at`` is TIMESTAMPTZ while ``fetched_at`` / ``created_at`` are naive
+    TIMESTAMP. A bare COALESCE resolves to timestamptz and reinterprets the naive
+    value in the session TimeZone, shifting every lookback boundary by the server's
+    UTC offset -- roughly 8 hours on a Vancouver-local server, which silently moves
+    articles across the boundary this module exists to enforce.
+
+    The naive columns are stored UTC, so the fallback is pinned to UTC explicitly
+    rather than inheriting whatever ``TimeZone`` the session happens to carry.
+    """
+    return f"COALESCE({available_col}, {fallback_col} AT TIME ZONE 'UTC')"

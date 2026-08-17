@@ -594,7 +594,7 @@ def _fetch_research_articles(ticker_upper: str, postgres_client) -> Dict[str, An
 
     try:
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-        from pit_time import article_as_of_expr, social_as_of_expr
+        from pit_time import article_as_of_expr
 
         as_of = article_as_of_expr(postgres_client)
         query = f"""
@@ -630,13 +630,17 @@ def _fetch_social_sentiment(ticker_upper: str, postgres_client) -> Dict[str, Any
         from pit_time import social_as_of_expr
 
         as_of = social_as_of_expr(postgres_client)
+        # Deliberately unbounded in time: this powers the *current state* ticker
+        # panel, not a point-in-time lookback, so "the last reading we have" is the
+        # answer even when it is stale. A 30-day floor here blanks the panel
+        # entirely for thin-coverage micro-caps -- the names where a stale reading
+        # is the only reading, and where hiding it is worse than dating it.
         query = f"""
             SELECT DISTINCT ON (platform)
                 ticker, platform, volume, sentiment_label, sentiment_score,
                 bull_bear_ratio, created_at
             FROM social_metrics
             WHERE ticker = %s
-              AND {as_of} >= NOW() - INTERVAL '30 days'
             ORDER BY platform, {as_of} DESC
             LIMIT 10
         """

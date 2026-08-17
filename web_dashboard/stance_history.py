@@ -14,17 +14,38 @@ logger = logging.getLogger(__name__)
 # V1 directional scoring: BUY/SELL plus meta/analysis directional labels.
 # HOLD is intentionally absent: under the excess-return hit rule it can never
 # be a hit or a miss, so scoring it only inflates denominators.
-DIRECTIONAL_STANCES = frozenset(
+#
+# THE canonical stance vocabulary. Every consumer that needs to know "which way
+# did this call point" imports these -- track_record_service (hit rate + signed
+# excess), microcap_cost_model (after-cost haircut direction), jobs_stance_outcomes
+# (which rows are scoreable). Four independent copies previously agreed only by
+# accident; a stance added to one and not the others silently changes a hit rate
+# without changing any test.
+#
+# KNOWN GAP: ai_prompts emits STRONG_BULLISH / STRONG_BEARISH (see the response
+# schemas around ai_prompts.py:356), but they are deliberately NOT listed here.
+# is_directional_stance gates jobs_stance_outcomes' scoreable filter, so the
+# model's highest-conviction calls are currently never scored at all. Adding them
+# is a real change to what enters the ledger -- a product decision, not a cleanup
+# -- so it is left alone here rather than smuggled in with a refactor.
+BULLISH_STANCES = frozenset(
     {
         "BUY",
-        "SELL",
         "BULLISH",
-        "BEARISH",
         "VERY_BULLISH",
+    }
+)
+
+BEARISH_STANCES = frozenset(
+    {
+        "SELL",
+        "BEARISH",
         "VERY_BEARISH",
         "AVOID",
     }
 )
+
+DIRECTIONAL_STANCES = BULLISH_STANCES | BEARISH_STANCES
 
 # Kept in ledger but excluded from directional hit-rate in V1.
 NON_DIRECTIONAL_STANCES = frozenset({"RISK", "WATCH"})
@@ -230,6 +251,12 @@ def format_prior_stance_for_meta_bundle(
 
     summary = track_summary
     if summary:
+        # Describe the number that is actually present. The payload only reports
+        # after-cost aggregates once rows carry a haircut, so asserting "after cost"
+        # unconditionally would tell the model a pre-cost figure had been net of
+        # trading costs -- overstating every edge it is asked to reason about.
+        after_cost = summary.get("excess_metric") == "directional_after_cost"
+        cost_note = "after cost" if after_cost else "before costs"
         for source in ("ticker_meta_analysis", "ticker_analysis"):
             rate = (summary.get("hit_rate_by_source") or {}).get(source)
             counts = (summary.get("counts_by_source") or {}).get(source) or {}
@@ -246,7 +273,7 @@ def format_prior_stance_for_meta_bundle(
                 f"hit_rate={rate_s} mean_directional_excess={ex_s} scored={scored} "
                 f"N={n_tested} "
                 f"(source calibration — not this ticker alone; excess is signed to "
-                f"the call's direction after cost, so positive means the call was right)"
+                f"the call's direction {cost_note}, so positive means the call was right)"
             )
 
         # Matured mechanism beliefs only (AQuA §4.3 analogue).

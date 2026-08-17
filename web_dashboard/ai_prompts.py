@@ -328,6 +328,7 @@ Return JSON only:
     "falsifiable_proposal": {{
         "hypothesis": "one-sentence market claim",
         "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
         "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
         "horizon_days": 7,
         "falsification_criteria": ["concrete fail condition 1", "concrete fail condition 2"],
@@ -366,6 +367,7 @@ Return JSON only:
     "falsifiable_proposal": {{
         "hypothesis": "one-sentence market claim",
         "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
         "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
         "horizon_days": 30,
         "falsification_criteria": ["concrete fail condition 1"],
@@ -419,6 +421,7 @@ Return JSON only:
     "falsifiable_proposal": {{
         "hypothesis": "one-sentence market claim",
         "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
         "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
         "horizon_days": 30,
         "falsification_criteria": ["concrete fail condition 1"],
