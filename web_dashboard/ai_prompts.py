@@ -324,7 +324,16 @@ Return JSON only:
     "themes": ["key theme 1", "key theme 2"],
     "summary": "1-2 sentence actionable summary (e.g., 'BUY on pullback to $45 support, targeting $52')",
     "analysis_text": "3-5 paragraph detailed analysis with evidence from the data",
-    "reasoning": "Internal reasoning for this assessment"
+    "reasoning": "Internal reasoning for this assessment",
+    "falsifiable_proposal": {{
+        "hypothesis": "one-sentence market claim",
+        "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
+        "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
+        "horizon_days": 7,
+        "falsification_criteria": ["concrete fail condition 1", "concrete fail condition 2"],
+        "expected_failure_modes": ["how this claim is usually noise"]
+    }}
 }}"""
 
 # Meta synthesis: reconcile prior AI outputs only (no fresh OHLCV or raw posts).
@@ -354,7 +363,16 @@ Return JSON only:
     "actionability_score": 0 to 100,
     "what_changed_vs_last_run": "string",
     "action_items": ["concrete next step for a human analyst", "..."],
-    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"
+    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker",
+    "falsifiable_proposal": {{
+        "hypothesis": "one-sentence market claim",
+        "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
+        "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
+        "horizon_days": 30,
+        "falsification_criteria": ["concrete fail condition 1"],
+        "expected_failure_modes": ["how this claim is usually noise"]
+    }}
 }}"""
 
 TICKER_META_ANALYSIS_PROMPT = """You are a senior research editor. Your inputs are ONLY pre-computed analysis artifacts
@@ -399,7 +417,16 @@ Return JSON only:
     "actionability_score": 0 to 100,
     "what_changed_vs_last_run": "string",
     "action_items": ["concrete next step for a human analyst", "..."],
-    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker"
+    "narrative": "2-4 tight paragraphs synthesizing the reconciled story for this ticker",
+    "falsifiable_proposal": {{
+        "hypothesis": "one-sentence market claim",
+        "mechanism": "why the market would pay for this",
+        "mechanism_category": "information_diffusion|liquidity_premium|sentiment_reversal|earnings_surprise_drift|catalyst_repricing|valuation_mean_reversion|informed_trading_signal|supply_demand_imbalance|sector_rotation|narrative_momentum|structural_neglect|risk_repricing|other",
+        "expected_direction": "bullish|bearish|higher_means_up|higher_means_down",
+        "horizon_days": 30,
+        "falsification_criteria": ["concrete fail condition 1"],
+        "expected_failure_modes": ["how this claim is usually noise"]
+    }}
 }}"""
 
 # Sector rotation synthesis from ETF group AI articles only (Phase 3b).

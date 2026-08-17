@@ -437,6 +437,8 @@ def score_stance_row(
             "benchmark_return": returns["benchmark_return"],
             "excess_return": returns["excess_return"],
             "benchmark_symbol": benchmark_symbol,
+            "stance": row.get("stance"),
+            "ticker": (row.get("ticker") or "").upper(),
         },
         None,
     )
@@ -448,6 +450,10 @@ def _run_stance_outcomes_job() -> None:
     scored = 0
     skipped = 0
     errors = 0
+    # Rows stored without an after-cost verdict because liquidity was unknown. They
+    # are re-scored by a later run once market cap lands, so a persistently high
+    # count means the securities backfill is behind, not that the calls were bad.
+    cost_unknown = 0
 
     try:
         from postgres_client import PostgresClient
@@ -555,27 +561,95 @@ def _run_stance_outcomes_job() -> None:
                         )
                         continue
                     payload = result.payload
-                    postgres.execute_update(
-                        """
-                        INSERT INTO stance_outcomes (
-                            stance_id, horizon_days, baseline_price, end_price,
-                            ticker_return, benchmark_return, excess_return,
-                            benchmark_symbol, scoring_version
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (stance_id, horizon_days) DO NOTHING
-                        """,
-                        (
-                            str(payload["stance_id"]),
-                            payload["horizon_days"],
-                            payload["baseline_price"],
-                            payload["end_price"],
-                            payload["ticker_return"],
-                            payload["benchmark_return"],
-                            payload["excess_return"],
-                            payload["benchmark_symbol"],
-                            SCORING_VERSION,
-                        ),
+                    from microcap_cost_model import (
+                        belief_from_excess_after_cost,
+                        excess_after_cost,
+                        round_trip_cost_bps,
                     )
+
+                    meta = sec_meta.get(ticker) or {}
+                    # No dollar-ADV column exists on `securities`, so market cap is
+                    # the only liquidity proxy available. When it is missing,
+                    # round_trip_cost_bps returns None and the row is stored without
+                    # an after-cost verdict rather than being haircut at the harshest
+                    # 300bps bucket -- a missing reference row must not manufacture a
+                    # refutation. The UPSERT below fills the verdict in on a later run
+                    # once market cap lands.
+                    cost_bps = round_trip_cost_bps(market_cap=meta.get("market_cap"))
+                    if cost_bps is None:
+                        cost_unknown += 1
+                    eac = excess_after_cost(
+                        payload["excess_return"],
+                        cost_bps,
+                        stance=str(payload.get("stance") or ""),
+                    )
+                    belief = belief_from_excess_after_cost(
+                        excess_after_cost_pct=eac,
+                        stance=str(payload.get("stance") or ""),
+                    )
+                    try:
+                        postgres.execute_update(
+                            """
+                            -- Price/return columns are immutable scored outcomes and
+                            -- are never overwritten. Only the cost verdict is filled
+                            -- in, and only when the stored row has none: without this
+                            -- a row scored while market cap was missing would keep a
+                            -- NULL (or, before this fix, a wrongly-refuted) verdict
+                            -- permanently, since the job never revisits it.
+                            INSERT INTO stance_outcomes (
+                                stance_id, horizon_days, baseline_price, end_price,
+                                ticker_return, benchmark_return, excess_return,
+                                benchmark_symbol, scoring_version,
+                                cost_bps, excess_after_cost, belief_status
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (stance_id, horizon_days) DO UPDATE SET
+                                cost_bps = EXCLUDED.cost_bps,
+                                excess_after_cost = EXCLUDED.excess_after_cost,
+                                belief_status = EXCLUDED.belief_status
+                            WHERE stance_outcomes.cost_bps IS NULL
+                              AND EXCLUDED.cost_bps IS NOT NULL
+                            """,
+                            (
+                                str(payload["stance_id"]),
+                                payload["horizon_days"],
+                                payload["baseline_price"],
+                                payload["end_price"],
+                                payload["ticker_return"],
+                                payload["benchmark_return"],
+                                payload["excess_return"],
+                                payload["benchmark_symbol"],
+                                SCORING_VERSION,
+                                cost_bps,
+                                eac,
+                                belief,
+                            ),
+                        )
+                    except Exception as insert_exc:
+                        # Pre-migration DBs: fall back to columns without cost fields.
+                        if "cost_bps" in str(insert_exc) or "excess_after_cost" in str(insert_exc):
+                            postgres.execute_update(
+                                """
+                                INSERT INTO stance_outcomes (
+                                    stance_id, horizon_days, baseline_price, end_price,
+                                    ticker_return, benchmark_return, excess_return,
+                                    benchmark_symbol, scoring_version
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (stance_id, horizon_days) DO NOTHING
+                                """,
+                                (
+                                    str(payload["stance_id"]),
+                                    payload["horizon_days"],
+                                    payload["baseline_price"],
+                                    payload["end_price"],
+                                    payload["ticker_return"],
+                                    payload["benchmark_return"],
+                                    payload["excess_return"],
+                                    payload["benchmark_symbol"],
+                                    SCORING_VERSION,
+                                ),
+                            )
+                        else:
+                            raise
                     scored += 1
                 except Exception as row_exc:
                     errors += 1
@@ -605,6 +679,11 @@ def _run_stance_outcomes_job() -> None:
             # Unknown market cap -> defaulted to the broad index. Visible so a large
             # share of guessed benchmarks cannot quietly inflate confidence.
             summary += f" bench_fallback={fallback_benchmarks}"
+        if cost_unknown:
+            # Same missing reference data, different consequence: no after-cost
+            # verdict was stored. Surfaced so it reads as a data gap awaiting
+            # re-scoring rather than a book full of inconclusive calls.
+            summary += f" cost_unknown={cost_unknown}"
         log_job_execution(JOB_ID, True, summary, duration_ms)
         mark_job_completed(
             JOB_ID,

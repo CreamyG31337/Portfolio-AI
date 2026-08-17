@@ -594,13 +594,16 @@ def _fetch_research_articles(ticker_upper: str, postgres_client) -> Dict[str, An
 
     try:
         thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-        query = """
+        from pit_time import article_as_of_expr
+
+        as_of = article_as_of_expr(postgres_client)
+        query = f"""
             SELECT id, title, url, summary, source, published_at, fetched_at,
                    relevance_score, sentiment, sentiment_score, article_type
             FROM research_articles
             WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
-            AND fetched_at >= %s
-            ORDER BY fetched_at DESC
+            AND {as_of} >= %s
+            ORDER BY {as_of} DESC
             LIMIT 50
         """
         articles = postgres_client.execute_query(
@@ -624,25 +627,33 @@ def _fetch_social_sentiment(ticker_upper: str, postgres_client) -> Dict[str, Any
         return result
 
     try:
-        query = """
+        from pit_time import social_as_of_expr
+
+        as_of = social_as_of_expr(postgres_client)
+        # Deliberately unbounded in time: this powers the *current state* ticker
+        # panel, not a point-in-time lookback, so "the last reading we have" is the
+        # answer even when it is stale. A 30-day floor here blanks the panel
+        # entirely for thin-coverage micro-caps -- the names where a stale reading
+        # is the only reading, and where hiding it is worse than dating it.
+        query = f"""
             SELECT DISTINCT ON (platform)
                 ticker, platform, volume, sentiment_label, sentiment_score,
                 bull_bear_ratio, created_at
             FROM social_metrics
             WHERE ticker = %s
-            ORDER BY platform, created_at DESC
+            ORDER BY platform, {as_of} DESC
             LIMIT 10
         """
         sentiment_data = postgres_client.execute_query(query, (ticker_upper,))
 
-        query_alerts = """
+        query_alerts = f"""
             SELECT DISTINCT ON (platform, sentiment_label)
                 ticker, platform, sentiment_label, sentiment_score, created_at
             FROM social_metrics
             WHERE ticker = %s
               AND sentiment_label IN ('EUPHORIC', 'FEARFUL', 'BULLISH')
-              AND created_at > NOW() - INTERVAL '24 hours'
-            ORDER BY platform, sentiment_label, created_at DESC
+              AND {as_of} > NOW() - INTERVAL '24 hours'
+            ORDER BY platform, sentiment_label, {as_of} DESC
             LIMIT 10
         """
         alerts = postgres_client.execute_query(query_alerts, (ticker_upper,))

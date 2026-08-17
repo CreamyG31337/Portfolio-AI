@@ -176,6 +176,7 @@ class TickerMetaAnalysisService:
                    confidence_score, platform, analyzed_at
             FROM social_sentiment_analysis
             WHERE ticker = %s
+              AND analyzed_at > NOW() - INTERVAL '90 days'
             ORDER BY analyzed_at DESC NULLS LAST
             LIMIT 4
             """,
@@ -183,16 +184,19 @@ class TickerMetaAnalysisService:
         ) or []
 
     def _fetch_article_snippets(self, ticker: str) -> list[dict[str, Any]]:
+        from pit_time import article_as_of_expr
+
+        as_of = article_as_of_expr(self.postgres)
         return self.postgres.execute_query(
-            """
+            f"""
             SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at
             FROM research_articles
             WHERE (
                 ticker = %s
                 OR (tickers IS NOT NULL AND %s = ANY(tickers))
             )
-            AND fetched_at > NOW() - INTERVAL '90 days'
-            ORDER BY fetched_at DESC
+            AND {as_of} > NOW() - INTERVAL '90 days'
+            ORDER BY {as_of} DESC
             LIMIT 6
             """,
             (ticker, ticker),
@@ -841,8 +845,14 @@ class TickerMetaAnalysisService:
         model = self._resolve_model(model_override)
         system_prompt = (
             "You are a skeptical editor. Return ONLY valid JSON with the exact fields specified. "
-            "Do not add keys."
+            "Do not add keys other than those specified (including falsifiable_proposal)."
         )
+
+        from falsifiable_proposal import response_has_proposal
+
+        def _meta_response_ok(raw: str) -> bool:
+            return response_has_proposal(raw, extract_json)
+
         full_response, model = collect_with_summary_model_chain(
             self.ollama,
             prompt=prompt,
@@ -851,7 +861,7 @@ class TickerMetaAnalysisService:
             system_prompt=system_prompt,
             json_mode=True,
             temperature=0.15,
-            response_ok=lambda s: extract_json(s) is not None,
+            response_ok=_meta_response_ok,
             function_name="ticker_meta_analysis",
             audit_extra={"tickers_extracted": [ticker_u]},
             extract_audit_fields=_extract_ticker_meta_audit_fields,
@@ -864,6 +874,13 @@ class TickerMetaAnalysisService:
         response = extract_json(full_response)
         if not response:
             logger.error("Meta analysis JSON parse failed for %s", ticker_u)
+            return None
+
+        from falsifiable_proposal import validate_falsifiable_proposal
+
+        ok, err = validate_falsifiable_proposal(response)
+        if not ok:
+            logger.error("Falsifiable proposal invalid for meta %s: %s", ticker_u, err)
             return None
 
         contradictions = response.get("contradictions") or []
@@ -986,6 +1003,10 @@ class TickerMetaAnalysisService:
             }
             if evidence:
                 stance_metadata["evidence"] = evidence
+
+            from falsifiable_proposal import proposal_metadata
+
+            stance_metadata.update(proposal_metadata(response))
 
             record_stance_safe(
                 self.postgres,

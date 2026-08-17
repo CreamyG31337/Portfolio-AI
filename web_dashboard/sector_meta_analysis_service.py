@@ -78,14 +78,17 @@ class SectorMetaAnalysisService:
 
     def list_sector_keys(self) -> list[str]:
         """Distinct sector buckets (blank sector → __UNTAGGED__), newest activity first."""
+        from pit_time import article_as_of_expr
+
+        as_of = article_as_of_expr(self.postgres)
         rows = self.postgres.execute_query(
-            """
+            f"""
             SELECT COALESCE(NULLIF(TRIM(sector), ''), '__UNTAGGED__') AS sk
             FROM research_articles
             WHERE article_type = 'ETF Analysis'
-              AND fetched_at >= NOW() - (%s * INTERVAL '1 day')
+              AND {as_of} >= NOW() - (%s * INTERVAL '1 day')
             GROUP BY 1
-            ORDER BY MAX(fetched_at) DESC
+            ORDER BY MAX({as_of}) DESC
             LIMIT %s
             """,
             (_LOOKBACK_DAYS, _MAX_SECTORS_PER_RUN),
@@ -93,17 +96,20 @@ class SectorMetaAnalysisService:
         return [str(r["sk"]) for r in (rows or []) if r.get("sk")]
 
     def fetch_etf_articles_for_sector(self, sector_key: str) -> list[dict[str, Any]]:
+        from pit_time import article_as_of_expr
+
+        as_of = article_as_of_expr(self.postgres)
         if sector_key == "__UNTAGGED__":
-            where = """
+            where = f"""
                 article_type = 'ETF Analysis'
-                AND fetched_at >= NOW() - (%s * INTERVAL '1 day')
+                AND {as_of} >= NOW() - (%s * INTERVAL '1 day')
                 AND (sector IS NULL OR TRIM(sector) = '')
             """
             params: tuple[Any, ...] = (_LOOKBACK_DAYS,)
         else:
-            where = """
+            where = f"""
                 article_type = 'ETF Analysis'
-                AND fetched_at >= NOW() - (%s * INTERVAL '1 day')
+                AND {as_of} >= NOW() - (%s * INTERVAL '1 day')
                 AND TRIM(COALESCE(sector, '')) = %s
             """
             params = (_LOOKBACK_DAYS, sector_key)
@@ -112,7 +118,7 @@ class SectorMetaAnalysisService:
                    sentiment, sentiment_score, source, published_at, fetched_at
             FROM research_articles
             WHERE {where}
-            ORDER BY fetched_at DESC
+            ORDER BY {as_of} DESC
             LIMIT %s
         """
         params = params + (_MAX_ARTICLES_PER_SECTOR,)

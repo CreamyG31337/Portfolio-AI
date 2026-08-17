@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS stance_outcomes (
     ticker_return NUMERIC(10, 6),
     benchmark_return NUMERIC(10, 6),
     excess_return NUMERIC(10, 6),
+    cost_bps SMALLINT,
+    excess_after_cost NUMERIC(10, 6),
+    belief_status VARCHAR(20),
     scored_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (id),
     CONSTRAINT stance_outcomes_unique UNIQUE (stance_id, horizon_days)

@@ -9,7 +9,9 @@ from statistics import median
 from typing import Any
 
 from benchmarks import SCORING_VERSION
+from microcap_cost_model import INCONCLUSIVE_BAND_PP
 from postgres_client import PostgresClient
+from stance_history import BEARISH_STANCES, BULLISH_STANCES
 
 _DOMAIN_TOP_N = 25
 
@@ -17,10 +19,11 @@ _CONF_BAND_LOW = "lt_0.5"
 _CONF_BAND_MID = "0.5_to_0.75"
 _CONF_BAND_HIGH = "gte_0.75"
 
-# Shared by _hit_from_row and _directional_excess so the two can never disagree
-# about what counts as a directional call.
-_BULLISH_STANCES = frozenset({"BUY", "BULLISH", "VERY_BULLISH"})
-_BEARISH_STANCES = frozenset({"SELL", "BEARISH", "VERY_BEARISH", "AVOID"})
+# Aliases onto the canonical vocabulary in stance_history. Shared by _hit_from_row,
+# _directional_excess and the null models so none of them can disagree about what
+# counts as a directional call.
+_BULLISH_STANCES = BULLISH_STANCES
+_BEARISH_STANCES = BEARISH_STANCES
 
 # ETFs that track substantially the same index as the benchmark they are scored
 # against, making their excess return ~0 by construction. "BULLISH on VOO" vs the
@@ -105,7 +108,28 @@ def _date_key(as_of: Any) -> str:
     return str(as_of or "")[:10]
 
 
-def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, Any]:
+def _after_cost_outcome(
+    raw_excess: float, cost_bps: int | None, *, bullish: bool
+) -> bool | None:
+    """Would a call in this direction on this row be a hit, after its own costs?
+
+    Returns None when the row cannot be judged after cost -- unknown liquidity, or
+    a result inside the inconclusive band. None means "not in the denominator",
+    matching :func:`_hit_from_row_after_cost` so the null models and the actual
+    rate are computed under one rule.
+    """
+    if cost_bps is None:
+        return None
+    directional = Decimal(str(raw_excess)) if bullish else -Decimal(str(raw_excess))
+    eac = directional - (Decimal(cost_bps) / Decimal("100"))
+    if abs(eac) < INCONCLUSIVE_BAND_PP:
+        return None
+    return eac > 0
+
+
+def compute_baselines(
+    baseline_rows: list[tuple[str, float, int | None, Any]],
+) -> dict[str, Any]:
     """Null models, so a hit rate can be interpreted instead of merely reported.
 
     A hit rate on its own says nothing: the median individual stock underperforms an
@@ -135,15 +159,34 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
     Bucketing by day is deliberate: stances are strongly correlated within a session
     (a market drop makes every bullish call miss at once), and permuting within the
     day preserves that structure instead of pretending the rows are independent.
-    """
-    by_day: dict[str, list[tuple[str, float]]] = defaultdict(list)
-    for stance, excess, as_of in baseline_rows:
-        by_day[_date_key(as_of)].append((stance, excess))
 
+    **After-cost parity.** Each row carries its own ``cost_bps`` so every null model
+    is scored under exactly the rule the actual hit rate uses: re-sign the raw excess
+    under the *reassigned* label, subtract that row's haircut, and drop the row from
+    the denominator when the result lands inside the inconclusive band. Without this
+    the baselines stay pre-cost while the actual rate is after-cost, and
+    ``edge_vs_shuffled`` goes structurally negative on any book whose typical excess
+    is smaller than its trading costs -- reporting a units mismatch as lost skill,
+    which is the exact apples-to-oranges failure this function exists to prevent.
+
+    A row whose ``cost_bps`` is None has no after-cost verdict under any label, so it
+    is excluded from every baseline rather than being scored pre-cost alongside rows
+    that were haircut.
+    """
+    by_day: dict[str, list[tuple[str, float, int | None]]] = defaultdict(list)
+    for stance, excess, cost_bps, as_of in baseline_rows:
+        by_day[_date_key(as_of)].append((stance, excess, cost_bps))
+
+    # Expected *scored* counts are fractional under permutation (a row may be
+    # inconclusive under one label and decisive under the other), so denominators
+    # are floats here while the actual-rate denominators stay integers.
     n = 0
     always_bullish_hits = 0
+    always_bullish_scored = 0
     always_bearish_hits = 0
+    always_bearish_scored = 0
     shuffled_hits = 0.0
+    shuffled_scored = 0.0
 
     # Per-direction actual vs expected. This is the sharper cut: a lopsided label mix
     # (this book is ~86% bullish) means the pooled shuffled null is dominated by the
@@ -151,37 +194,72 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
     # invisible in the aggregate. The two directions' expected hits sum to the pooled
     # shuffled figure by construction, so the breakdown stays internally consistent.
     dir_stats = {
-        "bullish": {"n": 0, "hits": 0, "expected": 0.0},
-        "bearish": {"n": 0, "hits": 0, "expected": 0.0},
+        "bullish": {"n": 0, "hits": 0, "expected": 0.0, "expected_scored": 0.0},
+        "bearish": {"n": 0, "hits": 0, "expected": 0.0, "expected_scored": 0.0},
     }
 
     for bucket in by_day.values():
         total = len(bucket)
         if not total:
             continue
-        pos = sum(1 for _s, ex in bucket if ex > 0)
-        neg = sum(1 for _s, ex in bucket if ex < 0)
-        bullish = sum(1 for s, _ex in bucket if s.upper() in _BULLISH_STANCES)
-        bearish = sum(1 for s, _ex in bucket if s.upper() in _BEARISH_STANCES)
+        # Outcome of each row under each hypothetical label, after that row's own
+        # haircut: True = hit, False = miss, None = inside the band (not scored).
+        as_bull = [_after_cost_outcome(ex, cost, bullish=True) for _s, ex, cost in bucket]
+        as_bear = [_after_cost_outcome(ex, cost, bullish=False) for _s, ex, cost in bucket]
+
+        pos = sum(1 for o in as_bull if o is True)
+        pos_scored = sum(1 for o in as_bull if o is not None)
+        neg = sum(1 for o in as_bear if o is True)
+        neg_scored = sum(1 for o in as_bear if o is not None)
+
+        bullish = sum(1 for s, _ex, _c in bucket if s.upper() in _BULLISH_STANCES)
+        bearish = sum(1 for s, _ex, _c in bucket if s.upper() in _BEARISH_STANCES)
 
         n += total
         always_bullish_hits += pos
+        always_bullish_scored += pos_scored
         always_bearish_hits += neg
+        always_bearish_scored += neg_scored
+
+        # Permutation expectation: a row draws the bullish label with probability
+        # bullish/total. Hits and scored rows are accumulated separately because a
+        # row can be decisive under one label and inconclusive under the other.
         labelled = bullish + bearish
         if labelled:
             shuffled_hits += (bullish * pos + bearish * neg) / total
+            shuffled_scored += (bullish * pos_scored + bearish * neg_scored) / total
 
-        dir_stats["bullish"]["n"] += bullish
-        dir_stats["bearish"]["n"] += bearish
-        dir_stats["bullish"]["hits"] += sum(
-            1 for s, ex in bucket if s.upper() in _BULLISH_STANCES and ex > 0
+        actual_bull_hits = sum(
+            1
+            for (s, _ex, _c), o in zip(bucket, as_bull)
+            if s.upper() in _BULLISH_STANCES and o is True
         )
-        dir_stats["bearish"]["hits"] += sum(
-            1 for s, ex in bucket if s.upper() in _BEARISH_STANCES and ex < 0
+        actual_bull_scored = sum(
+            1
+            for (s, _ex, _c), o in zip(bucket, as_bull)
+            if s.upper() in _BULLISH_STANCES and o is not None
         )
-        # Expected hits if this bucket's labels were dealt out at random.
-        dir_stats["bullish"]["expected"] += bullish * pos / total
-        dir_stats["bearish"]["expected"] += bearish * neg / total
+        actual_bear_hits = sum(
+            1
+            for (s, _ex, _c), o in zip(bucket, as_bear)
+            if s.upper() in _BEARISH_STANCES and o is True
+        )
+        actual_bear_scored = sum(
+            1
+            for (s, _ex, _c), o in zip(bucket, as_bear)
+            if s.upper() in _BEARISH_STANCES and o is not None
+        )
+
+        dir_stats["bullish"]["n"] += actual_bull_scored
+        dir_stats["bearish"]["n"] += actual_bear_scored
+        dir_stats["bullish"]["hits"] += actual_bull_hits
+        dir_stats["bearish"]["hits"] += actual_bear_hits
+        # Expected hits/scored if this bucket's labels were dealt out at random.
+        if total:
+            dir_stats["bullish"]["expected"] += bullish * pos / total
+            dir_stats["bullish"]["expected_scored"] += bullish * pos_scored / total
+            dir_stats["bearish"]["expected"] += bearish * neg / total
+            dir_stats["bearish"]["expected_scored"] += bearish * neg_scored / total
 
     if n == 0:
         return {
@@ -198,28 +276,95 @@ def compute_baselines(baseline_rows: list[tuple[str, float, Any]]) -> dict[str, 
         if not count:
             continue
         rate = stats["hits"] / count
-        expected = stats["expected"] / count
+        expected_scored = stats["expected_scored"]
+        expected = (stats["expected"] / expected_scored) if expected_scored else None
         by_direction[name] = {
             "n": count,
             "hits": stats["hits"],
             "hit_rate": round(rate, 4),
-            "expected_hit_rate": round(expected, 4),
-            "edge": round(rate - expected, 4),
+            "expected_hit_rate": round(expected, 4) if expected is not None else None,
+            "edge": round(rate - expected, 4) if expected is not None else None,
         }
+
+    def _rate(hits: float, scored: float) -> float | None:
+        return round(hits / scored, 4) if scored else None
 
     return {
         "n": n,
-        "always_bullish_hit_rate": round(always_bullish_hits / n, 4),
-        "always_bearish_hit_rate": round(always_bearish_hits / n, 4),
-        "shuffled_hit_rate": round(shuffled_hits / n, 4),
+        "always_bullish_hit_rate": _rate(always_bullish_hits, always_bullish_scored),
+        "always_bearish_hit_rate": _rate(always_bearish_hits, always_bearish_scored),
+        "shuffled_hit_rate": _rate(shuffled_hits, shuffled_scored),
+        # Denominators differ from ``n``: rows inside the inconclusive band (or with
+        # unknown cost) are excluded, so exposing them keeps the rates auditable.
+        "always_bullish_scored": round(always_bullish_scored, 2),
+        "always_bearish_scored": round(always_bearish_scored, 2),
+        "shuffled_scored": round(shuffled_scored, 2),
         "day_buckets": len(by_day),
         "by_direction": by_direction,
     }
 
 
+_MECHANISM_UNSPECIFIED = "unspecified"
+
+
+def _mechanism_key_from_metadata(meta: dict[str, Any]) -> str:
+    proposal = meta.get("falsifiable_proposal")
+    if isinstance(proposal, dict):
+        key = str(proposal.get("mechanism_key") or "").strip()
+        if key:
+            return key
+        mech = str(proposal.get("mechanism") or "").strip()
+        if mech:
+            from falsifiable_proposal import mechanism_key
+
+            return mechanism_key(mech) or "unspecified"
+    return "unspecified"
+
+
+def _cost_bps_from_row(row: dict[str, Any]) -> int | None:
+    """Row's stored round-trip haircut, or None when it was never scored with one."""
+    raw = row.get("cost_bps")
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _hit_from_row_after_cost(row: dict[str, Any]) -> bool | None:
+    """Prefer belief_status / directional excess_after_cost when present.
+
+    Falls back to the pre-cost sign rule only for rows that predate the cost columns.
+    Those rows are counted separately by the caller (``pre_cost_only_scored``) so a
+    blended rate is never published as if it were uniformly after-cost.
+    """
+    belief = (row.get("belief_status") or "").strip().lower()
+    if belief == "supported":
+        return True
+    if belief == "refuted":
+        return False
+    if belief == "inconclusive":
+        return None
+    eac = _finite_decimal(row.get("excess_after_cost"))
+    if eac is not None:
+        if abs(eac) < INCONCLUSIVE_BAND_PP:
+            return None
+        return eac > 0
+    return _hit_from_row(row)
+
+
 def _parse_metadata(raw: Any) -> dict[str, Any]:
     if isinstance(raw, dict):
         return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            import json
+
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
     return {}
 
 
@@ -309,24 +454,43 @@ def build_track_record_summary(
     # across them reintroduces exactly the apples-to-oranges problem the per-ticker
     # benchmark work fixed. A future scheme change bumps the version and this query
     # keeps returning a self-consistent set.
-    rows = pg.execute_query(
-        """
-        SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
-               so.excess_return, so.ticker_return, so.benchmark_return,
-               so.benchmark_symbol, sh.ticker, sh.as_of
-        FROM stance_outcomes so
-        JOIN stance_history sh ON sh.id = so.stance_id
-        WHERE so.horizon_days = %s
-          AND COALESCE(so.scoring_version, 1) = %s
-        ORDER BY so.scored_at DESC
-        """,
-        (horizon_days, scoring_version),
-    )
+    try:
+        rows = pg.execute_query(
+            """
+            SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
+                   so.excess_return, so.excess_after_cost, so.belief_status, so.cost_bps,
+                   so.ticker_return, so.benchmark_return,
+                   so.benchmark_symbol, sh.ticker, sh.as_of
+            FROM stance_outcomes so
+            JOIN stance_history sh ON sh.id = so.stance_id
+            WHERE so.horizon_days = %s
+              AND COALESCE(so.scoring_version, 1) = %s
+            ORDER BY so.scored_at DESC
+            """,
+            (horizon_days, scoring_version),
+        )
+    except Exception:
+        rows = pg.execute_query(
+            """
+            SELECT sh.source, sh.stance, sh.confidence, sh.metadata,
+                   so.excess_return, so.ticker_return, so.benchmark_return,
+                   so.benchmark_symbol, sh.ticker, sh.as_of
+            FROM stance_outcomes so
+            JOIN stance_history sh ON sh.id = so.stance_id
+            WHERE so.horizon_days = %s
+              AND COALESCE(so.scoring_version, 1) = %s
+            ORDER BY so.scored_at DESC
+            """,
+            (horizon_days, scoring_version),
+        )
 
     by_source: dict[str, dict[str, int]] = {}
     by_verdict: dict[str, dict[str, int]] = {}
     by_conf_band: dict[str, dict[str, int]] = {}
+    by_mechanism: dict[str, dict[str, int]] = {}
     excess_by_source: dict[str, list[float]] = defaultdict(list)
+    pre_cost_excess_by_source: dict[str, list[float]] = defaultdict(list)
+    excess_after_cost_by_mechanism: dict[str, list[float]] = defaultdict(list)
     hits: list[dict[str, Any]] = []
     misses: list[dict[str, Any]] = []
 
@@ -350,7 +514,13 @@ def build_track_record_summary(
             bucket["misses"] += 1
 
     broad_index_etf_excluded = 0
-    baseline_rows: list[tuple[str, float, Any]] = []
+    baseline_rows: list[tuple[str, float, int | None, Any]] = []
+    # How many scoreable rows actually carry an after-cost verdict. Rows written
+    # before the cost columns existed never will (the scorer inserts ON CONFLICT DO
+    # NOTHING, so they are not revisited), and blending them into the same rate as
+    # haircut rows would put two different definitions of "hit" behind one number.
+    after_cost_scored = 0
+    pre_cost_only_scored = 0
 
     for row in rows:
         # Tautological rows are dropped before any aggregate touches them, so they
@@ -361,7 +531,7 @@ def build_track_record_summary(
 
         source = row.get("source") or "unknown"
         bucket = by_source.setdefault(source, _empty_count_bucket())
-        hit = _hit_from_row(row)
+        hit = _hit_from_row_after_cost(row)
         _bump(bucket, hit)
         if hit is True:
             hits.append(dict(row))
@@ -369,6 +539,13 @@ def build_track_record_summary(
             misses.append(dict(row))
 
         meta = _parse_metadata(row.get("metadata"))
+        mech_key = _mechanism_key_from_metadata(meta)
+        mb = by_mechanism.setdefault(mech_key, _empty_count_bucket())
+        _bump(mb, hit)
+        eac = _finite_decimal(row.get("excess_after_cost"))
+        if hit is not None and eac is not None:
+            excess_after_cost_by_mechanism[mech_key].append(float(eac))
+
         verdict = (meta.get("verdict") or "").upper() or "UNKNOWN"
         vb = by_verdict.setdefault(verdict, _empty_count_bucket())
         _bump(vb, hit)
@@ -378,17 +555,33 @@ def build_track_record_summary(
             cb = by_conf_band.setdefault(band, _empty_count_bucket())
             _bump(cb, hit)
 
+        # The published excess must match the published hit rule. `excess_after_cost`
+        # is already directional (positive = call was right after the haircut), so it
+        # drops straight in; `_directional_excess` is the pre-cost fallback used only
+        # while no row has cost columns yet.
         dir_ex = _directional_excess(row)
-        if hit is not None and dir_ex is not None:
-            excess_by_source[source].append(dir_ex)
+        if hit is not None:
+            if eac is not None:
+                excess_by_source[source].append(float(eac))
+                after_cost_scored += 1
+            elif dir_ex is not None:
+                pre_cost_excess_by_source[source].append(dir_ex)
+                pre_cost_only_scored += 1
 
         # Baselines need the RAW excess (the market outcome) paired with the label,
         # so a null model can reassign labels to the same outcomes. Directional
         # excess would bake the label in and make every baseline trivially equal.
+        # `cost_bps` rides along so the null models can apply the same haircut the
+        # actual rate was computed with.
         raw_ex = _finite_decimal(row.get("excess_return"))
         if hit is not None and raw_ex is not None:
             baseline_rows.append(
-                ((row.get("stance") or "").upper(), float(raw_ex), row.get("as_of"))
+                (
+                    (row.get("stance") or "").upper(),
+                    float(raw_ex),
+                    _cost_bps_from_row(row),
+                    row.get("as_of"),
+                )
             )
 
         cov = coverage_totals[source]
@@ -448,9 +641,15 @@ def build_track_record_summary(
     hits.sort(key=_excess_magnitude, reverse=True)
     misses.sort(key=_excess_magnitude)
 
+    # One definition per payload. If no row carries an after-cost verdict (a DB where
+    # the cost columns were only just added), fall back to pre-cost excess and say so
+    # in `excess_metric` rather than labelling pre-cost numbers as after-cost.
+    after_cost_mode = after_cost_scored > 0
+    source_excess = excess_by_source if after_cost_mode else pre_cost_excess_by_source
+
     avg_excess_by_source: dict[str, float | None] = {}
     median_excess_by_source: dict[str, float | None] = {}
-    for source, values in excess_by_source.items():
+    for source, values in source_excess.items():
         mean_v, med_v = _mean_median(values)
         avg_excess_by_source[source] = mean_v
         median_excess_by_source[source] = med_v
@@ -518,20 +717,80 @@ def build_track_record_summary(
         else None
     )
 
+    # Multiple-testing note: without N you cannot deflate. Expected false
+    # positives at alpha=0.05 if every claim were noise.
+    candidates_tested = overall_scored
+    expected_false_positives_alpha_05 = (
+        round(0.05 * candidates_tested, 2) if candidates_tested else 0.0
+    )
+
+    # Every stance predating falsifiable proposals buckets as "unspecified", which on
+    # any real ledger is the largest bucket by a wide margin. Sorted by -n it would be
+    # row 1 of the "Matured mechanisms" block injected into the meta prompt -- the most
+    # authoritative-looking line carrying no mechanism at all. It is reported as its
+    # own count instead of competing for a slot as though it were a belief.
+    by_mechanism_rows: list[dict[str, Any]] = []
+    mechanism_unspecified: dict[str, Any] | None = None
+    for mech, counts in by_mechanism.items():
+        scored_m = int(counts.get("scored") or 0)
+        mean_eac, _med = _mean_median(excess_after_cost_by_mechanism.get(mech) or [])
+        entry = {
+            "mechanism_key": mech,
+            "n": scored_m,
+            "hits": int(counts.get("hits") or 0),
+            "hit_rate": _rate_from_counts(counts),
+            "mean_excess_after_cost": mean_eac,
+            "expected_false_positives_alpha_05": round(0.05 * scored_m, 2),
+        }
+        if mech == _MECHANISM_UNSPECIFIED:
+            mechanism_unspecified = entry
+            continue
+        by_mechanism_rows.append(entry)
+    by_mechanism_rows.sort(key=lambda r: (-int(r["n"]), str(r["mechanism_key"])))
+
     return {
         "horizon_days": horizon_days,
         "total_scored": len(rows),
+        "candidates_tested": candidates_tested,
+        "expected_false_positives_alpha_05": expected_false_positives_alpha_05,
         "baselines": baselines,
         # Excess-return keys below are DIRECTIONAL: positive always means the call
         # was right, for bearish stances too. Declared in the payload so downstream
         # consumers (including the AI assistant, which reads this dict verbatim)
         # cannot mistake it for raw benchmark-relative excess.
-        "excess_metric": "directional",
+        #
+        # The label tracks what was actually computed. It only says "after_cost" when
+        # at least one row carried a haircut; otherwise the aggregates really are
+        # pre-cost and claiming otherwise would mislead the assistant reading this.
+        "excess_metric": (
+            "directional_after_cost" if after_cost_mode else "directional"
+        ),
+        # Rows behind the hit rate that predate the cost columns and were therefore
+        # scored on the pre-cost sign rule. Non-zero means `hit_rate_by_source` mixes
+        # two definitions; surfaced so that is visible instead of implicit.
+        "after_cost_coverage": {
+            "rows_after_cost": after_cost_scored,
+            "rows_pre_cost_only": pre_cost_only_scored,
+            "pct_after_cost": (
+                round(
+                    100.0
+                    * after_cost_scored
+                    / (after_cost_scored + pre_cost_only_scored),
+                    1,
+                )
+                if (after_cost_scored + pre_cost_only_scored)
+                else None
+            ),
+        },
         "scoring_version": scoring_version,
         "broad_index_etf_excluded": broad_index_etf_excluded,
-        "hit_rate_by_source": {k: _rate(v) for k, v in by_source.items()},
-        "hit_rate_by_verdict": {k: _rate(v) for k, v in by_verdict.items()},
+        "hit_rate_by_source": {k: _rate_from_counts(v) for k, v in by_source.items()},
+        "hit_rate_by_verdict": {k: _rate_from_counts(v) for k, v in by_verdict.items()},
         "hit_rate_by_confidence_band": hit_rate_by_confidence_band,
+        "by_mechanism": by_mechanism_rows,
+        # Stances with no falsifiable proposal attached (all pre-PR history). Kept out
+        # of `by_mechanism` so it cannot be presented as a matured mechanism belief.
+        "mechanism_unspecified": mechanism_unspecified,
         "avg_excess_by_source": avg_excess_by_source,
         "median_excess_by_source": median_excess_by_source,
         "best_calls": hits[:5],
