@@ -1,17 +1,20 @@
 """Ollama context-window helpers: sticky num_ctx, unload, telemetry, budget scaffold.
 
-Shared-GPU note (ts-desktop RTX 3090 / 24 GB): Goose and this app share one Ollama
-host. Context is fixed at model *load* (``llama-server -c N``), not per request.
+Host note (ts-cr-desktop RTX 3090 / 24 GB): context is fixed at model *load*
+(``llama-server -c N``), not per request. The 3090 moved here from ts-desktop on
+2026-08-18. Goose no longer shares this GPU -- it runs on ts-desktop's RTX 3070 --
+so the whole 24 GB is this app's, but num_ctx below is left at its tuned value
+until it can be re-measured on the new host.
 
 **Verified Ollama split:** roughly half of ``num_ctx`` is for the prompt, half for
 generation. So ``num_ctx=65536`` → ~32k usable prompt (Goose budgets ~28k under
 that). ``/api/show`` and ``/api/ps`` report the *full* window, not usable prompt.
 ``OLLAMA_CONTEXT_LENGTH`` is not the right fix for "died at 16–20k".
 
-Match Goose on the NVIDIA host: sticky ``options.num_ctx: 65536`` every request
+On the NVIDIA host: sticky ``options.num_ctx: 65536`` every request
 for ``qwen3.8:27b-mtp-q4_K_M``. Qwen3.8 no longer bakes num_ctx into the GGUF,
 so without an explicit options.num_ctx it inherits ``OLLAMA_CONTEXT_LENGTH=32768``.
-Never 20000 or 32768 on that shared runner (mismatched sizes force ~5–15s
+Never 20000 or 32768 on that runner (mismatched sizes force ~5–15s
 reloads). Truncation is silent and drops the **front**. Prefer
 ``prompt_eval_count`` / needle tests over ``/api/show``.
 """

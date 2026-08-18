@@ -457,8 +457,8 @@ Models worth evaluating as we add more queue-managed jobs. Not committed to a ph
 
 | Model          | Pull name       | Size  | Good for                           | Installed on  |
 | -------------- | --------------- | ----- | ---------------------------------- | ------------- |
-| Magistral Small | `magistral:24b` | 14 GB | Financial reasoning, deep analysis | ts-desktop    |
-| GPT-OSS         | `gpt-oss:20b`   | 13 GB | JSON output, fast tool/agent calls | ts-desktop    |
+| Magistral Small | `magistral:24b` | 14 GB | Financial reasoning, deep analysis | ts-cr-desktop |
+| GPT-OSS         | `gpt-oss:20b`   | 13 GB | JSON output, fast tool/agent calls | ts-cr-desktop |
 
 When evaluating each, decide whether it slots in as:
 

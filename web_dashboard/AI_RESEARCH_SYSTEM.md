@@ -332,10 +332,12 @@ logged and ignored so we do not churn reloads. To change intentionally:
 
 Higher `num_ctx` does **not** reliably upgrade an already-warm smaller runner.
 
-### Picking `num_ctx` on a shared GPU (ts-desktop RTX 3090)
+### Picking `num_ctx` on the NVIDIA GPU host (ts-cr-desktop RTX 3090)
 
 **Hardware baseline:** shipped `num_ctx` for `qwen3.8:27b-mtp-q4_K_M` is
-**`65536`**, tuned for an **NVIDIA RTX 3090 with 24 GB VRAM**, shared with Goose.
+**`65536`**, tuned for an **NVIDIA RTX 3090 with 24 GB VRAM**. It was tuned while
+Goose shared that GPU; since 2026-08-18 the 3090 lives on ts-cr-desktop and Goose
+no longer shares it, so there is now headroom above 65536 if it gets re-measured.
 Qwen3.8 GGUFs no longer bake `num_ctx`, so without an explicit `options.num_ctx`
 the runner inherits `OLLAMA_CONTEXT_LENGTH=32768` (~16k usable prompt). Sticky
 65536 keeps the old effective window. This project is open source — if you run a
