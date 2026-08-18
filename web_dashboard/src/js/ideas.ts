@@ -95,16 +95,16 @@ function setAcceptError(text: string): void {
 
 function openAcceptModal(): void {
   const modal = document.getElementById("ideas-accept-modal");
-  if (!modal) return;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
+  if (!modal || !modal.classList.contains("hidden")) return;
+  document.getElementById("ideas-accept-modal-trigger")?.click();
 }
 
 function closeAcceptModal(): void {
   const modal = document.getElementById("ideas-accept-modal");
   if (!modal) return;
-  modal.classList.add("hidden");
-  modal.setAttribute("aria-hidden", "true");
+  if (!modal.classList.contains("hidden")) {
+    document.getElementById("ideas-accept-modal-trigger")?.click();
+  }
   acceptPending = null;
   setAcceptError("");
 }
@@ -236,10 +236,21 @@ function setupAcceptModal(): void {
       closeAcceptModal();
     }
   });
-  // Backdrop click closes (modal root is the full-screen overlay).
-  document.getElementById("ideas-accept-modal")?.addEventListener("click", (ev) => {
-    if (ev.target === ev.currentTarget) closeAcceptModal();
-  });
+
+  // Since Flowbite closes the modal automatically on ESC and backdrop clicks (when using data attributes),
+  // we must ensure our internal JS state is also cleared if the modal closes.
+  // Instead of overriding the click event, we attach a generic MutationObserver
+  // that watches for the modal's hidden state.
+  const modal = document.getElementById("ideas-accept-modal");
+  if (modal) {
+    const observer = new MutationObserver(() => {
+      if (modal.classList.contains("hidden")) {
+        acceptPending = null;
+        setAcceptError("");
+      }
+    });
+    observer.observe(modal, { attributes: true, attributeFilter: ["class"] });
+  }
 }
 
 function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {
