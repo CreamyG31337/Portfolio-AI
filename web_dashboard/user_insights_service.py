@@ -33,6 +33,12 @@ META_THESIS_MAX_PER_TICKER = 3
 META_THESIS_RECENT_DAYS = 14
 # Auto soft-archive weak/bootstrap drafts after this many consecutive INSUFFICIENT_DATA llm_replies.
 WEAK_INSUFFICIENT_ARCHIVE_THRESHOLD = 3
+# Correlated subquery: last advisory eval timestamp (does not bump last_reviewed_at).
+_LATEST_LLM_REPLY_AT_SQL = """
+               (
+                   SELECT MAX(e.created_at) FROM thesis_entries e
+                   WHERE e.thesis_id = t.id AND e.entry_kind = 'llm_reply'
+               ) AS latest_llm_reply_at"""
 
 
 def _normalize_ticker(ticker: str) -> str:
@@ -78,8 +84,32 @@ def _parse_ts(val: Any) -> datetime | None:
 
 
 def thesis_reviewed_at(row: dict[str, Any]) -> datetime | None:
-    """Effective review timestamp: last human review, else created_at."""
+    """Effective human-review timestamp: last human review, else created_at."""
     return _parse_ts(row.get("last_reviewed_at")) or _parse_ts(row.get("created_at"))
+
+
+def thesis_checked_at(row: dict[str, Any]) -> datetime | None:
+    """Last check-in for due/stale: human review, latest AI llm_reply, or created_at.
+
+    ``last_reviewed_at`` stays human-only (eval must not bump it). Due/stale for
+    the Insights queue and Today/Ideas uses this so a successful eval actually
+    refreshes the thread instead of leaving it stale forever.
+    """
+    latest_llm = _parse_ts(row.get("latest_llm_reply_at"))
+    if latest_llm is None:
+        latest_entry = latest_llm_reply_entry(row)
+        if latest_entry:
+            latest_llm = _parse_ts(latest_entry.get("created_at"))
+    present = [
+        ts
+        for ts in (
+            _parse_ts(row.get("last_reviewed_at")),
+            latest_llm,
+            _parse_ts(row.get("created_at")),
+        )
+        if ts is not None
+    ]
+    return max(present) if present else None
 
 
 def is_weak_thesis(
@@ -120,6 +150,29 @@ def classify_due_status(
     if age_days >= soft_days:
         return "due_for_review"
     return None
+
+
+def _apply_due_fields(
+    row: dict[str, Any],
+    *,
+    now: datetime,
+    soft_days: int = DEFAULT_SOFT_DUE_DAYS,
+    hard_days: int = DEFAULT_HARD_STALE_DAYS,
+) -> None:
+    """Set review_status / age_days / reviewed_at / checked_at from check-in time."""
+    checked = thesis_checked_at(row)
+    row["review_status"] = classify_due_status(
+        checked, soft_days=soft_days, hard_days=hard_days, now=now
+    )
+    human = thesis_reviewed_at(row)
+    row["reviewed_at"] = human.isoformat() if human else None
+    row["checked_at"] = checked.isoformat() if checked else None
+    age_days = None
+    if checked is not None:
+        if checked.tzinfo is None:
+            checked = checked.replace(tzinfo=UTC)
+        age_days = round((now - checked).total_seconds() / 86400.0, 1)
+    row["age_days"] = age_days
 
 
 def _entry_metadata(entry: dict[str, Any] | None) -> dict[str, Any]:
@@ -177,16 +230,32 @@ def latest_llm_reply_entry(detail: dict[str, Any]) -> dict[str, Any] | None:
 def should_skip_thesis_eval(
     detail: dict[str, Any],
     research_refs: dict[str, Any],
+    *,
+    now: datetime | None = None,
+    max_digest_age_days: int = DEFAULT_SOFT_DUE_DAYS,
 ) -> tuple[bool, str, str]:
-    """Return (skip, digest, reason). Skip when prior llm_reply used the same digest."""
+    """Return (skip, digest, reason). Skip when prior llm_reply used the same digest.
+
+    Digest skip expires after ``max_digest_age_days`` so stale threads re-enter the
+    LLM batch even when saved research ids/timestamps have not moved.
+    """
     digest = compute_thesis_eval_digest(detail, research_refs)
     latest = latest_llm_reply_entry(detail)
     if not latest:
         return False, digest, ""
     prior = _entry_metadata(latest).get("research_digest")
-    if prior and str(prior) == digest:
-        return True, digest, "research_digest_unchanged"
-    return False, digest, ""
+    if not prior or str(prior) != digest:
+        return False, digest, ""
+    reply_at = _parse_ts(latest.get("created_at"))
+    if reply_at is None:
+        return False, digest, ""
+    now_ts = now or datetime.now(UTC)
+    if reply_at.tzinfo is None:
+        reply_at = reply_at.replace(tzinfo=UTC)
+    age_days = (now_ts - reply_at).total_seconds() / 86400.0
+    if age_days >= max(1, max_digest_age_days):
+        return False, digest, "research_digest_expired"
+    return True, digest, "research_digest_unchanged"
 
 
 def count_trailing_insufficient_llm_replies(detail: dict[str, Any]) -> int:
@@ -310,7 +379,8 @@ def list_theses(
         f"""
         SELECT t.*,
                (SELECT COUNT(*)::int FROM thesis_entries e WHERE e.thesis_id = t.id) AS entry_count,
-               (SELECT COUNT(*)::int FROM thesis_evidence ev WHERE ev.thesis_id = t.id) AS evidence_count
+               (SELECT COUNT(*)::int FROM thesis_evidence ev WHERE ev.thesis_id = t.id) AS evidence_count,
+               {_LATEST_LLM_REPLY_AT_SQL}
         FROM ticker_theses t
         WHERE {where}
         ORDER BY t.updated_at DESC
@@ -318,7 +388,13 @@ def list_theses(
         """,
         tuple(params),
     )
-    return [_serialize_row(dict(r)) for r in rows]
+    now_ts = datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for raw in rows:
+        row = _serialize_row(dict(raw))
+        _apply_due_fields(row, now=now_ts)
+        out.append(row)
+    return out
 
 
 def list_theses_due(
@@ -333,8 +409,9 @@ def list_theses_due(
 ) -> list[dict[str, Any]]:
     """Active theses due for human review (soft/hard age) and/or weak drafts.
 
-    Does not bump last_reviewed_at. Sorted: weak first, then stale before soft, then oldest.
+    Does not bump last_reviewed_at. Sorted: stale, then due, then weak drafts, then oldest.
     Optional ``ticker`` filters in SQL so callers are not capped by a global top-N pool.
+    Due/stale age uses last human review or latest AI ``llm_reply`` (see thesis_checked_at).
     """
     soft = max(1, soft_days)
     hard = max(soft, hard_days)
@@ -353,6 +430,7 @@ def list_theses_due(
         SELECT t.*,
                (SELECT COUNT(*)::int FROM thesis_entries e WHERE e.thesis_id = t.id) AS entry_count,
                (SELECT COUNT(*)::int FROM thesis_evidence ev WHERE ev.thesis_id = t.id) AS evidence_count,
+               {_LATEST_LLM_REPLY_AT_SQL},
                (
                    SELECT e.body FROM thesis_entries e
                    WHERE e.thesis_id = t.id AND e.entry_kind = 'opening'
@@ -367,7 +445,14 @@ def list_theses_due(
                ) AS opening_metadata
         FROM ticker_theses t
         WHERE {where}
-        ORDER BY COALESCE(t.last_reviewed_at, t.created_at) ASC NULLS FIRST
+        ORDER BY COALESCE(
+            (
+                SELECT MAX(e.created_at) FROM thesis_entries e
+                WHERE e.thesis_id = t.id AND e.entry_kind = 'llm_reply'
+            ),
+            t.last_reviewed_at,
+            t.created_at
+        ) ASC NULLS FIRST
         LIMIT %s
         """,
         tuple(params),
@@ -387,27 +472,20 @@ def list_theses_due(
             opening_body=str(row.get("opening_body") or ""),
             opening_metadata=opening_meta if isinstance(opening_meta, dict) else {},
         )
-        reviewed = thesis_reviewed_at(row)
-        status = classify_due_status(
-            reviewed, soft_days=soft, hard_days=hard, now=now_ts
-        )
+        _apply_due_fields(row, now=now_ts, soft_days=soft, hard_days=hard)
+        row["is_weak"] = weak
+        status = row.get("review_status")
         if status is None and not (include_weak_always and weak):
             continue
         if status is None and weak:
-            status = "due_for_review"
-        age_days = None
-        if reviewed is not None:
-            age_days = round((now_ts - reviewed).total_seconds() / 86400.0, 1)
-        row["review_status"] = status
-        row["is_weak"] = weak
-        row["age_days"] = age_days
-        row["reviewed_at"] = reviewed.isoformat() if reviewed else None
+            row["review_status"] = "due_for_review"
         due.append(row)
 
     due.sort(
         key=lambda r: (
-            0 if r.get("is_weak") else 1,
             0 if r.get("review_status") == "stale" else 1,
+            0 if r.get("review_status") == "due_for_review" and not r.get("is_weak") else 1,
+            0 if r.get("is_weak") else 1,
             -(r.get("age_days") or 0),
         )
     )
@@ -1096,7 +1174,7 @@ def list_theses_attention(
             if row.get("llm_body") and not existing.get("llm_body"):
                 existing["llm_body"] = row.get("llm_body")
             continue
-        reviewed = thesis_reviewed_at(row)
+        reviewed = thesis_checked_at(row)
         now_ts = now or datetime.now(UTC)
         age_days = None
         if reviewed is not None:

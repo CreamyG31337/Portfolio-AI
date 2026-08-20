@@ -200,11 +200,11 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             '(not fund thesis_update_job; no disposition flips)'
         ),
         'default_interval_minutes': 1440,
-        # Low frequency until trusted; admin can still run manually.
+        # Weekdays after action_queue_ai_review (19:00 ET) so the AI lock is usually free.
         'enabled_by_default': True,
         'icon': '🧵',
         'cron_triggers': [
-            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+            {'day_of_week': 'mon-fri', 'hour': 19, 'minute': 15, 'timezone': 'America/New_York'},
         ],
     },
     'stance_outcomes': {
@@ -1778,7 +1778,7 @@ def register_default_jobs(scheduler) -> None:
     insights_cfg = AVAILABLE_JOBS.get('insights_thesis_evaluation', {})
     if insights_cfg.get('enabled_by_default', True):
         insights_triggers = insights_cfg.get('cron_triggers') or [
-            {'day_of_week': 'tue,thu', 'hour': 18, 'minute': 30, 'timezone': 'America/New_York'},
+            {'day_of_week': 'mon-fri', 'hour': 19, 'minute': 15, 'timezone': 'America/New_York'},
         ]
         for i, trigger_kwargs in enumerate(insights_triggers):
             job_suffix = '' if i == 0 else f'_{i}'

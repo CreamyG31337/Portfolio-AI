@@ -35,30 +35,41 @@ User API (`add_entry`) rejects `opening` and `llm_reply`. Jobs use `add_llm_repl
 
 ## Freshness / due-for-review
 
-`reviewed_at = COALESCE(last_reviewed_at, created_at)`
+`checked_at = GREATEST(last_reviewed_at, latest llm_reply created_at, created_at)`
 
-| Status | Age |
-|--------|-----|
+`last_reviewed_at` is **human-only** (eval never writes it). Due/stale for the queue,
+Today, and Ideas uses `checked_at` so an AI eval actually refreshes the thread.
+
+| Status | Age since last check-in |
+|--------|-------------------------|
 | `due_for_review` | ≥ 14 days |
 | `stale` | ≥ 30 days |
 
-Weak moat drafts (`[WEAK CONTEXT]` in title/body, or `weak_context` tag) sort first in the due queue.
+Due queue sort: **stale**, then non-weak due, then weak drafts, then oldest.
+
+Weak moat drafts (`[WEAK CONTEXT]` in title/body, or `weak_context` tag) are always
+included in the eval candidate pool (so they can auto-archive) but do not jump ahead
+of stale human theses.
 
 **API:** `GET /api/insights/due`
 
-Only a human `review` clears due/stale — an `llm_reply` is advisory context.
+A human `review` still uniquely records your stance. An `llm_reply` is advisory and
+does not bump `last_reviewed_at`, but it **does** reset due/stale via `checked_at`.
 
 ## AI evaluation job
 
 - **Job id:** `insights_thesis_evaluation` (not `thesis_update_job` — that updates fund philosophy)
-- **Schedule:** Tue/Thu 18:30 America/New_York (respects global AI lock via `AI_JOB_NAMES`)
-- **Pick:** active theses due/stale (and weak drafts); over-fetch then fill up to **8 LLM
-  calls** per run (digest skips do not count against the 8)
+- **Schedule:** weekdays 19:15 America/New_York (after action-queue AI review; respects
+  global AI lock via `AI_JOB_NAMES`)
+- **Pick:** active theses due/stale (and weak drafts); **stale first**; over-fetch then fill
+  up to **32 LLM calls** per run (~10s each in production; digest skips do not count
+  against the 32)
 - **Context:** thesis header + recent entries + stored `ticker_meta_analysis` narrative/stance +
   latest `ticker_analysis` summary (read-only; does not re-run meta)
 - **Digest gate:** each `llm_reply` stores `metadata.research_digest` (thesis claim fingerprint +
-  saved research ids/`updated_at`). Same digest as prior reply → **skip LLM**
-  (`skipped_digest` in job message)
+  saved research ids/`updated_at`). Same digest as a **recent** prior reply (within 14 days)
+  → **skip LLM** (`skipped_digest` in job message). Older matching digests re-run so time
+  passing can yield `STALE_THESIS` instead of leaving the queue stuck.
 - **Weak auto-archive:** after **3** consecutive `INSUFFICIENT_DATA` replies on a weak draft,
   soft-archive via `archive_thesis(..., system=True)` (`archived_weak` in job message)
 - **Write:** `add_llm_reply` with verdict `HOLDS` | `TENSION` | `STALE_THESIS` |
@@ -110,7 +121,7 @@ Do not add a fourth LLM pass on the same evidence without retiring one of these.
 | Layer | Object under review | Question | Writes | Reads for LLM? | Human clears? |
 |-------|---------------------|----------|--------|----------------|---------------|
 | **`ticker_meta_analysis`** | System synthesis of artifacts | “What does *automated* evidence say?” | Research `ticker_meta_analysis` (overwrite per ticker) | Yes — multi-artifact bundle (incl. human theses when gated) | No — regenerates on schedule |
-| **`insights_thesis_evaluation`** | One human thesis thread | “Does *this claim* still hold vs stored research?” | `thesis_entries.llm_reply` only | Yes — thesis + **already-saved** meta/analysis (no re-run) | Yes — human `review` bumps `last_reviewed_at` |
+| **`insights_thesis_evaluation`** | One human thesis thread | “Does *this claim* still hold vs stored research?” | `thesis_entries.llm_reply` only | Yes — thesis + **already-saved** meta/analysis (no re-run) | Human `review` bumps `last_reviewed_at`; eval `llm_reply` resets due/stale via `checked_at` |
 | **`action_queue_ai_review`** | One mechanical queue row | “Is this *BUY/SELL/RISK/WATCH* aligned with research?” | Action-queue review rows (fund × ticker × signal date) | Yes — queue item + research context | N/A — mechanical action still from signals |
 | **Fund `thesis_update_job`** | Fund philosophy | “What’s the *book-level* thesis?” | Supabase `fund_thesis*` | Yes | Fund editors |
 | **Sector Insights** | Sector / ETF meta | “What’s rotating at the sector layer?” | `sector_meta_analysis` UI | Meta jobs | N/A |
@@ -176,9 +187,10 @@ Meta can ingest theses (R1); eval can read meta. That is deliberate tension, not
 
 | Guard | Why |
 |-------|-----|
-| Eval does **not** bump `last_reviewed_at` or flip disposition | AI cannot “clear” due as a human review |
+| Eval does **not** bump `last_reviewed_at` or flip disposition | AI cannot impersonate a human review |
+| Eval `llm_reply` (and expired-digest re-run) reset due/stale via `checked_at` | Queue/Today would otherwise show the same stale set forever |
 | Eval does **not** re-run meta | Cheap second opinion on *stored* research |
-| Digest-gated eval | Unchanged research → skip LLM (GPU slots) |
+| Digest-gated eval (expires after 14d) | Unchanged *recent* research → skip LLM (GPU slots) |
 | Weak × 3× `INSUFFICIENT_DATA` → soft-archive | Stops re-evaluating hopeless bootstrap drafts |
 | Meta skips unreviewed weak drafts | Cuts meta↔eval chatter on noise theses |
 | `META_ANALYSIS_HUMAN_THESIS_SCOPE=holdings` default | Limits meta refresh blast radius + loop chatter |

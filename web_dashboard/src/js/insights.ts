@@ -360,7 +360,7 @@ async function openDetail(thesisId: string): Promise<void> {
           class="w-full mt-2 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary"></textarea>
         <div class="mt-2 space-y-1 text-xs text-text-secondary">
           <p><span class="font-medium text-text-primary">Comment</span> — discussion note only. Does not change stance or clear due/stale.</p>
-          <p><span class="font-medium text-text-primary">Review</span> — human check-in that bumps last reviewed (clears due ≥14d / stale ≥30d). Optionally update disposition/intent below. AI replies do not count as a review.</p>
+          <p><span class="font-medium text-text-primary">Review</span> — human check-in that bumps last reviewed and can update disposition/intent. AI eval also refreshes due/stale (≥14d / ≥30d since last check-in) without changing stance.</p>
         </div>
         <div class="grid grid-cols-2 gap-2 mt-3">
           <div>

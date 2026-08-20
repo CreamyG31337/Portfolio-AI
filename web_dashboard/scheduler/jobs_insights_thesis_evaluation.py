@@ -4,7 +4,8 @@ Distinct from fund-level thesis_update_job (Supabase fund_thesis).
 Does not write stance_history or auto-flip disposition/intent.
 
 Quick wins:
-- Skip LLM when research_digest matches prior llm_reply (slot saver).
+- Skip LLM when research_digest matches a *recent* prior llm_reply (slot saver).
+  Re-run when that reply is older than the due window so stale threads refresh.
 - Soft-archive weak drafts after N consecutive INSUFFICIENT_DATA verdicts.
 """
 
@@ -21,7 +22,10 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 JOB_ID = "insights_thesis_evaluation"
-MAX_PER_RUN = 8
+# Measured 2026-08-19: 8 LLM replies in ~81s (~10s each). Weekday slot is 19:15 ET,
+# after action_queue_ai_review (19:00) and well before confluence (22:30 ET).
+# 32 ≈ 5–6 min — enough to drain a typical due pool without hogging Ollama.
+MAX_PER_RUN = 32
 # Over-fetch due list so digest skips still fill the LLM batch.
 CANDIDATE_FETCH_MULTIPLIER = 4
 _LOCK_RETRY_JOB_ID = "insights_thesis_evaluation_lock_retry"

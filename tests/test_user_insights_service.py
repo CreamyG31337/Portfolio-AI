@@ -189,7 +189,7 @@ def test_thesis_reviewed_at_prefers_last_reviewed():
     assert thesis_reviewed_at({"created_at": created, "last_reviewed_at": None}) == created
 
 
-def test_list_theses_due_sorts_weak_first():
+def test_list_theses_due_sorts_stale_before_weak():
     pg = MagicMock()
     now = datetime(2026, 7, 13, tzinfo=UTC)
     old = now - timedelta(days=40)
@@ -236,9 +236,45 @@ def test_list_theses_due_sorts_weak_first():
     rows = list_theses_due(pg, now=now, limit=10)
     tickers = [r["ticker"] for r in rows]
     assert "FRESH" not in tickers
-    assert tickers[0] == "WEAK"
-    assert rows[0]["is_weak"] is True
-    assert any(r["ticker"] == "STALE" and r["review_status"] == "stale" for r in rows)
+    assert tickers[0] == "STALE"
+    assert rows[0]["review_status"] == "stale"
+    assert any(r["ticker"] == "WEAK" and r["is_weak"] is True for r in rows)
+
+
+def test_list_theses_due_recent_llm_reply_clears_stale():
+    pg = MagicMock()
+    now = datetime(2026, 7, 13, tzinfo=UTC)
+    old = now - timedelta(days=40)
+    recent_llm = now - timedelta(days=2)
+    pg.execute_query.return_value = [
+        {
+            "id": uuid4(),
+            "ticker": "MSFT",
+            "title": "Cloud",
+            "status": "active",
+            "created_at": old,
+            "last_reviewed_at": old,
+            "latest_llm_reply_at": recent_llm,
+            "opening_body": "ok",
+            "opening_metadata": {},
+            "entry_count": 2,
+            "evidence_count": 0,
+        },
+    ]
+    rows = list_theses_due(pg, now=now, limit=10)
+    assert rows == []
+
+
+def test_thesis_checked_at_prefers_recent_llm_reply():
+    from web_dashboard.user_insights_service import thesis_checked_at
+
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    reviewed = datetime(2026, 2, 1, tzinfo=UTC)
+    llm = datetime(2026, 7, 1, tzinfo=UTC)
+    assert thesis_checked_at(
+        {"created_at": created, "last_reviewed_at": reviewed, "latest_llm_reply_at": llm}
+    ) == llm
+    assert thesis_checked_at({"created_at": created, "last_reviewed_at": reviewed}) == reviewed
 
 
 @patch("web_dashboard.user_insights_service._try_embedding", return_value=None)
@@ -412,6 +448,7 @@ def test_should_skip_thesis_eval_when_digest_matches():
             {
                 "id": "e2",
                 "entry_kind": "llm_reply",
+                "created_at": "2026-07-12T00:00:00+00:00",
                 "metadata": {"verdict": "HOLDS", "research_digest": "WILL_REPLACE"},
             },
         ],
@@ -424,15 +461,55 @@ def test_should_skip_thesis_eval_when_digest_matches():
     }
     digest = compute_thesis_eval_digest(detail, refs)
     detail["entries"][1]["metadata"]["research_digest"] = digest
-    skip, got, reason = should_skip_thesis_eval(detail, refs)
+    skip, got, reason = should_skip_thesis_eval(
+        detail, refs, now=datetime(2026, 7, 13, tzinfo=UTC)
+    )
     assert skip is True
     assert got == digest
     assert reason == "research_digest_unchanged"
 
     refs2 = dict(refs)
     refs2["ticker_meta_updated_at"] = "2026-07-10T00:00:00+00:00"
-    skip2, _, _ = should_skip_thesis_eval(detail, refs2)
+    skip2, _, _ = should_skip_thesis_eval(
+        detail, refs2, now=datetime(2026, 7, 13, tzinfo=UTC)
+    )
     assert skip2 is False
+
+
+def test_should_skip_thesis_eval_expires_old_digest():
+    detail = {
+        "disposition": "bullish",
+        "intent": "monitor",
+        "last_reviewed_at": "2026-01-01T00:00:00+00:00",
+        "title": "Cloud",
+        "entries": [
+            {
+                "id": "e1",
+                "entry_kind": "opening",
+                "created_at": "2026-01-01T00:00:00+00:00",
+                "body": "x",
+            },
+            {
+                "id": "e2",
+                "entry_kind": "llm_reply",
+                "created_at": "2026-06-01T00:00:00+00:00",
+                "metadata": {"verdict": "HOLDS", "research_digest": "WILL_REPLACE"},
+            },
+        ],
+    }
+    refs = {
+        "ticker_analysis_id": "ta1",
+        "ticker_analysis_updated_at": "2026-07-01T00:00:00+00:00",
+        "ticker_meta_analysis_id": "m1",
+        "ticker_meta_updated_at": "2026-07-02T00:00:00+00:00",
+    }
+    digest = compute_thesis_eval_digest(detail, refs)
+    detail["entries"][1]["metadata"]["research_digest"] = digest
+    skip, _, reason = should_skip_thesis_eval(
+        detail, refs, now=datetime(2026, 7, 13, tzinfo=UTC)
+    )
+    assert skip is False
+    assert reason == "research_digest_expired"
 
 
 def test_count_trailing_insufficient_llm_replies():
@@ -494,7 +571,7 @@ def test_list_theses_attention_merges_tension_verdicts():
 
     def query_side_effect(*_args, **_kwargs):
         sql = (_args[0] if _args else "") or ""
-        if "FROM ticker_theses t" in sql and "latest_llm" in sql:
+        if "WITH latest_llm AS" in sql:
             return [
                 {
                     "id": tension_id,
