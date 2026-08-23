@@ -189,16 +189,12 @@ steps:
         from_secret: mailgun_webhook_signing_key
       NEWSLETTER_EMAIL:
         from_secret: newsletter_email
-      # Secondary Ollama host (Tailscale IP of the NVIDIA 3090 box = ts-cr-desktop, http://100.75.27.13:11434).
-      # DISABLED 2026-08-18 while the 3090 is in transit. It moved out of ts-desktop
-      # (100.69.126.9), which now has an 8 GB RTX 3070 — too small for the 27B models this
-      # slot serves, so routing there stalls jobs instead of failing them. Re-enable by
-      # uncommenting below AND pointing the "ollama_base_url_2" secret at ts-cr-desktop
-      # once the card is installed and reachable. See also the pass-through lines in the
-      # Flask deploy step and AI_QUEUE_WORKERS_OLLAMA_SECONDARY.
+      # Secondary Ollama host (Tailscale IP of the NVIDIA 3090 box = ts-cr-desktop).
+      # Restored 2026-08-22 after the 3090 landed on this machine. Secret must be
+      # http://100.75.27.13:11434 (Docker bridge cannot resolve Tailscale MagicDNS).
       # Must exist as a Woodpecker secret named "ollama_base_url_2" — Woodpecker errors out if missing.
-      # OLLAMA_BASE_URL_2:
-      #   from_secret: ollama_base_url_2
+      OLLAMA_BASE_URL_2:
+        from_secret: ollama_base_url_2
       # Gluetun control-server key for VPN exit rotation (Phase K).
       # Must exist as a Woodpecker secret named "youtube_proxy_control_apikey" —
       # Woodpecker errors out if missing, same as ollama_base_url_2 above.
@@ -492,15 +488,9 @@ steps:
         
         # Add Ollama settings for Flask
         FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL=\"${OLLAMA_BASE_URL:-http://host.docker.internal:11434}\""
-        # NVIDIA/secondary host deliberately NOT passed while the 3090 is in transit
-        # (2026-08-18). Both names are commented out together on purpose: model_config.json
-        # lists OLLAMA_BASE_URL_NVIDIA as the *fallback* for granite4.1:8b and
-        # batiai/qwen3.6-27b:iq3, so leaving either set would let AMD-host jobs fail over
-        # onto an 8 GB card at 39k/32k ctx and stall. With both absent, ollama_client
-        # _resolve_hosts returns no fallback and the AMD host is used alone.
-        # [ -n "$OLLAMA_BASE_URL_2" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
+        [ -n "$OLLAMA_BASE_URL_2" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
         [ -n "$OLLAMA_BASE_URL_AMD" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_AMD=\"$OLLAMA_BASE_URL_AMD\""
-        # [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
+        [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
 
@@ -513,15 +503,8 @@ steps:
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_ENABLED=\"${AI_QUEUE_ENABLED:-true}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades,social_sentiment_analysis}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_PRIMARY=\"${AI_QUEUE_WORKERS_OLLAMA_PRIMARY:-1}\""
-        # 0 while the 3090 is in transit (2026-08-18) — no secondary Ollama host exists.
-        # backend_is_configured() would zero this anyway now that the URL is not passed;
-        # setting it explicitly records the intent. Restore to 1 with the card.
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-0}\""
-        # Raised 1 -> 3 on 2026-08-18: GLM is the only remaining cloud/GPU backend while the
-        # secondary Ollama host is offline, so it absorbs that queue share. 3 matches the
-        # code default in AIQueueConfig.from_env. 429s are classified rate_limited and
-        # retried with backoff, so this degrades rather than fails if it is too hot.
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"${AI_QUEUE_WORKERS_GLM:-3}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"${AI_QUEUE_WORKERS_GLM:-1}\""
         # Optional tuning knobs — only passed when explicitly set on host. Code defaults apply otherwise.
         [ -n "$AI_QUEUE_LEASE_TTL_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_LEASE_TTL_SEC=\"$AI_QUEUE_LEASE_TTL_SEC\""
         [ -n "$AI_QUEUE_HEARTBEAT_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_HEARTBEAT_SEC=\"$AI_QUEUE_HEARTBEAT_SEC\""

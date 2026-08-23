@@ -24,6 +24,13 @@ def _reachable(url: str) -> bool:
         return False
 
 
+@pytest.fixture(autouse=True)
+def _clear_semantic_ollama_host_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ignore machine .env AMD/NVIDIA aliases unless a test sets them explicitly."""
+    monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL_NVIDIA", raising=False)
+
+
 def test_qwen_payload_includes_think_false_and_routes_to_env_second_host(monkeypatch: pytest.MonkeyPatch) -> None:
     """qwen3.8:27b-mtp-q4_K_M hits NVIDIA URL first; granite4.1:8b hits AMD URL first (semantic env aliases)."""
     monkeypatch.delenv("OLLAMA_BASE_URL_AMD", raising=False)
