@@ -2,172 +2,34 @@
  * Social Sentiment TypeScript
  * Handles AgGrid initialization, data fetching, and interactions
  */
-
-// AgGrid types
-interface AgGridParams {
-    value: string | null;
-    data?: any;
-    column?: {
-        colId: string;
-    };
-    node?: AgGridNode;
-}
-
-interface AgGridNode {
-    setDataValue(key: string, value: string): void;
-    setSelected(selected: boolean): void;
-}
-
-interface AgGridApi {
-    getSelectedRows(): any[];
-    getSelectedNodes(): AgGridNode[];
-    sizeColumnsToFit(): void;
-    setGridOption(option: string, value: any): void;
-    getColumnApi?: () => AgGridColumnApi;
-}
-
-interface AgGridColumnApi {
-    // Column API methods if needed
-}
-
-interface AgGridGlobal {
-    createGrid: (element: HTMLElement, options: AgGridOptions) => AgGridApi;
-}
-
-interface AgGridOptions {
-    columnDefs: AgGridColumnDef[];
-    rowData: any[];
-    defaultColDef?: Partial<AgGridColumnDef>;
-    rowSelection?: any;
-    enableRangeSelection?: boolean;
-    enableCellTextSelection?: boolean;
-    ensureDomOrder?: boolean;
-    domLayout?: string;
-    pagination?: boolean;
-    paginationPageSize?: number;
-    paginationPageSizeSelector?: number[];
-    onCellClicked?: (params: AgGridParams) => void;
-    onSelectionChanged?: () => void;
-    animateRows?: boolean;
-    suppressCellFocus?: boolean;
-}
-
-interface AgGridColumnDef {
-    field: string;
-    headerName: string;
-    valueGetter?: (params: AgGridParams) => any;
-    width?: number;
-    pinned?: string;
-    cellRenderer?: any;
-    sortable?: boolean;
-    filter?: boolean;
-    hide?: boolean;
-    editable?: boolean;
-    resizable?: boolean;
-    wrapHeaderText?: boolean;
-    autoHeaderHeight?: boolean;
-    tooltipValueGetter?: (params: AgGridParams) => string;
-    cellStyle?: Record<string, string> | ((params: AgGridParams) => Record<string, string>);
-}
-
-interface AgGridCellRendererParams {
-    value: string | null;
-    data?: any;
-}
-
-interface AgGridCellRenderer {
-    init(params: AgGridCellRendererParams): void;
-    getGui(): HTMLElement;
-}
-
-// Data interfaces
-interface WatchlistTicker {
-    ticker: string;
-    priority_tier: string;
-    sources: string[];
-    source_count: number;
-    created_at?: string;
-}
-
-interface Alert {
-    id: number;
-    ticker: string;
-    platform: string;
-    sentiment_label: string;
-    sentiment_score: number;
-    analysis_session_id?: number;
-    created_at: string;
-    created_at_raw?: string;
-}
-
-interface AIAnalysis {
-    id: number;
-    ticker: string;
-    platform: string;
-    sentiment_label: string;
-    sentiment_score: number;
-    confidence_score: number;
-    post_count: number;
-    total_engagement: number;
-    session_id: number;
-    analyzed_at: string;
-    analyzed_at_raw?: string;
-}
-
-interface SentimentRow {
-    _logo_url?: string;
-    Ticker: string;
-    Company: string;
-    'In Watchlist': string;
-    '💬 Stocktwits Sentiment': string;
-    '💬 Stocktwits Volume': number | string;
-    '💬 Stocktwits Score': string;
-    '💬 Bull/Bear Ratio': string;
-    '👽 Reddit Sentiment': string;
-    '👽 Reddit Volume': number | string;
-    '👽 Reddit Score': string;
-    'Last Updated': string;
-    '🤖 AI Status'?: string;
-    '🤖 AI Sentiment'?: string;
-    '🤖 AI Confidence'?: string;
-}
-
 // Global grid APIs
-let watchlistGridApi: AgGridApi | null = null;
-let sentimentGridApi: AgGridApi | null = null;
-
+let watchlistGridApi = null;
+let sentimentGridApi = null;
 // Global cache of tickers that don't have logos (to avoid repeated 404s)
-const failedLogoCache = new Set<string>();
-
+const failedLogoCache = new Set();
 // Ticker cell renderer - makes ticker clickable with logo
-class TickerCellRenderer implements AgGridCellRenderer {
-    private eGui!: HTMLElement;
-
-    init(params: AgGridCellRendererParams): void {
+class TickerCellRenderer {
+    init(params) {
         this.eGui = document.createElement('div');
         this.eGui.className = 'flex items-center gap-1.5';
-
         if (params.value && params.value !== 'N/A') {
             const ticker = params.value;
             const logoUrl = params.data?._logo_url;
-
             // Check cache first - skip if we know this ticker doesn't have a logo
             const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
             const cacheKey = cleanTicker.toUpperCase();
-
             // Always add logo image (or transparent placeholder) for consistent alignment
             const img = document.createElement('img');
             img.className = 'w-6 h-6 object-contain rounded shrink-0';
-
             if (failedLogoCache.has(cacheKey) || !logoUrl) {
                 // Use transparent placeholder for consistent spacing
                 img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
                 img.alt = '';
-            } else {
+            }
+            else {
                 // Try to load logo
                 img.src = logoUrl;
                 img.alt = ticker;
-
                 // Handle image load errors gracefully - try fallback
                 let fallbackAttempted = false;
                 img.onerror = function () {
@@ -178,12 +40,12 @@ class TickerCellRenderer implements AgGridCellRenderer {
                         img.onerror = null;
                         return;
                     }
-
                     fallbackAttempted = true;
                     const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
                     if (img.src !== yahooUrl) {
                         img.src = yahooUrl;
-                    } else {
+                    }
+                    else {
                         failedLogoCache.add(cacheKey);
                         img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
                         img.alt = '';
@@ -192,89 +54,84 @@ class TickerCellRenderer implements AgGridCellRenderer {
                 };
             }
             this.eGui.appendChild(img);
-
             // Add ticker text
             const tickerSpan = document.createElement('span');
             tickerSpan.innerText = ticker;
             tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
-            tickerSpan.addEventListener('click', function (e: Event) {
+            tickerSpan.addEventListener('click', function (e) {
                 e.stopPropagation();
                 if (ticker && ticker !== 'N/A') {
                     window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
                 }
             });
             this.eGui.appendChild(tickerSpan);
-        } else {
+        }
+        else {
             this.eGui.innerText = params.value || 'N/A';
         }
     }
-
-    getGui(): HTMLElement {
+    getGui() {
         return this.eGui;
     }
 }
-
 // Sentiment color cell renderer
-class SentimentCellRenderer implements AgGridCellRenderer {
-    private eGui!: HTMLElement;
-
-    init(params: AgGridCellRendererParams): void {
+class SentimentCellRenderer {
+    init(params) {
         this.eGui = document.createElement('span');
         const value = params.value || '';
         this.eGui.innerText = value;
-
         // Apply color based on sentiment
         if (value.includes('EUPHORIC')) {
             this.eGui.className = 'text-theme-success-text font-bold';
-        } else if (value.includes('FEARFUL')) {
+        }
+        else if (value.includes('FEARFUL')) {
             this.eGui.className = 'text-theme-error-text font-bold';
-        } else if (value.includes('BULLISH')) {
+        }
+        else if (value.includes('BULLISH')) {
             this.eGui.className = 'text-theme-success-text';
-        } else if (value.includes('BEARISH')) {
+        }
+        else if (value.includes('BEARISH')) {
             this.eGui.className = 'text-theme-error-text';
         }
     }
-
-    getGui(): HTMLElement {
+    getGui() {
         return this.eGui;
     }
 }
-
-function autoSizeGridColumns(gridApi: AgGridApi | null): void {
+function autoSizeGridColumns(gridApi) {
     if (!gridApi) {
         return;
     }
-    const api = gridApi as any;
+    const api = gridApi;
     if (typeof api.autoSizeAllColumns === 'function') {
         api.autoSizeAllColumns(false);
-    } else if (typeof api.sizeColumnsToFit === 'function') {
+    }
+    else if (typeof api.sizeColumnsToFit === 'function') {
         api.sizeColumnsToFit();
     }
 }
-
 // Initialize watchlist grid
-function initializeWatchlistGrid(data: WatchlistTicker[]): void {
-    const gridDiv = document.querySelector('#watchlist-grid') as HTMLElement;
-
+function initializeWatchlistGrid(data) {
+    const gridDiv = document.querySelector('#watchlist-grid');
     // Detect theme and apply appropriate AgGrid theme
     const htmlElement = document.documentElement;
     const theme = htmlElement.getAttribute('data-theme') || 'system';
     let isDark = false;
-
     if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
         isDark = true;
-    } else if (theme === 'system') {
+    }
+    else if (theme === 'system') {
         // Check system preference
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
             isDark = true;
         }
     }
-
     // Update grid container class based on theme
     if (isDark) {
         gridDiv.classList.remove('ag-theme-alpine');
         gridDiv.classList.add('ag-theme-alpine-dark');
-    } else {
+    }
+    else {
         gridDiv.classList.remove('ag-theme-alpine-dark');
         gridDiv.classList.add('ag-theme-alpine');
     }
@@ -282,12 +139,11 @@ function initializeWatchlistGrid(data: WatchlistTicker[]): void {
         console.error('Watchlist grid container not found');
         return;
     }
-    if (!(window as any).agGrid) {
+    if (!window.agGrid) {
         console.error('AgGrid not loaded');
         return;
     }
-
-    const columnDefs: AgGridColumnDef[] = [
+    const columnDefs = [
         {
             field: 'ticker',
             headerName: 'Ticker',
@@ -310,7 +166,7 @@ function initializeWatchlistGrid(data: WatchlistTicker[]): void {
             width: 200,
             sortable: true,
             filter: true,
-            valueGetter: (params: AgGridParams) => {
+            valueGetter: (params) => {
                 return params.data?.sources?.join(', ') || '';
             }
         },
@@ -322,8 +178,7 @@ function initializeWatchlistGrid(data: WatchlistTicker[]): void {
             filter: true
         }
     ];
-
-    const gridOptions: AgGridOptions = {
+    const gridOptions = {
         columnDefs: columnDefs,
         rowData: data,
         defaultColDef: {
@@ -339,51 +194,46 @@ function initializeWatchlistGrid(data: WatchlistTicker[]): void {
         paginationPageSizeSelector: [25, 50, 100],
         animateRows: true
     };
-
-    const agGrid = (window as any).agGrid as AgGridGlobal;
+    const agGrid = window.agGrid;
     watchlistGridApi = agGrid.createGrid(gridDiv, gridOptions);
-
     setTimeout(() => {
         autoSizeGridColumns(watchlistGridApi);
     }, 100);
 }
-
 // Initialize sentiment grid
-function initializeSentimentGrid(data: SentimentRow[]): void {
-    const gridDiv = document.querySelector('#sentiment-grid') as HTMLElement;
+function initializeSentimentGrid(data) {
+    const gridDiv = document.querySelector('#sentiment-grid');
     if (!gridDiv) {
         console.error('Sentiment grid container not found');
         return;
     }
-    if (!(window as any).agGrid) {
+    if (!window.agGrid) {
         console.error('AgGrid not loaded');
         return;
     }
-
     // Detect theme and apply appropriate AgGrid theme
     const htmlElement = document.documentElement;
     const theme = htmlElement.getAttribute('data-theme') || 'system';
     let isDark = false;
-
     if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
         isDark = true;
-    } else if (theme === 'system') {
+    }
+    else if (theme === 'system') {
         // Check system preference
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
             isDark = true;
         }
     }
-
     // Update grid container class based on theme
     if (isDark) {
         gridDiv.classList.remove('ag-theme-alpine');
         gridDiv.classList.add('ag-theme-alpine-dark');
-    } else {
+    }
+    else {
         gridDiv.classList.remove('ag-theme-alpine-dark');
         gridDiv.classList.add('ag-theme-alpine');
     }
-
-    const columnDefs: AgGridColumnDef[] = [
+    const columnDefs = [
         {
             field: 'Ticker',
             headerName: 'Ticker',
@@ -488,8 +338,7 @@ function initializeSentimentGrid(data: SentimentRow[]): void {
             filter: true
         }
     ];
-
-    const gridOptions: AgGridOptions = {
+    const gridOptions = {
         columnDefs: columnDefs,
         rowData: data,
         defaultColDef: {
@@ -505,80 +354,71 @@ function initializeSentimentGrid(data: SentimentRow[]): void {
         paginationPageSizeSelector: [50, 100, 250, 500],
         animateRows: true
     };
-
-    const agGrid = (window as any).agGrid as AgGridGlobal;
+    const agGrid = window.agGrid;
     sentimentGridApi = agGrid.createGrid(gridDiv, gridOptions);
-
     setTimeout(() => {
         autoSizeGridColumns(sentimentGridApi);
     }, 100);
 }
-
 // Load watchlist data
-async function loadWatchlistData(refreshKey: number): Promise<void> {
+async function loadWatchlistData(refreshKey) {
     try {
         const response = await fetch(`/api/social_sentiment/watchlist?refresh_key=${refreshKey}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
-            const data = result.data as WatchlistTicker[];
-
+            const data = result.data;
             // Update summary metrics
-            document.getElementById('watchlist-total')!.textContent = data.length.toString();
-            document.getElementById('watchlist-tier-a')!.textContent =
+            document.getElementById('watchlist-total').textContent = data.length.toString();
+            document.getElementById('watchlist-tier-a').textContent =
                 data.filter(t => t.priority_tier === 'A').length.toString();
-            document.getElementById('watchlist-tier-b')!.textContent =
+            document.getElementById('watchlist-tier-b').textContent =
                 data.filter(t => t.priority_tier === 'B').length.toString();
-            document.getElementById('watchlist-tier-c')!.textContent =
+            document.getElementById('watchlist-tier-c').textContent =
                 data.filter(t => t.priority_tier === 'C').length.toString();
-
             // Initialize grid
             if (data.length > 0) {
-                document.getElementById('watchlist-loading')!.classList.add('hidden');
-                document.getElementById('watchlist-empty')!.classList.add('hidden');
-                document.getElementById('watchlist-content')!.classList.remove('hidden');
+                document.getElementById('watchlist-loading').classList.add('hidden');
+                document.getElementById('watchlist-empty').classList.add('hidden');
+                document.getElementById('watchlist-content').classList.remove('hidden');
                 initializeWatchlistGrid(data);
-            } else {
-                document.getElementById('watchlist-loading')!.classList.add('hidden');
-                document.getElementById('watchlist-content')!.classList.add('hidden');
-                document.getElementById('watchlist-empty')!.classList.remove('hidden');
+            }
+            else {
+                document.getElementById('watchlist-loading').classList.add('hidden');
+                document.getElementById('watchlist-content').classList.add('hidden');
+                document.getElementById('watchlist-empty').classList.remove('hidden');
             }
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading watchlist:', error);
-        document.getElementById('watchlist-loading')!.classList.add('hidden');
-        document.getElementById('watchlist-content')!.classList.add('hidden');
-        document.getElementById('watchlist-empty')!.classList.remove('hidden');
+        document.getElementById('watchlist-loading').classList.add('hidden');
+        document.getElementById('watchlist-content').classList.add('hidden');
+        document.getElementById('watchlist-empty').classList.remove('hidden');
     }
 }
-
 // Load alerts data
-async function loadAlertsData(refreshKey: number): Promise<void> {
+async function loadAlertsData(refreshKey) {
     try {
         const response = await fetch(`/api/social_sentiment/alerts?refresh_key=${refreshKey}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
-            const alerts = result.data as Alert[];
-            const alertsList = document.getElementById('alerts-list')!;
+            const alerts = result.data;
+            const alertsList = document.getElementById('alerts-list');
             alertsList.innerHTML = '';
-
             if (alerts.length > 0) {
-                document.getElementById('alerts-loading')!.classList.add('hidden');
-                document.getElementById('alerts-empty')!.classList.add('hidden');
-                document.getElementById('alerts-content')!.classList.remove('hidden');
-
+                document.getElementById('alerts-loading').classList.add('hidden');
+                document.getElementById('alerts-empty').classList.add('hidden');
+                document.getElementById('alerts-content').classList.remove('hidden');
                 alerts.forEach((alert, idx) => {
                     const alertDiv = document.createElement('div');
                     alertDiv.className = 'mb-4 p-4 rounded-lg border';
-                    alertDiv.classList.add(
-                        alert.sentiment_label === 'EUPHORIC'
-                            ? 'bg-theme-success-bg/20 border-theme-success-text/30'
-                            : 'bg-theme-error-bg/20 border-theme-error-text/30'
-                    );
-
+                    alertDiv.classList.add(alert.sentiment_label === 'EUPHORIC'
+                        ? 'bg-theme-success-bg/20 border-theme-success-text/30'
+                        : 'bg-theme-error-bg/20 border-theme-error-text/30');
                     alertDiv.innerHTML = `
                         <div class="flex items-center justify-between mb-2">
                             <div>
@@ -590,11 +430,11 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                             <div class="text-sm text-text-secondary">${alert.created_at}</div>
                         </div>
                         <div class="flex gap-2 mt-2">
-                            <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})" 
+                            <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})"
                                     class="btn-outline-sm">
                                 View Source Posts
                             </button>
-                            <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'" 
+                            <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'"
                                     class="btn-outline-sm">
                                 View Ticker Details
                             </button>
@@ -603,45 +443,44 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                     `;
                     alertsList.appendChild(alertDiv);
                 });
-            } else {
-                document.getElementById('alerts-loading')!.classList.add('hidden');
-                document.getElementById('alerts-content')!.classList.add('hidden');
-                document.getElementById('alerts-empty')!.classList.remove('hidden');
+            }
+            else {
+                document.getElementById('alerts-loading').classList.add('hidden');
+                document.getElementById('alerts-content').classList.add('hidden');
+                document.getElementById('alerts-empty').classList.remove('hidden');
             }
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading alerts:', error);
-        document.getElementById('alerts-loading')!.classList.add('hidden');
-        document.getElementById('alerts-content')!.classList.add('hidden');
-        document.getElementById('alerts-empty')!.classList.remove('hidden');
+        document.getElementById('alerts-loading').classList.add('hidden');
+        document.getElementById('alerts-content').classList.add('hidden');
+        document.getElementById('alerts-empty').classList.remove('hidden');
     }
 }
-
 // Load alert posts
-async function loadAlertPosts(metricId: number, sessionId: number | null, alertIdx: number): Promise<void> {
-    const postsDiv = document.getElementById(`alert-posts-${alertIdx}`)!;
+async function loadAlertPosts(metricId, sessionId, alertIdx) {
+    const postsDiv = document.getElementById(`alert-posts-${alertIdx}`);
     if (!postsDiv.classList.contains('hidden')) {
         postsDiv.classList.add('hidden');
         return;
     }
-
     try {
         let response;
         if (sessionId) {
             response = await fetch(`/api/social_sentiment/posts/session/${sessionId}`);
-        } else {
+        }
+        else {
             response = await fetch(`/api/social_sentiment/posts/${metricId}`);
         }
-
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
             const posts = result.data;
             postsDiv.innerHTML = '<h4 class="font-semibold mb-2 text-text-primary">Source Posts:</h4>';
-
             if (posts.length > 0) {
-                posts.forEach((post: any) => {
+                posts.forEach((post) => {
                     const postDiv = document.createElement('div');
                     postDiv.className = 'mb-3 p-3 bg-dashboard-surface rounded border border-border';
                     postDiv.innerHTML = `
@@ -657,47 +496,44 @@ async function loadAlertPosts(metricId: number, sessionId: number | null, alertI
                     `;
                     postsDiv.appendChild(postDiv);
                 });
-            } else {
+            }
+            else {
                 postsDiv.innerHTML += '<p class="text-sm text-gray-600 dark:text-gray-400">No posts found for this alert.</p>';
             }
-
             postsDiv.classList.remove('hidden');
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading alert posts:', error);
         postsDiv.innerHTML = '<p class="text-sm text-theme-error-text">Error loading posts.</p>';
         postsDiv.classList.remove('hidden');
     }
 }
-
 // Load AI analyses data
-async function loadAIAnalysesData(refreshKey: number): Promise<void> {
+async function loadAIAnalysesData(refreshKey) {
     try {
         const response = await fetch(`/api/social_sentiment/ai_analyses?refresh_key=${refreshKey}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
-            const analyses = result.data as AIAnalysis[];
-            const analysesList = document.getElementById('ai-analyses-list')!;
+            const analyses = result.data;
+            const analysesList = document.getElementById('ai-analyses-list');
             analysesList.innerHTML = '';
-
             // Update summary metrics
-            document.getElementById('ai-total')!.textContent = analyses.length.toString();
+            document.getElementById('ai-total').textContent = analyses.length.toString();
             const avgConfidence = analyses.length > 0
                 ? (analyses.reduce((sum, a) => sum + a.confidence_score, 0) / analyses.length * 100).toFixed(1)
                 : '0';
-            document.getElementById('ai-avg-confidence')!.textContent = `${avgConfidence}%`;
-            document.getElementById('ai-euphoric')!.textContent =
+            document.getElementById('ai-avg-confidence').textContent = `${avgConfidence}%`;
+            document.getElementById('ai-euphoric').textContent =
                 analyses.filter(a => a.sentiment_label === 'EUPHORIC').length.toString();
-            document.getElementById('ai-fearful')!.textContent =
+            document.getElementById('ai-fearful').textContent =
                 analyses.filter(a => a.sentiment_label === 'FEARFUL').length.toString();
-
             if (analyses.length > 0) {
-                document.getElementById('ai-loading')!.classList.add('hidden');
-                document.getElementById('ai-empty')!.classList.add('hidden');
-                document.getElementById('ai-content')!.classList.remove('hidden');
-
+                document.getElementById('ai-loading').classList.add('hidden');
+                document.getElementById('ai-empty').classList.add('hidden');
+                document.getElementById('ai-content').classList.remove('hidden');
                 analyses.forEach((analysis) => {
                     const analysisDiv = document.createElement('div');
                     analysisDiv.className = 'mb-4 p-4 bg-dashboard-surface-alt rounded-lg border border-border';
@@ -718,7 +554,7 @@ async function loadAIAnalysesData(refreshKey: number): Promise<void> {
                             <div>Posts: ${analysis.post_count}</div>
                             <div>Engagement: ${analysis.total_engagement}</div>
                         </div>
-                        <button onclick="loadAIDetails(${analysis.id}, ${analysis.session_id})" 
+                        <button onclick="loadAIDetails(${analysis.id}, ${analysis.session_id})"
                                 class="btn-outline-sm">
                             View Details
                         </button>
@@ -726,58 +562,57 @@ async function loadAIAnalysesData(refreshKey: number): Promise<void> {
                     `;
                     analysesList.appendChild(analysisDiv);
                 });
-            } else {
-                document.getElementById('ai-loading')!.classList.add('hidden');
-                document.getElementById('ai-content')!.classList.add('hidden');
-                document.getElementById('ai-empty')!.classList.remove('hidden');
+            }
+            else {
+                document.getElementById('ai-loading').classList.add('hidden');
+                document.getElementById('ai-content').classList.add('hidden');
+                document.getElementById('ai-empty').classList.remove('hidden');
             }
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading AI analyses:', error);
-        document.getElementById('ai-loading')!.classList.add('hidden');
-        document.getElementById('ai-content')!.classList.add('hidden');
-        document.getElementById('ai-empty')!.classList.remove('hidden');
+        document.getElementById('ai-loading').classList.add('hidden');
+        document.getElementById('ai-content').classList.add('hidden');
+        document.getElementById('ai-empty').classList.remove('hidden');
     }
 }
-
 // Load AI analysis details
-async function loadAIDetails(analysisId: number, sessionId: number): Promise<void> {
-    const detailsDiv = document.getElementById(`ai-details-${analysisId}`)!;
+async function loadAIDetails(analysisId, sessionId) {
+    const detailsDiv = document.getElementById(`ai-details-${analysisId}`);
     if (!detailsDiv.classList.contains('hidden')) {
         detailsDiv.classList.add('hidden');
         return;
     }
-
     try {
         const response = await fetch(`/api/social_sentiment/ai_details/${analysisId}`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
             const data = result.data;
             const analysis = data.analysis;
             const extractedTickers = data.extracted_tickers || [];
             const posts = data.posts || [];
-
             detailsDiv.innerHTML = `
                 <div class="bg-dashboard-surface p-4 rounded border border-border">
                     <h4 class="font-semibold mb-2 text-text-primary">Analysis Summary</h4>
                     <p class="text-sm mb-4 text-text-secondary">${analysis.summary || 'No summary available'}</p>
-                    
+
                     <h4 class="font-semibold mb-2 text-text-primary">Key Themes</h4>
                     <ul class="list-disc list-inside text-sm mb-4 text-text-secondary">
                         ${analysis.key_themes && analysis.key_themes.length > 0
-                    ? analysis.key_themes.map((theme: string) => `<li>${theme}</li>`).join('')
-                    : '<li>No themes identified</li>'}
+                ? analysis.key_themes.map((theme) => `<li>${theme}</li>`).join('')
+                : '<li>No themes identified</li>'}
                     </ul>
-                    
+
                     <h4 class="font-semibold mb-2 text-text-primary">Detailed Reasoning</h4>
                     <p class="text-sm mb-4 text-text-secondary">${analysis.reasoning || 'No reasoning provided'}</p>
-                    
+
                     ${extractedTickers.length > 0 ? `
                         <h4 class="font-semibold mb-2 text-text-primary">Extracted Tickers</h4>
                         <div class="text-sm mb-4 text-text-secondary">
-                            ${extractedTickers.map((t: any) => `
+                            ${extractedTickers.map((t) => `
                                 <div class="mb-1">
                                     <strong>${t.ticker}</strong> (${(t.confidence * 100).toFixed(1)}%) - ${t.company_name || 'Unknown'}
                                     ${t.is_primary ? ' <span class="text-theme-success-text">Primary</span>' : ''}
@@ -785,10 +620,10 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
                             `).join('')}
                         </div>
                     ` : ''}
-                    
+
                     ${posts.length > 0 ? `
                         <h4 class="font-semibold mb-2 text-text-primary">Sample Posts</h4>
-                        ${posts.map((post: any) => `
+                        ${posts.map((post) => `
                             <div class="mb-3 p-2 bg-dashboard-surface-alt rounded border border-border">
                                 <div class="flex justify-between mb-1">
                                     <span class="font-semibold text-sm text-text-primary">${post.author || 'Unknown'}</span>
@@ -804,92 +639,84 @@ async function loadAIDetails(analysisId: number, sessionId: number): Promise<voi
                     ` : ''}
                 </div>
             `;
-
             detailsDiv.classList.remove('hidden');
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading AI details:', error);
         detailsDiv.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Error loading details.</p>';
         detailsDiv.classList.remove('hidden');
     }
 }
-
 // Load sentiment data
-export async function loadSentimentData(refreshKey: number, showOnlyWatchlist: boolean = true): Promise<void> {
+export async function loadSentimentData(refreshKey, showOnlyWatchlist = true) {
     try {
-        const response = await fetch(
-            `/api/social_sentiment/latest_sentiment?refresh_key=${refreshKey}&show_only_watchlist=${showOnlyWatchlist}`
-        );
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
+        const response = await fetch(`/api/social_sentiment/latest_sentiment?refresh_key=${refreshKey}&show_only_watchlist=${showOnlyWatchlist}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
         const result = await response.json();
         if (result.success && result.data) {
-            const data = result.data as SentimentRow[];
-
+            const data = result.data;
             // Calculate summary statistics
             const uniqueTickers = new Set(data.map(row => row.Ticker));
             const sentimentColumns = ['💬 Stocktwits Sentiment', '👽 Reddit Sentiment'];
             let euphoricCount = 0;
             let fearfulCount = 0;
-
             data.forEach(row => {
                 sentimentColumns.forEach(col => {
-                    const value = row[col as keyof SentimentRow] as string;
-                    if (value && value.includes('EUPHORIC')) euphoricCount++;
-                    if (value && value.includes('FEARFUL')) fearfulCount++;
+                    const value = row[col];
+                    if (value && value.includes('EUPHORIC'))
+                        euphoricCount++;
+                    if (value && value.includes('FEARFUL'))
+                        fearfulCount++;
                 });
             });
-
-            document.getElementById('stats-unique-tickers')!.textContent = uniqueTickers.size.toString();
-            document.getElementById('stats-total-metrics')!.textContent = data.length.toString();
-            document.getElementById('stats-euphoric')!.textContent = euphoricCount.toString();
-            document.getElementById('stats-fearful')!.textContent = fearfulCount.toString();
-
+            document.getElementById('stats-unique-tickers').textContent = uniqueTickers.size.toString();
+            document.getElementById('stats-total-metrics').textContent = data.length.toString();
+            document.getElementById('stats-euphoric').textContent = euphoricCount.toString();
+            document.getElementById('stats-fearful').textContent = fearfulCount.toString();
             if (data.length > 0) {
-                document.getElementById('sentiment-loading')!.classList.add('hidden');
-                document.getElementById('sentiment-empty')!.classList.add('hidden');
-                document.getElementById('sentiment-content')!.classList.remove('hidden');
-
+                document.getElementById('sentiment-loading').classList.add('hidden');
+                document.getElementById('sentiment-empty').classList.add('hidden');
+                document.getElementById('sentiment-content').classList.remove('hidden');
                 // Destroy existing grid if it exists
                 if (sentimentGridApi) {
                     sentimentGridApi.setGridOption('rowData', []);
                 }
-
                 initializeSentimentGrid(data);
-            } else {
-                document.getElementById('sentiment-loading')!.classList.add('hidden');
-                document.getElementById('sentiment-content')!.classList.add('hidden');
-                document.getElementById('sentiment-empty')!.classList.remove('hidden');
+            }
+            else {
+                document.getElementById('sentiment-loading').classList.add('hidden');
+                document.getElementById('sentiment-content').classList.add('hidden');
+                document.getElementById('sentiment-empty').classList.remove('hidden');
             }
         }
-    } catch (error) {
+    }
+    catch (error) {
         console.error('Error loading sentiment data:', error);
-        document.getElementById('sentiment-loading')!.classList.add('hidden');
-        document.getElementById('sentiment-content')!.classList.add('hidden');
-        document.getElementById('sentiment-empty')!.classList.remove('hidden');
+        document.getElementById('sentiment-loading').classList.add('hidden');
+        document.getElementById('sentiment-content').classList.add('hidden');
+        document.getElementById('sentiment-empty').classList.remove('hidden');
     }
 }
-
 // Initialize page
-export function initializeSocialSentimentPage(refreshKey: number): void {
+export function initializeSocialSentimentPage(refreshKey) {
     loadWatchlistData(refreshKey);
     loadAlertsData(refreshKey);
     loadAIAnalysesData(refreshKey);
     loadSentimentData(refreshKey, true);
 }
-
 // Make functions available globally
-(window as any).loadAlertPosts = loadAlertPosts;
-(window as any).loadAIDetails = loadAIDetails;
-(window as any).loadSentimentData = loadSentimentData;
-(window as any).initializeSocialSentimentPage = initializeSocialSentimentPage;
-(window as any).refreshData = function () {
+window.loadAlertPosts = loadAlertPosts;
+window.loadAIDetails = loadAIDetails;
+window.loadSentimentData = loadSentimentData;
+window.initializeSocialSentimentPage = initializeSocialSentimentPage;
+window.refreshData = function () {
     const currentUrl = new URL(window.location.href);
     const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');
     currentUrl.searchParams.set('refresh_key', (currentRefreshKey + 1).toString());
     window.location.href = currentUrl.toString();
 };
-
 // Auto-initialize if config is present
 document.addEventListener('DOMContentLoaded', () => {
     const configElement = document.getElementById('social-sentiment-config');
@@ -898,16 +725,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const config = JSON.parse(configElement.textContent || '{}');
             const refreshKey = config.refreshKey || 0;
             initializeSocialSentimentPage(refreshKey);
-
             // Handle watchlist filter checkbox if it exists
-            const watchlistFilter = document.getElementById('show-only-watchlist') as HTMLInputElement | null;
+            const watchlistFilter = document.getElementById('show-only-watchlist');
             if (watchlistFilter) {
                 watchlistFilter.addEventListener('change', function () {
                     loadSentimentData(refreshKey, this.checked);
                 });
             }
-        } catch (err) {
+        }
+        catch (err) {
             console.error('[SocialSentiment] Failed to auto-init:', err);
         }
     }
 });
+//# sourceMappingURL=social_sentiment.js.map
