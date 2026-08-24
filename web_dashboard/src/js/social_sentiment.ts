@@ -591,11 +591,11 @@ async function loadAlertsData(refreshKey: number): Promise<void> {
                         </div>
                         <div class="flex gap-2 mt-2">
                             <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})" 
-                                    class="text-white px-3 py-1 bg-accent rounded hover:bg-accent-hover text-sm">
+                                    class="btn-outline-sm">
                                 View Source Posts
                             </button>
                             <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'" 
-                                    class="text-white px-3 py-1 bg-text-secondary rounded hover:bg-text-primary text-sm">
+                                    class="btn-outline-sm">
                                 View Ticker Details
                             </button>
                         </div>
@@ -719,7 +719,7 @@ async function loadAIAnalysesData(refreshKey: number): Promise<void> {
                             <div>Engagement: ${analysis.total_engagement}</div>
                         </div>
                         <button onclick="loadAIDetails(${analysis.id}, ${analysis.session_id})" 
-                                class="text-white px-3 py-1 bg-accent rounded hover:bg-accent-hover text-sm">
+                                class="btn-outline-sm">
                             View Details
                         </button>
                         <div id="ai-details-${analysis.id}" class="hidden mt-4"></div>
