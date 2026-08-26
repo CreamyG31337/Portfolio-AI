@@ -156,10 +156,10 @@ or the SQL interface will reject queries against it.
 
 ### 4.4 Migration files
 
-Follow the numbered convention in [`migrations/`](../migrations/):
+Follow the numbered convention in `database/schema/research/migrations/`:
 
-- `migrations/008_create_yt_sources.sql`
-- `migrations/009_add_rss_feeds_health_columns.sql`
+- `database/schema/research/migrations/008_create_yt_sources.sql`
+- `database/schema/research/migrations/009_add_rss_feeds_health_columns.sql`
 
 Plus a seed/apply script mirroring
 [`restore_rss_tables.py`](../web_dashboard/scripts/restore_rss_tables.py):
