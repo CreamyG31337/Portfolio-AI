@@ -445,7 +445,7 @@ def list_theses_due(
                ) AS opening_metadata
         FROM ticker_theses t
         WHERE {where}
-        ORDER BY COALESCE(
+        ORDER BY GREATEST(
             (
                 SELECT MAX(e.created_at) FROM thesis_entries e
                 WHERE e.thesis_id = t.id AND e.entry_kind = 'llm_reply'
@@ -929,7 +929,7 @@ def fetch_thesis_timeline_events(pg: Any, ticker: str, limit: int = 30) -> list[
     rows = pg.execute_query(
         """
         SELECT 'user_insight' AS event_type,
-               COALESCE(t.last_reviewed_at, t.updated_at, t.created_at) AS event_at,
+               GREATEST(t.last_reviewed_at, t.updated_at, t.created_at) AS event_at,
                (t.disposition || ' · ' || t.intent || ' — ' || t.title) AS label,
                t.created_by AS source,
                NULL::numeric AS confidence,
