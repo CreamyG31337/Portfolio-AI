@@ -106,19 +106,19 @@ _SAMPLE_ROW = {
 @patch("supabase_client.SupabaseClient")
 @patch("utils.job_tracking.mark_job_started")
 @patch("utils.job_tracking.mark_job_completed")
-@patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders._trade_exists")
+@patch("web_dashboard.supabase_pagination.fetch_all_rows")
 @patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders.collect_canadian_tickers")
 @patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders.log_job_execution")
 def test_yahoo_sedi_insiders_job_upserts(
     mock_log,
     mock_collect,
-    mock_exists,
+    mock_fetch_all_rows,
     mock_completed,
     mock_started,
     mock_sb_cls,
     mock_fetch,
 ):
-    mock_exists.return_value = False
+    mock_fetch_all_rows.return_value = []
     mock_collect.return_value = ["GLO.TO"]
     mock_fetch.return_value = [dict(_SAMPLE_ROW)]
     sb = MagicMock()
@@ -139,20 +139,20 @@ def test_yahoo_sedi_insiders_job_upserts(
 @patch("supabase_client.SupabaseClient")
 @patch("utils.job_tracking.mark_job_started")
 @patch("utils.job_tracking.mark_job_completed")
-@patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders._trade_exists")
+@patch("web_dashboard.supabase_pagination.fetch_all_rows")
 @patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders.collect_canadian_tickers")
 @patch("web_dashboard.scheduler.jobs_yahoo_sedi_insiders.log_job_execution")
 def test_yahoo_sedi_insiders_job_skips_existing(
     mock_log,
     mock_collect,
-    mock_exists,
+    mock_fetch_all_rows,
     mock_completed,
     mock_started,
     mock_sb_cls,
     mock_fetch,
 ):
     """An already-stored trade must not be re-inserted (dedup guard, fix #1)."""
-    mock_exists.return_value = True
+    mock_fetch_all_rows.return_value = [{"ticker": "GLO.TO", "insider_name": "Leung (Guy)", "transaction_date": "2026-05-15", "type": "Purchase", "shares": 1000, "price_per_share": 0.45}]
     mock_collect.return_value = ["GLO.TO"]
     mock_fetch.return_value = [dict(_SAMPLE_ROW)]
     sb = MagicMock()
