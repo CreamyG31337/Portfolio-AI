@@ -155,6 +155,7 @@ def yahoo_sedi_insiders_job() -> None:
         from supabase_client import SupabaseClient
         from utils.job_tracking import mark_job_completed, mark_job_started
         from yahoo_sedi_insider_service import fetch_yahoo_insider_rows
+        from web_dashboard.supabase_pagination import fetch_all_rows
 
         mark_job_started(JOB_ID, target_date)
         supabase = SupabaseClient(use_service_role=True)
@@ -170,9 +171,38 @@ def yahoo_sedi_insiders_job() -> None:
                 if not rows:
                     continue
                 parsed += len(rows)
+
+                from decimal import Decimal, InvalidOperation
+
+                existing = fetch_all_rows(
+                    supabase,
+                    "insider_trades",
+                    select="insider_name,transaction_date,type,shares,price_per_share",
+                    filters=[("ticker", "eq", ticker)]
+                )
+
+                def _make_key(row_dict):
+                    pps = row_dict.get("price_per_share")
+                    if pps is not None:
+                        try:
+                            # Convert to Decimal for exact precision matching
+                            pps = str(Decimal(str(pps)).quantize(Decimal("0.01")))
+                        except (InvalidOperation, ValueError, TypeError):
+                            pps = str(pps)
+
+                    return (
+                        str(row_dict.get("insider_name") or ""),
+                        str(row_dict.get("transaction_date") or "")[:10],
+                        str(row_dict.get("type") or ""),
+                        str(row_dict.get("shares")) if row_dict.get("shares") is not None else "",
+                        pps
+                    )
+
+                existing_keys = set(_make_key(r) for r in existing)
+
                 batch_records = []
                 for record in rows:
-                    if _trade_exists(supabase, record):
+                    if _make_key(record) in existing_keys:
                         skipped_dupes += 1
                         continue
                     batch_records.append(record)
