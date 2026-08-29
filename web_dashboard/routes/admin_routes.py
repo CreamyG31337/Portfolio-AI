@@ -2836,7 +2836,7 @@ def api_recent_trades():
         
         if side_raw == 'all':
             count_res = client.supabase.table("trade_log")\
-                .select("id", count="exact")\
+                .select("id", count="exact").limit(0)\
                 .eq("fund", fund)\
                 .neq("reason", "DRIP")\
                 .execute()

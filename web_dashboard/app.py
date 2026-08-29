@@ -4864,7 +4864,7 @@ def get_congress_trades_cached(
 
         # Standard path: use Supabase pagination directly
         # Get count first
-        count_query = _supabase_client.supabase.table("congress_trades_enriched").select("id", count="exact")
+        count_query = _supabase_client.supabase.table("congress_trades_enriched").select("id", count="exact").limit(0)
         count_query = apply_filters(count_query)
         count_result = count_query.execute()
         total = count_result.count if count_result.count is not None else 0
