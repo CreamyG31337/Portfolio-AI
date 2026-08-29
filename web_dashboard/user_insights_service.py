@@ -445,7 +445,7 @@ def list_theses_due(
                ) AS opening_metadata
         FROM ticker_theses t
         WHERE {where}
-        ORDER BY COALESCE(
+        ORDER BY GREATEST(
             (
                 SELECT MAX(e.created_at) FROM thesis_entries e
                 WHERE e.thesis_id = t.id AND e.entry_kind = 'llm_reply'
