@@ -445,12 +445,12 @@ def list_theses_due(
                ) AS opening_metadata
         FROM ticker_theses t
         WHERE {where}
-        ORDER BY COALESCE(
-            (
+        ORDER BY GREATEST(
+            COALESCE((
                 SELECT MAX(e.created_at) FROM thesis_entries e
                 WHERE e.thesis_id = t.id AND e.entry_kind = 'llm_reply'
-            ),
-            t.last_reviewed_at,
+            ), t.last_reviewed_at, t.created_at),
+            COALESCE(t.last_reviewed_at, t.created_at),
             t.created_at
         ) ASC NULLS FIRST
         LIMIT %s
