@@ -623,8 +623,10 @@ function toggleEmailView(view) {
     // Toggle button styles for Flowbite group
     if (view === 'html') {
         // HTML Active
-        htmlBtn.className = "px-3 py-1.5 text-xs font-medium border border-accent rounded-s-lg focus:z-10 focus:ring-2 focus:ring-accent text-accent bg-dashboard-surface hover:bg-dashboard-surface-alt";
-        plainBtn.className = "px-3 py-1.5 text-xs font-medium border-t border-b border-r border-border rounded-e-lg focus:z-10 focus:ring-2 focus:ring-accent text-text-secondary bg-dashboard-surface hover:bg-dashboard-surface-alt";
+        htmlBtn.classList.add("border-accent", "text-accent");
+        htmlBtn.classList.remove("border-border", "text-text-secondary");
+        plainBtn.classList.add("border-border", "text-text-secondary");
+        plainBtn.classList.remove("border-accent", "text-accent");
 
         // Render HTML in sandboxed iframe
         htmlView.classList.remove('hidden');
@@ -669,8 +671,10 @@ function toggleEmailView(view) {
 
     } else if (view === 'plain') {
         // Plain Active
-        htmlBtn.className = "px-3 py-1.5 text-xs font-medium border border-border rounded-s-lg focus:z-10 focus:ring-2 focus:ring-accent text-text-secondary bg-dashboard-surface hover:bg-dashboard-surface-alt";
-        plainBtn.className = "px-3 py-1.5 text-xs font-medium border-t border-b border-r border-accent rounded-e-lg focus:z-10 focus:ring-2 focus:ring-accent text-accent bg-dashboard-surface hover:bg-dashboard-surface-alt";
+        htmlBtn.classList.add("border-border", "text-text-secondary");
+        htmlBtn.classList.remove("border-accent", "text-accent");
+        plainBtn.classList.add("border-accent", "text-accent");
+        plainBtn.classList.remove("border-border", "text-text-secondary");
 
         plainView.classList.remove('hidden');
         htmlView.classList.add('hidden');
