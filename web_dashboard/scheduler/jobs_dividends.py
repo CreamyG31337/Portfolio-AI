@@ -151,13 +151,18 @@ def calculate_withholding_tax(gross_amount: Decimal, fund_type: str, ticker: str
 def get_unique_holdings(client) -> List[Tuple[str, str]]:
     """Get all unique (fund, ticker) pairs from portfolio_positions where shares > 0."""
     try:
-        result = client.supabase.table("portfolio_positions")\
-            .select("fund, ticker")\
-            .gt("shares", 0)\
-            .execute()
+        from supabase_pagination import fetch_all_rows
+
+        # ⚡ Bolt: Replace unbounded execute() with fetch_all_rows to avoid PostgREST 1000-row limit on large portfolios
+        rows = fetch_all_rows(
+            client,
+            "portfolio_positions",
+            select="fund, ticker",
+            filters=[("shares", "gt", 0)]
+        )
         
         unique_pairs = set()
-        for row in result.data:
+        for row in rows:
             unique_pairs.add((row['fund'], row['ticker']))
         
         return list(unique_pairs)
@@ -362,17 +367,25 @@ def calculate_eligible_shares(fund: str, ticker: str, ex_date: date, client) -> 
         ex_datetime_str = ex_datetime.isoformat()
 
         # Get all trades before ex_date
-        trades_result = client.supabase.table("trade_log")\
-            .select("shares, date, reason")\
-            .eq("fund", fund)\
-            .eq("ticker", ticker)\
-            .lt("date", ex_datetime_str)\
-            .order("date")\
-            .execute()
+        from supabase_pagination import fetch_all_rows
+
+        # ⚡ Bolt: Replace unbounded execute() with fetch_all_rows to avoid PostgREST 1000-row limit on trade history
+        trades_data = fetch_all_rows(
+            client,
+            "trade_log",
+            select="shares, date, reason",
+            filters=[
+                ("fund", "eq", fund),
+                ("ticker", "eq", ticker),
+                ("date", "lt", ex_datetime_str)
+            ],
+            order="date",
+            order_desc=False
+        )
 
         net_shares = Decimal("0")
 
-        for trade in trades_result.data:
+        for trade in trades_data:
             shares = Decimal(str(trade.get("shares", 0) or 0))
             reason = str(trade.get("reason", "") or "").upper()
             if "SELL" in reason:
