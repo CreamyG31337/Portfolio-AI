@@ -419,50 +419,60 @@ def _is_drip_fund(dividend_mode: str) -> bool:
     return str(dividend_mode).strip().lower() == "reinvest"
 
 
-def _credit_cash_dividend(client, fund: str, currency: str, amount: Decimal) -> None:
-    """Credit net dividend proceeds to fund cash_balances."""
-    currency_upper = str(currency).upper()
-    result = (
-        client.supabase.table("cash_balances")
-        .select("amount")
-        .eq("fund", fund)
-        .eq("currency", currency_upper)
-        .limit(1)
-        .execute()
-    )
-    previous = Decimal("0")
-    if result.data:
-        previous = Decimal(str(result.data[0].get("amount", 0) or 0))
+def _credit_cash_dividends_batch(client, cash_credits: dict) -> None:
+    """Credit batched net dividend proceeds to fund cash_balances."""
+    if not cash_credits:
+        return
 
-    new_amount = previous + amount
+    # cash_credits is a dict: (fund, currency_upper) -> Decimal(amount)
+
+    upsert_batch = []
     now_iso = datetime.now(timezone.utc).isoformat()
 
-    client.supabase.table("cash_balances").upsert(
-        {
+    for (fund, currency_upper), amount in cash_credits.items():
+        result = (
+            client.supabase.table("cash_balances")
+            .select("amount")
+            .eq("fund", fund)
+            .eq("currency", currency_upper)
+            .limit(1)
+            .execute()
+        )
+        previous = Decimal("0")
+        if result.data:
+            previous = Decimal(str(result.data[0].get("amount", 0) or 0))
+
+        new_amount = previous + amount
+
+        upsert_batch.append({
             "fund": fund,
             "currency": currency_upper,
             "amount": float(new_amount),
             "updated_at": now_iso,
-        },
-        on_conflict="fund,currency",
-    ).execute()
+        })
 
-    logger.info(
-        f"Credited {currency_upper} {amount:.2f} to {fund} cash "
-        f"(was {previous:.2f}, now {new_amount:.2f})"
-    )
+        logger.info(
+            f"Batched credit {currency_upper} {amount:.2f} to {fund} cash "
+            f"(was {previous:.2f}, now {new_amount:.2f})"
+        )
+
+    if upsert_batch:
+        client.supabase.table("cash_balances").upsert(
+            upsert_batch,
+            on_conflict="fund,currency",
+        ).execute()
 
 
-def insert_drip_transaction(
+def prepare_drip_transaction(
     fund: str, ticker: str, evt: DividendEvent,
     fund_type: str, dividend_mode: str, client
-) -> bool:
-    """Insert DRIP transaction into DB."""
+) -> dict:
+    """Prepare DRIP transaction dicts without inserting to DB."""
     try:
         # 1. Calc Shares
         eligible_shares = calculate_eligible_shares(fund, ticker, evt.ex_date, client)
         if eligible_shares <= 0:
-            return False
+            return {"success": False}
             
         # 2. Calc Amounts
         gross_amount = eligible_shares * Decimal(str(evt.amount))
@@ -470,13 +480,13 @@ def insert_drip_transaction(
         net_amount = gross_amount - withholding_tax
         
         if net_amount <= 0:
-            return False
+            return {"success": False}
             
         # 3. Get Price & Reinvest
         drip_price = get_price_on_date(ticker, evt.pay_date)
         if not drip_price:
             logger.warning(f"Could not get price for {ticker} on {evt.pay_date}")
-            return False
+            return {"success": False}
 
         currency = 'CAD' if is_canadian_ticker(ticker) else 'USD'
 
@@ -494,9 +504,8 @@ def insert_drip_transaction(
         is_drip = _is_drip_fund(dividend_mode)
         reinvested_shares = net_amount / drip_price if is_drip else Decimal('0')
 
-        trade_id = None
+        trade_entry = None
         if is_drip:
-            # 4a. DRIP fund — insert share purchase into trade_log
             trade_entry = {
                 'fund': fund,
                 'date': utc_dt.isoformat(),
@@ -510,30 +519,6 @@ def insert_drip_transaction(
                 'currency': currency
             }
 
-            trade_res = client.supabase.table("trade_log").insert(trade_entry).execute()
-            if not trade_res.data:
-                return False
-            trade_id = trade_res.data[0]['id']
-        else:
-            logger.info(
-                f"💵 Cash dividend {fund}/{ticker}: ${net_amount:.2f} "
-                f"(fund_type={fund_type}, dividend_mode={dividend_mode}, no share reinvestment)"
-            )
-            try:
-                _credit_cash_dividend(client, fund, currency, net_amount)
-                try:
-                    from cache_version import bump_cache_version
-
-                    bump_cache_version()
-                except Exception as bump_err:
-                    logger.warning(f"Cash credited but cache bump failed: {bump_err}")
-            except Exception as cash_err:
-                logger.error(
-                    f"Failed to credit cash for {fund}/{ticker}: {cash_err}; "
-                    "continuing with dividend_log insert"
-                )
-
-        # 5. Insert Dividend Log (always — tracks income for both DRIP and cash)
         div_entry = {
             'fund': fund,
             'ticker': ticker,
@@ -545,19 +530,25 @@ def insert_drip_transaction(
             'reinvested_shares': float(reinvested_shares),
             'drip_price': float(drip_price),
             'is_verified': (evt.source == 'nasdaq'),
-            'trade_log_id': trade_id,
+            'trade_log_id': None,  # Will be populated after batched trade_log insert
             'currency': currency
         }
         
-        client.supabase.table("dividend_log").insert(div_entry).execute()
-        
-        if is_drip:
-            logger.info(f"✅ DRIP {fund}/{ticker}: {reinvested_shares:.4f} shares @ ${drip_price} (Source: {evt.source})")
-        return True
+        return {
+            "success": True,
+            "is_drip": is_drip,
+            "trade_entry": trade_entry,
+            "div_entry": div_entry,
+            "net_amount": net_amount,
+            "currency": currency,
+            "reinvested_shares": reinvested_shares,
+            "drip_price": drip_price,
+            "source": evt.source
+        }
         
     except Exception as e:
-        logger.error(f"DRIP Insert Failed {fund}/{ticker}: {e}")
-        return False
+        logger.error(f"DRIP Preparation Failed {fund}/{ticker}: {e}")
+        return {"success": False}
 
 
 def process_dividends_job(lookback_days: int = 7) -> None:
@@ -629,6 +620,9 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             processed_keys.add((row['fund'], row['ticker'], row['ex_date']))
             
         stats = {'processed': 0, 'skipped': 0, 'errors': 0}
+        trade_entries_to_insert = []
+        div_entries_to_insert = []
+        cash_credits = {}
         
         # Lookback window
         today = date.today()
@@ -657,7 +651,7 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                         continue
                         
                     # Process
-                    success = insert_drip_transaction(
+                    result = prepare_drip_transaction(
                         fund,
                         ticker,
                         evt,
@@ -665,10 +659,28 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                         dividend_mode,
                         client
                     )
-                    if success:
+                    if result.get("success"):
                         stats['processed'] += 1
-                        # Add to processed set to prevent double counting in same run
                         processed_keys.add((fund, ticker, evt.pay_date.isoformat()))
+
+                        if result["is_drip"]:
+                            trade_entries_to_insert.append(result["trade_entry"])
+                            # Store a reference so we can link trade_log_id later
+                            div_entries_to_insert.append({
+                                "entry": result["div_entry"],
+                                "needs_trade_id": True,
+                                "trade_index": len(trade_entries_to_insert) - 1
+                            })
+                            logger.info(f"✅ Prepared DRIP {fund}/{ticker}: {result['reinvested_shares']:.4f} shares @ ${result['drip_price']:.2f} (Source: {result['source']})")
+                        else:
+                            div_entries_to_insert.append({
+                                "entry": result["div_entry"],
+                                "needs_trade_id": False
+                            })
+                            key = (fund, result["currency"].upper())
+                            cash_credits[key] = cash_credits.get(key, Decimal("0")) + result["net_amount"]
+                            logger.info(f"💵 Prepared Cash dividend {fund}/{ticker}: ${result['net_amount']:.2f} (fund_type={fund_type}, dividend_mode={dividend_mode})")
+
                     else:
                         stats['skipped'] += 1
                         
@@ -676,6 +688,38 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                 logger.error(f"Error processing {ticker}: {e}")
                 stats['errors'] += 1
                 
+        # ⚡ Bolt: Execute batched inserts and upserts
+        try:
+            inserted_trade_ids = []
+            if trade_entries_to_insert:
+                trade_res = client.supabase.table("trade_log").insert(trade_entries_to_insert).execute()
+                if trade_res.data:
+                    inserted_trade_ids = [row['id'] for row in trade_res.data]
+                    logger.info(f"Batched inserted {len(inserted_trade_ids)} DRIP trades")
+
+            final_div_entries = []
+            for item in div_entries_to_insert:
+                entry = item["entry"]
+                if item["needs_trade_id"] and item["trade_index"] < len(inserted_trade_ids):
+                    entry["trade_log_id"] = inserted_trade_ids[item["trade_index"]]
+                final_div_entries.append(entry)
+
+            if final_div_entries:
+                client.supabase.table("dividend_log").insert(final_div_entries).execute()
+                logger.info(f"Batched inserted {len(final_div_entries)} dividend logs")
+
+            if cash_credits:
+                _credit_cash_dividends_batch(client, cash_credits)
+                try:
+                    from cache_version import bump_cache_version
+                    bump_cache_version()
+                except Exception as bump_err:
+                    logger.warning(f"Cash credited but cache bump failed: {bump_err}")
+
+        except Exception as batch_error:
+            logger.error(f"Failed during batched execution: {batch_error}")
+            stats['errors'] += 1
+
         duration = int((time.time() - start_time) * 1000)
         msg = f"Processed {stats['processed']}, Skipped {stats['skipped']}, Errors {stats['errors']}"
         print(f"[{__name__}] Job completed: {msg} (duration: {duration}ms)", file=sys.stderr, flush=True)
