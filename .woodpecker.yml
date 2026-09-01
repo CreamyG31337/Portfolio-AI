@@ -491,7 +491,12 @@ steps:
         [ -n "$OLLAMA_BASE_URL_2" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_2=\"$OLLAMA_BASE_URL_2\""
         [ -n "$OLLAMA_BASE_URL_AMD" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_AMD=\"$OLLAMA_BASE_URL_AMD\""
         [ -n "$OLLAMA_BASE_URL_NVIDIA" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_BASE_URL_NVIDIA=\"$OLLAMA_BASE_URL_NVIDIA\""
-        FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"${OLLAMA_MODEL:-mistral-nemo:12b}\""
+        # Only pin an Ollama model when one is explicitly configured. Unset, ollama_client.py
+        # falls through to model_registry.get_primary_model() -> GLM, which is the desired
+        # default: local Ollama is opportunistic (the 3090 host may be off for gaming) while
+        # GLM API capacity is plentiful. The old hardcoded mistral-nemo:12b was installed on
+        # NEITHER Ollama host (both returned "model not found", verified 2026-08-31).
+        [ -n "$OLLAMA_MODEL" ] && FLASK_CMD="$FLASK_CMD -e OLLAMA_MODEL=\"$OLLAMA_MODEL\""
         FLASK_CMD="$FLASK_CMD -e OLLAMA_ENABLED=\"${OLLAMA_ENABLED:-true}\""
 
         # AI task queue. Defaults turn queue mode ON in production; override

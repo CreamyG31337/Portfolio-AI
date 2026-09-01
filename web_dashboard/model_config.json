@@ -63,13 +63,13 @@
             "desc": "Strong alternative to Mistral."
         },
         "granite4.1:8b": {
-            "num_ctx": 39000,
+            "num_ctx": 24576,
             "num_predict": 4096,
             "temperature": 0.1,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
             "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
             "think": false,
-            "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. Hybrid-Mamba => low KV growth, 39k ctx fits with headroom. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host."
+            "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host. ctx 24576 MEASURED 2026-08-31: 13.06 GB resident on the 16 GB RX 6800, leaving room for bge-m3. Was 39000, which measured 15.47 GB and starved bge-m3 down to 16% GPU (embeddings ran on CPU). The old 'hybrid-Mamba => low KV growth' note was wrong: KV+state costs ~157 KB/token here."
         },
         "qwen3.8:27b-mtp-q4_K_M": {
             "num_ctx": 65536,
@@ -132,7 +132,8 @@
             "num_ctx": 2048,
             "num_predict": 512,
             "temperature": 0.3,
-            "desc": "Too big for GPU. Will be slow (CPU offload)."
+            "desc": "Too big for GPU. Will be slow (CPU offload). Hidden 2026-08-31: 26.44 GB on disk vs a 16 GB RX 6800 - cannot fit at any context, always partially offloaded to CPU.",
+            "hidden": true
         },
         "llama3.2:3b": {
             "num_ctx": 40000,
