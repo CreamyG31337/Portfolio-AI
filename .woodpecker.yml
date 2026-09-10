@@ -74,6 +74,11 @@
 #   (Woodpecker errors if a secret name is missing). Set on the deploy host in:
 #   /home/lance/trading-dashboard-optional.env  e.g. MAILGUN_SEND_DOMAIN=mg.example.com
 #   MAILGUN_FROM="Portfolio <noreply@mg.example.com>"
+# - grok_bot_token: (REQUIRED before the next push that references it — Woodpecker errors
+#   if the secret name is missing). Bearer token for GET/POST /api/grok/*.
+#   Generate: python -c "import secrets; print(secrets.token_urlsafe(32))"
+#   Same value goes on the Grok Bot VM. Queue funds default to Project Chimera +
+#   RRSP Lance Webull in code (GROK_WATCHLIST_FUNDS). See docs/GROK_BOT_RESEARCH.md.
 # Outbound digest also needs PUBLIC_BASE_URL (see deploy step: derived from APP_DOMAIN when possible)
 # Ollama: most vars are NOT passed via from_secret (Woodpecker errors when a secret name is missing).
 # Configure them on the deploy host instead:
@@ -200,6 +205,10 @@ steps:
       # Woodpecker errors out if missing, same as ollama_base_url_2 above.
       YOUTUBE_PROXY_CONTROL_APIKEY:
         from_secret: youtube_proxy_control_apikey
+      # Grok Bot weekday X ingest. Must exist as Woodpecker secret "grok_bot_token"
+      # before this step runs — missing from_secret name fails the pipeline.
+      GROK_BOT_TOKEN:
+        from_secret: grok_bot_token
     commands:
       # Set timezone (Pacific Time - handles PST/PDT automatically)
       - ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
@@ -475,6 +484,8 @@ steps:
         [ -n "$MAILGUN_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_API_KEY=\"$MAILGUN_API_KEY\""
         [ -n "$MAILGUN_WEBHOOK_SIGNING_KEY" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_WEBHOOK_SIGNING_KEY=\"$MAILGUN_WEBHOOK_SIGNING_KEY\""
         [ -n "$NEWSLETTER_EMAIL" ] && FLASK_CMD="$FLASK_CMD -e NEWSLETTER_EMAIL=\"$NEWSLETTER_EMAIL\""
+        [ -n "$GROK_BOT_TOKEN" ] && FLASK_CMD="$FLASK_CMD -e GROK_BOT_TOKEN=\"$GROK_BOT_TOKEN\""
+        [ -n "$GROK_WATCHLIST_FUND" ] && FLASK_CMD="$FLASK_CMD -e GROK_WATCHLIST_FUND=\"$GROK_WATCHLIST_FUND\""
         [ -n "$MAILGUN_SEND_DOMAIN" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_SEND_DOMAIN=\"$MAILGUN_SEND_DOMAIN\""
         [ -n "$MAILGUN_FROM" ] && FLASK_CMD="$FLASK_CMD -e MAILGUN_FROM=\"$MAILGUN_FROM\""
         # Weekly stance retro: resolve the current email from the dashboard account.

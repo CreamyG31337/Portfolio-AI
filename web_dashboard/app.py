@@ -107,6 +107,7 @@ try:
     # Paths exempt from CSRF protection (external webhooks that use their own auth)
     CSRF_EXEMPT_PATHS = [
         '/api/webhooks/',
+        '/api/grok/',
     ]
 
     # Manually protect all state-changing routes in before_request
@@ -844,6 +845,13 @@ try:
     logger.info("Registered Digest Blueprint")
 except Exception as e:
     logger.error(f"Failed to register Digest Blueprint: {e}", exc_info=True)
+
+try:
+    from routes.grok_bot_routes import grok_bp
+    app.register_blueprint(grok_bp)
+    logger.info("Registered Grok Bot Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Grok Bot Blueprint: {e}", exc_info=True)
 
 # Auto-start scheduler on module load (not waiting for first request)
 def _start_scheduler_background():

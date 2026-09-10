@@ -3262,6 +3262,121 @@
           "unique": false
         }
       ]
+    },
+    "grok_x_briefs": {
+      "columns": [
+        {
+          "name": "id",
+          "type": "UUID",
+          "nullable": false,
+          "default": "gen_random_uuid()"
+        },
+        {
+          "name": "fund",
+          "type": "VARCHAR(50)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "ticker",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "sweep_date",
+          "type": "DATE",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "body",
+          "type": "TEXT",
+          "nullable": false,
+          "default": null
+        },
+        {
+          "name": "themes",
+          "type": "TEXT[]",
+          "nullable": false,
+          "default": "'{}'"
+        },
+        {
+          "name": "posts",
+          "type": "JSONB",
+          "nullable": false,
+          "default": "'[]'::jsonb"
+        },
+        {
+          "name": "notable",
+          "type": "BOOLEAN",
+          "nullable": false,
+          "default": "false"
+        },
+        {
+          "name": "cited_urls",
+          "type": "TEXT[]",
+          "nullable": false,
+          "default": "'{}'"
+        },
+        {
+          "name": "status",
+          "type": "VARCHAR(20)",
+          "nullable": false,
+          "default": "'ingested'"
+        },
+        {
+          "name": "created_at",
+          "type": "TIMESTAMPTZ",
+          "nullable": false,
+          "default": "now()"
+        },
+        {
+          "name": "updated_at",
+          "type": "TIMESTAMPTZ",
+          "nullable": false,
+          "default": "now()"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "foreign_keys": [],
+      "indexes": [
+        {
+          "name": "grok_x_briefs_fund_ticker_day",
+          "columns": [
+            "fund",
+            "ticker",
+            "sweep_date"
+          ],
+          "unique": true
+        },
+        {
+          "name": "idx_grok_x_briefs_fund_date",
+          "columns": [
+            "fund",
+            "sweep_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_grok_x_briefs_ticker",
+          "columns": [
+            "ticker",
+            "sweep_date"
+          ],
+          "unique": false
+        },
+        {
+          "name": "idx_grok_x_briefs_status",
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "unique": false
+        }
+      ]
     }
   }
 }

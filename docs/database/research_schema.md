@@ -2,7 +2,7 @@
 
 **Generated:** 2026-07-13 14:12:47
 
-**Total Tables:** 30
+**Total Tables:** 31
 
 ---
 
@@ -16,6 +16,7 @@
 - [etf_holdings_log](#etf-holdings-log)
 - [extracted_tickers](#extracted-tickers)
 - [filing_events](#filing-events)
+- [grok_x_briefs](#grok-x-briefs)
 - [idea_triage](#idea-triage)
 - [market_daily_brief](#market-daily-brief)
 - [market_relationships](#market-relationships)
@@ -298,6 +299,42 @@
 | `filing_events_accession_no_key` | `accession_no` | ✓ |
 | `idx_filing_events_filed` | `filed_at` | ✗ |
 | `idx_filing_events_ticker_filed` | `ticker`, `filed_at` | ✗ |
+
+---
+
+## grok_x_briefs
+
+Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a human Insights review. Schema: `database/schema/research/tables/grok_x_briefs.sql`.
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `fund` | VARCHAR(50) | ✗ | - |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `sweep_date` | DATE | ✗ | - |
+| `body` | TEXT | ✗ | - |
+| `themes` | TEXT[] | ✗ | `'{}'` |
+| `posts` | JSONB | ✗ | `'[]'::jsonb` |
+| `notable` | BOOLEAN | ✗ | false |
+| `cited_urls` | TEXT[] | ✗ | `'{}'` |
+| `status` | VARCHAR(20) | ✗ | `'ingested'` |
+| `created_at` | TIMESTAMPTZ | ✗ | now() |
+| `updated_at` | TIMESTAMPTZ | ✗ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `grok_x_briefs_fund_ticker_day` | `fund`, `ticker`, `sweep_date` | ✓ |
+| `idx_grok_x_briefs_fund_date` | `fund`, `sweep_date` | ✗ |
+| `idx_grok_x_briefs_ticker` | `ticker`, `sweep_date` | ✗ |
+| `idx_grok_x_briefs_status` | `status`, `created_at` | ✗ |
 
 ---
 

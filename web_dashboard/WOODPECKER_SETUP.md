@@ -33,6 +33,7 @@ In Woodpecker: repository → **Settings** → **Secrets**
 - `flask_secret_key`, `jwt_secret`, `supabase_jwt_secret`
 - `youtube_proxy_control_apikey` — Gluetun control-server key for VPN exit rotation (Phase K)
 - Mailgun / newsletter secrets as needed
+- `grok_bot_token` — Bearer token for Grok Bot weekday X ingest (`GET`/`POST` `/api/grok/*`). **Must exist before the next push** that references `from_secret: grok_bot_token`. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"`. Same value on the Grok Bot VM. Queue defaults to Project Chimera + RRSP Lance Webull (code, not a secret). See `docs/GROK_BOT_RESEARCH.md`.
 
 > **`youtube_proxy_control_apikey` must exist before the next push.** `.woodpecker.yml`
 > references it with `from_secret`, and Woodpecker fails the pipeline when a named secret is
