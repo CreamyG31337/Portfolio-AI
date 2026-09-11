@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -12,11 +12,13 @@ from grok_bot_service import (
     GrokBotAuthError,
     GrokBotRequestError,
     DEFAULT_WATCHLIST_FUNDS,
+    build_queue,
     eligible_watchlist_rows,
     get_watchlist_funds,
     parse_brief_payloads,
     select_queue_items,
     upsert_briefs,
+    utc_today,
     verify_grok_bot_token,
 )
 
@@ -178,13 +180,101 @@ def test_upsert_rejects_unknown_ticker() -> None:
     pg.execute_query.assert_not_called()
 
 
-def test_upsert_daily_cap_and_same_day_retry() -> None:
+def test_build_queue_caps_at_daily_remaining() -> None:
     today = date(2026, 9, 9)
+    watchlist = [_watch("AAA"), _watch("BBB"), _watch("CCC"), _watch("DDD")]
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [],  # no prior briefs
+        [{"n": 3}],  # 3 distinct tickers already briefed today -> 2 slots left
+    ]
+    with patch("grok_bot_service.get_active_watchlist_rows", return_value=watchlist):
+        items = build_queue(pg, MagicMock(), funds=["TEST"], today=today, limit=5)
+    assert [i["ticker"] for i in items] == ["AAA", "BBB"]
+
+
+def test_parse_sweep_date_only_today_or_yesterday() -> None:
+    today = utc_today()
+    ok = parse_brief_payloads({"ticker": "AAA", "body": "x", "sweep_date": today.isoformat()})
+    assert ok[0]["sweep_date"] == today
+    ok_yday = parse_brief_payloads(
+        {"ticker": "AAA", "body": "x", "sweep_date": (today - timedelta(days=1)).isoformat()}
+    )
+    assert ok_yday[0]["sweep_date"] == today - timedelta(days=1)
+    with pytest.raises(GrokBotRequestError, match="today or yesterday"):
+        parse_brief_payloads(
+            {"ticker": "AAA", "body": "x", "sweep_date": (today - timedelta(days=2)).isoformat()}
+        )
+    with pytest.raises(GrokBotRequestError, match="today or yesterday"):
+        parse_brief_payloads(
+            {"ticker": "AAA", "body": "x", "sweep_date": (today + timedelta(days=1)).isoformat()}
+        )
+
+
+def test_parse_brief_post_url_scheme_and_theme_truncation() -> None:
+    with pytest.raises(GrokBotRequestError, match="http:// or https://"):
+        parse_brief_payloads(
+            {"ticker": "AAA", "body": "x", "posts": [{"url": "ftp://x.com/status/1"}]}
+        )
+    briefs = parse_brief_payloads(
+        {
+            "ticker": "AAA",
+            "body": "x",
+            "themes": ["p" * 150],
+            "posts": [{"url": "HTTPS://x.com/status/1"}],
+        }
+    )
+    assert briefs[0]["themes"] == ["p" * 100]
+    assert briefs[0]["cited_urls"] == ["HTTPS://x.com/status/1"]
+
+
+def test_upsert_preserves_status_when_body_and_posts_unchanged() -> None:
+    today = utc_today()
+    briefs = parse_brief_payloads({"ticker": "AAA", "body": "same", "sweep_date": today})
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [{"ticker": "AAA"}],  # already briefed today
+        [{"n": 1}],  # distinct tickers today
+        [
+            {
+                "id": uuid4(),
+                "fund": "TEST",
+                "ticker": "AAA",
+                "sweep_date": today,
+                "body": "same",
+                "themes": [],
+                "posts": [],
+                "notable": False,
+                "cited_urls": [],
+                "status": "evaluated",
+                "created_at": datetime(2026, 9, 9, 12, 0, tzinfo=UTC),
+                "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
+            }
+        ],
+    ]
+    stored = upsert_briefs(
+        pg,
+        funds=["TEST"],
+        briefs=briefs,
+        ticker_funds={"AAA": ["TEST"]},
+    )
+    assert stored[0]["status"] == "evaluated"
+    insert_sql = " ".join(pg.execute_query.call_args_list[2].args[0].split())
+    assert (
+        "CASE WHEN grok_x_briefs.body IS DISTINCT FROM EXCLUDED.body"
+        " OR grok_x_briefs.posts IS DISTINCT FROM EXCLUDED.posts"
+        " THEN 'ingested' ELSE grok_x_briefs.status END" in insert_sql
+    )
+    assert "status = EXCLUDED.status" not in insert_sql
+
+
+def test_upsert_daily_cap_and_same_day_retry() -> None:
+    today = utc_today()
     briefs = parse_brief_payloads(
         {
             "briefs": [
-                {"ticker": "NEW1", "body": "a", "sweep_date": "2026-09-09"},
-                {"ticker": "NEW2", "body": "b", "sweep_date": "2026-09-09"},
+                {"ticker": "NEW1", "body": "a", "sweep_date": today.isoformat()},
+                {"ticker": "NEW2", "body": "b", "sweep_date": today.isoformat()},
             ]
         }
     )

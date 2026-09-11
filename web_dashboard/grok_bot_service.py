@@ -6,7 +6,7 @@ import json
 import logging
 import os
 import secrets
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from watchlist_access import get_active_watchlist_rows, normalize_ticker
@@ -19,6 +19,7 @@ DAILY_TICKER_CAP = 5
 MAX_BRIEFS_PER_REQUEST = 5
 MAX_POSTS_PER_TICKER = 8
 MAX_THEMES = 20
+MAX_THEME_CHARS = 100
 MAX_BODY_CHARS = 65536
 ELIGIBLE_TIERS = frozenset({"A", "B"})
 SKIP_SOURCES = frozenset({"ideas_inbox"})
@@ -252,7 +253,9 @@ def build_queue(
         row["funds"] = _order_funds(row.get("funds") or [], fund_list)
     tickers = [str(r["ticker"]) for r in eligible]
     last_briefs = fetch_last_briefs(pg, funds=fund_list, tickers=tickers)
-    return select_queue_items(eligible, last_briefs, today=today_d, limit=limit)
+    already_today = count_distinct_tickers_for_day(pg, funds=fund_list, sweep_date=today_d)
+    remaining = max(0, DAILY_TICKER_CAP - already_today)
+    return select_queue_items(eligible, last_briefs, today=today_d, limit=min(limit, remaining))
 
 
 def _order_funds(found: list[Any], preferred: list[str]) -> list[str]:
@@ -290,7 +293,10 @@ def _normalize_one_brief(item: Any) -> dict[str, Any]:
         raise GrokBotRequestError(f"body exceeds {MAX_BODY_CHARS} characters")
     sweep_date = _parse_sweep_date(item.get("sweep_date"))
     notable = bool(item.get("notable", False))
-    themes = _string_list(item.get("themes"), field="themes", limit=MAX_THEMES)
+    themes = [
+        theme[:MAX_THEME_CHARS]
+        for theme in _string_list(item.get("themes"), field="themes", limit=MAX_THEMES)
+    ]
     posts = _normalize_posts(item.get("posts"))
     cited_urls = [str(p["url"]) for p in posts if p.get("url")]
     fund = str(item.get("fund") or "").strip() or None
@@ -310,12 +316,17 @@ def _parse_sweep_date(raw: Any) -> date:
     if raw is None or raw == "":
         return utc_today()
     if isinstance(raw, date) and not isinstance(raw, datetime):
-        return raw
-    text = str(raw).strip()[:10]
-    try:
-        return date.fromisoformat(text)
-    except ValueError as exc:
-        raise GrokBotRequestError("sweep_date must be YYYY-MM-DD") from exc
+        parsed = raw
+    else:
+        text = str(raw).strip()[:10]
+        try:
+            parsed = date.fromisoformat(text)
+        except ValueError as exc:
+            raise GrokBotRequestError("sweep_date must be YYYY-MM-DD") from exc
+    today = utc_today()
+    if parsed not in (today, today - timedelta(days=1)):
+        raise GrokBotRequestError("sweep_date must be today or yesterday (UTC)")
+    return parsed
 
 
 def _string_list(raw: Any, *, field: str, limit: int) -> list[str]:
@@ -347,6 +358,8 @@ def _normalize_posts(raw: Any) -> list[dict[str, str]]:
         url = str(item.get("url") or "").strip()
         if not url:
             raise GrokBotRequestError("each post needs a url")
+        if not url.lower().startswith(("http://", "https://")):
+            raise GrokBotRequestError("post url must start with http:// or https://")
         if len(url) > 2000:
             raise GrokBotRequestError("post url is too long")
         post: dict[str, str] = {"url": url}
@@ -469,7 +482,12 @@ def _upsert_one(pg: Any, *, fund: str, brief: dict[str, Any]) -> dict[str, Any]:
             posts = EXCLUDED.posts,
             notable = EXCLUDED.notable,
             cited_urls = EXCLUDED.cited_urls,
-            status = EXCLUDED.status,
+            status = CASE
+                WHEN grok_x_briefs.body IS DISTINCT FROM EXCLUDED.body
+                    OR grok_x_briefs.posts IS DISTINCT FROM EXCLUDED.posts
+                THEN 'ingested'
+                ELSE grok_x_briefs.status
+            END,
             updated_at = now()
         RETURNING id, fund, ticker, sweep_date, body, themes, posts, notable,
                   cited_urls, status, created_at, updated_at

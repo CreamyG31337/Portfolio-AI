@@ -41,7 +41,7 @@ Base URL in production: `https://ai-trading.drifting.space`
 
 ### `GET /api/grok/queue`
 
-Returns up to 5 active **A then B** tickers from **both** Project Chimera and RRSP Lance Webull. Skips C-tier, `ideas_inbox` discovery names, and tickers that already have a brief for **today** (UTC) on either fund. Prefer never-briefed, then oldest prior brief. Same ticker on both funds is one queue item (`funds` lists both).
+Returns active **A then B** tickers from **both** Project Chimera and RRSP Lance Webull. Returns at most (5 minus distinct tickers already briefed today, UTC), so it can be empty after a full run. Skips C-tier, `ideas_inbox` discovery names, and tickers that already have a brief for **today** (UTC) on either fund. Prefer never-briefed, then oldest prior brief. Same ticker on both funds is one queue item (`funds` lists both). Rate-limited to 30 requests/hour.
 
 ```powershell
 curl.exe -sS -H "Authorization: Bearer $env:GROK_BOT_TOKEN" `
@@ -67,7 +67,7 @@ curl.exe -sS -H "Authorization: Bearer $env:GROK_BOT_TOKEN" `
 
 ### `POST /api/grok/briefs`
 
-One ticker or `{ "briefs": [ ... ] }` (max 5). Echo `fund` from the queue item when posting. Upsert on `(fund, ticker, sweep_date)`. Rejects tickers not on either fund’s eligible watchlist. Rejects a 6th distinct ticker for the day across both funds (`429`). Max 8 posts per ticker, 64 KB body.
+One ticker or `{ "briefs": [ ... ] }` (max 5). Optional per-brief `fund` field (echo from queue item or resolved from eligible watchlist). Upsert on `(fund, ticker, sweep_date)`. Rejects tickers not on either fund’s eligible watchlist. Rejects a 6th distinct ticker for the day across both funds (`429`). Max 8 posts per ticker, 65,536-character body limit. Rate-limited to 30 requests/hour.
 
 ```powershell
 curl.exe -sS -X POST -H "Authorization: Bearer $env:GROK_BOT_TOKEN" `
@@ -89,7 +89,11 @@ curl.exe -sS -X POST -H "Authorization: Bearer $env:GROK_BOT_TOKEN" `
 }
 ```
 
-`status` is always `ingested` from this path.
+Validation and behavior:
+
+- `sweep_date` must be the UTC date today or yesterday (`YYYY-MM-DD`); anything else is a 400. Defaults to UTC today.
+- Post `url`s must start with `http://` or `https://` (max 2,000 chars); `theme` strings are truncated to 100 chars (max 20 themes).
+- A same-day re-POST keeps an `evaluated` or `ignored` status unless `body` or `posts` changed (which resets `status` to `ingested`). New rows start as `ingested`.
 
 ## Bot VM checklist (operator)
 
