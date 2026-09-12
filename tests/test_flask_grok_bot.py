@@ -12,7 +12,9 @@ from grok_bot_service import (
     GrokBotAuthError,
     GrokBotRequestError,
     DEFAULT_WATCHLIST_FUNDS,
+    MAX_AUTO_SKIPS_PER_DAY,
     build_queue,
+    record_auto_skip,
     eligible_watchlist_rows,
     get_watchlist_funds,
     parse_brief_payloads,
@@ -146,6 +148,74 @@ def test_parse_brief_rejects_too_many_posts() -> None:
     posts = [{"url": f"https://x.com/{i}"} for i in range(9)]
     with pytest.raises(GrokBotRequestError, match="at most 8"):
         parse_brief_payloads({"ticker": "AAA", "body": "x", "posts": posts})
+
+
+def test_parse_brief_rejects_non_x_post_hosts() -> None:
+    """A stolen token must not be able to plant links on a page the operator trusts."""
+    for bad in (
+        "https://evil.example/x.com/status/1",
+        "https://x.com.evil.example/status/1",
+        "http://x.com/status/1",  # http, not https
+        "https://user@evil.example/status/1",
+    ):
+        with pytest.raises(GrokBotRequestError, match="x.com/twitter.com"):
+            parse_brief_payloads({"ticker": "AAA", "body": "x", "posts": [{"url": bad}]})
+
+    ok = parse_brief_payloads(
+        {
+            "ticker": "AAA",
+            "body": "x",
+            "posts": [
+                {"url": "https://x.com/a/status/1"},
+                {"url": "https://twitter.com/a/status/2"},
+                {"url": "https://mobile.twitter.com/a/status/3"},
+            ],
+        }
+    )
+    assert len(ok[0]["posts"]) == 3
+
+
+def test_parse_brief_strips_invisible_characters() -> None:
+    """Bidi/zero-width characters render invisibly and can disguise a brief."""
+    briefs = parse_brief_payloads(
+        {
+            "ticker": "AAA",
+            "body": "real text‮reversed​",
+            "themes": ["theme‍name"],
+            "posts": [{"url": "https://x.com/a/status/1", "summary": "sum‪mary"}],
+        }
+    )
+    brief = briefs[0]
+    assert "‮" not in brief["body"] and "​" not in brief["body"]
+    assert brief["themes"] == ["themename"]
+    assert "‪" not in brief["posts"][0]["summary"]
+
+
+def test_parse_brief_rejects_malformed_ticker() -> None:
+    for bad in ("../etc", "A" * 25, "<script>"):
+        with pytest.raises(GrokBotRequestError):
+            parse_brief_payloads({"ticker": bad, "body": "x"})
+
+
+def test_auto_skip_is_capped_per_day() -> None:
+    """Zero-post briefs switch off sweeping; a stolen token must not disable it wholesale."""
+    pg = MagicMock()
+    pg.execute_query.return_value = [{"n": MAX_AUTO_SKIPS_PER_DAY}]
+    record_auto_skip(pg, ticker="AAA", reason="no X posts found")
+    inserts = [
+        c for c in pg.execute_query.call_args_list
+        if "INSERT INTO grok_x_skips" in " ".join(c.args[0].split())
+    ]
+    assert inserts == [], "cap reached: must not write another auto skip"
+
+    pg_ok = MagicMock()
+    pg_ok.execute_query.return_value = [{"n": 0}]
+    record_auto_skip(pg_ok, ticker="AAA", reason="no X posts found")
+    inserts_ok = [
+        c for c in pg_ok.execute_query.call_args_list
+        if "INSERT INTO grok_x_skips" in " ".join(c.args[0].split())
+    ]
+    assert len(inserts_ok) == 1
 
 
 def test_parse_brief_rejects_empty_body() -> None:
@@ -307,7 +377,7 @@ def test_parse_sweep_date_only_today_or_yesterday() -> None:
 
 
 def test_parse_brief_post_url_scheme_and_theme_truncation() -> None:
-    with pytest.raises(GrokBotRequestError, match="http:// or https://"):
+    with pytest.raises(GrokBotRequestError, match="x.com/twitter.com"):
         parse_brief_payloads(
             {"ticker": "AAA", "body": "x", "posts": [{"url": "ftp://x.com/status/1"}]}
         )
@@ -346,6 +416,7 @@ def test_upsert_preserves_status_when_body_and_posts_unchanged() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
+        [{"n": 0}],  # auto-skip: today's auto-skip count (under the cap)
         [],  # auto-skip insert (this brief cites no posts)
     ]
     stored = upsert_briefs(
@@ -409,7 +480,8 @@ def test_upsert_daily_cap_and_same_day_retry() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
-        [],  # auto-skip NEW1 (cites no posts)
+        [{"n": 0}],  # auto-skip NEW1: count under the cap
+        [],  # auto-skip NEW1 insert (cites no posts)
         [
             {
                 "id": uuid4(),
@@ -426,7 +498,8 @@ def test_upsert_daily_cap_and_same_day_retry() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
-        [],  # auto-skip NEW2 (cites no posts)
+        [{"n": 1}],  # auto-skip NEW2: count still under the cap
+        [],  # auto-skip NEW2 insert (cites no posts)
     ]
     stored = upsert_briefs(
         retry_pg,

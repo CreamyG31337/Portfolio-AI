@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
+from prompt_safety import contains_instruction_like_text, sanitize_for_llm
 from watchlist_access import get_active_watchlist_rows, normalize_ticker
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,19 @@ MAX_BODY_CHARS = 65536
 ELIGIBLE_TIERS = frozenset({"A", "B"})
 SKIP_SOURCES = frozenset({"ideas_inbox"})
 INGESTED_STATUS = "ingested"
+
+# The Bot's only job is citing X posts. Anything else is either a mistake or a
+# stolen token planting links on a dashboard the operator trusts.
+ALLOWED_POST_HOSTS = frozenset(
+    {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
+)
+TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,19}$")
+MAX_POST_SUMMARY_CHARS = 2000
+MAX_POST_ID_CHARS = 200
+# A zero-post brief auto-skips its ticker (one strike). Whoever holds the token
+# could therefore switch off monitoring name by name, silently. Cap the damage
+# per day; a real sweep rarely finds nothing for more than a name or two.
+MAX_AUTO_SKIPS_PER_DAY = 2
 
 
 class GrokBotAuthError(Exception):
@@ -254,6 +270,22 @@ def record_auto_skip(pg: Any, *, ticker: str, reason: str) -> None:
     Un-skipping is a row delete, so a name that goes quiet is not banned forever
     unless nobody ever looks at the list.
     """
+    rows = pg.execute_query(
+        """
+        SELECT COUNT(*) AS n FROM grok_x_skips
+        WHERE source = 'auto' AND created_at >= date_trunc('day', now())
+        """
+    )
+    today_auto = int(rows[0].get("n") or 0) if rows else 0
+    if today_auto >= MAX_AUTO_SKIPS_PER_DAY:
+        logger.warning(
+            "Grok auto-skip cap reached (%s today); not skipping %s. "
+            "A run of empty briefs means a broken sweep or a misused token, not %s dead tickers.",
+            today_auto,
+            ticker,
+            today_auto + 1,
+        )
+        return
     pg.execute_query(
         """
         INSERT INTO grok_x_skips (ticker, reason, source, created_at, updated_at)
@@ -320,17 +352,29 @@ def _normalize_one_brief(item: Any) -> dict[str, Any]:
     ticker = normalize_ticker(str(item.get("ticker") or ""))
     if not ticker:
         raise GrokBotRequestError("ticker is required")
+    if not TICKER_RE.match(ticker):
+        raise GrokBotRequestError("ticker is not a valid symbol")
     body = item.get("body")
     if not isinstance(body, str) or not body.strip():
         raise GrokBotRequestError("body is required")
     if len(body) > MAX_BODY_CHARS:
         raise GrokBotRequestError(f"body exceeds {MAX_BODY_CHARS} characters")
+    # Strip control, zero-width and bidi characters before this is ever stored:
+    # they render invisibly but can make a brief display as something else.
+    body = sanitize_for_llm(body, max_chars=MAX_BODY_CHARS)
+    if not body:
+        raise GrokBotRequestError("body is required")
+    if contains_instruction_like_text(body):
+        # Not rejected — a post can legitimately quote this — but a stolen token
+        # planting prompt injection should leave a trail before any LLM reads it.
+        logger.warning("Grok brief for %s contains instruction-like text", ticker)
     sweep_date = _parse_sweep_date(item.get("sweep_date"))
     notable = bool(item.get("notable", False))
     themes = [
-        theme[:MAX_THEME_CHARS]
+        sanitize_for_llm(theme, max_chars=MAX_THEME_CHARS)
         for theme in _string_list(item.get("themes"), field="themes", limit=MAX_THEMES)
     ]
+    themes = [theme for theme in themes if theme]
     posts = _normalize_posts(item.get("posts"))
     cited_urls = [str(p["url"]) for p in posts if p.get("url")]
     fund = str(item.get("fund") or "").strip() or None
@@ -363,6 +407,22 @@ def _parse_sweep_date(raw: Any) -> date:
     return parsed
 
 
+def _is_allowed_post_url(url: str) -> bool:
+    """Only https links to X itself may be cited.
+
+    The Bot cites posts it read on X, so anything else is either broken or a
+    stolen token planting links that render as citations on a trusted page.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    if parsed.scheme.lower() != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    return host in ALLOWED_POST_HOSTS
+
+
 def _string_list(raw: Any, *, field: str, limit: int) -> list[str]:
     if raw is None:
         return []
@@ -389,20 +449,18 @@ def _normalize_posts(raw: Any) -> list[dict[str, str]]:
     for item in raw:
         if not isinstance(item, dict):
             raise GrokBotRequestError("each post must be an object")
-        url = str(item.get("url") or "").strip()
+        url = sanitize_for_llm(item.get("url"), max_chars=2000)
         if not url:
             raise GrokBotRequestError("each post needs a url")
-        if not url.lower().startswith(("http://", "https://")):
-            raise GrokBotRequestError("post url must start with http:// or https://")
-        if len(url) > 2000:
-            raise GrokBotRequestError("post url is too long")
+        if not _is_allowed_post_url(url):
+            raise GrokBotRequestError("post url must be an https x.com/twitter.com link")
         post: dict[str, str] = {"url": url}
-        post_id = str(item.get("post_id") or "").strip()
-        summary = str(item.get("summary") or "").strip()
+        post_id = sanitize_for_llm(item.get("post_id"), max_chars=MAX_POST_ID_CHARS)
+        summary = sanitize_for_llm(item.get("summary"), max_chars=MAX_POST_SUMMARY_CHARS)
         if post_id:
-            post["post_id"] = post_id[:200]
+            post["post_id"] = post_id
         if summary:
-            post["summary"] = summary[:2000]
+            post["summary"] = summary
         posts.append(post)
     return posts
 
