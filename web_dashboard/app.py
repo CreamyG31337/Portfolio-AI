@@ -853,6 +853,13 @@ try:
 except Exception as e:
     logger.error(f"Failed to register Grok Bot Blueprint: {e}", exc_info=True)
 
+try:
+    from routes.grok_admin_routes import grok_admin_bp
+    app.register_blueprint(grok_admin_bp)
+    logger.info("Registered Grok Admin Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Grok Admin Blueprint: {e}", exc_info=True)
+
 # Auto-start scheduler on module load (not waiting for first request)
 def _start_scheduler_background():
     """Start scheduler in background thread on Flask app initialization."""

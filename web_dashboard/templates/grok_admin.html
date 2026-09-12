@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}Grok Bot Admin{% endblock %}
+{% block page_title %}Grok Bot Admin{% endblock %}
+{% block page_subtitle %}X-sweep briefs, bot health, and sweep skip list{% endblock %}
+
+{% block extra_head %}
+{% if CSRF_ENABLED %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    {% if error %}
+    <div class="bg-theme-error-bg border border-theme-error-border text-theme-error-text rounded-lg p-4" role="alert">
+        <span class="font-semibold">{{ error }}</span>
+        {% if error_message %}<span class="block text-sm mt-1">{{ error_message }}</span>{% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Bot health: what is the bot doing? -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+            <div class="text-xs uppercase tracking-wide text-text-secondary">Last Sweep</div>
+            {% if summary and summary.last_sweep %}
+            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.last_sweep[:10] }}</div>
+            <div class="mt-1 text-xs {% if summary.swept_today %}text-green-500{% else %}text-text-secondary{% endif %}">
+                {% if summary.swept_today %}Swept today{% else %}No sweep today{% endif %}
+            </div>
+            {% else %}
+            <div class="mt-2 text-lg font-semibold text-text-secondary">No sweeps yet</div>
+            {% endif %}
+        </div>
+        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+            <div class="text-xs uppercase tracking-wide text-text-secondary">Tickers Last Sweep</div>
+            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.tickers_last_sweep if summary else 0 }}</div>
+        </div>
+        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+            <div class="text-xs uppercase tracking-wide text-text-secondary">Notable Last Sweep</div>
+            <div class="mt-2 text-2xl font-semibold {{ 'text-amber-500' if summary and summary.notable_last_sweep else 'text-text-primary' }}">
+                {{ summary.notable_last_sweep if summary else 0 }}
+            </div>
+        </div>
+        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+            <div class="text-xs uppercase tracking-wide text-text-secondary">Total Briefs</div>
+            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.total_briefs if summary else 0 }}</div>
+        </div>
+    </div>
+
+    <!-- Recent briefs -->
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border p-4">
+        <form method="get" action="/grok/admin" class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+            <div class="md:col-span-2">
+                <label for="grok-filter-ticker" class="block mb-1 text-sm font-medium text-text-primary">Ticker</label>
+                <input type="text" id="grok-filter-ticker" name="ticker" value="{{ ticker_filter }}"
+                    placeholder="e.g. ABC"
+                    class="w-full px-3 py-2 text-sm bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
+            </div>
+            <div>
+                <label for="grok-filter-notable" class="block mb-1 text-sm font-medium text-text-primary">Notable</label>
+                <select id="grok-filter-notable" name="notable"
+                    class="w-full px-3 py-2 text-sm bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
+                    <option value="" {% if not notable_filter %}selected{% endif %}>All</option>
+                    <option value="true" {% if notable_filter == 'true' %}selected{% endif %}>Notable only</option>
+                    <option value="false" {% if notable_filter == 'false' %}selected{% endif %}>Quiet only</option>
+                </select>
+            </div>
+            <div>
+                <button type="submit"
+                    class="w-full text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
+                    Apply Filters
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <div class="space-y-3">
+        {% if briefs %}
+        {% for brief in briefs %}
+        <details class="bg-dashboard-surface rounded-lg border border-border overflow-hidden">
+            <summary class="px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1 cursor-pointer hover:bg-dashboard-surface-alt transition-colors">
+                <span class="text-sm font-semibold text-text-primary">{{ brief.sweep_date }}</span>
+                <span class="text-base font-bold text-accent">{{ brief.ticker }}</span>
+                <span class="text-xs text-text-secondary">{{ brief.fund }}</span>
+                {% if brief.notable %}
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">Notable</span>
+                {% endif %}
+                <span class="text-xs px-2 py-0.5 rounded-full bg-dashboard-background border border-border text-text-secondary">{{ brief.status }}</span>
+                <span class="text-xs text-text-secondary">{{ brief.post_count }} post{{ '' if brief.post_count == 1 else 's' }}</span>
+                <span class="ml-auto flex flex-wrap gap-1">
+                    {% for theme in brief.themes[:6] %}
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/30">{{ theme }}</span>
+                    {% endfor %}
+                    {% if brief.themes|length > 6 %}
+                    <span class="text-xs text-text-secondary">+{{ brief.themes|length - 6 }}</span>
+                    {% endif %}
+                </span>
+            </summary>
+            <div class="px-4 pb-4 pt-1 border-t border-border space-y-3">
+                <p class="text-sm text-text-primary whitespace-pre-line break-words">{{ brief.body }}</p>
+                {% if brief.posts %}
+                <div>
+                    <div class="text-xs uppercase tracking-wide text-text-secondary mb-1">Cited posts</div>
+                    <ul class="space-y-1">
+                        {% for post in brief.posts %}
+                        <li class="text-sm break-all">
+                            <a href="{{ post.url }}" target="_blank" rel="noopener noreferrer"
+                                class="text-accent hover:underline">{{ post.url }}</a>
+                            {% if post.summary %}<span class="text-text-secondary"> — {{ post.summary }}</span>{% endif %}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% else %}
+                <div class="text-sm text-text-secondary"><i class="fas fa-info-circle mr-1"></i>No cited posts.</div>
+                {% endif %}
+            </div>
+        </details>
+        {% endfor %}
+        {% else %}
+        <div class="bg-dashboard-surface rounded-lg border border-border px-4 py-10 text-center text-text-secondary">
+            <i class="fas fa-info-circle mr-2"></i>
+            {% if ticker_filter or notable_filter %}No briefs match the selected filters.{% else %}No briefs ingested yet.{% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Skip list -->
+    <div class="bg-dashboard-surface rounded-lg shadow-xs border border-border overflow-hidden">
+        <div class="px-4 py-3 border-b border-border flex items-center justify-between">
+            <div>
+                <h2 class="text-sm font-semibold text-text-primary">Sweep Skip List</h2>
+                <p class="text-xs text-text-secondary mt-0.5">Tickers here are excluded from the Bot's sweep queue. Removing one resumes sweeping it.</p>
+            </div>
+        </div>
+        <div class="px-4 py-3 border-b border-border">
+            <form id="grok-skip-add-form" class="flex flex-col md:flex-row gap-2">
+                <input type="text" name="ticker" placeholder="Ticker" required maxlength="10" autocomplete="off"
+                    class="w-full md:w-32 px-3 py-2 text-sm uppercase bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
+                <input type="text" name="reason" placeholder="Reason (optional)" maxlength="200" autocomplete="off"
+                    class="flex-1 px-3 py-2 text-sm bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
+                <button type="submit"
+                    class="text-white bg-accent hover:bg-accent/90 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-2 focus:outline-hidden transition-colors duration-200">
+                    Add Skip
+                </button>
+            </form>
+            <div id="grok-skip-error" class="hidden mt-2 text-sm text-theme-error-text" role="alert"></div>
+        </div>
+        <div class="relative overflow-x-auto">
+            <table class="min-w-full divide-y divide-border">
+                <thead class="bg-dashboard-background">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Ticker</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Reason</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Source</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Updated</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="grok-skip-table-body" class="bg-dashboard-surface divide-y divide-border">
+                    {% if skips %}
+                    {% for skip in skips %}
+                    <tr data-skip-ticker="{{ skip.ticker }}">
+                        <td class="px-4 py-2 text-sm font-semibold text-text-primary">{{ skip.ticker }}</td>
+                        <td class="px-4 py-2 text-sm text-text-secondary">{{ skip.reason }}</td>
+                        <td class="px-4 py-2 text-sm">
+                            <span class="text-xs px-2 py-0.5 rounded-full border {% if skip.source == 'auto' %}bg-dashboard-background border-border text-text-secondary{% else %}bg-accent/10 border-accent/30 text-accent{% endif %}">{{ skip.source }}</span>
+                        </td>
+                        <td class="px-4 py-2 text-sm text-text-secondary">{{ skip.updated_at or skip.created_at or '' }}</td>
+                        <td class="px-4 py-2 text-right">
+                            <button type="button" data-remove-skip="{{ skip.ticker }}"
+                                class="text-theme-error-text hover:underline text-sm focus:outline-hidden focus:ring-2 focus:ring-theme-error-border rounded px-1">
+                                Remove (resume)
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="px-4 py-8 text-center text-text-secondary">No skipped tickers — the whole eligible watchlist is sweepable.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        'use strict';
+
+        function getCsrfHeaders() {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            const token = meta ? meta.getAttribute('content') : null;
+            return token ? { 'X-CSRFToken': token } : {};
+        }
+
+        function showError(message) {
+            const box = document.getElementById('grok-skip-error');
+            if (!box) return;
+            box.textContent = message;
+            box.classList.remove('hidden');
+        }
+
+        async function postSkip(url, body) {
+            const response = await fetch(url, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                body: JSON.stringify(body),
+            });
+            if (response.status === 419) {
+                // CSRF token expired — fetch a fresh one and retry once.
+                const refresh = await fetch('/api/auth/csrf-token', { credentials: 'include' });
+                if (refresh.ok) {
+                    const data = await refresh.json();
+                    const meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta && data.csrf_token) {
+                        meta.setAttribute('content', data.csrf_token);
+                    }
+                    return postSkip(url, body);
+                }
+            }
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'request failed');
+            }
+            return data;
+        }
+
+        const addForm = document.getElementById('grok-skip-add-form');
+        if (addForm) {
+            addForm.addEventListener('submit', async function (event) {
+                event.preventDefault();
+                const ticker = (addForm.elements.ticker.value || '').trim();
+                const reason = (addForm.elements.reason.value || '').trim();
+                if (!ticker) {
+                    showError('Ticker is required.');
+                    return;
+                }
+                try {
+                    await postSkip('/grok/admin/skips', { ticker: ticker, reason: reason });
+                    window.location.reload();
+                } catch (err) {
+                    showError('Could not add skip: ' + err.message);
+                }
+            });
+        }
+
+        document.querySelectorAll('[data-remove-skip]').forEach(function (button) {
+            button.addEventListener('click', async function () {
+                const ticker = button.getAttribute('data-remove-skip');
+                try {
+                    await postSkip('/grok/admin/skips/remove', { ticker: ticker });
+                    window.location.reload();
+                } catch (err) {
+                    showError('Could not remove skip: ' + err.message);
+                }
+            });
+        });
+    })();
+</script>
+{% endblock %}
