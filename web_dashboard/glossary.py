@@ -74,6 +74,11 @@ GLOSSARY: dict[str, dict[str, str]] = {
         "short": "A ranked shortlist of what the system thinks deserves attention first. Suggestions only.",
         "source": "Rebuilt from the action queue, saved reviews, and watchlist signals. Nothing is traded automatically.",
     },
+    "advise_score": {
+        "label": "Urgency score",
+        "short": "A rough 0-100 ranking of how much a stock deserves a look now. Higher means more reasons piled up.",
+        "source": "Starts from signal confidence, then adjusted by how often that kind of call has been right before.",
+    },
     "market_regime": {
         "label": "Market regime",
         "short": "A one-word read of overall market conditions, from calm and risk-taking to fearful and defensive.",

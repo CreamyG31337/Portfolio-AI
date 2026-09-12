@@ -315,12 +315,18 @@ async function loadBriefing(): Promise<void> {
     const data = (await resp.json()) as Briefing;
     if (loading) loading.classList.add("hidden");
 
-    const regime = data.market_regime?.risk_regime || "UNKNOWN";
+    // "UNKNOWN" reads as an alarming verdict when it usually just means the job
+    // has not run. Say which one it is.
+    const rawRegime = String(data.market_regime?.risk_regime || "").trim();
+    const regimeKnown = rawRegime !== "" && rawRegime.toUpperCase() !== "UNKNOWN";
+    const regimeText = regimeKnown
+      ? `Regime: <strong>${esc(rawRegime)}</strong>`
+      : `Regime: <span class="text-text-secondary">not calculated yet — the market regime job has not run</span>`;
     showSection(
       "today-regime",
-      `<h2 class="text-lg font-semibold mb-2">Market regime</h2>
+      `<h2 class="text-lg font-semibold mb-2">Market regime ${helpTip("market_regime", "p-1")}</h2>
        <p class="text-sm">${esc(data.market_brief_headline || "No brief yet")}</p>
-       <p class="text-xs text-text-secondary mt-1">Regime: <strong>${esc(regime)}</strong></p>
+       <p class="text-xs text-text-secondary mt-1">${regimeText}</p>
        ${provenanceLine("Market regime job", data.market_regime?.as_of || data.updated_at)}`
     );
 
@@ -341,7 +347,7 @@ async function loadBriefing(): Promise<void> {
       : `<span class="text-xs font-normal text-text-secondary">(ranked from queue + Insights — not auto-trade)</span>`;
     showSection(
       "today-advise",
-      `<h2 class="text-lg font-semibold mb-2">Advise ${adviseSourceNote}</h2>
+      `<h2 class="text-lg font-semibold mb-2">Advise ${helpTip("advise", "p-1")}${helpTip("advise_score", "p-1")} ${adviseSourceNote}</h2>
        ${
          advise.length
            ? advise
@@ -373,7 +379,7 @@ async function loadBriefing(): Promise<void> {
                    : "";
                  const metric =
                    typeof row.score === "number"
-                     ? `score ${row.score}`
+                     ? `urgency ${Math.round(row.score)}/100`
                      : typeof row.confidence === "number"
                        ? `conf ${row.confidence.toFixed(2)}`
                        : "";

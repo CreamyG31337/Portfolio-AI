@@ -284,7 +284,7 @@ async function loadTheses(): Promise<void> {
             ${archivedBadge}
           </div>
           <h3 class="font-medium text-text-primary">${escapeHtml(row.title)}</h3>
-          <p class="text-xs text-text-secondary mt-1">${escapeHtml(row.created_by)} · ${formatDate(row.updated_at || row.created_at)} · ${row.entry_count ?? 0} posts · ${row.evidence_count ?? 0} evidence</p>
+          <p class="text-xs text-text-secondary mt-1">${escapeHtml(row.created_by)} · ${formatDate(row.updated_at || row.created_at)} · ${row.entry_count ?? 0} notes · ${row.evidence_count ?? 0} evidence</p>
         </article>`;
       })
       .join("");

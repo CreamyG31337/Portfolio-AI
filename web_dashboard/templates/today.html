@@ -9,21 +9,31 @@
     <div id="today-loading" class="text-sm text-text-secondary">Loading briefing…</div>
     <div id="today-error" class="hidden text-sm text-theme-error-text"></div>
 
+    {# Three tiers, because fifteen equally-weighted cards gave a first-time
+       viewer no way to tell the headline from the footnote. Order and emphasis
+       carry the priority; the section ids are unchanged so today.ts still
+       targets them. #}
+
+    <p class="text-xs uppercase tracking-wide text-text-secondary mt-2">Start here</p>
     <section id="today-regime" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-advise" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-advise" class="hidden bg-dashboard-surface border-2 border-accent/40 rounded-lg p-5 shadow-xs"></section>
     <section id="today-theses" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-flips" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-actions" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+
+    <p class="text-xs uppercase tracking-wide text-text-secondary mt-6">What moved</p>
+    <section id="today-flips" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-grok" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+    <section id="today-confluence" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-insider-clusters" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-congress-herd" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-dilution" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-filings" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-confluence" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-grok" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-liquidity" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
     <section id="today-alpha" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-movers" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
-    <section id="today-dividends" class="hidden bg-dashboard-surface border border-border rounded-lg p-4"></section>
+
+    <p class="text-xs uppercase tracking-wide text-text-secondary mt-6">Reference</p>
+    <section id="today-liquidity" class="hidden bg-dashboard-background border border-border rounded-lg p-3 text-sm"></section>
+    <section id="today-movers" class="hidden bg-dashboard-background border border-border rounded-lg p-3 text-sm"></section>
+    <section id="today-dividends" class="hidden bg-dashboard-background border border-border rounded-lg p-3 text-sm"></section>
 </div>
 {% endblock %}
 
