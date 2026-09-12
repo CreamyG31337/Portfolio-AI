@@ -544,7 +544,9 @@ def upsert_watchlist_ticker(
             },
             on_conflict="fund,ticker",
         ).execute()
-        return {"ok": True, "ticker": ticker_u, "priority_tier": tier, "source": source}
+        # Report what was actually stored: re-adding an ideas_inbox ticker keeps
+        # that provenance, so echoing the requested source would be a lie.
+        return {"ok": True, "ticker": ticker_u, "priority_tier": tier, "source": final_source}
     except Exception as exc:
         logger.warning("upsert_watchlist_ticker failed %s/%s: %s", fund_s, ticker_u, exc)
         return {"ok": False, "ticker": ticker_u, "error": str(exc)}

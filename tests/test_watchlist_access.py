@@ -194,8 +194,13 @@ def test_upsert_watchlist_ticker_calls_ensure_and_upsert(_currency) -> None:
     client.ensure_ticker_in_securities.return_value = True
     table = MagicMock()
     client.supabase.table.return_value = table
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.limit.return_value = table
     table.upsert.return_value = table
-    table.execute.return_value = MagicMock(data=[{"ticker": "CRM"}])
+    # No existing row, so the requested source is the one stored. Without this
+    # the provenance lookup returns an auto-MagicMock and "source" is garbage.
+    table.execute.return_value = MagicMock(data=[])
 
     with patch("utils.ticker_utils.get_ticker_currency", return_value="USD"):
         result = upsert_watchlist_ticker(
@@ -213,6 +218,31 @@ def test_upsert_watchlist_ticker_calls_ensure_and_upsert(_currency) -> None:
     assert payload["fund"] == "Project Chimera"
     assert payload["ticker"] == "CRM"
     assert payload["source"] == "bulk_paste"
+
+
+@patch("web_dashboard.watchlist_access.get_ticker_currency", create=True)
+def test_upsert_preserves_and_reports_existing_source(_currency) -> None:
+    """Re-adding a discovery ticker by hand must not rewrite why it is on the list."""
+    _currency.side_effect = ImportError("use fallback path")
+    client = MagicMock()
+    client.ensure_ticker_in_securities.return_value = True
+    table = MagicMock()
+    client.supabase.table.return_value = table
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.limit.return_value = table
+    table.upsert.return_value = table
+    table.execute.return_value = MagicMock(data=[{"source": "ideas_inbox"}])
+
+    with patch("utils.ticker_utils.get_ticker_currency", return_value="USD"):
+        result = upsert_watchlist_ticker(
+            client,
+            fund="Project Chimera",
+            ticker="crm",
+            source="watchlist_ui",
+        )
+    assert table.upsert.call_args[0][0]["source"] == "ideas_inbox"
+    assert result["source"] == "ideas_inbox", "must report what was stored, not what was asked for"
 
 
 def test_set_watchlist_active_updates() -> None:
