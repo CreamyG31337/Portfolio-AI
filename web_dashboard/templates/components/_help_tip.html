@@ -1,0 +1,39 @@
+{# Explain a jargon term. Text comes from web_dashboard/glossary.py, so a term
+   reads identically on every screen and is defined in exactly one place.
+
+   Usage:
+     {% from "components/_help_tip.html" import help_tip %}
+     Tension {{ help_tip('TENSION') }}
+
+   Markup matches the Flowbite tooltips already on the Signals page. Unknown
+   keys render nothing rather than an empty bubble, so a typo is invisible
+   rather than broken. #}
+{% macro help_tip(term, extra_class='') %}
+{% set entry = GLOSSARY.get(term) if GLOSSARY else None %}
+{% if entry %}
+{% set tip_id = 'tip-' ~ term ~ '-' ~ range(100000, 999999) | random %}
+<button type="button" data-tooltip-target="{{ tip_id }}"
+    class="inline-flex items-center justify-center text-text-secondary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle {{ extra_class }}"
+    aria-label="What does {{ entry.label }} mean?">
+    <i class="fas fa-circle-question text-xs" aria-hidden="true"></i>
+</button>
+<div id="{{ tip_id }}" role="tooltip"
+    class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+    <span class="block font-semibold">{{ entry.label }}</span>
+    <span class="block mt-0.5">{{ entry.short }}</span>
+    {% if entry.source %}<span class="block mt-1 opacity-75">Where this comes from: {{ entry.source }}</span>{% endif %}
+    <div class="tooltip-arrow" data-popper-arrow></div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{# A section's data provenance: which job produced this and when.
+   Answers "where is this number from?" without opening a tooltip. #}
+{% macro provenance(source_text, updated=None) %}
+{% if source_text %}
+<p class="text-xs text-text-secondary mt-1">
+    <i class="fas fa-database mr-1 opacity-60" aria-hidden="true"></i>{{ source_text }}
+    {% if updated %}<span class="opacity-75">· updated {{ updated }}</span>{% endif %}
+</p>
+{% endif %}
+{% endmacro %}

@@ -95,6 +95,10 @@
     {% include "components/_footer_content.html" %}
 
     {% include "components/_confirm_modal.html" %}
+    {# Jargon definitions from web_dashboard/glossary.py, so TypeScript-rendered
+       badges can explain themselves the same way server-rendered ones do.
+       See src/js/glossary.ts (helpTip). #}
+    <script id="glossary-data" type="application/json">{{ GLOSSARY | tojson }}</script>
     {% include "components/_scripts_content.html" %}
     {% block extra_scripts %}{% endblock %}
 </body>

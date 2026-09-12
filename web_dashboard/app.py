@@ -152,6 +152,21 @@ def inject_csrf_enabled():
     return {'CSRF_ENABLED': CSRF_ENABLED}
 
 
+@app.context_processor
+def inject_glossary():
+    """Make the jargon glossary available to every template.
+
+    Powers {{ help_tip('TENSION') }} and the JSON blob base.html hands to
+    src/js/glossary.ts. Defined once in glossary.py.
+    """
+    try:
+        from glossary import get_glossary
+        return {'GLOSSARY': get_glossary()}
+    except Exception as e:  # a missing glossary must not take down every page
+        logger.warning(f"Glossary unavailable: {e}")
+        return {'GLOSSARY': {}}
+
+
 @app.before_request
 def validate_fund_query_param():
     """Validate ?fund= on page requests and strip invalid values."""
