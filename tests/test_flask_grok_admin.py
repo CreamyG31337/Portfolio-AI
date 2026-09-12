@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -303,3 +303,44 @@ def test_is_safe_post_url_validation() -> None:
     assert is_safe_post_url("") is None
     assert is_safe_post_url(123) is None  # type: ignore[arg-type]
 
+
+
+def test_activity_summary_marks_a_stopped_sweep_stale() -> None:
+    """Nothing schedules the sweep here, so brief age is the only health signal."""
+    from routes.grok_admin_routes import fetch_activity_summary
+
+    pg = MagicMock()
+    old = (datetime.now(UTC).date() - timedelta(days=21)).isoformat()
+    pg.execute_query.side_effect = [
+        [{"total": 40, "last_sweep": old}],
+        [{"tickers": 5, "notable": 2}],
+    ]
+    summary = fetch_activity_summary(pg)
+    assert summary["stale"] is True
+    assert summary["weekdays_stale"] >= 3
+    assert summary["swept_today"] is False
+
+
+def test_activity_summary_is_not_stale_right_after_a_sweep() -> None:
+    from routes.grok_admin_routes import fetch_activity_summary
+
+    pg = MagicMock()
+    today = datetime.now(UTC).date().isoformat()
+    pg.execute_query.side_effect = [
+        [{"total": 40, "last_sweep": today}],
+        [{"tickers": 5, "notable": 2}],
+    ]
+    summary = fetch_activity_summary(pg)
+    assert summary["stale"] is False
+    assert summary["weekdays_stale"] == 0
+    assert summary["swept_today"] is True
+
+
+def test_activity_summary_with_no_briefs_at_all() -> None:
+    from routes.grok_admin_routes import fetch_activity_summary
+
+    pg = MagicMock()
+    pg.execute_query.return_value = [{"total": 0, "last_sweep": None}]
+    summary = fetch_activity_summary(pg)
+    assert summary["last_sweep"] is None
+    assert summary["stale"] is False

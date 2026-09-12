@@ -151,6 +151,10 @@ def fetch_activity_summary(pg: Any) -> dict[str, Any]:
         "tickers_last_sweep": 0,
         "notable_last_sweep": 0,
         "swept_today": False,
+        # No scheduler job runs the sweep, so nothing here can be "marked
+        # failed". Age of the newest brief is the whole health signal.
+        "weekdays_stale": 0,
+        "stale": False,
     }
     if last_sweep:
         day_rows = pg.execute_query(
@@ -166,6 +170,13 @@ def fetch_activity_summary(pg: Any) -> dict[str, Any]:
             summary["tickers_last_sweep"] = int(day_rows[0].get("tickers") or 0)
             summary["notable_last_sweep"] = int(day_rows[0].get("notable") or 0)
         summary["swept_today"] = last_sweep[:10] == datetime.now(UTC).date().isoformat()
+        from grok_brief_service import SWEEP_STALE_WEEKDAYS, weekdays_since
+
+        stale_days = weekdays_since(
+            date.fromisoformat(last_sweep[:10]), datetime.now(UTC).date()
+        )
+        summary["weekdays_stale"] = stale_days
+        summary["stale"] = stale_days >= SWEEP_STALE_WEEKDAYS
     return summary
 
 

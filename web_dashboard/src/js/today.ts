@@ -59,6 +59,13 @@ interface GrokPost {
   summary?: string;
 }
 
+interface GrokSweepHealth {
+  last_sweep?: string | null;
+  weekdays_stale: number;
+  stale: boolean;
+  never_swept: boolean;
+}
+
 interface GrokBrief {
   ticker: string;
   company_name?: string | null;
@@ -141,6 +148,7 @@ interface Briefing {
   filing_alerts?: FilingAlert[];
   confluence_events?: ConfluenceEvent[];
   grok_briefs?: GrokBrief[];
+  grok_sweep_health?: GrokSweepHealth;
   theses_attention?: ThesisAttention[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
@@ -208,21 +216,46 @@ function formatCompact(value: number | null | undefined): string {
 // Exported for vitest (today.test.ts). Returns the section's inner HTML; every
 // brief field is escaped via esc(), and post URLs only become hrefs when they
 // pass safeHttpUrl().
-export function renderGrokChatterSection(briefs: GrokBrief[]): string {
+// A stopped bot and a quiet market look identical in `briefs` — both are empty.
+// health carries the newest sweep date from the whole table, so the difference
+// can be stated instead of guessed at.
+export function renderSweepStaleWarning(health?: GrokSweepHealth | null): string {
+  if (!health) return "";
+  const detail = health.never_swept
+    ? "The bot has never filed a brief."
+    : `Nothing since ${esc(health.last_sweep ?? "")} — ${health.weekdays_stale} weekday${
+        health.weekdays_stale === 1 ? "" : "s"
+      } with no sweep.`;
+  if (!health.stale && !health.never_swept) return "";
+  return `<p class="text-sm mb-2 px-2 py-1.5 rounded border border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+      <i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i>The X sweep looks stopped. ${detail}
+      Common causes: the bot is out of X credits ${helpTip("x_credits", "p-1")}, its token was revoked, or its routine was edited.
+      <a href="/grok/admin" class="underline">Check the Grok Bot page</a></p>`;
+}
+
+export function renderGrokChatterSection(
+  briefs: GrokBrief[],
+  health?: GrokSweepHealth | null
+): string {
   const heading = `<h2 class="text-lg font-semibold mb-2"><a href="/grok/admin" class="text-accent hover:underline">X chatter</a> ${helpTip(
     "grok_brief",
     "p-1"
   )} <span class="text-xs font-normal text-text-secondary">(notable only ${helpTip("notable", "p-1")})</span></h2>`;
+  const warning = renderSweepStaleWarning(health);
+  // Prefer the unwindowed date: with no notable briefs today there is nothing in
+  // `briefs` to date the section by, which is exactly when "when did this last
+  // run?" is the question being asked.
   const provenance = provenanceLine(
     "Grok Bot weekday X sweep",
-    briefs.map((b) => b.sweep_date).filter(Boolean).sort().reverse()[0]
+    health?.last_sweep ||
+      briefs.map((b) => b.sweep_date).filter(Boolean).sort().reverse()[0]
   );
   if (!briefs.length) {
-    return `${heading}
+    return `${heading}${warning}
       <p class="text-sm text-text-secondary">No notable X chatter yet today. <a href="/grok/admin" class="text-accent underline">See the Grok Bot admin page</a></p>
       ${provenance}`;
   }
-  return `${heading}
+  return `${heading}${warning}
     ${briefs
       .map((b) => {
         const meta = [b.fund, b.sweep_date, `${b.post_count ?? (b.posts || []).length} posts`]
@@ -560,7 +593,7 @@ async function loadBriefing(): Promise<void> {
     );
 
     const grok = data.grok_briefs || [];
-    showSection("today-grok", renderGrokChatterSection(grok));
+    showSection("today-grok", renderGrokChatterSection(grok, data.grok_sweep_health));
 
     const alpha = data.alpha_articles || [];
     showSection(

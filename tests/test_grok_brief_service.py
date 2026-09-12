@@ -10,8 +10,10 @@ from grok_brief_service import (
     brief_excerpt_for_prompt,
     fetch_grok_signal_by_ticker,
     fetch_recent_grok_briefs,
+    fetch_sweep_health,
     mark_briefs_evaluated,
     summarize_body,
+    weekdays_since,
 )
 
 
@@ -166,3 +168,54 @@ def test_fetch_signal_by_ticker_is_quiet_when_table_missing() -> None:
     pg.execute_query.side_effect = Exception('relation "grok_x_briefs" does not exist')
     assert fetch_grok_signal_by_ticker(pg, ["CMI"]) == {}
     assert fetch_grok_signal_by_ticker(pg, []) == {}
+
+
+# --- sweep health ----------------------------------------------------------
+# The sweep runs on the Bot's own VM, so no scheduler job here fails when it
+# stops. These cover the only signal we have: how old the newest brief is.
+
+
+def test_weekdays_since_counts_missed_weekdays_not_calendar_days() -> None:
+    friday, monday = date(2026, 9, 11), date(2026, 9, 14)
+    # Friday -> Monday is three calendar days but only one missed sweep.
+    assert weekdays_since(friday, monday) == 1
+    assert weekdays_since(friday, friday) == 0
+    # A future or clock-skewed date must not read as stale.
+    assert weekdays_since(monday, friday) == 0
+    assert weekdays_since(date(2026, 9, 11), date(2026, 9, 18)) == 5
+
+
+def test_fetch_sweep_health_flags_a_stopped_bot() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = [{"last_sweep": date(2026, 9, 1)}]
+    health = fetch_sweep_health(pg, today=date(2026, 9, 14))
+    assert health["last_sweep"] == "2026-09-01"
+    assert health["weekdays_stale"] == 9
+    assert health["stale"] is True
+    assert health["never_swept"] is False
+
+
+def test_fetch_sweep_health_is_quiet_after_a_recent_sweep() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = [{"last_sweep": date(2026, 9, 11)}]
+    health = fetch_sweep_health(pg, today=date(2026, 9, 14))
+    assert health["stale"] is False
+    assert health["weekdays_stale"] == 1
+
+
+def test_fetch_sweep_health_handles_empty_table_and_missing_pg() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = [{"last_sweep": None}]
+    health = fetch_sweep_health(pg, today=date(2026, 9, 14))
+    assert health["never_swept"] is True
+    assert health["last_sweep"] is None
+    assert fetch_sweep_health(None)["never_swept"] is True
+
+
+def test_fetch_sweep_health_survives_a_missing_table() -> None:
+    """Today must still render before the migration has been applied."""
+    pg = MagicMock()
+    pg.execute_query.side_effect = Exception('relation "grok_x_briefs" does not exist')
+    health = fetch_sweep_health(pg, today=date(2026, 9, 14))
+    assert health["stale"] is False
+    assert health["never_swept"] is True

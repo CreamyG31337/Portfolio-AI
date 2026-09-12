@@ -258,10 +258,14 @@ def build_today_briefing(
 
     # Grok Bot X sweep: notable only, since a quiet brief is noise in a briefing.
     grok_briefs: list[dict[str, Any]] = []
+    grok_sweep_health: dict[str, Any] = {}
     try:
-        from grok_brief_service import fetch_recent_grok_briefs
+        from grok_brief_service import fetch_recent_grok_briefs, fetch_sweep_health
 
         grok_briefs = fetch_recent_grok_briefs(pg, days=2, limit=10)
+        # Unwindowed, so an empty briefs list can be told apart from a bot that
+        # stopped filing weeks ago. Without it both render as "nothing today".
+        grok_sweep_health = fetch_sweep_health(pg)
     except Exception as exc:
         logger.warning("Today briefing: grok briefs failed: %s", exc)
 
@@ -393,6 +397,7 @@ def build_today_briefing(
         "filing_alerts": filing_alerts,
         "confluence_events": confluence_events,
         "grok_briefs": grok_briefs,
+        "grok_sweep_health": grok_sweep_health,
         "theses_attention": theses_attention,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,

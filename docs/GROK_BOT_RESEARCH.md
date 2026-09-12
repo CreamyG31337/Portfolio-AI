@@ -225,8 +225,19 @@ Real levers on cost, cheapest first:
 - **A shorter window** (24h rather than 48h) once the routine runs daily, since a daily
   sweep already covers the gap.
 
-When the credits run out the routine will simply stop filing. Nothing in the dashboard
-alerts on that — check for a gap in `grok_x_briefs` if briefs stop appearing.
+When the credits run out the routine simply stops filing — no error reaches the
+dashboard, because the sweep runs on the Bot's own VM and nothing in
+`web_dashboard/scheduler/` schedules it. There is no job to mark failed.
+
+The dashboard detects this by age instead: `grok_brief_service.fetch_sweep_health()`
+takes `MAX(sweep_date)` across the whole table and counts **weekdays** since. Past
+`SWEEP_STALE_WEEKDAYS` (3) both the Today "X chatter" section and `/grok/admin` show
+an amber "the sweep looks stopped" banner naming the three causes that look identical
+from here: out of credits, revoked token, edited routine.
+
+The weekday count matters — a Friday sweep read on Monday is one missed sweep, not
+three days stale. The threshold is deliberately forgiving; a warning that cries wolf
+gets ignored, which is worse than noticing a day late.
 
 ## Later (not this v1)
 

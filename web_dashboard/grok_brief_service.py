@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,12 @@ logger = logging.getLogger(__name__)
 BRIEF_SUMMARY_CHARS = 240
 MAX_THEMES_SHOWN = 6
 MAX_POSTS_SHOWN = 3
+
+# The sweep runs weekday mornings, so one missed weekday is a hiccup and three is
+# a stopped bot. Deliberately forgiving: a false "it's broken" trains you to
+# ignore the warning, which is worse than noticing a day late.
+SWEEP_STALE_WEEKDAYS = 3
+_MAX_STALE_LOOKBACK_DAYS = 400
 
 
 def _iso(value: Any) -> str | None:
@@ -119,6 +125,77 @@ def fetch_recent_grok_briefs(
             }
         )
     return briefs
+
+
+def weekdays_since(last: date, today: date) -> int:
+    """Weekdays strictly after `last`, up to and including `today`.
+
+    Counts missed sweep opportunities, not calendar age: a Friday sweep read on
+    Monday is one weekday stale, not three days stale.
+    """
+    if today <= last:
+        return 0
+    if (today - last).days > _MAX_STALE_LOOKBACK_DAYS:
+        return _MAX_STALE_LOOKBACK_DAYS
+    count = 0
+    cursor = last + timedelta(days=1)
+    while cursor <= today:
+        if cursor.weekday() < 5:
+            count += 1
+        cursor += timedelta(days=1)
+    return count
+
+
+def _coerce_date(value: Any) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    text = str(value or "")[:10]
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def fetch_sweep_health(pg: Any, *, today: date | None = None) -> dict[str, Any]:
+    """How long since the Bot last filed anything.
+
+    This is the only way a stopped Bot becomes visible. The sweep runs on the
+    Bot's own VM, not in this app's scheduler, so nothing here can be "marked
+    failed" when it stops — running out of X credits, a revoked token and a
+    broken routine all present identically: briefs just stop arriving. The age of
+    the newest brief is the one signal that covers all three.
+
+    Deliberately unbounded by date, unlike fetch_recent_grok_briefs: a sweep that
+    stopped a month ago is exactly the case the windowed query cannot see.
+    """
+    health: dict[str, Any] = {
+        "last_sweep": None,
+        "weekdays_stale": 0,
+        "stale": False,
+        "never_swept": True,
+    }
+    if not pg:
+        return health
+    try:
+        rows = pg.execute_query("SELECT MAX(sweep_date) AS last_sweep FROM grok_x_briefs")
+    except Exception as exc:
+        logger.debug("grok sweep health unavailable: %s", exc)
+        return health
+    last = _coerce_date(rows[0].get("last_sweep")) if rows else None
+    if not last:
+        return health
+    stale_days = weekdays_since(last, today or date.today())
+    health.update(
+        {
+            "last_sweep": last.isoformat(),
+            "weekdays_stale": stale_days,
+            "stale": stale_days >= SWEEP_STALE_WEEKDAYS,
+            "never_swept": False,
+        }
+    )
+    return health
 
 
 def brief_excerpt_for_prompt(

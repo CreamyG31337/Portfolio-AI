@@ -23,15 +23,36 @@
 
     <!-- Bot health: what is the bot doing? -->
     <div>
+        {# Nothing in this app schedules the sweep, so no job can fail when the bot
+           stops. Out of credits, revoked token and broken routine all look the
+           same from here: briefs stop arriving. Say so rather than showing a
+           quietly ageing date. #}
+        {% if summary and summary.stale %}
+        <div class="mb-4 px-3 py-2 rounded border border-amber-500/50 bg-amber-500/10 text-sm text-amber-700 dark:text-amber-300">
+            <i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i>
+            <strong>The sweep looks stopped.</strong>
+            Nothing filed for {{ summary.weekdays_stale }} weekday{{ '' if summary.weekdays_stale == 1 else 's' }}.
+            Usual causes: the bot ran out of X credits {{ help_tip('x_credits') }}, its token was revoked,
+            or its routine was edited. Check the bot itself — this page only shows what it sent.
+        </div>
+        {% elif summary and not summary.last_sweep %}
+        <div class="mb-4 px-3 py-2 rounded border border-amber-500/50 bg-amber-500/10 text-sm text-amber-700 dark:text-amber-300">
+            <i class="fas fa-triangle-exclamation mr-1" aria-hidden="true"></i>
+            <strong>The bot has never filed a brief.</strong>
+            If it is set up, its first weekday sweep has not reached this app yet.
+        </div>
+        {% endif %}
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <div class="bg-dashboard-surface rounded-lg border border-border p-4">
                 <div class="text-xs uppercase tracking-wide text-text-secondary inline-flex items-center gap-1">
                     Last Sweep {{ help_tip('sweep') }}
                 </div>
                 {% if summary and summary.last_sweep %}
-                <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.last_sweep[:10] }}</div>
-                <div class="mt-1 text-xs {% if summary.swept_today %}text-green-500{% else %}text-text-secondary{% endif %}">
-                    {% if summary.swept_today %}Swept today{% else %}No sweep today{% endif %}
+                <div class="mt-2 text-2xl font-semibold {{ 'text-amber-500' if summary.stale else 'text-text-primary' }}">{{ summary.last_sweep[:10] }}</div>
+                <div class="mt-1 text-xs {% if summary.swept_today %}text-green-500{% elif summary.stale %}text-amber-500{% else %}text-text-secondary{% endif %}">
+                    {% if summary.swept_today %}Swept today
+                    {% elif summary.weekdays_stale %}{{ summary.weekdays_stale }} weekday{{ '' if summary.weekdays_stale == 1 else 's' }} ago
+                    {% else %}No sweep today{% endif %}
                 </div>
                 {% else %}
                 <div class="mt-2 text-lg font-semibold text-text-secondary">No sweeps yet</div>

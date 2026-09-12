@@ -90,3 +90,51 @@ describe("renderGrokChatterSection", () => {
         expect(host.textContent).toContain("<script>alert(2)</script>");
     });
 });
+
+// A stopped bot and a quiet market both arrive as zero briefs. Only the health
+// payload can tell them apart, so these guard that it is actually surfaced.
+describe("sweep staleness", () => {
+  it("warns when the sweep has not run for several weekdays", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderGrokChatterSection([], {
+      last_sweep: "2026-09-01",
+      weekdays_stale: 9,
+      stale: true,
+      never_swept: false,
+    });
+    const text = host.textContent || "";
+    expect(text).toContain("looks stopped");
+    expect(text).toContain("2026-09-01");
+    expect(text).toContain("9 weekdays");
+    expect(text).toContain("credits");
+  });
+
+  it("says so when the bot has never filed anything", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderGrokChatterSection([], {
+      last_sweep: null,
+      weekdays_stale: 0,
+      stale: false,
+      never_swept: true,
+    });
+    expect(host.textContent || "").toContain("never filed");
+  });
+
+  it("stays silent on a normal quiet day, but still dates the section", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderGrokChatterSection([], {
+      last_sweep: "2026-09-11",
+      weekdays_stale: 1,
+      stale: false,
+      never_swept: false,
+    });
+    const text = host.textContent || "";
+    expect(text).not.toContain("looks stopped");
+    // The provenance date must come from the whole table, not the empty list.
+    expect(text).toContain("updated 2026-09-11");
+  });
+
+  it("renders without a health payload at all", () => {
+    expect(() => renderGrokChatterSection([])).not.toThrow();
+  });
+});
