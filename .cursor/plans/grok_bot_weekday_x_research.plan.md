@@ -15,7 +15,7 @@ todos:
     content: docs/GROK_BOT_RESEARCH.md with curl examples, Bot profile, skill steps, never-do list
     status: completed
   - id: bot-setup
-    content: "On the Bot VM: store only GROK_BOT_TOKEN, install X plugin, manual 1-2 ticker sweep then weekday 07:30 ET routine; check usage bar"
+    content: "On the Bot VM: store only GROK_BOT_TOKEN, install X plugin, manual 1-2 ticker sweep then weekday 07:30 PT routine; check usage bar"
     status: pending
 isProject: false
 ---
@@ -131,7 +131,7 @@ No WATCHLIST/QUEUE/SEEN/OUTBOX as source of truth. Optional local copy of the la
 
 ## Skill then routine
 
-Same as before: one manual 1–2 ticker run against **TEST** if we point `GROK_WATCHLIST_FUND` at TEST, or a tiny allowlist in the first deploy. Save skill with failure behavior. Then weekday **07:30 America/New_York**. Check the Bot weekly usage bar after the first scheduled run.
+Same as before: one manual 1–2 ticker run against **TEST** if we point `GROK_WATCHLIST_FUND` at TEST, or a tiny allowlist in the first deploy. Save skill with failure behavior. Then weekday **07:30 America/Los_Angeles** (10:30 ET, after the open — the operator's local morning, not pre-market). Check the Bot weekly usage bar after the first scheduled run.
 
 ## Repo work (this is now the implementation)
 

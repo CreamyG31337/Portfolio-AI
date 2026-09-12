@@ -105,7 +105,7 @@ Do this **in Grok Bot**, not in Cursor IDE. The laptop `mcp.json` does not carry
 4. Paste the **Bot profile** below into the Bot profile. Keep send/buy/delete behind approval (this job should never need them).
 5. Manual test: set `GROK_WATCHLIST_FUND=TEST` on Flask (or pin 1–2 TEST names on the watchlist), run `/x-watchlist-sweep` in chat, confirm rows with `SELECT ticker, sweep_date, notable FROM grok_x_briefs ORDER BY created_at DESC LIMIT 10`.
 6. Save the skill after a good run. Define failure behavior first: X plugin error → POST nothing, tell chat, **do not** scrape x.com or open the dashboard.
-7. Weekday routine **07:30 America/New_York** — paste the **Routine** block below into the routine; it is self-contained (a routine is a scheduled prompt with no memory of earlier chats). Pause after the first scheduled run and check the **weekly Bot usage bar** before leaving it on.
+7. Weekday routine **07:30 America/Los_Angeles** (10:30 ET, after the open) — paste the **Routine** block below into the routine; it is self-contained (a routine is a scheduled prompt with no memory of earlier chats). Pause after the first scheduled run and check the **weekly Bot usage bar** before leaving it on.
 
 ### Bot profile (paste)
 
@@ -147,7 +147,11 @@ replacing both `<TOKEN>` placeholders with the value of the Woodpecker secret
 `grok_bot_token`. If the Bot app has a secrets/env section, put the token there and
 reference it instead — the routine text lives on a VM shared with every other Bot.
 
-Schedule: weekdays, **07:30**, timezone **America/New_York**.
+Schedule: weekdays, **07:30**, timezone **America/Los_Angeles** (the operator's local
+time; 10:30 ET, an hour after the US open). The sweep therefore reads **reaction to the
+morning move**, not pre-market positioning. The routine asks for the last 24–48h, so
+overnight chatter is still in range — it is just being read after the market has had its
+say.
 
 ```text
 Every weekday morning, do a capped X (Twitter) sweep for my stock watchlist.
