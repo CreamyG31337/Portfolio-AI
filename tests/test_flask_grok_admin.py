@@ -151,3 +151,99 @@ def test_remove_skip_deletes_row(client) -> None:
     assert "DELETE FROM grok_x_skips" in sql
     assert "WHERE ticker = %s" in sql
     assert params == ("ZZZ",)
+
+
+@skip_without_plotly
+def test_page_post_url_safety_filters_dangerous_schemes_and_hosts(client) -> None:
+    today = datetime.now(UTC).date().isoformat()
+    hostile_brief = {
+        "id": "row-hostile",
+        "fund": "TEST",
+        "ticker": "EVIL",
+        "sweep_date": today,
+        "body": "Hostile brief content test.",
+        "themes": ["exploit attempt"],
+        "posts": [
+            {"url": "javascript:alert('xss')", "summary": "Dangerous scheme"},
+            {"url": "https://x.com.evil.example/status/123", "summary": "Lookalike host"},
+            {"url": "https://evil.example/x.com", "summary": "Path lookalike"},
+            {"url": "data:text/html,<script>alert(1)</script>", "summary": "Data URI"},
+            {"url": "http://x.com/insecure", "summary": "Insecure HTTP"},
+            {"url": "https://x.com/legit_user/status/456", "summary": "Legitimate X link"},
+            {"url": "https://twitter.com/legit_user/status/789", "summary": "Legitimate Twitter link"},
+        ],
+        "notable": False,
+        "cited_urls": [],
+        "status": "ingested",
+        "created_at": "2026-09-11T14:00:00+00:00",
+        "updated_at": "2026-09-11T14:00:00+00:00",
+    }
+
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [hostile_brief],  # recent briefs
+        [{"total": 1, "last_sweep": today}],  # activity totals
+        [{"tickers": 1, "notable": 0}],  # last-sweep day stats
+        [],  # skip list
+    ]
+    verify, access_token = _auth_patches()
+    with verify, access_token, patch("routes.grok_admin_routes.PostgresClient", return_value=pg):
+        client.set_cookie("auth_token", "test.token.value")
+        resp = client.get("/grok/admin")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    # 1. javascript: url renders as text and NOT as an href
+    assert "href=\"javascript:" not in html
+    assert "href='javascript:" not in html
+    assert "javascript:alert(&#39;xss&#39;)" in html or "javascript:alert('xss')" in html
+
+    # 2. Look-alike hosts do NOT become links (rendered as plain text + unverified marker)
+    assert "href=\"https://x.com.evil.example" not in html
+    assert "href='https://x.com.evil.example" not in html
+    assert "href=\"https://evil.example" not in html
+    assert "href='https://evil.example" not in html
+    assert "x.com.evil.example/status/123" in html
+    assert "evil.example/x.com" in html
+
+    # Unverified link marker is shown for unsafe URLs
+    assert "unverified link" in html
+
+    # 3. Genuine https://x.com/... and https://twitter.com/... DO become links
+    assert 'href="https://x.com/legit_user/status/456"' in html
+    assert 'href="https://twitter.com/legit_user/status/789"' in html
+    assert 'target="_blank"' in html
+    assert 'rel="noopener noreferrer"' in html
+
+
+def test_is_safe_post_url_validation() -> None:
+    from routes.grok_admin_routes import is_safe_post_url
+
+    # Allowed genuine domains with https
+    assert is_safe_post_url("https://x.com/user/status/1") == "https://x.com/user/status/1"
+    assert is_safe_post_url("https://www.x.com/user/status/2") == "https://www.x.com/user/status/2"
+    assert is_safe_post_url("https://twitter.com/user/status/3") == "https://twitter.com/user/status/3"
+    assert is_safe_post_url("https://www.twitter.com/user/status/4") == "https://www.twitter.com/user/status/4"
+    assert is_safe_post_url("https://mobile.twitter.com/user/status/5") == "https://mobile.twitter.com/user/status/5"
+    assert is_safe_post_url("HTTPS://X.COM/status/6") == "HTTPS://X.COM/status/6"
+
+    # Dangerous schemes
+    assert is_safe_post_url("javascript:alert(1)") is None
+    assert is_safe_post_url("data:text/html,<script>alert(1)</script>") is None
+    assert is_safe_post_url("http://x.com/user/status/1") is None
+    assert is_safe_post_url("file:///etc/passwd") is None
+    assert is_safe_post_url("//x.com/status/1") is None
+
+    # Lookalike hosts
+    assert is_safe_post_url("https://x.com.evil.example/") is None
+    assert is_safe_post_url("https://evil.example/x.com") is None
+    assert is_safe_post_url("https://notx.com/status") is None
+    assert is_safe_post_url("https://faketwitter.com/status") is None
+    assert is_safe_post_url("https://x.com@evil.example/") is None
+
+    # Invalid / None / empty
+    assert is_safe_post_url(None) is None
+    assert is_safe_post_url("") is None
+    assert is_safe_post_url(123) is None  # type: ignore[arg-type]
+

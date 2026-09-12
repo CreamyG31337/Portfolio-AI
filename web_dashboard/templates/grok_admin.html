@@ -106,8 +106,13 @@
                     <ul class="space-y-1">
                         {% for post in brief.posts %}
                         <li class="text-sm break-all">
-                            <a href="{{ post.url }}" target="_blank" rel="noopener noreferrer"
+                            {% if post.safe_url %}
+                            <a href="{{ post.safe_url }}" target="_blank" rel="noopener noreferrer"
                                 class="text-accent hover:underline">{{ post.url }}</a>
+                            {% else %}
+                            <span class="text-text-primary">{{ post.url }}</span>
+                            <span class="text-xs text-text-secondary italic ml-1">(unverified link)</span>
+                            {% endif %}
                             {% if post.summary %}<span class="text-text-secondary"> — {{ post.summary }}</span>{% endif %}
                         </li>
                         {% endfor %}

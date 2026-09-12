@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 from flask import Blueprint, jsonify, render_template, request
 
@@ -25,6 +26,37 @@ grok_admin_bp = Blueprint("grok_admin", __name__)
 
 BRIEFS_PAGE_LIMIT = 50
 MAX_SKIP_REASON_CHARS = 200
+
+SAFE_POST_HOSTS = frozenset({
+    "x.com",
+    "www.x.com",
+    "twitter.com",
+    "www.twitter.com",
+    "mobile.twitter.com",
+})
+
+
+def is_safe_post_url(raw_url: Any) -> str | None:
+    """Return the URL if it passes strict scheme + host checks, else None.
+
+    Scheme must be https (case-insensitive) and host must exactly match one of
+    the approved X/Twitter domains (checked via parsed hostname, not substring).
+    """
+    if not raw_url or not isinstance(raw_url, str):
+        return None
+    url_str = raw_url.strip()
+    try:
+        parsed = urlparse(url_str)
+    except Exception:
+        return None
+
+    if (parsed.scheme or "").lower() != "https":
+        return None
+
+    hostname = (parsed.hostname or "").lower()
+    if hostname in SAFE_POST_HOSTS:
+        return url_str
+    return None
 
 
 def _iso(value: Any) -> str | None:
@@ -44,7 +76,13 @@ def _parse_posts(raw: Any) -> list[dict[str, Any]]:
             return []
     if not isinstance(raw, list):
         return []
-    return [dict(p) for p in raw if isinstance(p, dict)]
+    posts: list[dict[str, Any]] = []
+    for p in raw:
+        if isinstance(p, dict):
+            post = dict(p)
+            post["safe_url"] = is_safe_post_url(post.get("url"))
+            posts.append(post)
+    return posts
 
 
 def fetch_recent_briefs(
@@ -214,6 +252,10 @@ def grok_admin_page():
         ), 500
 
     nav_context = get_navigation_context(current_page="grok_admin")
+    for brief in briefs:
+        for post in brief.get("posts") or []:
+            if "safe_url" not in post:
+                post["safe_url"] = is_safe_post_url(post.get("url"))
     return render_template(
         "grok_admin.html",
         user_email=get_user_email_flask(),
