@@ -311,6 +311,15 @@ def attach_research_context(postgres: PostgresClient | None, items: list[dict[st
     ta_map = {r["ticker"]: r for r in ta_rows}
     meta_map = {r["ticker"]: r for r in meta_rows}
 
+    # What X said about these names recently, if the Grok Bot swept them.
+    grok_map: dict[str, dict[str, Any]] = {}
+    try:
+        from grok_brief_service import fetch_grok_signal_by_ticker
+
+        grok_map = fetch_grok_signal_by_ticker(postgres, tickers, days=3)
+    except Exception as exc:
+        logger.debug("grok signal fetch skipped: %s", exc)
+
     for it in items:
         t = it.get("ticker")
         rc: dict[str, Any] = {}
@@ -334,6 +343,12 @@ def attach_research_context(postgres: PostgresClient | None, items: list[dict[st
                 float(row["confidence_adjusted"]) if row.get("confidence_adjusted") is not None else None
             )
             rc["meta_age_hours"] = round(age, 1) if age is not None else None
+        if t in grok_map:
+            row = grok_map[t]
+            rc["grok_sweep_date"] = row.get("sweep_date")
+            rc["grok_notable"] = row.get("notable")
+            rc["grok_themes"] = row.get("themes")
+            rc["grok_summary"] = row.get("summary")
         if rc:
             it["research_context"] = rc
 

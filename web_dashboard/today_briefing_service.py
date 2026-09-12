@@ -256,6 +256,15 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: confluence events failed: %s", exc)
 
+    # Grok Bot X sweep: notable only, since a quiet brief is noise in a briefing.
+    grok_briefs: list[dict[str, Any]] = []
+    try:
+        from grok_brief_service import fetch_recent_grok_briefs
+
+        grok_briefs = fetch_recent_grok_briefs(pg, days=2, limit=10)
+    except Exception as exc:
+        logger.warning("Today briefing: grok briefs failed: %s", exc)
+
     movers: list[dict[str, Any]] = []
     dividends: list[dict[str, Any]] = []
     try:
@@ -359,6 +368,7 @@ def build_today_briefing(
         "dilution_alerts": dilution_alerts,
         "filing_alerts": filing_alerts,
         "confluence_events": confluence_events,
+        "grok_briefs": grok_briefs,
         "theses_attention": theses_attention,
         "watchlist_movers": movers,
         "upcoming_dividends": dividends,
