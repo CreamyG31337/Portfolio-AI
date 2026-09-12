@@ -194,6 +194,36 @@ your token being wrong:
   dashboard (it blocks some non-browser user agents). The fix is a Cloudflare rule
   allowing `/api/grok/*`, not a code change.
 
+## Cost
+
+The Bot's X connector spends **X credits**, not dashboard resources. Measured on the
+first real sweep (2026-09-12, 5 tickers: XEQT.TO, CMI, SMH, URNM, META):
+
+| Item | Value |
+|---|---|
+| Spend for a 5-ticker sweep | ~$0.29 |
+| Credits after that sweep | $9.71 of $10.00 |
+| Implied runway | ~33 sweeps, about 6–7 weeks of weekdays |
+
+The spend is **per ticker searched**, not per brief filed. A ticker the Bot searches and
+finds nothing for has already cost its share, so declining to POST the quiet ones saves
+nothing — and it actively costs more later, because the queue treats never-briefed
+tickers as highest priority and will re-search that name every day. **Always file the
+quiet ones** (a short body and `notable: false`); that is what rotates them to the back
+of the queue.
+
+Real levers on cost, cheapest first:
+
+- **Fewer, better tickers.** Spend is linear in tickers swept. Five mega-caps and ETFs
+  cost the same as five micro-caps and tell you far less.
+- **One search per ticker** (cashtag only) instead of cashtag plus company name, for names
+  where the company name is a common word and returns spam anyway.
+- **A shorter window** (24h rather than 48h) once the routine runs daily, since a daily
+  sweep already covers the gap.
+
+When the credits run out the routine will simply stop filing. Nothing in the dashboard
+alerts on that — check for a gap in `grok_x_briefs` if briefs stop appearing.
+
 ## Later (not this v1)
 
 A job can move `ingested` → `evaluated` / `ignored`, file `thesis_evidence` `user_url` rows, or post an advisory Insights `llm_reply`. Do not bump `last_reviewed_at` from Bot text.
