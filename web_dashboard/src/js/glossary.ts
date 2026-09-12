@@ -56,7 +56,9 @@ export function helpTip(term: string, extraClass = ""): string {
     const source = entry.source
         ? `<span class="block mt-1 opacity-75">Where this comes from: ${esc(entry.source)}</span>`
         : "";
-    return `<button type="button" data-tooltip-target="${id}"
+    // trigger=click, not hover: phones have no hover, and a definition nobody
+    // can reach on mobile is not a definition.
+    return `<button type="button" data-tooltip-target="${id}" data-tooltip-trigger="click"
         class="inline-flex items-center justify-center text-text-secondary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ${esc(extraClass)}"
         aria-label="What does ${esc(entry.label)} mean?"><i class="fas fa-circle-question text-xs" aria-hidden="true"></i></button>
     <div id="${id}" role="tooltip"
