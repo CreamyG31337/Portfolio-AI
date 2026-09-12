@@ -129,7 +129,8 @@ def test_page_no_sweep_today_state(client) -> None:
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "No sweeps yet" in html
-    assert "No briefs ingested yet" in html
+    # Empty state must not lean on the jargon the page is trying to explain.
+    assert "The bot has not filed any briefs yet." in html
     _assert_page_explains_itself(html)
 
 

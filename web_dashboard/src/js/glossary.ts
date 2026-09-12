@@ -58,7 +58,10 @@ export function helpTip(term: string, extraClass = ""): string {
         : "";
     // trigger=click, not hover: phones have no hover, and a definition nobody
     // can reach on mobile is not a definition.
+    // stopPropagation: tips sit inside <summary> and clickable rows, where a
+    // click would otherwise also toggle or navigate.
     return `<button type="button" data-tooltip-target="${id}" data-tooltip-trigger="click"
+        onclick="event.stopPropagation()"
         class="inline-flex items-center justify-center text-text-secondary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ${esc(extraClass)}"
         aria-label="What does ${esc(entry.label)} mean?"><i class="fas fa-circle-question text-xs" aria-hidden="true"></i></button>
     <div id="${id}" role="tooltip"

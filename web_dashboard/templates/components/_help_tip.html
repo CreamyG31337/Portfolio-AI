@@ -15,7 +15,10 @@
 {# trigger=click, not hover: a phone has no hover, and a definition nobody can
    reach on mobile is not a definition. Tap opens, tap away closes, mouse still
    works. #}
+{# stopPropagation: these buttons sit inside <summary> and table rows, where a
+   click would otherwise also toggle the row open or closed. #}
 <button type="button" data-tooltip-target="{{ tip_id }}" data-tooltip-trigger="click"
+    onclick="event.stopPropagation()"
     class="inline-flex items-center justify-center text-text-secondary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle {{ extra_class }}"
     aria-label="What does {{ entry.label }} mean?">
     <i class="fas fa-circle-question text-xs" aria-hidden="true"></i>

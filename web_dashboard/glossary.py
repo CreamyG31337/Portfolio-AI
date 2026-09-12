@@ -151,6 +151,26 @@ GLOSSARY: dict[str, dict[str, str]] = {
         "short": "The Bot judged this day's X chatter worth your attention, rather than routine noise.",
         "source": "Decided by the Grok Bot when it writes the brief.",
     },
+    "quiet": {
+        "label": "Quiet",
+        "short": "The bot found nothing on X worth flagging for this stock that day.",
+        "source": "The opposite of Notable; decided by the bot when it writes the brief.",
+    },
+    "x_credits": {
+        "label": "X credits",
+        "short": "The search budget the bot spends looking things up on X. Each morning run of up to five stocks uses some.",
+        "source": "Held by the bot's X connector, not by this dashboard.",
+    },
+    "tickers_last_sweep": {
+        "label": "Stocks last sweep",
+        "short": "How many different stocks the bot searched in its most recent morning run.",
+        "source": "Counted from the briefs filed that day.",
+    },
+    "unverified_link": {
+        "label": "Unverified link",
+        "short": "This address was not a recognised X address, so it is shown as plain text instead of a clickable link.",
+        "source": "Checked when the page renders, in case a stored address is unsafe.",
+    },
     "status_ingested": {
         "label": "Ingested",
         "short": "Saved, but nothing has read it yet.",
