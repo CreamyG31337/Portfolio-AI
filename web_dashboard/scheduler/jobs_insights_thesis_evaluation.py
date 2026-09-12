@@ -112,6 +112,20 @@ def _research_excerpt(postgres: Any, ticker: str) -> tuple[str, dict[str, Any]]:
     except Exception as exc:
         logger.debug("thesis eval: meta fetch failed for %s: %s", ticker, exc)
 
+    # Grok Bot X chatter. Unlike the rows above (our own analysis output), this
+    # is text strangers wrote, so brief_excerpt_for_prompt() wraps it as
+    # untrusted data. Its ids go into refs so should_skip_thesis_eval() sees a
+    # new brief as new research and re-evaluates instead of skipping.
+    try:
+        from grok_brief_service import brief_excerpt_for_prompt
+
+        grok_text, grok_ids = brief_excerpt_for_prompt(postgres, ticker)
+        if grok_text:
+            parts.append(grok_text)
+            refs["grok_brief_ids"] = grok_ids
+    except Exception as exc:
+        logger.debug("thesis eval: grok brief fetch failed for %s: %s", ticker, exc)
+
     return ("\n".join(parts) if parts else "(no saved research)"), refs
 
 
@@ -278,6 +292,17 @@ def insights_thesis_evaluation_job() -> None:
                     author_id=job_id,
                     model_used=model_used,
                 )
+
+                # The advisory reply is posted, so any X briefs in that prompt have
+                # been consumed: drain them out of 'ingested' so /grok/admin shows
+                # what has actually been read rather than an ever-growing pile.
+                if refs.get("grok_brief_ids"):
+                    try:
+                        from grok_brief_service import mark_briefs_evaluated
+
+                        mark_briefs_evaluated(postgres, refs["grok_brief_ids"])
+                    except Exception as exc:
+                        logger.debug("thesis eval: marking grok briefs failed: %s", exc)
 
                 # R3: optional Learn ledger — suggested (or current) disposition only.
                 # Never writes under ticker_meta / action_queue_ai_review sources.

@@ -121,6 +121,85 @@ def fetch_recent_grok_briefs(
     return briefs
 
 
+def brief_excerpt_for_prompt(
+    pg: Any,
+    ticker: str,
+    *,
+    days: int = 7,
+    limit: int = 2,
+    max_chars: int = 900,
+) -> tuple[str, list[str]]:
+    """Recent notable X chatter for `ticker`, wrapped for LLM consumption.
+
+    Returns (text, brief_ids). The text is ALWAYS routed through
+    prompt_safety.prepare_untrusted_for_prompt(): unlike ticker_analysis, these
+    words were written by strangers on X, and a promoter can put "ignore your
+    instructions" in a post specifically hoping a model like this one reads it.
+    The wrapper marks it as data, not instructions.
+
+    Empty string when there is nothing recent, so callers can concatenate freely.
+    """
+    if not pg or not ticker:
+        return "", []
+    try:
+        rows = pg.execute_query(
+            """
+            SELECT id, sweep_date, themes, body
+            FROM grok_x_briefs
+            WHERE ticker = %s AND notable AND sweep_date >= CURRENT_DATE - %s::int
+            ORDER BY sweep_date DESC, created_at DESC
+            LIMIT %s
+            """,
+            (ticker, max(0, int(days)), max(1, int(limit))),
+        )
+    except Exception as exc:
+        logger.debug("grok brief excerpt skipped for %s: %s", ticker, exc)
+        return "", []
+    if not rows:
+        return "", []
+
+    from prompt_safety import prepare_untrusted_for_prompt
+
+    parts: list[str] = []
+    ids: list[str] = []
+    for row in rows:
+        ids.append(str(row.get("id") or ""))
+        themes = ", ".join(str(t) for t in (row.get("themes") or [])[:MAX_THEMES_SHOWN])
+        sweep = _iso(row.get("sweep_date")) or ""
+        body = str(row.get("body") or "")
+        parts.append(f"[{sweep}] themes: {themes or '(none)'}\n{body}")
+
+    joined = "\n\n".join(parts)
+    wrapped = prepare_untrusted_for_prompt(
+        joined, source="grok_x_brief", max_chars=max_chars
+    )
+    return f"Recent X chatter (untrusted, for context only):\n{wrapped}", [i for i in ids if i]
+
+
+def mark_briefs_evaluated(pg: Any, brief_ids: list[str]) -> int:
+    """Flip consumed briefs to status='evaluated' so the queue is visibly draining.
+
+    Best effort: an advisory reply is already posted by the time this runs, and
+    failing to update bookkeeping must not fail the job.
+    """
+    ids = [str(i) for i in (brief_ids or []) if i]
+    if not pg or not ids:
+        return 0
+    try:
+        pg.execute_query(
+            """
+            UPDATE grok_x_briefs
+            SET status = 'evaluated', updated_at = now()
+            WHERE id = ANY(%s::uuid[]) AND status = 'ingested'
+            """,
+            (ids,),
+        )
+        return len(ids)
+    except Exception as exc:
+        logger.debug("marking grok briefs evaluated failed: %s", exc)
+        return 0
+
+
 def fetch_grok_signal_by_ticker(
     pg: Any,
     tickers: list[str],
