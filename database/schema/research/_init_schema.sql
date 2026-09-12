@@ -49,6 +49,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/thesis_entries.sql
 \i tables/thesis_evidence.sql
 \i tables/grok_x_briefs.sql
+\i tables/grok_x_skips.sql
 
 -- FUNCTIONS
 \i functions/array_to_halfvec.sql

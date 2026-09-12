@@ -241,6 +241,29 @@ def tickers_already_briefed_today(
     return {normalize_ticker(str(r.get("ticker") or "")) for r in rows or []}
 
 
+def fetch_skipped_tickers(pg: Any) -> set[str]:
+    """Tickers excluded from the sweep (curated ETFs plus auto zero-result names)."""
+    rows = pg.execute_query("SELECT ticker FROM grok_x_skips")
+    return {normalize_ticker(str(r.get("ticker") or "")) for r in rows or []} - {""}
+
+
+def record_auto_skip(pg: Any, *, ticker: str, reason: str) -> None:
+    """Skip a ticker whose sweep found nothing. One strike, by operator request.
+
+    Never overwrites a manual row: a curated reason is worth more than this one.
+    Un-skipping is a row delete, so a name that goes quiet is not banned forever
+    unless nobody ever looks at the list.
+    """
+    pg.execute_query(
+        """
+        INSERT INTO grok_x_skips (ticker, reason, source, created_at, updated_at)
+        VALUES (%s, %s, 'auto', now(), now())
+        ON CONFLICT (ticker) DO NOTHING
+        """,
+        (ticker, reason[:200]),
+    )
+
+
 def build_queue(
     pg: Any,
     supabase_client: Any,
@@ -263,6 +286,9 @@ def build_queue(
     last_briefs = fetch_last_briefs(pg, funds=fund_list, tickers=tickers)
     already_today = count_distinct_tickers_for_day(pg, funds=fund_list, sweep_date=today_d)
     remaining = max(0, DAILY_TICKER_CAP - already_today)
+    skipped = fetch_skipped_tickers(pg)
+    if skipped:
+        eligible = [row for row in eligible if str(row["ticker"]) not in skipped]
     return select_queue_items(eligible, last_briefs, today=today_d, limit=min(limit, remaining))
 
 
@@ -466,6 +492,14 @@ def upsert_briefs(
     stored: list[dict[str, Any]] = []
     for store_fund, brief in resolved:
         stored.append(_upsert_one(pg, fund=store_fund, brief=brief))
+        if not brief["posts"]:
+            # The sweep already paid for this search and found nothing citable.
+            # One strike: stop spending on it until someone deletes the row.
+            record_auto_skip(
+                pg,
+                ticker=str(brief["ticker"]),
+                reason=f"no X posts found on {brief['sweep_date'].isoformat()}",
+            )
     return stored
 
 

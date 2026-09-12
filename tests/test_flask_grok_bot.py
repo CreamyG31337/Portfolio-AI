@@ -180,6 +180,73 @@ def test_upsert_rejects_unknown_ticker() -> None:
     pg.execute_query.assert_not_called()
 
 
+def test_build_queue_excludes_skipped_tickers() -> None:
+    today = date(2026, 9, 9)
+    watchlist = [_watch("AAA"), _watch("XEQT.TO"), _watch("BBB")]
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [],  # no prior briefs
+        [{"n": 0}],  # nothing briefed today
+        [{"ticker": "XEQT.TO"}],  # skip list
+    ]
+    with patch("grok_bot_service.get_active_watchlist_rows", return_value=watchlist):
+        items = build_queue(pg, MagicMock(), funds=["TEST"], today=today, limit=5)
+    assert [i["ticker"] for i in items] == ["AAA", "BBB"]
+
+
+def test_upsert_auto_skips_ticker_with_no_posts() -> None:
+    today = utc_today()
+    quiet = parse_brief_payloads({"ticker": "AAA", "body": "nothing on X", "sweep_date": today})
+    loud = parse_brief_payloads(
+        {
+            "ticker": "BBB",
+            "body": "chatter",
+            "sweep_date": today,
+            "posts": [{"url": "https://x.com/a/status/1"}],
+        }
+    )
+    pg = MagicMock()
+
+    def _rows(sql: str, params=None):
+        text = " ".join(sql.split())
+        if text.startswith("SELECT ticker FROM grok_x_briefs"):
+            return []
+        if "COUNT(DISTINCT ticker)" in text:
+            return [{"n": 0}]
+        if text.startswith("INSERT INTO grok_x_skips"):
+            return []
+        return [
+            {
+                "id": uuid4(),
+                "fund": "TEST",
+                "ticker": "AAA",
+                "sweep_date": today,
+                "body": "x",
+                "themes": [],
+                "posts": [],
+                "notable": False,
+                "cited_urls": [],
+                "status": "ingested",
+                "created_at": datetime(2026, 9, 9, 12, 0, tzinfo=UTC),
+                "updated_at": datetime(2026, 9, 9, 12, 0, tzinfo=UTC),
+            }
+        ]
+
+    pg.execute_query.side_effect = _rows
+    upsert_briefs(
+        pg,
+        funds=["TEST"],
+        briefs=quiet + loud,
+        ticker_funds={"AAA": ["TEST"], "BBB": ["TEST"]},
+    )
+    skip_calls = [
+        c for c in pg.execute_query.call_args_list
+        if "INSERT INTO grok_x_skips" in " ".join(c.args[0].split())
+    ]
+    assert len(skip_calls) == 1, "only the zero-post ticker should be skipped"
+    assert skip_calls[0].args[1][0] == "AAA"
+
+
 def test_build_queue_keeps_fund_names() -> None:
     """Regression: select_queue_items re-normalizes, which used to drop every fund."""
     today = date(2026, 9, 9)
@@ -187,6 +254,7 @@ def test_build_queue_keeps_fund_names() -> None:
     pg.execute_query.side_effect = [
         [],  # no prior briefs
         [{"n": 0}],  # nothing briefed today
+        [],  # skip list
     ]
     with patch(
         "grok_bot_service.get_active_watchlist_rows",
@@ -213,6 +281,7 @@ def test_build_queue_caps_at_daily_remaining() -> None:
     pg.execute_query.side_effect = [
         [],  # no prior briefs
         [{"n": 3}],  # 3 distinct tickers already briefed today -> 2 slots left
+        [],  # skip list
     ]
     with patch("grok_bot_service.get_active_watchlist_rows", return_value=watchlist):
         items = build_queue(pg, MagicMock(), funds=["TEST"], today=today, limit=5)
@@ -277,6 +346,7 @@ def test_upsert_preserves_status_when_body_and_posts_unchanged() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
+        [],  # auto-skip insert (this brief cites no posts)
     ]
     stored = upsert_briefs(
         pg,
@@ -339,6 +409,7 @@ def test_upsert_daily_cap_and_same_day_retry() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
+        [],  # auto-skip NEW1 (cites no posts)
         [
             {
                 "id": uuid4(),
@@ -355,6 +426,7 @@ def test_upsert_daily_cap_and_same_day_retry() -> None:
                 "updated_at": datetime(2026, 9, 9, 12, 5, tzinfo=UTC),
             }
         ],
+        [],  # auto-skip NEW2 (cites no posts)
     ]
     stored = upsert_briefs(
         retry_pg,
