@@ -105,7 +105,7 @@ Do this **in Grok Bot**, not in Cursor IDE. The laptop `mcp.json` does not carry
 4. Paste the **Bot profile** below into the Bot profile. Keep send/buy/delete behind approval (this job should never need them).
 5. Manual test: set `GROK_WATCHLIST_FUND=TEST` on Flask (or pin 1–2 TEST names on the watchlist), run `/x-watchlist-sweep` in chat, confirm rows with `SELECT ticker, sweep_date, notable FROM grok_x_briefs ORDER BY created_at DESC LIMIT 10`.
 6. Save the skill after a good run. Define failure behavior first: X plugin error → POST nothing, tell chat, **do not** scrape x.com or open the dashboard.
-7. Weekday routine **07:30 America/New_York**. Confirm timezone in Settings → Agent. Pause after the first scheduled run and check the **weekly Bot usage bar** before leaving it on.
+7. Weekday routine **07:30 America/New_York** — paste the **Routine** block below into the routine; it is self-contained (a routine is a scheduled prompt with no memory of earlier chats). Pause after the first scheduled run and check the **weekly Bot usage bar** before leaving it on.
 
 ### Bot profile (paste)
 
@@ -138,6 +138,61 @@ Validation: every queued ticker either POSTed `200` or was skipped with a reason
 Output: DB rows (`status=ingested`). Optional copy of the JSON under `/workspace/grok-research/`.
 
 Needs approval: nothing on this path.
+
+### Routine (paste)
+
+A Bot **routine is just a prompt on a schedule** — no special syntax, and no memory of
+any earlier chat. The whole instruction has to be in the box. Paste this verbatim,
+replacing both `<TOKEN>` placeholders with the value of the Woodpecker secret
+`grok_bot_token`. If the Bot app has a secrets/env section, put the token there and
+reference it instead — the routine text lives on a VM shared with every other Bot.
+
+Schedule: weekdays, **07:30**, timezone **America/New_York**.
+
+```text
+Every weekday morning, do a capped X (Twitter) sweep for my stock watchlist.
+
+1. GET https://ai-trading.drifting.space/api/grok/queue
+   with header: Authorization: Bearer <TOKEN>
+   The response looks like {"funds": [...], "limit": 5, "data": [{"ticker": "ABC", "priority_tier": "A", "fund": "Project Chimera", "last_cited_urls": [...]}, ...]}
+   If "data" is empty, stop and say "queue empty, nothing to do".
+
+2. For each ticker in "data" (max 5), use the X plugin to search the cashtag
+   ($TICKER) and the company name, last 24-48 hours. Ignore cashtag spam and
+   posts that aren't about the company. Prefer posts not already in that
+   item's "last_cited_urls". Pick at most 8 posts worth citing.
+
+3. For each ticker, POST to https://ai-trading.drifting.space/api/grok/briefs
+   with header: Authorization: Bearer <TOKEN>
+   and Content-Type: application/json
+   Body:
+   {
+     "ticker": "ABC",
+     "fund": "<copy the fund value from that queue item>",
+     "body": "<short markdown summary of what X is saying about this ticker>",
+     "notable": true or false,
+     "themes": ["short phrases, e.g. financing rumor"],
+     "posts": [{"url": "https://x.com/...", "post_id": "123", "summary": "one line"}]
+   }
+   A 200 means it was saved. On 400/401/429, do not retry in a loop: report the
+   error text in chat and move to the next ticker.
+
+4. Finish with one chat line: which tickers you filed, which were notable,
+   and any errors.
+
+Rules: never post, reply, or DM on X. Never log into the trading dashboard or a
+broker. Never scrape x.com directly — if the X plugin fails, file nothing and
+say so. Max 5 tickers per run.
+```
+
+Run it once as a normal chat message before scheduling it. Two failures that are not
+your token being wrong:
+
+- `401 Invalid token` — the Woodpecker secret changed but the pipeline was not re-run.
+  Flask reads it at deploy time, so re-run the latest `main` build.
+- `403` with `error code: 1010` — Cloudflare blocked the client in front of the
+  dashboard (it blocks some non-browser user agents). The fix is a Cloudflare rule
+  allowing `/api/grok/*`, not a code change.
 
 ## Later (not this v1)
 
