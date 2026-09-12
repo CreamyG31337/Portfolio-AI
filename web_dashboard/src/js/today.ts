@@ -47,6 +47,25 @@ interface ConfluenceEvent {
   as_of?: string;
 }
 
+interface GrokPost {
+  url: string;
+  post_id?: string;
+  summary?: string;
+}
+
+interface GrokBrief {
+  ticker: string;
+  fund?: string | null;
+  sweep_date?: string;
+  notable?: boolean;
+  summary?: string | null;
+  themes?: string[];
+  post_count?: number;
+  posts?: GrokPost[];
+  status?: string;
+  created_at?: string;
+}
+
 interface CongressHerd {
   ticker: string;
   politician_count: number;
@@ -110,6 +129,7 @@ interface Briefing {
   dilution_alerts?: DilutionAlert[];
   filing_alerts?: FilingAlert[];
   confluence_events?: ConfluenceEvent[];
+  grok_briefs?: GrokBrief[];
   theses_attention?: ThesisAttention[];
   watchlist_movers?: Array<Record<string, unknown>>;
   upcoming_dividends?: Array<Record<string, unknown>>;
@@ -117,6 +137,27 @@ interface Briefing {
 
 function el(id: string): HTMLElement | null {
   return document.getElementById(id);
+}
+
+const HTML_ESCAPES: Record<string, string> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
+
+// Grok brief text is written by strangers on X. Every field must go through
+// this before it lands in a template string — same guarantee as textContent.
+function esc(value: unknown): string {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
+}
+
+// Only http(s) URLs may become hrefs. The ingest enforces this, but the page
+// must not rely on it.
+function safeHttpUrl(url: unknown): string | null {
+  const text = String(url ?? "").trim();
+  return /^https?:\/\//i.test(text) ? text : null;
 }
 
 function showSection(id: string, html: string): void {
@@ -131,6 +172,50 @@ function formatCompact(value: number | null | undefined): string {
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (Math.abs(n) >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
   return n.toFixed(0);
+}
+
+// Exported for vitest (today.test.ts). Returns the section's inner HTML; every
+// brief field is escaped via esc(), and post URLs only become hrefs when they
+// pass safeHttpUrl().
+export function renderGrokChatterSection(briefs: GrokBrief[]): string {
+  const heading = `<h2 class="text-lg font-semibold mb-2"><a href="/grok/admin" class="text-accent hover:underline">X chatter</a> <span class="text-xs font-normal text-text-secondary">(Grok Bot sweep, notable only)</span></h2>`;
+  if (!briefs.length) {
+    return `${heading}
+      <p class="text-sm text-text-secondary">No notable X chatter yet today. <a href="/grok/admin" class="text-accent underline">See the Grok Bot admin page</a></p>`;
+  }
+  return `${heading}
+    ${briefs
+      .map((b) => {
+        const ticker = esc(b.ticker);
+        const meta = [b.fund, b.sweep_date, `${b.post_count ?? (b.posts || []).length} posts`]
+          .filter(Boolean)
+          .map(esc)
+          .join(" · ");
+        const chips = (b.themes || [])
+          .map(
+            (t) =>
+              `<span class="text-xs px-1.5 py-0.5 rounded border border-border text-text-secondary">${esc(t)}</span>`
+          )
+          .join(" ");
+        const posts = (b.posts || [])
+          .map((p) => {
+            const url = safeHttpUrl(p.url);
+            const summary = p.summary ? ` — ${esc(p.summary)}` : "";
+            const link = url
+              ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer" class="text-accent hover:underline break-all">${esc(url)}</a>`
+              : `<span class="text-text-secondary break-all">${esc(p.url)}</span>`;
+            return `<li class="text-xs">${link}<span class="text-text-secondary">${summary}</span></li>`;
+          })
+          .join("");
+        return `<div class="text-sm py-1.5 border-b border-border last:border-0">
+            <a href="/ticker?ticker=${encodeURIComponent(b.ticker)}" class="text-accent hover:underline font-semibold">${ticker}</a>
+            <span class="ml-1 text-xs text-text-secondary">${meta}</span>
+            ${chips ? `<div class="mt-1 flex flex-wrap gap-1">${chips}</div>` : ""}
+            ${b.summary ? `<p class="mt-1">${esc(b.summary)}</p>` : ""}
+            ${posts ? `<ul class="mt-1 space-y-0.5">${posts}</ul>` : ""}
+          </div>`;
+      })
+      .join("")}`;
 }
 
 const BUCKET_BADGES: Record<string, string> = {
@@ -400,6 +485,9 @@ async function loadBriefing(): Promise<void> {
             <span class="text-xs text-text-secondary">${formatFamilies(c.families)}${c.as_of ? ` · ${c.as_of}` : ""}</span>
           </div>`).join("") : `<p class="text-sm text-text-secondary">No confluence events in the last 2 days.</p>`}`
     );
+
+    const grok = data.grok_briefs || [];
+    showSection("today-grok", renderGrokChatterSection(grok));
 
     const alpha = data.alpha_articles || [];
     showSection(
