@@ -1,10 +1,12 @@
 import { sentimentToneClasses } from "./sentiment_badges.js";
+import { helpTip, initTooltips } from "./glossary.js";
 
 export {};
 
 interface ThesisRow {
   id: string;
   ticker: string;
+  company_name?: string | null;
   title: string;
   disposition: string;
   intent: string;
@@ -123,6 +125,15 @@ function badgeClass(disposition: string): string {
   return sentimentToneClasses(disposition);
 }
 
+// Ticker + company name where the payload provides one; bare ticker otherwise
+// (coverage is partial — ETFs and some .TO names have none).
+function tickerLabel(ticker: string, companyName?: string | null): string {
+  const t = escapeHtml(ticker || "");
+  const name = String(companyName ?? "").trim();
+  if (!name) return t;
+  return `${t} <span class="text-xs font-normal text-text-secondary">${escapeHtml(name)}</span>`;
+}
+
 function intentLabel(intent: string): string {
   switch (intent) {
     case "seek_entry":
@@ -181,6 +192,8 @@ function renderEvidenceItem(ev: ThesisEvidence, thesisTitle: string): string {
   return `<li class="text-sm"><span class="text-xs text-text-secondary">${escapeHtml(ev.relation)} · ${escapeHtml(kind)}</span> — ${link}</li>`;
 }
 
+// Review chips explain themselves: "stale" and "due" are the app's own
+// vocabulary, and a first-time viewer cannot guess what review_status means.
 function reviewBadge(row: ThesisRow): string {
   const bits: string[] = [];
   if (row.is_weak) {
@@ -192,13 +205,13 @@ function reviewBadge(row: ThesisRow): string {
     bits.push(
       `<span class="px-2 py-0.5 text-xs rounded border border-red-500/40 text-red-600">stale${
         row.age_days != null ? ` ${row.age_days}d` : ""
-      }</span>`
+      }</span>${helpTip("STALE_THESIS", "p-1")}`
     );
   } else if (row.review_status === "due_for_review") {
     bits.push(
       `<span class="px-2 py-0.5 text-xs rounded border border-amber-500/40 text-amber-600">due${
         row.age_days != null ? ` ${row.age_days}d` : ""
-      }</span>`
+      }</span>${helpTip("thesis_due", "p-1")}`
     );
   }
   return bits.join("");
@@ -261,20 +274,23 @@ async function loadTheses(): Promise<void> {
           row.status === "archived"
             ? `<span class="ml-2 px-2 py-0.5 text-xs rounded border border-border text-text-secondary">archived</span>`
             : "";
-        return `<article class="bg-dashboard-surface border border-border rounded-lg p-4 cursor-pointer hover:border-accent/50 insights-row" data-id="${row.id}">
+        return `<article class="bg-dashboard-surface border border-border rounded-lg p-4 cursor-pointer hover:border-accent/50 insights-row" data-id="${escapeHtml(row.id)}">
           <div class="flex flex-wrap items-center gap-2 mb-1">
-            <a href="/ticker?ticker=${encodeURIComponent(row.ticker)}" class="font-bold text-accent underline" onclick="event.stopPropagation()">${row.ticker}</a>
+            <a href="/ticker?ticker=${encodeURIComponent(row.ticker)}" class="font-bold text-accent underline" onclick="event.stopPropagation()">${tickerLabel(row.ticker, row.company_name)}</a>
             ${holdingChip(row.ticker)}
-            <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(row.disposition)}">${row.disposition}</span>
-            <span class="px-2 py-0.5 text-xs rounded border border-border text-text-secondary">${intentLabel(row.intent)}</span>
+            <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(row.disposition)}">${escapeHtml(row.disposition)}</span>${helpTip("disposition", "p-1")}
+            <span class="px-2 py-0.5 text-xs rounded border border-border text-text-secondary">${intentLabel(row.intent)}</span>${helpTip("intent", "p-1")}
             ${reviewBadge(row)}
             ${archivedBadge}
           </div>
-          <h3 class="font-medium text-text-primary">${row.title}</h3>
-          <p class="text-xs text-text-secondary mt-1">${row.created_by} · ${formatDate(row.updated_at || row.created_at)} · ${row.entry_count ?? 0} posts · ${row.evidence_count ?? 0} evidence</p>
+          <h3 class="font-medium text-text-primary">${escapeHtml(row.title)}</h3>
+          <p class="text-xs text-text-secondary mt-1">${escapeHtml(row.created_by)} · ${formatDate(row.updated_at || row.created_at)} · ${row.entry_count ?? 0} posts · ${row.evidence_count ?? 0} evidence</p>
         </article>`;
       })
       .join("");
+
+    // Rows above injected help tips; Flowbite needs a re-scan to wire them.
+    initTooltips();
 
     list.querySelectorAll(".insights-row").forEach((el) => {
       el.addEventListener("click", () => {
@@ -312,12 +328,21 @@ async function openDetail(thesisId: string): Promise<void> {
             : e.entry_kind === "review"
               ? "border-amber-500/50"
               : "border-border";
+        // AI verdicts are the app's least guessable vocabulary (TENSION means
+        // "the AI disagreed with your own reasoning"). Show the verdict as a
+        // badge that explains itself, plus one line up front that these
+        // evaluations are advisory only. Unknown verdicts get no tip (helpTip
+        // returns "") but still show as an escaped badge.
         const verdict =
           e.entry_kind === "llm_reply" && e.metadata && typeof e.metadata.verdict === "string"
-            ? ` · ${escapeHtml(e.metadata.verdict)}`
+            ? ` · <span class="px-1.5 py-0.5 text-xs rounded border border-sky-500/40 text-sky-700 dark:text-sky-400">${escapeHtml(
+                e.metadata.verdict
+              )}</span>${helpTip(String(e.metadata.verdict).toUpperCase(), "p-1")}`
             : "";
         return `<div class="border-l-2 ${border} pl-3 py-2 mb-2">
-          <p class="text-xs text-text-secondary">${e.entry_kind}${verdict} · ${e.author_id || e.author_kind} · ${formatDate(e.created_at)}</p>
+          <p class="text-xs text-text-secondary">${escapeHtml(e.entry_kind)}${verdict} · ${escapeHtml(
+            e.author_id || e.author_kind
+          )} · ${formatDate(e.created_at)}</p>
           <p class="text-sm text-text-primary whitespace-pre-wrap">${escapeHtml(e.body)}</p>
         </div>`;
       })
@@ -344,17 +369,18 @@ async function openDetail(thesisId: string): Promise<void> {
     body.innerHTML = `
       <div class="mb-4">
         <div class="flex flex-wrap gap-2 mb-2 items-center">
-          <span class="font-bold text-accent">${escapeHtml(t.ticker)}</span>
+          <span class="font-bold text-accent">${tickerLabel(t.ticker, t.company_name)}</span>
           ${holdingChip(t.ticker)}
-          <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(t.disposition)}">${t.disposition}</span>
-          <span class="px-2 py-0.5 text-xs rounded border border-border">${intentLabel(t.intent)}</span>
-          <span class="text-xs text-text-secondary">${t.status}</span>
+          <span class="px-2 py-0.5 text-xs font-semibold rounded border ${badgeClass(t.disposition)}">${escapeHtml(t.disposition)}</span>${helpTip("disposition", "p-1")}
+          <span class="px-2 py-0.5 text-xs rounded border border-border">${intentLabel(t.intent)}</span>${helpTip("intent", "p-1")}
+          <span class="text-xs text-text-secondary">${escapeHtml(t.status)}</span>
         </div>
         <h2 class="text-xl font-bold text-text-primary">${escapeHtml(t.title)}</h2>
         <p class="text-xs text-text-secondary mt-1">${escapeHtml(t.created_by)}</p>
       </div>
       <section class="mb-6">
         <h3 class="text-sm font-semibold text-text-primary mb-2">Thread</h3>
+        <p class="text-xs text-text-secondary mb-2"><i class="fas fa-robot mr-1 opacity-60" aria-hidden="true"></i>Entries marked "llm_reply" are AI evaluations of your reasoning. They are advisory only — they never change your stance, notes, or review status.</p>
         ${entries || "<p class='text-sm text-text-secondary'>No entries.</p>"}
         <textarea id="detail-comment" rows="3" placeholder="Write a note…"
           class="w-full mt-2 bg-dashboard-background border border-border rounded-lg px-3 py-2 text-sm text-text-primary"></textarea>
@@ -364,12 +390,12 @@ async function openDetail(thesisId: string): Promise<void> {
         </div>
         <div class="grid grid-cols-2 gap-2 mt-3">
           <div>
-            <label class="text-xs text-text-secondary" for="detail-disposition">Disposition (review)</label>
+            <label class="text-xs text-text-secondary" for="detail-disposition">Disposition (review) ${helpTip("disposition", "p-1")}</label>
             <select id="detail-disposition"
               class="w-full mt-1 text-sm bg-dashboard-background border border-border rounded-lg px-2 py-1.5 text-text-primary">${dispOpts}</select>
           </div>
           <div>
-            <label class="text-xs text-text-secondary" for="detail-intent">Intent (review)</label>
+            <label class="text-xs text-text-secondary" for="detail-intent">Intent (review) ${helpTip("intent", "p-1")}</label>
             <select id="detail-intent"
               class="w-full mt-1 text-sm bg-dashboard-background border border-border rounded-lg px-2 py-1.5 text-text-primary">${intentOpts}</select>
           </div>
@@ -397,6 +423,9 @@ async function openDetail(thesisId: string): Promise<void> {
         else if (action === "evidence") void attachUrl(thesisId);
       });
     });
+
+    // The drawer injected tips (disposition, intent, AI verdicts) — wire them.
+    initTooltips();
   } catch (e) {
     body.innerHTML = `<p class="text-sm text-theme-error-text">${e instanceof Error ? e.message : String(e)}</p>`;
   }
@@ -407,7 +436,8 @@ function escapeHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 async function postEntry(thesisId: string, kind: "comment" | "review"): Promise<void> {

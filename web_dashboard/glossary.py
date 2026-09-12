@@ -59,6 +59,41 @@ GLOSSARY: dict[str, dict[str, str]] = {
         "short": "What you said you plan to do about this stock, such as add, trim, or hold.",
         "source": "Set by you when you write or edit a thesis.",
     },
+    "weak": {
+        "label": "Weak",
+        "short": "Your written reasoning for this stock has little or no supporting evidence attached.",
+        "source": "Flagged automatically when nothing has been linked as evidence.",
+    },
+    "dual_tension": {
+        "label": "Dual tension",
+        "short": "A live trading signal and your own written reasoning disagree about this stock.",
+        "source": "Computed when the attention shortlist is built.",
+    },
+    "advise": {
+        "label": "Advise",
+        "short": "A ranked shortlist of what the system thinks deserves attention first. Suggestions only.",
+        "source": "Rebuilt from the action queue, saved reviews, and watchlist signals. Nothing is traded automatically.",
+    },
+    "market_regime": {
+        "label": "Market regime",
+        "short": "A one-word read of overall market conditions, from calm and risk-taking to fearful and defensive.",
+        "source": "Calculated from volatility and market breadth, not written by an AI.",
+    },
+    "days_to_exit": {
+        "label": "Days to exit",
+        "short": "How long selling the whole position would take at a tenth of the stock's normal daily volume.",
+        "source": "Calculated from recent trading volume.",
+    },
+    "source_watchlist_search": {
+        "label": "Added by search",
+        "short": "Someone added this stock using the search bar on the watchlist page.",
+        "source": "Manual entry on the watchlist page.",
+    },
+    "source_ticker_ui": {
+        "label": "Added from details page",
+        "short": "Someone added this stock while looking at its own details page.",
+        "source": "Manual entry from the stock's details page.",
+    },
     "thesis_due": {
         "label": "Due for review",
         "short": "Enough time has passed that this stock's reasoning is scheduled for another look.",

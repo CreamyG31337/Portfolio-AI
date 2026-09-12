@@ -355,6 +355,30 @@ def build_today_briefing(
     except Exception as exc:
         logger.warning("Today briefing: advise pack failed: %s", exc)
 
+    # A bare ticker only reads to someone who already knows it. Names are looked
+    # up once for the whole payload (cached), and rows without one keep showing
+    # the ticker alone rather than a blank column.
+    try:
+        from company_names import attach_company_names
+
+        for rows in (
+            advise_pack,
+            actions,
+            theses_attention,
+            insider_clusters,
+            congress_herd_buys,
+            dilution_alerts,
+            filing_alerts,
+            confluence_events,
+            grok_briefs,
+            movers,
+            dividends,
+        ):
+            if isinstance(rows, list):
+                attach_company_names(supabase_client, rows)
+    except Exception as exc:
+        logger.warning("Today briefing: company names unavailable: %s", exc)
+
     return {
         "market_regime": regime,
         "market_brief_headline": (brief_row or {}).get("headline"),

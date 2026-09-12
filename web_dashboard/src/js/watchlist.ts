@@ -1,12 +1,14 @@
 import { getCsrfHeaders } from "./csrf.js";
 import { setupTickerSearch } from "./ticker_search.js";
 import { sentimentBadgeClasses } from "./sentiment_badges.js";
+import { helpTip, getGlossary, initTooltips } from "./glossary.js";
 
 export {};
 
 interface WatchlistRow {
   fund?: string;
   ticker: string;
+  company_name?: string | null;
   priority_tier?: string;
   is_active?: boolean;
   source?: string | null;
@@ -61,6 +63,23 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function tickerLabel(ticker: string, companyName?: string | null): string {
+  const t = escapeHtml(ticker || "");
+  const name = String(companyName || "").trim();
+  if (!name) return t;
+  return `${t} <span class="text-xs font-normal text-text-secondary truncate inline-block max-w-[140px] sm:max-w-[200px] align-bottom">${escapeHtml(name)}</span>`;
+}
+
+function formatWatchlistSource(source: string | null | undefined): string {
+  if (!source) return '<span class="text-xs text-text-secondary">—</span>';
+  const glossaryKey = `source_${source}`;
+  const entry = getGlossary()[glossaryKey];
+  if (entry) {
+    return `<span class="inline-flex items-center gap-1 text-xs text-text-secondary">${escapeHtml(entry.label)} ${helpTip(glossaryKey, "p-1 min-w-[24px] min-h-[24px]")}</span>`;
+  }
+  return `<span class="text-xs text-text-secondary">${escapeHtml(source)}</span>`;
+}
+
 function setMsg(id: string, text: string, ok: boolean): void {
   const node = el(id);
   if (!node) return;
@@ -84,7 +103,7 @@ function analysisBadge(r: WatchlistRow): string {
     const when = formatShortDate(r.analysis_date || r.analysis_updated_at);
     const stance = r.stance || r.sentiment || "";
     const stanceHtml = stance
-      ? ` <span class="${sentimentBadgeClasses(stance)}">${escapeHtml(stance)}</span>`
+      ? ` <span class="inline-flex items-center gap-1"><span class="${sentimentBadgeClasses(stance)}">${escapeHtml(stance)}</span>${helpTip("stance", "p-1 min-w-[24px] min-h-[24px]")}</span>`
       : "";
     return `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">analyzed</span>
       <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>${stanceHtml}`;
@@ -98,7 +117,7 @@ function metaBadge(r: WatchlistRow): string {
   }
   const when = formatShortDate(r.meta_updated_at);
   const conv = r.meta_conviction || "meta";
-  return `<span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100">${escapeHtml(conv)}</span>
+  return `<span class="inline-flex items-center gap-1"><span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100">${escapeHtml(conv)}</span>${helpTip("conviction", "p-1 min-w-[24px] min-h-[24px]")}</span>
     <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>`;
 }
 
@@ -194,6 +213,21 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
   const count = el("watchlist-count");
   if (!tbody || !wrap || !empty) return;
 
+  const provFund = el("watchlist-provenance-fund");
+  if (provFund) provFund.textContent = fund || "—";
+  const provUpdated = el("watchlist-provenance-updated");
+  if (provUpdated) {
+    let latestTs: string | null = null;
+    for (const r of rows) {
+      for (const ts of [r.meta_updated_at, r.analysis_updated_at, r.analysis_date, r.created_at]) {
+        if (ts && (!latestTs || ts > latestTs)) {
+          latestTs = ts;
+        }
+      }
+    }
+    provUpdated.textContent = latestTs ? ` · updated ${formatShortDate(latestTs)}` : "";
+  }
+
   const activeCount = rows.filter((r) => r.is_active).length;
   if (count) count.textContent = `(${activeCount} active)`;
 
@@ -201,6 +235,7 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
     wrap.classList.add("hidden");
     empty.classList.remove("hidden");
     tbody.innerHTML = "";
+    initTooltips();
     return;
   }
   empty.classList.add("hidden");
@@ -211,20 +246,23 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
       const active = !!r.is_active;
       const href = r.dossier_url || `/ticker?ticker=${encodeURIComponent(r.ticker)}`;
       const preview = r.summary_snippet
-        ? `<span class="text-xs text-text-secondary line-clamp-2 max-w-xs inline-block" title="${escapeHtml(r.summary_snippet)}">${escapeHtml(r.summary_snippet)}</span>`
+        ? `<span class="text-xs text-text-secondary line-clamp-2 max-w-xs inline-block">${escapeHtml(r.summary_snippet)}</span>`
         : '<span class="text-xs text-text-secondary">—</span>';
       return `<tr class="border-b border-border last:border-0 align-top" data-ticker="${r.ticker}">
         <td class="py-2 pr-3">
-          <a href="${href}" class="text-accent hover:underline font-semibold">${r.ticker}</a>
-          <div class="text-xs text-text-secondary mt-0.5">${escapeHtml(r.source || "—")}</div>
+          <a href="${href}" class="text-accent hover:underline">${tickerLabel(r.ticker, r.company_name)}</a>
+          <div class="mt-0.5">${formatWatchlistSource(r.source)}</div>
         </td>
         <td class="py-2 pr-3">
-          <select data-action="tier" data-ticker="${r.ticker}"
-            class="rounded border border-border bg-dashboard-background text-sm px-1 py-0.5">
-            ${["A", "B", "C"]
-              .map((t) => `<option value="${t}" ${t === tier ? "selected" : ""}>${t}</option>`)
-              .join("")}
-          </select>
+          <div class="inline-flex items-center gap-1">
+            <select data-action="tier" data-ticker="${r.ticker}"
+              class="rounded border border-border bg-dashboard-background text-sm px-1 py-0.5">
+              ${["A", "B", "C"]
+                .map((t) => `<option value="${t}" ${t === tier ? "selected" : ""}>${t}</option>`)
+                .join("")}
+            </select>
+            ${helpTip("tier_" + tier, "p-1 min-w-[24px] min-h-[24px]")}
+          </div>
         </td>
         <td class="py-2 pr-3">${analysisBadge(r)}</td>
         <td class="py-2 pr-3">${metaBadge(r)}</td>
@@ -244,6 +282,8 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
       </tr>`;
     })
     .join("");
+
+  initTooltips();
 
   tbody.querySelectorAll("[data-action]").forEach((node) => {
     const btn = node as HTMLElement;
@@ -274,9 +314,11 @@ function renderRows(fund: string, rows: WatchlistRow[]): void {
 async function loadList(): Promise<void> {
   const fund = getSelectedFund();
   const fundLabel = el("watchlist-fund-label");
+  const provFund = el("watchlist-provenance-fund");
   const loading = el("watchlist-loading");
   const err = el("watchlist-error");
   if (fundLabel) fundLabel.textContent = fund || "(select a fund)";
+  if (provFund) provFund.textContent = fund || "—";
   if (!fund) {
     if (loading) loading.classList.add("hidden");
     if (err) {
@@ -346,6 +388,7 @@ function init(): void {
   el("watchlist-show-inactive")?.addEventListener("change", () => void loadList());
   el("watchlist-analyze-all")?.addEventListener("click", () => void analyzeAllActive());
   window.addEventListener("fundChanged", () => void loadList());
+  initTooltips();
   void loadList();
 }
 

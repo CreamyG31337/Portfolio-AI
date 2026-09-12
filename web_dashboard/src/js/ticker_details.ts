@@ -7,6 +7,17 @@ import { showToast as showToastBase } from './toast.js';
 import { setupTickerSearch } from './ticker_search.js';
 import { sentimentBadgeClasses } from './sentiment_badges.js';
 import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
+import { helpTip, getGlossary, initTooltips } from './glossary.js';
+
+function formatWatchlistSource(source: string | null | undefined): string {
+    if (!source) return '<span class="text-text-secondary">—</span>';
+    const glossaryKey = `source_${source}`;
+    const entry = getGlossary()[glossaryKey];
+    if (entry) {
+        return `<span class="inline-flex items-center gap-1">${escapeHtml(entry.label)} ${helpTip(glossaryKey)}</span>`;
+    }
+    return `<span>${escapeHtml(source)}</span>`;
+}
 
 // API Response interfaces
 interface TickerListResponse {
@@ -486,6 +497,8 @@ function shouldApplyChartResult(myChartSeq: number, tickerForLoad: string, expec
 
 // Initialize page on load
 document.addEventListener('DOMContentLoaded', function (): void {
+    initTooltips();
+
     // Get ticker from URL query parameter
     const urlParams = new URLSearchParams(window.location.search);
     const tickerParam = urlParams.get('ticker');
@@ -2165,6 +2178,14 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
     const removeBtn = document.getElementById('watchlist-remove-btn') as HTMLButtonElement | null;
 
     const fund = getSelectedFund();
+    const provFund = document.getElementById('watchlist-provenance-fund');
+    if (provFund) provFund.textContent = fund || 'fund-scoped';
+    const provUpdated = document.getElementById('watchlist-provenance-updated');
+    if (provUpdated) {
+        const rawTs = (status as { created_at?: string | null }).created_at;
+        provUpdated.textContent = rawTs ? ` · added ${formatDate(rawTs)}` : '';
+    }
+
     if (statusEl) {
         statusEl.textContent = !fund
             ? 'Select a fund'
@@ -2172,8 +2193,13 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
               ? 'In Watchlist'
               : 'Not on watchlist';
     }
-    if (tierEl) tierEl.textContent = status.priority_tier || 'B';
-    if (sourceEl) sourceEl.textContent = status.source || '—';
+    const tier = status.priority_tier || 'B';
+    if (tierEl) {
+        tierEl.innerHTML = `<span class="font-semibold">${escapeHtml(tier)}</span> ${helpTip('tier_' + tier)}`;
+    }
+    if (sourceEl) {
+        sourceEl.innerHTML = formatWatchlistSource(status.source);
+    }
     if (tierSelect && status.priority_tier) {
         tierSelect.value = status.priority_tier;
     }
@@ -2192,6 +2218,7 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
             if (inList) void watchlistPatchTier(tierSelect.value);
         };
     }
+    initTooltips();
 }
 
 async function watchlistAddCurrent(): Promise<void> {
@@ -2470,6 +2497,7 @@ function renderSignals(signals: SignalAnalysis): void {
             explanationEl.innerHTML = '<span class="text-text-tertiary">No AI explanation available yet.</span>';
         }
     }
+    initTooltips();
 }
 
 // Helper: color-code a score element by value
@@ -3062,9 +3090,14 @@ function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
     el.innerHTML = `
         <div class="space-y-4">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <span class="${stanceClass}" title="Phase 1 stance enum">${escapeHtml(stance)}</span>
+                <span class="inline-flex items-center gap-1">
+                    <span class="${stanceClass}" title="Phase 1 stance enum">${escapeHtml(stance)}</span>
+                    ${helpTip('stance')}
+                </span>
                 ${horizon ? `<span class="${horizonClass}" title="Recommended trading horizon">${escapeHtml(horizon)}</span>` : ''}
-                <span class="text-sm text-text-secondary">Confidence <span class="font-semibold text-text-primary">${escapeHtml(confidenceText)}</span></span>
+                <span class="text-sm text-text-secondary inline-flex items-center gap-1">
+                    Confidence ${helpTip('confidence')} <span class="font-semibold text-text-primary">${escapeHtml(confidenceText)}</span>
+                </span>
                 ${meta.updated_at ? `<span class="text-xs text-text-tertiary">Updated ${escapeHtml(formatDate(meta.updated_at))}</span>` : ''}
             </div>
             ${actionabilityHtml}
@@ -3102,6 +3135,7 @@ function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
             ${meta.model_used ? `<p class="text-xs text-text-tertiary">Model: ${escapeHtml(meta.model_used)}${meta.artifact_bundle_digest ? ` · bundle ${escapeHtml(String(meta.artifact_bundle_digest).slice(0, 12))}` : ''}</p>` : ''}
         </div>
     `;
+    initTooltips();
 }
 
 async function loadTickerMetaAnalysis(ticker: string, expectedLoadSeq?: number): Promise<void> {
@@ -3322,7 +3356,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
             <!-- Metadata -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                    <div class="text-text-secondary">Sentiment</div>
+                    <div class="text-text-secondary flex items-center gap-1">Sentiment ${helpTip('stance')}</div>
                     <div class="flex items-center gap-2 mt-1">
                         <span class="${sentimentColor}">${escapeHtml(sentiment)}</span>
                         ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
@@ -3331,7 +3365,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
                     </div>
                 </div>
                 <div>
-                    <div class="text-text-secondary">Confidence</div>
+                    <div class="text-text-secondary flex items-center gap-1">Confidence ${helpTip('confidence')}</div>
                     <div class="text-text-primary mt-1">
                         ${analysis.confidence_score !== null && analysis.confidence_score !== undefined
             ? `${(analysis.confidence_score * 100).toFixed(0)}%`
@@ -3362,6 +3396,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
             </div>
         </div>
     `;
+    initTooltips();
 
     // Setup re-analyze button (analysis exists)
     const reanalyzeBtn = document.getElementById('reanalyze-btn') as HTMLButtonElement | null;

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "components/_help_tip.html" import help_tip %}
 
 {% block title %}Insights - Portfolio Dashboard{% endblock %}
 {% block page_title %}Insights{% endblock %}
@@ -26,8 +27,9 @@
         <label class="flex items-center gap-2 text-sm text-text-primary">
             <input type="checkbox" id="insights-due-only"
                 class="rounded text-accent focus:ring-accent bg-dashboard-surface-alt border-border">
-            Due for review
+            Due for review {{ help_tip('thesis_due') }}
         </label>
+        <label class="flex items-center gap-1 text-sm text-text-primary" for="insights-filter-intent">Intent {{ help_tip('intent') }}</label>
         <select id="insights-filter-intent"
             class="text-sm bg-dashboard-surface-alt border border-border rounded-lg px-2 py-1 text-text-primary">
             <option value="">All intents</option>
@@ -35,6 +37,7 @@
             <option value="seek_exit">Seek exit</option>
             <option value="monitor">Monitor</option>
         </select>
+        <label class="flex items-center gap-1 text-sm text-text-primary" for="insights-filter-disposition">Disposition {{ help_tip('disposition') }}</label>
         <select id="insights-filter-disposition"
             class="text-sm bg-dashboard-surface-alt border border-border rounded-lg px-2 py-1 text-text-primary">
             <option value="">All dispositions</option>
@@ -78,7 +81,7 @@
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
-                    <label class="text-xs text-text-secondary" for="ins-disposition">Disposition</label>
+                    <label class="text-xs text-text-secondary" for="ins-disposition">Disposition {{ help_tip('disposition') }}</label>
                     <select id="ins-disposition"
                         class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-2 py-2 text-text-primary">
                         <option value="bullish">Bullish</option>
@@ -87,7 +90,7 @@
                     </select>
                 </div>
                 <div>
-                    <label class="text-xs text-text-secondary" for="ins-intent">Intent</label>
+                    <label class="text-xs text-text-secondary" for="ins-intent">Intent {{ help_tip('intent') }}</label>
                     <select id="ins-intent"
                         class="w-full mt-1 bg-dashboard-background border border-border rounded-lg px-2 py-2 text-text-primary">
                         <option value="seek_entry">Seek entry</option>

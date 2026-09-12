@@ -62,6 +62,21 @@ def insights_page():
     return _nav_render("insights.html", "insights")
 
 
+def _with_company_names(rows: list) -> list:
+    """Add company_name to thesis rows so the UI can show more than a ticker.
+
+    Best effort: names are a readability nicety, never a reason to fail a list.
+    """
+    try:
+        from admin_utils import get_admin_supabase_client
+        from company_names import attach_company_names
+
+        attach_company_names(get_admin_supabase_client(), rows)
+    except Exception as exc:
+        logger.debug("insights: company names unavailable: %s", exc)
+    return rows
+
+
 @insights_bp.route("/api/insights", methods=["GET"])
 @require_auth
 def list_insights_api():
@@ -77,7 +92,7 @@ def list_insights_api():
             include_archived=include_archived,
             limit=request.args.get("limit", default=100, type=int),
         )
-        return jsonify({"data": rows})
+        return jsonify({"data": _with_company_names(rows)})
     except Exception as exc:
         logger.error("insights list failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
@@ -96,7 +111,9 @@ def list_insights_due_api():
             hard_days=hard or 30,
             limit=request.args.get("limit", default=100, type=int),
         )
-        return jsonify({"data": rows, "soft_days": soft or 14, "hard_days": hard or 30})
+        return jsonify(
+            {"data": _with_company_names(rows), "soft_days": soft or 14, "hard_days": hard or 30}
+        )
     except Exception as exc:
         logger.error("insights due list failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500
@@ -116,7 +133,7 @@ def list_insights_attention_api():
             hard_days=request.args.get("hard_days", default=30, type=int) or 30,
             limit=request.args.get("limit", default=40, type=int) or 40,
         )
-        return jsonify({"data": rows})
+        return jsonify({"data": _with_company_names(rows)})
     except Exception as exc:
         logger.error("insights attention list failed: %s", exc, exc_info=True)
         return jsonify({"error": str(exc)}), 500

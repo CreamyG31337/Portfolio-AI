@@ -10,6 +10,8 @@
 {% endblock %}
 
 {% block content %}
+{% from "components/_help_tip.html" import help_tip, provenance %}
+
 <!-- Ticker Search -->
 <div class="bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
     <label for="ticker-search-input" class="block text-sm font-medium text-text-primary mb-2">
@@ -344,8 +346,11 @@
 
 <!-- AI Analysis Section -->
 <div id="ai-analysis-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h2 class="text-xl font-bold text-text-primary">🧠 AI Analysis</h2>
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div class="flex items-center gap-2">
+            <h2 class="text-xl font-bold text-text-primary">🧠 AI Analysis</h2>
+            <span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 font-medium">AI-written</span>
+        </div>
         <div class="flex flex-wrap items-center gap-3">
             <div class="flex items-center gap-2">
                 <label for="ticker-model-select" class="text-xs font-medium text-text-secondary">Model</label>
@@ -365,14 +370,23 @@
             </button>
         </div>
     </div>
+    <p class="text-xs text-text-secondary mb-4">
+        Qualitative thesis and sentiment written by local AI models evaluating recent news, SEC filings, and research — not derived from raw price algorithms.
+    </p>
     <div id="ai-analysis-content">
         <!-- Populated by JavaScript -->
     </div>
     <div id="meta-analysis-block" class="mt-6 hidden border-t border-border pt-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h3 class="text-lg font-semibold text-text-primary">
-                <i class="fas fa-layer-group mr-2 text-accent"></i>Meta synthesis
-            </h3>
+            <div class="flex items-center gap-2">
+                <h3 class="text-lg font-semibold text-text-primary">
+                    <i class="fas fa-layer-group mr-2 text-accent"></i>Meta synthesis
+                </h3>
+                <span class="inline-flex items-center gap-1">
+                    {{ help_tip('conviction') }}
+                    <span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 font-medium">AI-written</span>
+                </span>
+            </div>
             <button id="meta-rebuild-btn" type="button"
                 class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-3 py-1.5 inline-flex items-center transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
                 <i class="fas fa-sync-alt mr-2"></i>Refresh meta
@@ -519,14 +533,15 @@
     <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div>
             <h2 class="text-xl font-bold text-text-primary">Watchlist</h2>
-            <p class="text-xs text-text-secondary mt-1">
-                Fund-scoped. For ASAP AI research, use Analyze below — add does not auto-queue jobs.
+            <p id="watchlist-provenance" class="text-xs text-text-secondary mt-1">
+                <i class="fas fa-database mr-1 opacity-60" aria-hidden="true"></i>watched_tickers_v2 (<span id="watchlist-provenance-fund">fund-scoped</span>)<span id="watchlist-provenance-updated" class="opacity-75"></span>
+                · For ASAP AI research, use Analyze below — add does not auto-queue jobs.
                 <a href="/watchlist" class="text-accent hover:underline">Manage watchlist</a>
             </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <label class="text-sm text-text-secondary flex items-center gap-1">
-                Tier
+                <span class="inline-flex items-center gap-1">Tier {{ help_tip('priority_tier') }}</span>
                 <select id="watchlist-tier-select"
                     class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
                     <option value="A">A</option>
@@ -549,22 +564,24 @@
             <div id="watchlist-status" class="text-xl font-semibold text-text-primary">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
-            <div class="text-sm text-text-secondary">Priority Tier</div>
-            <div id="watchlist-tier" class="text-xl font-semibold text-text-primary">-</div>
+            <div class="text-sm text-text-secondary flex items-center gap-1">
+                Priority Tier {{ help_tip('priority_tier') }}
+            </div>
+            <div id="watchlist-tier" class="text-xl font-semibold text-text-primary flex items-center gap-1.5">-</div>
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary">Source</div>
-            <div id="watchlist-source" class="text-xl font-semibold text-text-primary">-</div>
+            <div id="watchlist-source" class="text-xl font-semibold text-text-primary flex items-center gap-1.5">-</div>
         </div>
     </div>
 </div>
 
 <!-- Technical Signals Section -->
 <div id="signals-section" class="hidden bg-dashboard-surface rounded-lg shadow-xs p-6 mb-6 border border-border">
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+        <div class="flex items-center gap-2">
             <h2 class="text-xl font-bold text-text-primary">📊 Technical Signals</h2>
-            <p class="text-xs text-text-secondary">Last updated: <span id="signals-last-updated">-</span></p>
+            <span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 border border-blue-300 dark:border-blue-700 font-medium">Calculated from price data</span>
         </div>
         <div class="flex flex-wrap items-center gap-3">
             <div class="flex items-center gap-2">
@@ -585,6 +602,10 @@
             </button>
         </div>
     </div>
+    <p class="text-xs text-text-secondary mb-4">
+        Quantitative indicators calculated mathematically from price and volume history — not generated by an AI model.
+        <span class="opacity-75">· Last updated: <span id="signals-last-updated">-</span></span>
+    </p>
 
     <div id="signals-loading" class="hidden text-sm text-text-secondary mb-4">
         <div class="inline-flex items-center gap-2">
@@ -595,10 +616,14 @@
 
     <!-- Overall Signal -->
     <div class="mb-6">
-        <div class="flex items-center gap-4 mb-4">
-            <div class="text-sm text-text-secondary">Overall Signal</div>
+        <div class="flex flex-wrap items-center gap-4 mb-4">
+            <div class="text-sm text-text-secondary flex items-center gap-1">
+                Overall Signal {{ help_tip('overall_signal') }}
+            </div>
             <div id="overall-signal-badge" class="px-4 py-2 rounded-lg font-semibold">-</div>
-            <div class="text-sm text-text-secondary">Confidence: <span id="signal-confidence">-</span></div>
+            <div class="text-sm text-text-secondary flex items-center gap-1">
+                Confidence {{ help_tip('confidence') }}: <span id="signal-confidence">-</span>
+            </div>
         </div>
     </div>
 
@@ -701,7 +726,7 @@
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
-                            Fear Level
+                            Fear Level {{ help_tip('fear_level') }}
                             <div class="group relative inline-block">
                                 <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
                                 <div
