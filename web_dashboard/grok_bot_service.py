@@ -95,6 +95,10 @@ def eligible_watchlist_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """A/B active names, excluding Ideas-inbox discovery adds.
 
     Same ticker on multiple funds is one row with ``funds`` merged; A-tier wins.
+
+    Idempotent: accepts raw watchlist rows (``fund``) and rows this function already
+    returned (``funds``). select_queue_items() re-normalizes what build_queue() passes
+    it, and a second pass used to drop every fund name.
     """
     by_ticker: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -109,19 +113,23 @@ def eligible_watchlist_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         source = str(row.get("source") or "").strip()
         if source in SKIP_SOURCES:
             continue
+        funds = [str(f).strip() for f in (row.get("funds") or []) if str(f).strip()]
         fund = str(row.get("fund") or "").strip()
+        if fund and fund not in funds:
+            funds.insert(0, fund)
         existing = by_ticker.get(ticker)
         if existing is None:
             by_ticker[ticker] = {
                 "ticker": ticker,
                 "priority_tier": tier,
-                "funds": [fund] if fund else [],
+                "funds": funds,
                 "source": source,
                 "is_active": True,
             }
             continue
-        if fund and fund not in existing["funds"]:
-            existing["funds"].append(fund)
+        for name in funds:
+            if name not in existing["funds"]:
+                existing["funds"].append(name)
         if tier == "A":
             existing["priority_tier"] = "A"
     return list(by_ticker.values())

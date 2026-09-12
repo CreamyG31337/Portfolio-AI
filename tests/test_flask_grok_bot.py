@@ -180,6 +180,32 @@ def test_upsert_rejects_unknown_ticker() -> None:
     pg.execute_query.assert_not_called()
 
 
+def test_build_queue_keeps_fund_names() -> None:
+    """Regression: select_queue_items re-normalizes, which used to drop every fund."""
+    today = date(2026, 9, 9)
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [],  # no prior briefs
+        [{"n": 0}],  # nothing briefed today
+    ]
+    with patch(
+        "grok_bot_service.get_active_watchlist_rows",
+        side_effect=[
+            [_watch("AAA", fund="Project Chimera")],
+            [_watch("AAA", fund="RRSP Lance Webull")],
+        ],
+    ):
+        items = build_queue(
+            pg,
+            MagicMock(),
+            funds=["Project Chimera", "RRSP Lance Webull"],
+            today=today,
+            limit=5,
+        )
+    assert items[0]["fund"] == "Project Chimera"
+    assert items[0]["funds"] == ["Project Chimera", "RRSP Lance Webull"]
+
+
 def test_build_queue_caps_at_daily_remaining() -> None:
     today = date(2026, 9, 9)
     watchlist = [_watch("AAA"), _watch("BBB"), _watch("CCC"), _watch("DDD")]
