@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% from "components/_help_tip.html" import help_tip, provenance with context %}
 
 {% block title %}Grok Bot Admin{% endblock %}
 {% block page_title %}Grok Bot Admin{% endblock %}
-{% block page_subtitle %}X-sweep briefs, bot health, and sweep skip list{% endblock %}
+{% block page_subtitle %}Weekday X briefs, bot health, and which stocks are skipped to save credits{% endblock %}
 
 {% block extra_head %}
 {% if CSRF_ENABLED %}
@@ -21,32 +22,47 @@
     {% endif %}
 
     <!-- Bot health: what is the bot doing? -->
-    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
-            <div class="text-xs uppercase tracking-wide text-text-secondary">Last Sweep</div>
-            {% if summary and summary.last_sweep %}
-            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.last_sweep[:10] }}</div>
-            <div class="mt-1 text-xs {% if summary.swept_today %}text-green-500{% else %}text-text-secondary{% endif %}">
-                {% if summary.swept_today %}Swept today{% else %}No sweep today{% endif %}
+    <div>
+        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <div class="text-xs uppercase tracking-wide text-text-secondary inline-flex items-center gap-1">
+                    Last Sweep {{ help_tip('sweep') }}
+                </div>
+                {% if summary and summary.last_sweep %}
+                <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.last_sweep[:10] }}</div>
+                <div class="mt-1 text-xs {% if summary.swept_today %}text-green-500{% else %}text-text-secondary{% endif %}">
+                    {% if summary.swept_today %}Swept today{% else %}No sweep today{% endif %}
+                </div>
+                {% else %}
+                <div class="mt-2 text-lg font-semibold text-text-secondary">No sweeps yet</div>
+                {% endif %}
             </div>
-            {% else %}
-            <div class="mt-2 text-lg font-semibold text-text-secondary">No sweeps yet</div>
-            {% endif %}
-        </div>
-        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
-            <div class="text-xs uppercase tracking-wide text-text-secondary">Tickers Last Sweep</div>
-            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.tickers_last_sweep if summary else 0 }}</div>
-        </div>
-        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
-            <div class="text-xs uppercase tracking-wide text-text-secondary">Notable Last Sweep</div>
-            <div class="mt-2 text-2xl font-semibold {{ 'text-amber-500' if summary and summary.notable_last_sweep else 'text-text-primary' }}">
-                {{ summary.notable_last_sweep if summary else 0 }}
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <div class="text-xs uppercase tracking-wide text-text-secondary inline-flex items-center gap-1">
+                    Tickers Last Sweep {{ help_tip('sweep') }}
+                </div>
+                <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.tickers_last_sweep if summary else 0 }}</div>
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <div class="text-xs uppercase tracking-wide text-text-secondary inline-flex items-center gap-1">
+                    Notable Last Sweep {{ help_tip('notable') }}
+                </div>
+                <div class="mt-2 text-2xl font-semibold {{ 'text-amber-500' if summary and summary.notable_last_sweep else 'text-text-primary' }}">
+                    {{ summary.notable_last_sweep if summary else 0 }}
+                </div>
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <div class="text-xs uppercase tracking-wide text-text-secondary inline-flex items-center gap-1">
+                    Total Briefs {{ help_tip('grok_brief') }}
+                </div>
+                <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.total_briefs if summary else 0 }}</div>
             </div>
         </div>
-        <div class="bg-dashboard-surface rounded-lg border border-border p-4">
-            <div class="text-xs uppercase tracking-wide text-text-secondary">Total Briefs</div>
-            <div class="mt-2 text-2xl font-semibold text-text-primary">{{ summary.total_briefs if summary else 0 }}</div>
-        </div>
+        <p class="text-sm text-text-secondary mt-2">
+            Each sweep covers at most five stocks and spends X credits; see
+            <code class="text-xs">docs/GROK_BOT_RESEARCH.md</code>.
+        </p>
+        {{ provenance('Health numbers are counted from grok_x_briefs rows filed by the weekday Grok Bot sweep (Research Postgres).', summary.last_sweep if summary else None) }}
     </div>
 
     <!-- Recent briefs -->
@@ -59,7 +75,9 @@
                     class="w-full px-3 py-2 text-sm bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
             </div>
             <div>
-                <label for="grok-filter-notable" class="block mb-1 text-sm font-medium text-text-primary">Notable</label>
+                <label for="grok-filter-notable" class="mb-1 text-sm font-medium text-text-primary inline-flex items-center gap-1">
+                    Notable {{ help_tip('notable') }}
+                </label>
                 <select id="grok-filter-notable" name="notable"
                     class="w-full px-3 py-2 text-sm bg-dashboard-background border border-border rounded-lg text-text-primary focus:ring-2 focus:ring-accent focus:border-accent">
                     <option value="" {% if not notable_filter %}selected{% endif %}>All</option>
@@ -77,6 +95,12 @@
     </div>
 
     <div class="space-y-3">
+        <div>
+            <h2 class="text-sm font-semibold text-text-primary inline-flex items-center gap-1">
+                Recent briefs {{ help_tip('grok_brief') }}
+            </h2>
+            {{ provenance("Briefs come from the Bot's weekday sweep (Research Postgres table grok_x_briefs).", summary.last_sweep if summary else None) }}
+        </div>
         {% if briefs %}
         {% for brief in briefs %}
         <details class="bg-dashboard-surface rounded-lg border border-border overflow-hidden">
@@ -85,9 +109,13 @@
                 <span class="text-base font-bold text-accent">{{ brief.ticker }}</span>
                 <span class="text-xs text-text-secondary">{{ brief.fund }}</span>
                 {% if brief.notable %}
-                <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30">Notable</span>
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 border border-amber-500/30 inline-flex items-center gap-1">
+                    Notable {{ help_tip('notable') }}
+                </span>
                 {% endif %}
-                <span class="text-xs px-2 py-0.5 rounded-full bg-dashboard-background border border-border text-text-secondary">{{ brief.status }}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-dashboard-background border border-border text-text-secondary inline-flex items-center gap-1">
+                    {{ brief.status }} {{ help_tip('status_' ~ (brief.status | lower)) }}
+                </span>
                 <span class="text-xs text-text-secondary">{{ brief.post_count }} post{{ '' if brief.post_count == 1 else 's' }}</span>
                 <span class="ml-auto flex flex-wrap gap-1">
                     {% for theme in brief.themes[:6] %}
@@ -137,7 +165,10 @@
         <div class="px-4 py-3 border-b border-border flex items-center justify-between">
             <div>
                 <h2 class="text-sm font-semibold text-text-primary">Sweep Skip List</h2>
-                <p class="text-xs text-text-secondary mt-0.5">Tickers here are excluded from the Bot's sweep queue. Removing one resumes sweeping it.</p>
+                <p class="text-xs text-text-secondary mt-0.5">
+                    Stocks here are not searched, which saves money; removing a row starts searching again.
+                    An auto row means a search found nothing.
+                </p>
             </div>
         </div>
         <div class="px-4 py-3 border-b border-border">
@@ -159,7 +190,11 @@
                     <tr>
                         <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Ticker</th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Reason</th>
-                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Source</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">
+                            <span class="inline-flex items-center gap-1">
+                                Source {{ help_tip('skip_auto') }} {{ help_tip('skip_manual') }}
+                            </span>
+                        </th>
                         <th class="px-4 py-3 text-left text-xs font-medium text-text-secondary uppercase tracking-wider">Updated</th>
                         <th class="px-4 py-3 text-right text-xs font-medium text-text-secondary uppercase tracking-wider">Action</th>
                     </tr>
@@ -171,7 +206,10 @@
                         <td class="px-4 py-2 text-sm font-semibold text-text-primary">{{ skip.ticker }}</td>
                         <td class="px-4 py-2 text-sm text-text-secondary">{{ skip.reason }}</td>
                         <td class="px-4 py-2 text-sm">
-                            <span class="text-xs px-2 py-0.5 rounded-full border {% if skip.source == 'auto' %}bg-dashboard-background border-border text-text-secondary{% else %}bg-accent/10 border-accent/30 text-accent{% endif %}">{{ skip.source }}</span>
+                            <span class="text-xs px-2 py-0.5 rounded-full border inline-flex items-center gap-1 {% if skip.source == 'auto' %}bg-dashboard-background border-border text-text-secondary{% else %}bg-accent/10 border-accent/30 text-accent{% endif %}">
+                                {{ skip.source }}
+                                {% if skip.source == 'auto' %}{{ help_tip('skip_auto') }}{% else %}{{ help_tip('skip_manual') }}{% endif %}
+                            </span>
                         </td>
                         <td class="px-4 py-2 text-sm text-text-secondary">{{ skip.updated_at or skip.created_at or '' }}</td>
                         <td class="px-4 py-2 text-right">

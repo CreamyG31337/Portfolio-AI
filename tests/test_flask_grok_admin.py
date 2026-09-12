@@ -49,6 +49,20 @@ def _skip_row(ticker: str = "ZZZ", *, source: str = "manual") -> dict:
     }
 
 
+def _assert_page_explains_itself(html: str) -> None:
+    """Viewer-facing copy that must stay on /grok/admin (glossary tips + cost)."""
+    assert "data-tooltip-target=" in html
+    assert "fa-circle-question" in html
+    assert "Stocks here are not searched, which saves money" in html
+    assert "An auto row means a search found nothing." in html
+    assert "Each sweep covers at most five stocks and spends X credits" in html
+    assert "docs/GROK_BOT_RESEARCH.md" in html
+    assert "grok_x_briefs" in html
+    assert "Health numbers are counted from grok_x_briefs" in html
+    assert "weekday sweep" in html
+    assert "|safe" not in html
+
+
 def _auth_patches():
     """require_auth passes: verified session + fake access token."""
     return (
@@ -91,6 +105,13 @@ def test_page_renders_briefs_summary_and_skips(client) -> None:
     # post links are new-tab with noopener, never raw HTML
     assert 'rel="noopener noreferrer"' in html
     assert "<script>alert" not in html
+    _assert_page_explains_itself(html)
+    assert "What does Ingested mean?" in html
+    assert "What does Notable mean?" in html
+    assert "What does Sweep mean?" in html
+    assert "What does X brief mean?" in html
+    assert "What does Auto skip mean?" in html
+    assert "Saved, but nothing has read it yet." in html
 
 
 @skip_without_plotly
@@ -109,6 +130,7 @@ def test_page_no_sweep_today_state(client) -> None:
     html = resp.get_data(as_text=True)
     assert "No sweeps yet" in html
     assert "No briefs ingested yet" in html
+    _assert_page_explains_itself(html)
 
 
 @skip_without_plotly
@@ -215,6 +237,39 @@ def test_page_post_url_safety_filters_dangerous_schemes_and_hosts(client) -> Non
     assert 'href="https://twitter.com/legit_user/status/789"' in html
     assert 'target="_blank"' in html
     assert 'rel="noopener noreferrer"' in html
+
+
+@skip_without_plotly
+def test_page_status_chips_use_matching_glossary_keys(client) -> None:
+    today = datetime.now(UTC).date().isoformat()
+    evaluated = _brief_row("BBB", notable=False)
+    evaluated["id"] = "row-2"
+    evaluated["status"] = "evaluated"
+    evaluated["body"] = "Quiet tape."
+    ignored = _brief_row("CCC", notable=False)
+    ignored["id"] = "row-3"
+    ignored["status"] = "ignored"
+    ignored["body"] = "Noise only."
+    pg = MagicMock()
+    pg.execute_query.side_effect = [
+        [evaluated, ignored],
+        [{"total": 2, "last_sweep": today}],
+        [{"tickers": 2, "notable": 0}],
+        [_skip_row("QQQ", source="manual")],
+    ]
+    verify, access_token = _auth_patches()
+    with verify, access_token, patch("routes.grok_admin_routes.PostgresClient", return_value=pg):
+        client.set_cookie("auth_token", "test.token.value")
+        resp = client.get("/grok/admin")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "What does Evaluated mean?" in html
+    assert "What does Ignored mean?" in html
+    assert "What does Manual skip mean?" in html
+    assert "An AI review has already read this brief" in html
+    assert "Marked as not worth acting on." in html
+    assert "Quiet tape." in html
+    assert "Noise only." in html
 
 
 def test_is_safe_post_url_validation() -> None:

@@ -14,7 +14,7 @@ function formatWatchlistSource(source: string | null | undefined): string {
     const glossaryKey = `source_${source}`;
     const entry = getGlossary()[glossaryKey];
     if (entry) {
-        return `<span class="inline-flex items-center gap-1">${escapeHtml(entry.label)} ${helpTip(glossaryKey)}</span>`;
+        return `<span class="inline-flex items-center gap-1">${escapeHtml(entry.label)} ${helpTip(glossaryKey, 'p-1 min-w-[24px] min-h-[24px]')}</span>`;
     }
     return `<span>${escapeHtml(source)}</span>`;
 }
@@ -1645,7 +1645,7 @@ function renderResearchArticles(articles: ResearchArticle[]): void {
                 ${sentBadge}
                 <span class="text-sm font-medium text-text-primary truncate flex-1 min-w-0">${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="hover:text-accent hover:underline" onclick="event.stopPropagation()">${escapedTitle}</a>` : escapedTitle}</span>
                 <span class="text-[11px] text-text-tertiary whitespace-nowrap shrink-0 ml-auto">${escapedRelTime}</span>
-                ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-text-tertiary hover:text-accent shrink-0 ml-1" onclick="event.stopPropagation()" title="Open article"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : ''}
+                ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-text-tertiary hover:text-accent shrink-0 ml-1" onclick="event.stopPropagation()" aria-label="Open article"><i class="fas fa-external-link-alt text-[10px]"></i></a>` : ''}
             </button>
             <div id="${rowId}" class="hidden px-3 pb-3 pt-0">
                 <div class="ml-5 pl-3 border-l-2 border-border">
@@ -1843,7 +1843,7 @@ function renderCongressTradesPage(): void {
             <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.state || 'N/A')}</td>
             <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(trade.owner || 'N/A')}</td>
             <td class="px-4 py-4 whitespace-nowrap text-sm text-text-primary">${escapeHtml(scoreDisplay)}</td>
-            <td class="px-4 py-4 text-sm text-text-secondary max-w-xs truncate" title="${escapeHtml(reasoningFull)}">
+            <td class="px-4 py-4 text-sm text-text-secondary max-w-xs truncate">
                 ${escapeHtml(reasoningText)}
             </td>
         `;
@@ -2195,7 +2195,7 @@ function renderWatchlistStatus(status: WatchlistStatus): void {
     }
     const tier = status.priority_tier || 'B';
     if (tierEl) {
-        tierEl.innerHTML = `<span class="font-semibold">${escapeHtml(tier)}</span> ${helpTip('tier_' + tier)}`;
+        tierEl.innerHTML = `<span class="font-semibold">${escapeHtml(tier)}</span> ${helpTip('tier_' + tier, 'p-1 min-w-[24px] min-h-[24px]')}`;
     }
     if (sourceEl) {
         sourceEl.innerHTML = formatWatchlistSource(status.source);
@@ -3091,12 +3091,12 @@ function renderTickerMetaAnalysisContent(meta: TickerMetaAnalysisRow): void {
         <div class="space-y-4">
             <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span class="inline-flex items-center gap-1">
-                    <span class="${stanceClass}" title="Phase 1 stance enum">${escapeHtml(stance)}</span>
-                    ${helpTip('stance')}
+                    <span class="${stanceClass}">${escapeHtml(stance)}</span>
+                    ${helpTip('stance', 'p-1 min-w-[24px] min-h-[24px]')}
                 </span>
-                ${horizon ? `<span class="${horizonClass}" title="Recommended trading horizon">${escapeHtml(horizon)}</span>` : ''}
+                ${horizon ? `<span class="${horizonClass}">${escapeHtml(horizon)}</span>` : ''}
                 <span class="text-sm text-text-secondary inline-flex items-center gap-1">
-                    Confidence ${helpTip('confidence')} <span class="font-semibold text-text-primary">${escapeHtml(confidenceText)}</span>
+                    Confidence ${helpTip('confidence', 'p-1 min-w-[24px] min-h-[24px]')} <span class="font-semibold text-text-primary">${escapeHtml(confidenceText)}</span>
                 </span>
                 ${meta.updated_at ? `<span class="text-xs text-text-tertiary">Updated ${escapeHtml(formatDate(meta.updated_at))}</span>` : ''}
             </div>
@@ -3356,7 +3356,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
             <!-- Metadata -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                    <div class="text-text-secondary flex items-center gap-1">Sentiment ${helpTip('stance')}</div>
+                    <div class="text-text-secondary flex items-center gap-1">Sentiment ${helpTip('stance', 'p-1 min-w-[24px] min-h-[24px]')}</div>
                     <div class="flex items-center gap-2 mt-1">
                         <span class="${sentimentColor}">${escapeHtml(sentiment)}</span>
                         ${analysis.sentiment_score !== null && analysis.sentiment_score !== undefined
@@ -3365,7 +3365,7 @@ function renderTickerAnalysis(analysis: TickerAnalysis, ticker: string): void {
                     </div>
                 </div>
                 <div>
-                    <div class="text-text-secondary flex items-center gap-1">Confidence ${helpTip('confidence')}</div>
+                    <div class="text-text-secondary flex items-center gap-1">Confidence ${helpTip('confidence', 'p-1 min-w-[24px] min-h-[24px]')}</div>
                     <div class="text-text-primary mt-1">
                         ${analysis.confidence_score !== null && analysis.confidence_score !== undefined
             ? `${(analysis.confidence_score * 100).toFixed(0)}%`

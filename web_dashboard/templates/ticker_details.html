@@ -383,7 +383,7 @@
                     <i class="fas fa-layer-group mr-2 text-accent"></i>Meta synthesis
                 </h3>
                 <span class="inline-flex items-center gap-1">
-                    {{ help_tip('conviction') }}
+                    {{ help_tip('conviction', 'p-1 min-w-[24px] min-h-[24px]') }}
                     <span class="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 border border-purple-300 dark:border-purple-700 font-medium">AI-written</span>
                 </span>
             </div>
@@ -541,7 +541,7 @@
         </div>
         <div class="flex flex-wrap items-center gap-2">
             <label class="text-sm text-text-secondary flex items-center gap-1">
-                <span class="inline-flex items-center gap-1">Tier {{ help_tip('priority_tier') }}</span>
+                <span class="inline-flex items-center gap-1">Tier {{ help_tip('priority_tier', 'p-1 min-w-[24px] min-h-[24px]') }}</span>
                 <select id="watchlist-tier-select"
                     class="rounded border border-border bg-dashboard-background text-text-primary text-sm px-2 py-1">
                     <option value="A">A</option>
@@ -565,7 +565,7 @@
         </div>
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary flex items-center gap-1">
-                Priority Tier {{ help_tip('priority_tier') }}
+                Priority Tier {{ help_tip('priority_tier', 'p-1 min-w-[24px] min-h-[24px]') }}
             </div>
             <div id="watchlist-tier" class="text-xl font-semibold text-text-primary flex items-center gap-1.5">-</div>
         </div>
@@ -618,11 +618,11 @@
     <div class="mb-6">
         <div class="flex flex-wrap items-center gap-4 mb-4">
             <div class="text-sm text-text-secondary flex items-center gap-1">
-                Overall Signal {{ help_tip('overall_signal') }}
+                Overall Signal {{ help_tip('overall_signal', 'p-1 min-w-[24px] min-h-[24px]') }}
             </div>
             <div id="overall-signal-badge" class="px-4 py-2 rounded-lg font-semibold">-</div>
             <div class="text-sm text-text-secondary flex items-center gap-1">
-                Confidence {{ help_tip('confidence') }}: <span id="signal-confidence">-</span>
+                Confidence {{ help_tip('confidence', 'p-1 min-w-[24px] min-h-[24px]') }}: <span id="signal-confidence">-</span>
             </div>
         </div>
     </div>
@@ -726,14 +726,7 @@
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
-                            Fear Level {{ help_tip('fear_level') }}
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Sentiment gauge. 'Extreme Fear' can be a buy signal, 'Extreme Greed' a sell signal.
-                                </div>
-                            </div>
+                            Fear Level {{ help_tip('fear_level', 'p-1 min-w-[24px] min-h-[24px]') }}
                         </div>
                         <div id="fear-level" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
