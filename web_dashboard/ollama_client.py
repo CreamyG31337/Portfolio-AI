@@ -57,7 +57,7 @@ else:
 try:
     from model_registry import OLLAMA_SUMMARIZING_DEFAULT
 except ImportError:
-    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.8:27b-mtp-q4_K_M"
+    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.5:4b"
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 # Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
@@ -592,6 +592,9 @@ class OllamaClient:
         primary = (str(raw_primary).strip() if raw_primary else "") or self.base_url
         primary = primary.rstrip("/")
         default_norm = self.base_url.rstrip("/")
+        # Pinned to one host: never fail over.
+        if s.get("no_fallback"):
+            return primary, None
         fb_raw = s.get("fallback_base_url")
         if fb_raw is not None and str(fb_raw).strip():
             fb = str(fb_raw).strip().rstrip("/")
@@ -1017,7 +1020,7 @@ class OllamaClient:
         """List available Ollama model names from the primary host and optional secondary.
 
         Secondary is ``OLLAMA_BASE_URL_2`` / NVIDIA when set, so desktop-only models
-        (e.g. ``qwen3.8:27b-mtp-q4_K_M`` on the 3090) appear in the AI Assistant picker
+        (e.g. ``qwen3.5:4b`` on the NVIDIA host) appear in the AI Assistant picker
         even when the default URL is the Ubuntu host.
         """
         if not self.enabled:

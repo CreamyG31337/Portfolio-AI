@@ -1,4 +1,4 @@
-"""One-shot NVIDIA Ollama smoke test (qwen3.8 27B on the local 3090)."""
+"""One-shot NVIDIA Ollama smoke test (qwen3.5:4b)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 URL = "http://127.0.0.1:11434/api/generate"
-MODEL = "qwen3.8:27b-mtp-q4_K_M"
+MODEL = "qwen3.5:4b"
 PAYLOAD = {
     "model": MODEL,
     "prompt": "Reply with the single word pong.",

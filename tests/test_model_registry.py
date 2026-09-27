@@ -13,6 +13,7 @@ if str(WEB_DASHBOARD_ROOT) not in sys.path:
     sys.path.insert(0, str(WEB_DASHBOARD_ROOT))
 
 from model_registry import (  # noqa: E402
+    OLLAMA_NVIDIA_DEFAULT,
     OLLAMA_QWEN38_STOCK,
     PRIMARY_MODEL_DEFAULT,
     remap_deprecated_model,
@@ -28,8 +29,10 @@ from model_registry import (  # noqa: E402
         ("glm-4.7", ["granite4.1:8b"], "granite4.1:8b"),
         ("glm-5.2", ["glm-5.2", "glm-5.1"], "glm-5.2"),
         (None, ["granite4.1:8b"], "granite4.1:8b"),
-        ("qwen3.6:27b-heretic", None, OLLAMA_QWEN38_STOCK),
-        ("qwen3.6:27b-heretic-agentic", ["qwen3.8:27b-mtp-q4_K_M"], OLLAMA_QWEN38_STOCK),
+        ("qwen3.6:27b-heretic", None, OLLAMA_NVIDIA_DEFAULT),
+        ("qwen3.6:27b-heretic-agentic", ["qwen3.5:4b"], OLLAMA_NVIDIA_DEFAULT),
+
+        (OLLAMA_QWEN38_STOCK, ["qwen3.5:4b", "glm-5.2"], OLLAMA_NVIDIA_DEFAULT),
     ],
 )
 def test_resolve_ai_model_preference(
@@ -41,10 +44,19 @@ def test_resolve_ai_model_preference(
 
 
 def test_remap_deprecated_qwen36_tags() -> None:
-    assert remap_deprecated_model("qwen3.6:27b-heretic") == OLLAMA_QWEN38_STOCK
-    assert remap_deprecated_model("qwen3.6:27b-heretic-agentic") == OLLAMA_QWEN38_STOCK
-    assert remap_deprecated_model("qwen3.8:27b-heretic") == OLLAMA_QWEN38_STOCK
-    assert remap_deprecated_model(OLLAMA_QWEN38_STOCK) == OLLAMA_QWEN38_STOCK
+    assert remap_deprecated_model("qwen3.6:27b-heretic") == OLLAMA_NVIDIA_DEFAULT
+    assert remap_deprecated_model("qwen3.6:27b-heretic-agentic") == OLLAMA_NVIDIA_DEFAULT
+    assert remap_deprecated_model("qwen3.8:27b-heretic") == OLLAMA_NVIDIA_DEFAULT
+    assert remap_deprecated_model(OLLAMA_QWEN38_STOCK) == OLLAMA_NVIDIA_DEFAULT
+    assert remap_deprecated_model(OLLAMA_NVIDIA_DEFAULT) == OLLAMA_NVIDIA_DEFAULT
+
+
+def test_env_override_cannot_pin_oversize_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stale AI_QUEUE_MODEL_OLLAMA_SECONDARY is remapped to the supported default."""
+    from model_registry import get_ollama_queue_secondary_model
+
+    monkeypatch.setenv("AI_QUEUE_MODEL_OLLAMA_SECONDARY", OLLAMA_QWEN38_STOCK)
+    assert get_ollama_queue_secondary_model() == OLLAMA_NVIDIA_DEFAULT
 
 
 def test_get_user_ai_model_migrates_deprecated_preference() -> None:

@@ -1,10 +1,7 @@
 """Ollama context-window helpers: sticky num_ctx, unload, telemetry, budget scaffold.
 
-Host note (ts-cr-desktop RTX 3090 / 24 GB): context is fixed at model *load*
-(``llama-server -c N``), not per request. The 3090 moved here from ts-desktop on
-2026-08-18. Goose no longer shares this GPU -- it runs on ts-desktop's RTX 3070 --
-so the whole 24 GB is this app's, but num_ctx below is left at its tuned value
-until it can be re-measured on the new host.
+Context is fixed at model *load* (``llama-server -c N``), not per request.
+The NVIDIA default is ``qwen3.5:4b``; the Qwen3.8 27B notes below are bench-only.
 
 **Verified Ollama split:** roughly half of ``num_ctx`` is for the prompt, half for
 generation. So ``num_ctx=65536`` → ~32k usable prompt (Goose budgets ~28k under

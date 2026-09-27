@@ -25,23 +25,27 @@ SUPPORTED_GLM_MODELS: List[str] = [
     "glm-4.5-air",
 ]
 
-# Stock Qwen3.8 27B (vision+tools+thinking+MTP). No heretic tag in this app.
+# Stock Qwen3.8 27B (vision+tools+thinking+MTP). Bench-only; remapped below.
 OLLAMA_QWEN38_STOCK = "qwen3.8:27b-mtp-q4_K_M"
 
-# Retired GLM ids + deleted Qwen3.6 / unused heretic tags mapped on read.
+# Default model on the NVIDIA host.
+OLLAMA_NVIDIA_DEFAULT = "qwen3.5:4b"
+
+# Retired / unsupported model ids, mapped on read (stored settings and env overrides included).
 DEPRECATED_MODEL_MAP: dict[str, str] = {
     "glm-4.7": PRIMARY_MODEL_DEFAULT,
     "glm-4.6": PRIMARY_MODEL_DEFAULT,
     "glm-4.5": PRIMARY_MODEL_DEFAULT,
     "glm-5": PRIMARY_MODEL_DEFAULT,
-    "qwen3.6:27b-heretic": OLLAMA_QWEN38_STOCK,
-    "qwen3.6:27b-heretic-agentic": OLLAMA_QWEN38_STOCK,
-    "qwen3.8:27b-heretic": OLLAMA_QWEN38_STOCK,
+    "qwen3.6:27b-heretic": OLLAMA_NVIDIA_DEFAULT,
+    "qwen3.6:27b-heretic-agentic": OLLAMA_NVIDIA_DEFAULT,
+    "qwen3.8:27b-heretic": OLLAMA_NVIDIA_DEFAULT,
+    OLLAMA_QWEN38_STOCK: OLLAMA_NVIDIA_DEFAULT,
 }
 # Local Ollama roles (summarization primary + queue worker defaults).
-OLLAMA_SUMMARIZING_DEFAULT = OLLAMA_QWEN38_STOCK
+OLLAMA_SUMMARIZING_DEFAULT = OLLAMA_NVIDIA_DEFAULT
 OLLAMA_QUEUE_PRIMARY_DEFAULT = "granite4.1:8b"
-OLLAMA_QUEUE_SECONDARY_DEFAULT = OLLAMA_QWEN38_STOCK
+OLLAMA_QUEUE_SECONDARY_DEFAULT = OLLAMA_NVIDIA_DEFAULT
 EMBED_MODEL_DEFAULT = os.getenv("OLLAMA_EMBED_MODEL", "bge-m3")
 EMBED_DIM_DEFAULT = int(os.getenv("AI_EMBED_DIM", "1024"))
 EMBED_MAX_CHARS_DEFAULT = int(os.getenv("AI_EMBED_MAX_CHARS", "24000"))

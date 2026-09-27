@@ -67,9 +67,19 @@
             "num_predict": 4096,
             "temperature": 0.1,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
-            "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "no_fallback": true,
             "think": false,
-            "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). Failover: NVIDIA host. ctx 24576 MEASURED 2026-08-31: 13.06 GB resident on the 16 GB RX 6800, leaving room for bge-m3. Was 39000, which measured 15.47 GB and starved bge-m3 down to 16% GPU (embeddings ran on CPU). The old 'hybrid-Mamba => low KV growth' note was wrong: KV+state costs ~157 KB/token here."
+            "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). No failover host. ctx 24576 MEASURED 2026-08-31: 13.06 GB resident on the 16 GB RX 6800, leaving room for bge-m3. Was 39000, which measured 15.47 GB and starved bge-m3 down to 16% GPU (embeddings ran on CPU). The old 'hybrid-Mamba => low KV growth' note was wrong: KV+state costs ~157 KB/token here."
+        },
+        "qwen3.5:4b": {
+            "num_ctx": 65536,
+            "num_predict": 8192,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "Default NVIDIA-host model. Measured 100% GPU at num_ctx 65536. Soft client budget ~28k under the prompt half."
         },
         "qwen3.8:27b-mtp-q4_K_M": {
             "num_ctx": 65536,
@@ -79,17 +89,18 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Default NVIDIA 27B (stock Ollama library Qwen3.8, MTP draft tensors, vision+tools+thinking). Sticky num_ctx 65536 — model no longer bakes ctx in GGUF so without options.num_ctx it inherits OLLAMA_CONTEXT_LENGTH=32768 (~16k usable prompt). Soft client budget ~28k under prompt half. Never 20000/32768 on the shared 3090 runner (reload thrash). Requires Ollama >= 0.32.12 (host 0.32.13)."
+            "hidden": true,
+            "desc": "Hidden; remapped to qwen3.5:4b in model_registry. Default NVIDIA 27B (stock Ollama library Qwen3.8, MTP draft tensors, vision+tools+thinking). Sticky num_ctx 65536 — model no longer bakes ctx in GGUF so without options.num_ctx it inherits OLLAMA_CONTEXT_LENGTH=32768 (~16k usable prompt). Soft client budget ~28k under prompt half. Never 20000/32768 on a shared runner (reload thrash). Requires Ollama >= 0.32.12."
         },
         "batiai/qwen3.6-27b:iq3": {
             "num_ctx": 32768,
             "num_predict": 8192,
             "temperature": 0.2,
             "base_url_env": "OLLAMA_BASE_URL_AMD",
-            "fallback_base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "no_fallback": true,
             "think": false,
             "streaming_timeout": 600,
-            "desc": "IQ3 quant on the Ubuntu/AMD Ollama host — NOT the desktop 3090. Do not copy NVIDIA 65536 here unless that GPU fits; 32768 is an AMD-side default (usable prompt ≈ 16k)."
+            "desc": "IQ3 quant on the AMD Ollama host only (no failover). 32768 is an AMD-side default (usable prompt ≈ 16k)."
         },
         "phi4:14b": {
             "num_ctx": 8192,
