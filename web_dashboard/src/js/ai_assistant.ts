@@ -145,8 +145,9 @@ class AIAssistant {
     private loadingPhase: string = 'Generating response…';
     private loadingStartedAt: number = 0;
     private loadingTickTimer: ReturnType<typeof setInterval> | null = null;
-    // TODO(perf): Optionally persist cache to localStorage or add a backend cache key
-    // to reuse across sessions if context generation becomes expensive.
+    // contextCache is deliberately in-memory only. The server already caches the
+    // context (_get_preview_context_string, market-hours TTL); persisting it to
+    // localStorage would serve stale holdings and leave them in the browser.
 
     constructor(config: AIAssistantConfig) {
         this.config = config;
@@ -917,12 +918,10 @@ class AIAssistant {
                 this.contextString = data.context || null;
                 this.contextReady = true;
 
-                // Update display - convert HTML to plain text for <pre>
+                // Context is plain text (it contains scraped news/research), so
+                // never parse it as HTML - that strips "<..." text and runs handlers.
                 if (contentArea && data.context) {
-                    // Create temp element to decode HTML entities and convert <br> to newlines
-                    const temp = document.createElement('div');
-                    temp.innerHTML = data.context;
-                    contentArea.textContent = temp.textContent || temp.innerText || '';
+                    contentArea.textContent = data.context;
                 }
                 if (charBadge && data.char_count !== undefined) {
                     charBadge.textContent = `(${data.char_count.toLocaleString()} chars)`;
