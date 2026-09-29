@@ -138,6 +138,10 @@ def get_menu_options() -> List[Tuple[str, str, str, List[str]]]:
          f"Generate benchmark performance graphs for last 365 days (S&P 500, QQQ, Russell 2000, VTI) - runs benchmark graphing",
          ["--data-dir", str(data_dir_path)]),
         
+        ("g", f"{_safe_emoji('📉')} Terminal Stats Dashboard",
+         "Portfolio value charts and holdings breakdown drawn right in the console - runs menu_actions.py",
+         ["--action", "portfolio_stats", "--data-dir", str(data_dir_path)]),
+
         ("8", f"{_safe_emoji('🐛')} Debug Instructions",
          "Show debug information and instructions - runs debug_instructions.py",
          []),
@@ -484,7 +488,8 @@ def get_script_path(option: str) -> Optional[Path]:
         "x": PROJECT_ROOT / "get_emails.py",
         "e": PROJECT_ROOT / "add_trade_from_email.py",
         "r": PROJECT_ROOT / "debug" / "rebuild_portfolio_complete.py",
-        "l": PROJECT_ROOT / "menu_actions.py"
+        "l": PROJECT_ROOT / "menu_actions.py",
+        "g": PROJECT_ROOT / "menu_actions.py"
     }
     
     return script_map.get(option)

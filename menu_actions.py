@@ -492,6 +492,83 @@ def view_trade_log_main():
         traceback.print_exc()
 
 
+def portfolio_stats_main():
+    """Standalone script for the terminal stats dashboard."""
+    parser = argparse.ArgumentParser(
+        description="Portfolio Stats Dashboard - Standalone Script",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
+    parser.add_argument(
+        '--data-dir',
+        type=str,
+        default=None,
+        help='Data directory path (uses default from config if not specified)'
+    )
+
+    parser.add_argument(
+        '--range',
+        type=str,
+        default='a',
+        help="Initial time range: 'a' (all time), '7', '30' or '90' days"
+    )
+
+    parser.add_argument(
+        '--no-interactive',
+        action='store_true',
+        help='Render once and exit instead of offering range switching'
+    )
+
+    args = parser.parse_args()
+
+    try:
+        from pathlib import Path as _Path
+
+        from data.repositories.csv_repository import CSVRepository
+        from display.stats_dashboard import RANGE_CHOICES, print_stats_dashboard
+        from portfolio.portfolio_stats import build_portfolio_stats
+        from utils.currency_converter import load_exchange_rates
+        from utils.fund_ui import get_current_fund_info
+
+        fund_info = get_current_fund_info()
+        if not fund_info["exists"]:
+            print_error("No active fund found. Please select a fund first.")
+            return
+
+        fund_name = fund_info["name"]
+        data_directory = args.data_dir or fund_info["data_directory"]
+
+        csv_repo = CSVRepository(fund_name, data_directory)
+        snapshots = csv_repo.get_portfolio_data()
+        exchange_rates = load_exchange_rates(_Path(data_directory))
+
+        selection = args.range if args.range in RANGE_CHOICES else 'a'
+        while True:
+            range_label, days = RANGE_CHOICES[selection]
+            stats = build_portfolio_stats(snapshots, exchange_rates, days=days)
+            print()
+            print_stats_dashboard(stats, fund_name, range_label)
+
+            if args.no_interactive or stats.is_empty:
+                return
+
+            prompt = "\nRange: [a] All time  [7] 7 days  [30] 30 days  [90] 90 days  [q] Back: "
+            choice = input(prompt).strip().lower()
+            if choice in ('q', '', 'b', 'back'):
+                return
+            if choice in RANGE_CHOICES:
+                selection = choice
+            else:
+                print_warning(f"Unknown range '{choice}' - showing {range_label} again")
+
+    except KeyboardInterrupt:
+        return
+    except Exception as e:
+        print_error(f"Error building portfolio stats: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 if __name__ == "__main__":
     # Parse command line arguments for specific actions
     import argparse
@@ -499,9 +576,22 @@ if __name__ == "__main__":
     parser.add_argument("--action", help="Specific action to run")
     parser.add_argument("--data-dir", help="Data directory path")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--range", help="Initial range for portfolio_stats (a/7/30/90)")
+    parser.add_argument("--no-interactive", action="store_true",
+                        help="Render portfolio_stats once and exit")
     args = parser.parse_args()
-    
-    if args.action == "view_trade_log":
+
+    if args.action == "portfolio_stats":
+        import sys
+        sys.argv = ["menu_actions.py"]
+        if args.data_dir:
+            sys.argv.extend(["--data-dir", args.data_dir])
+        if args.range:
+            sys.argv.extend(["--range", args.range])
+        if args.no_interactive:
+            sys.argv.append("--no-interactive")
+        portfolio_stats_main()
+    elif args.action == "view_trade_log":
         # Pass arguments to the trade log viewer
         import sys
         sys.argv = ["menu_actions.py"]
