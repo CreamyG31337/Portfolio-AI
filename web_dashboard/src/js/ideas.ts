@@ -240,6 +240,11 @@ function setupAcceptModal(): void {
   document.getElementById("ideas-accept-modal")?.addEventListener("click", (ev) => {
     if (ev.target === ev.currentTarget) closeAcceptModal();
   });
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape") return;
+    const modal = document.getElementById("ideas-accept-modal");
+    if (modal && !modal.classList.contains("hidden")) closeAcceptModal();
+  });
 }
 
 function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {

@@ -1604,7 +1604,7 @@ def get_investor_count_flask(fund: Optional[str] = None) -> int:
             return 0
 
     try:
-        query = client.supabase.table("user_funds").select("user_id", count="exact")
+        query = client.supabase.table("user_funds").select("user_id", count="exact").limit(0)
         result = query.execute()
         return result.count or 0
     except Exception as e:
