@@ -612,3 +612,15 @@ def test_list_theses_attention_merges_tension_verdicts():
     msft = next(r for r in rows if r["ticker"] == "MSFT")
     assert "tension" in [str(x).lower() for x in (msft.get("attention_reasons") or [])]
     assert msft.get("llm_verdict") == "TENSION"
+
+def test_list_theses_due_uses_greatest():
+    from web_dashboard.user_insights_service import list_theses_due
+    from unittest.mock import MagicMock
+    from datetime import datetime, timezone
+
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    list_theses_due(pg, limit=10, now=datetime(2026, 7, 13, tzinfo=timezone.utc))
+
+    query = pg.execute_query.call_args[0][0]
+    assert "ORDER BY GREATEST(" in query

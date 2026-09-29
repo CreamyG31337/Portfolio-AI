@@ -84,6 +84,20 @@
 
 ## 2025-05-15 - Unbounded Supabase Query in jobs_dividends.py
 **Learning:** Supabase caps unbounded queries at 1000 rows. `processed_res = client.supabase.table("dividend_log").select(...).execute()` was vulnerable to silently missing past dividend records, risking duplicate entries.
-**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.## 2026-07-26 - Batch ETF Metadata Upserts
+**Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.
+
+## 2026-07-26 - Batch ETF Metadata Upserts
 **Learning:** Per-row `.upsert().execute()` inside a loop (like `upsert_etf_metadata` inside `etf_watchtower_job`) can cause excessive network round-trips to PostgREST, thrashing the database connection.
 **Action:** Removed the per-ETF `upsert().execute()` from inside the loop, accumulated successfully processed ETFs into a list (`successful_etfs`), and passed them to a modified `upsert_etf_metadata` function that performs a single batch upsert using `.upsert(records).execute()` at the end of the job.
+
+## 2026-09-29 - fetch_all_rows needs a unique sort order
+**Learning:** `fetch_all_rows` pages with LIMIT/OFFSET. Ordering by a non-unique column (`trade_log.date`) or not ordering at all lets rows be skipped or repeated at page boundaries, so a "fix" for the 1000-row cap can still corrupt position rebuilds or make the dividends job re-book a dividend it already paid.
+**Action:** Always pass `order=` plus `order_secondary="id"` (or `order="id"` when order doesn't matter). Every table here has an `id` primary key. TODO: other scheduler reads may still use unbounded `.execute()` — convert them the same way, one job per PR, with a test asserting the order kwargs.
+
+## 2026-09-29 - Do not batch the dividends job writes (PR #572 rejected)
+**Learning:** Batching `trade_log` then `dividend_log` inserts in `process_dividends_job` means a failed second insert leaves DRIP trades with no dividend_log row; the next run doesn't see them as processed and books them again. It also dropped the "cash credit failure doesn't abort the log" guard. The job handles a handful of events a day, so the round-trips don't matter.
+**Action:** Keep per-event writes in money-moving jobs. Only batch where a partial failure is harmless (e.g. idempotent metadata upserts).
+
+## 2026-09-29 - Keep PRs to the change
+**Learning:** PRs #581 and #591 shipped scratch files (`replace.py`, `plan.md`, `debug.py`), and #581 mixed a real fix with whole-file reformatting and typing churn, which made review harder and got it rejected.
+**Action:** Delete scratch scripts before committing, and never reformat lines you didn't need to touch.
