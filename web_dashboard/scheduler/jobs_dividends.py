@@ -12,10 +12,8 @@ Strategy:
 import logging
 import time
 import requests
-import json
 import base64
-from datetime import datetime, date, timedelta, time as dt_time, timezone
-from typing import Dict, List, Optional, Tuple, NamedTuple
+from datetime import datetime, date, timedelta, time as dt_time, UTC
 from decimal import Decimal
 import pytz
 from dataclasses import dataclass
@@ -81,13 +79,14 @@ def get_fund_type(fund_name: str, client) -> str:
         fund_result = client.supabase.table("funds")\
             .select("fund_type")\
             .eq("name", fund_name)\
+            .limit(1)\
             .execute()
-        
+
         if fund_result.data and fund_result.data[0].get('fund_type'):
             return fund_result.data[0]['fund_type'].lower()
     except Exception as e:
         logger.debug(f"Could not get fund_type from database for {fund_name}: {e}")
-    
+
     # Fallback to config file
     try:
         from utils.fund_manager import get_fund_manager
@@ -95,14 +94,14 @@ def get_fund_type(fund_name: str, client) -> str:
         config = fund_manager.get_fund_config(fund_name)
         if config and config.get('fund', {}).get('fund_type'):
             return config['fund']['fund_type'].lower()
-    except Exception as e:
+    except Exception:
         pass
-    
+
     # Default fallback
     return 'investment'
 
 
-def get_fund_dividend_mode(fund_name: str, client, fund_type: Optional[str] = None) -> str:
+def get_fund_dividend_mode(fund_name: str, client, fund_type: str | None = None) -> str:
     """Get per-fund dividend handling mode.
 
     Returns:
@@ -138,28 +137,26 @@ def calculate_withholding_tax(gross_amount: Decimal, fund_type: str, ticker: str
     """
     if is_canadian_ticker(ticker):
         return Decimal('0')
-    
+
     fund_type_lower = fund_type.lower()
-    
+
     # Standardized Rule: RRSP gets 0% (treaty), everything else gets 15%
     if fund_type_lower == 'rrsp':
         return Decimal('0')
-    
+
     return gross_amount * Decimal('0.15')  # Default 15% for TFSA, Investment, Margin, etc.
 
 
-def get_unique_holdings(client) -> List[Tuple[str, str]]:
+def get_unique_holdings(client) -> list[tuple[str, str]]:
     """Get all unique (fund, ticker) pairs from portfolio_positions where shares > 0."""
     try:
-        result = client.supabase.table("portfolio_positions")\
-            .select("fund, ticker")\
-            .gt("shares", 0)\
-            .execute()
-        
+        from supabase_pagination import fetch_all_rows
+        rows = fetch_all_rows(client, "portfolio_positions", select="fund, ticker", filters=[("shares", "gt", 0)])
+
         unique_pairs = set()
-        for row in result.data:
+        for row in rows:
             unique_pairs.add((row['fund'], row['ticker']))
-        
+
         return list(unique_pairs)
     except Exception as e:
         logger.error(f"Error getting unique holdings: {e}")
@@ -170,7 +167,7 @@ def get_unique_holdings(client) -> List[Tuple[str, str]]:
 # DATA FETCHING LAYERS
 # ============================================================================
 
-def fetch_dividends_nasdaq(ticker: str) -> List[DividendEvent]:
+def fetch_dividends_nasdaq(ticker: str) -> list[DividendEvent]:
     """Layer 1: Fetch dividends from Nasdaq API (US Only)."""
     # Skip Canadian/non-US tickers
     if is_canadian_ticker(ticker) or '.' in ticker:
@@ -181,7 +178,7 @@ def fetch_dividends_nasdaq(ticker: str) -> List[DividendEvent]:
     _NASDAQ_WWW_ENCODED = "aHR0cHM6Ly93d3cubmFzZGFxLmNvbQ=="
     _NASDAQ_API = base64.b64decode(_NASDAQ_API_ENCODED).decode('utf-8')
     _NASDAQ_WWW = base64.b64decode(_NASDAQ_WWW_ENCODED).decode('utf-8')
-    
+
     try:
         url = f"{_NASDAQ_API}/api/quote/{ticker}/dividends?assetclass=stocks"
         headers = {
@@ -190,15 +187,15 @@ def fetch_dividends_nasdaq(ticker: str) -> List[DividendEvent]:
             'Origin': _NASDAQ_WWW,
             'Referer': f'{_NASDAQ_WWW}/market-activity/stocks/{ticker.lower()}/dividend-history'
         }
-        
+
         response = requests.get(url, headers=headers, timeout=10)
-        
+
         if response.status_code != 200:
             return []
-            
+
         data = response.json()
         events = []
-        
+
         if data and data.get('data') and data['data'].get('dividends'):
             rows = data['data']['dividends'].get('rows', [])
             for row in rows:
@@ -206,14 +203,14 @@ def fetch_dividends_nasdaq(ticker: str) -> List[DividendEvent]:
                     ex_date_str = row.get('exOrEffDate')
                     pay_date_str = row.get('paymentDate')
                     amount_str = row.get('amount', '').replace('$', '')
-                    
+
                     if not ex_date_str or not pay_date_str:
                         continue
-                        
+
                     ex_date = datetime.strptime(ex_date_str, '%m/%d/%Y').date()
                     pay_date = datetime.strptime(pay_date_str, '%m/%d/%Y').date()
                     amount = float(amount_str)
-                    
+
                     events.append(DividendEvent(
                         ex_date=ex_date,
                         pay_date=pay_date,
@@ -222,20 +219,20 @@ def fetch_dividends_nasdaq(ticker: str) -> List[DividendEvent]:
                     ))
                 except (ValueError, TypeError):
                     continue
-                    
+
         return events
     except Exception as e:
         logger.debug(f"Nasdaq API failed for {ticker}: {e}")
         return []
 
 
-def fetch_dividends_yahooquery(ticker: str) -> List[DividendEvent]:
+def fetch_dividends_yahooquery(ticker: str) -> list[DividendEvent]:
     """Layer 2: Fetch dividends from YahooQuery (Global)."""
     try:
         from yahooquery import Ticker
         tk = Ticker(ticker)
         events = []
-        
+
         # Method A: Calendar Events (Future/Recent)
         try:
             cal = tk.calendar_events
@@ -245,19 +242,19 @@ def fetch_dividends_yahooquery(ticker: str) -> List[DividendEvent]:
                 if 'dividendDate' in data and 'exDividendDate' in data:
                     pay_str = data['dividendDate']
                     ex_str = data['exDividendDate']
-                    
+
                     # Yahoo timestamps are often full strings
                     # e.g. "2026-02-16 16:00:00"
                     if pay_str and ex_str:
                         pay_date = datetime.fromisoformat(str(pay_str)).date()
                         ex_date = datetime.fromisoformat(str(ex_str)).date()
-                        
+
                         # Try to find amount from summary_detail
                         amount = 0.0
                         summary = tk.summary_detail
                         if isinstance(summary, dict) and ticker in summary:
                             amount = float(summary[ticker].get('dividendRate', 0) / 4) # Crude estimate (annual/4)
-                        
+
                         if amount > 0:
                             events.append(DividendEvent(
                                 ex_date=ex_date,
@@ -270,27 +267,27 @@ def fetch_dividends_yahooquery(ticker: str) -> List[DividendEvent]:
 
         # Method B: History (Historical Pay Dates are NOT in history, only Ex-Dates)
         # So we skip parsing history here and leave that to yfinance fallback
-        
+
         return events
     except Exception as e:
         logger.debug(f"YahooQuery failed for {ticker}: {e}")
         return []
 
 
-def fetch_dividends_yfinance(ticker: str) -> List[DividendEvent]:
+def fetch_dividends_yfinance(ticker: str) -> list[DividendEvent]:
     """Layer 3: Fallback to Yfinance (Ex-Date only)."""
     try:
         import yfinance as yf
         # Suppress yfinance warnings
         import logging as yf_logging
         yf_logging.getLogger("yfinance").setLevel(logging.ERROR)
-        
+
         stock = yf.Ticker(ticker)
         dividends = stock.dividends
-        
+
         if dividends is None or dividends.empty:
             return []
-        
+
         events = []
         for date_idx, amount in dividends.items():
             # Convert pandas Timestamp to date
@@ -298,24 +295,24 @@ def fetch_dividends_yfinance(ticker: str) -> List[DividendEvent]:
                 ex_date = date_idx.date()
             else:
                 ex_date = date_idx
-            
+
             # FALLBACK: Use Ex-Date as Pay-Date since real Pay-Date is missing
             pay_date = ex_date
-            
+
             events.append(DividendEvent(
                 ex_date=ex_date,
                 pay_date=pay_date,
                 amount=float(amount),
                 source='yfinance_fallback'
             ))
-            
+
         return events
     except Exception as e:
         logger.debug(f"Yfinance failed for {ticker}: {e}")
         return []
 
 
-def fetch_dividend_data(ticker: str) -> List[DividendEvent]:
+def fetch_dividend_data(ticker: str) -> list[DividendEvent]:
     """
     Master fetcher using 3-layer strategy.
     Returns list of dividends found.
@@ -324,27 +321,27 @@ def fetch_dividend_data(ticker: str) -> List[DividendEvent]:
     events = fetch_dividends_nasdaq(ticker)
     if events:
         return events
-        
+
     # 2. Try YahooQuery (Global - Precision for upcoming/recent)
     yq_events = fetch_dividends_yahooquery(ticker)
-    
+
     # 3. Try Yfinance (Fallback - History)
-    # We fetch this even if YahooQuery succeeded, because YahooQuery 
+    # We fetch this even if YahooQuery succeeded, because YahooQuery
     # often only has the *next* dividend, but we might need history (backfill).
     yf_events = fetch_dividends_yfinance(ticker)
-    
+
     if not yq_events and not yf_events:
         return []
 
-    # Merge strategies: 
+    # Merge strategies:
     # Start with Yfinance (better history)
     # Override with YahooQuery (better precision for recent/future)
     merged_map = {e.ex_date: e for e in yf_events}
-    
+
     for yq_evt in yq_events:
         # Update or add (YahooQuery data is preferred for Pay Date accuracy)
         merged_map[yq_evt.ex_date] = yq_evt
-        
+
     return list(merged_map.values())
 
 
@@ -357,22 +354,23 @@ def calculate_eligible_shares(fund: str, ticker: str, ex_date: date, client) -> 
     identified by ``'SELL'`` in ``reason`` (same as ``update_portfolio_prices_job``).
     """
     try:
+        from supabase_pagination import fetch_all_rows
         # Convert ex_date to datetime for comparison
         ex_datetime = datetime.combine(ex_date, dt_time(0, 0, 0))
         ex_datetime_str = ex_datetime.isoformat()
 
         # Get all trades before ex_date
-        trades_result = client.supabase.table("trade_log")\
-            .select("shares, date, reason")\
-            .eq("fund", fund)\
-            .eq("ticker", ticker)\
-            .lt("date", ex_datetime_str)\
-            .order("date")\
-            .execute()
+        trades = fetch_all_rows(
+            client,
+            "trade_log",
+            select="shares, date, reason",
+            filters=[("fund", "eq", fund), ("ticker", "eq", ticker), ("date", "lt", ex_datetime_str)],
+            order="date"
+        )
 
         net_shares = Decimal("0")
 
-        for trade in trades_result.data:
+        for trade in trades:
             shares = Decimal(str(trade.get("shares", 0) or 0))
             reason = str(trade.get("reason", "") or "").upper()
             if "SELL" in reason:
@@ -386,7 +384,7 @@ def calculate_eligible_shares(fund: str, ticker: str, ex_date: date, client) -> 
         return Decimal("0")
 
 
-def get_price_on_date(ticker: str, target_date: date) -> Optional[Decimal]:
+def get_price_on_date(ticker: str, target_date: date) -> Decimal | None:
     """Get closing price for ticker on target_date."""
     try:
         from market_data.data_fetcher import MarketDataFetcher
@@ -435,7 +433,7 @@ def _credit_cash_dividend(client, fund: str, currency: str, amount: Decimal) -> 
         previous = Decimal(str(result.data[0].get("amount", 0) or 0))
 
     new_amount = previous + amount
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
 
     client.supabase.table("cash_balances").upsert(
         {
@@ -463,15 +461,15 @@ def insert_drip_transaction(
         eligible_shares = calculate_eligible_shares(fund, ticker, evt.ex_date, client)
         if eligible_shares <= 0:
             return False
-            
+
         # 2. Calc Amounts
         gross_amount = eligible_shares * Decimal(str(evt.amount))
         withholding_tax = calculate_withholding_tax(gross_amount, fund_type, ticker)
         net_amount = gross_amount - withholding_tax
-        
+
         if net_amount <= 0:
             return False
-            
+
         # 3. Get Price & Reinvest
         drip_price = get_price_on_date(ticker, evt.pay_date)
         if not drip_price:
@@ -548,13 +546,13 @@ def insert_drip_transaction(
             'trade_log_id': trade_id,
             'currency': currency
         }
-        
+
         client.supabase.table("dividend_log").insert(div_entry).execute()
-        
+
         if is_drip:
             logger.info(f"✅ DRIP {fund}/{ticker}: {reinvested_shares:.4f} shares @ ${drip_price} (Source: {evt.source})")
         return True
-        
+
     except Exception as e:
         logger.error(f"DRIP Insert Failed {fund}/{ticker}: {e}")
         return False
@@ -565,18 +563,17 @@ def process_dividends_job(lookback_days: int = 7) -> None:
     import sys
     job_id = 'dividend_processing'
     start_time = time.time()
-    
+
     # IMMEDIATE logging - use print() as fallback since it always works
     print(f"[{__name__}] process_dividends_job() STARTED (lookback_days={lookback_days})", file=sys.stderr, flush=True)
     try:
         logger.info(f"process_dividends_job() started (lookback_days={lookback_days})")
     except:
         pass  # Logger might not be ready yet
-    
+
     # Import job tracking at the start
-    from datetime import timezone
-    target_date = datetime.now(timezone.utc).date()
-    
+    target_date = datetime.now(UTC).date()
+
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed, mark_job_failed
         print(f"[{__name__}] Marking job as started in database...", file=sys.stderr, flush=True)
@@ -585,14 +582,14 @@ def process_dividends_job(lookback_days: int = 7) -> None:
     except Exception as e:
         print(f"[{__name__}] WARNING: Could not mark job started: {e}", file=sys.stderr, flush=True)
         logger.warning(f"Could not mark job started: {e}")
-    
+
     try:
         from supabase_client import SupabaseClient
         client = SupabaseClient(use_service_role=True)
-        
+
         print(f"[{__name__}] Starting dividend processing job (3-Layer Strategy, lookback={lookback_days}d)...", file=sys.stderr, flush=True)
         logger.info(f"Starting dividend processing job (3-Layer Strategy, lookback={lookback_days}d)...")
-        
+
         holdings = get_unique_holdings(client)
         if not holdings:
             duration_ms = int((time.time()-start_time)*1000)
@@ -602,18 +599,18 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                 logger.warning(f"Failed to log job execution: {log_error}")
             try:
                 mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms)
-                logger.debug(f"Marked job as completed in database (no holdings)")
+                logger.debug("Marked job as completed in database (no holdings)")
             except Exception as db_error:
                 # CRITICAL: Log this prominently - if this fails, executions won't show in UI
                 logger.error(f"❌ CRITICAL: Failed to mark job as completed in database: {db_error}")
-                logger.error(f"  Job executed successfully but execution won't appear in UI")
+                logger.error("  Job executed successfully but execution won't appear in UI")
                 logger.error(f"  Error type: {type(db_error).__name__}")
                 logger.error(f"  Error details: {str(db_error)[:500]}")
                 import traceback
                 logger.error(f"  Full traceback:\n{traceback.format_exc()}")
                 # Don't re-raise - job succeeded, just logging failed
             return
-            
+
         # Get already processed dividends (key: fund, ticker, pay_date)
         from supabase_pagination import fetch_all_rows
 
@@ -627,35 +624,35 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             # Track both pay_date and ex_date to avoid duplicates
             processed_keys.add((row['fund'], row['ticker'], row['pay_date']))
             processed_keys.add((row['fund'], row['ticker'], row['ex_date']))
-            
+
         stats = {'processed': 0, 'skipped': 0, 'errors': 0}
-        
+
         # Lookback window
         today = date.today()
         lookback = today - timedelta(days=lookback_days)
-        
+
         for fund, ticker in holdings:
             try:
                 # 1. Fetch Data
                 events = fetch_dividend_data(ticker)
                 if not events:
                     continue
-                    
+
                 fund_type = get_fund_type(fund, client)
                 dividend_mode = get_fund_dividend_mode(fund, client, fund_type)
-                
+
                 # 2. Process Events
                 for evt in events:
                     # Filter: Pay date must be in recent window (or today)
                     if not (lookback <= evt.pay_date <= today):
                         continue
-                        
+
                     # Check Duplicate
                     if (fund, ticker, evt.pay_date.isoformat()) in processed_keys:
                         continue
                     if (fund, ticker, evt.ex_date.isoformat()) in processed_keys:
                         continue
-                        
+
                     # Process
                     success = insert_drip_transaction(
                         fund,
@@ -671,11 +668,11 @@ def process_dividends_job(lookback_days: int = 7) -> None:
                         processed_keys.add((fund, ticker, evt.pay_date.isoformat()))
                     else:
                         stats['skipped'] += 1
-                        
+
             except Exception as e:
                 logger.error(f"Error processing {ticker}: {e}")
                 stats['errors'] += 1
-                
+
         duration = int((time.time() - start_time) * 1000)
         msg = f"Processed {stats['processed']}, Skipped {stats['skipped']}, Errors {stats['errors']}"
         print(f"[{__name__}] Job completed: {msg} (duration: {duration}ms)", file=sys.stderr, flush=True)
@@ -687,13 +684,13 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             print(f"[{__name__}] Marking job as completed in database...", file=sys.stderr, flush=True)
             mark_job_completed(job_id, target_date, None, [], duration_ms=duration)
             print(f"[{__name__}] Job marked as completed in database successfully", file=sys.stderr, flush=True)
-            logger.debug(f"Marked job as completed in database")
+            logger.debug("Marked job as completed in database")
         except Exception as db_error:
             # CRITICAL: Log this prominently - if this fails, executions won't show in UI
             error_msg = f"CRITICAL: Failed to mark job as completed in database: {db_error}"
             print(f"[{__name__}] ❌ {error_msg}", file=sys.stderr, flush=True)
             logger.error(f"❌ CRITICAL: Failed to mark job as completed in database: {db_error}")
-            logger.error(f"  Job executed successfully but execution won't appear in UI")
+            logger.error("  Job executed successfully but execution won't appear in UI")
             logger.error(f"  Error type: {type(db_error).__name__}")
             logger.error(f"  Error details: {str(db_error)[:500]}")
             import traceback
@@ -701,7 +698,7 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             logger.error(f"  Full traceback:\n{traceback.format_exc()}")
             # Don't re-raise - job succeeded, just logging failed
         logger.info(f"✅ {msg}")
-        
+
     except Exception as e:
         duration = int((time.time() - start_time) * 1000)
         try:
@@ -710,7 +707,7 @@ def process_dividends_job(lookback_days: int = 7) -> None:
             logger.warning(f"Failed to log job execution error: {log_error}")
         try:
             mark_job_failed(job_id, target_date, None, str(e), duration_ms=duration)
-            logger.debug(f"Marked job as failed in database")
+            logger.debug("Marked job as failed in database")
         except Exception as db_error:
             logger.error(f"Failed to mark job as failed in database: {db_error}")
             logger.error(f"  This means the execution won't appear in the UI. Error details: {str(db_error)[:300]}")

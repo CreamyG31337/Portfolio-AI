@@ -87,3 +87,7 @@
 **Action:** Replaced `.execute()` with `fetch_all_rows` from `supabase_pagination` for pulling all records.## 2026-07-26 - Batch ETF Metadata Upserts
 **Learning:** Per-row `.upsert().execute()` inside a loop (like `upsert_etf_metadata` inside `etf_watchtower_job`) can cause excessive network round-trips to PostgREST, thrashing the database connection.
 **Action:** Removed the per-ETF `upsert().execute()` from inside the loop, accumulated successfully processed ETFs into a list (`successful_etfs`), and passed them to a modified `upsert_etf_metadata` function that performs a single batch upsert using `.upsert(records).execute()` at the end of the job.
+
+## 2024-05-18 - Supabase 1000 row truncation limit in Jobs
+**Learning:** Found that `get_unique_holdings` and `calculate_eligible_shares` were using unbounded `.execute()` calls on potentially large tables like `trade_log` and `portfolio_positions`. PostgREST silently truncates these to 1000 rows max.
+**Action:** Replaced `.execute()` with the `fetch_all_rows` pagination helper to avoid silent truncation and accurately credit dividends across all portfolio histories. Added `.limit(1)` optimization to `get_fund_type`.
