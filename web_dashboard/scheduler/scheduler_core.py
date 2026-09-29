@@ -207,6 +207,19 @@ def _check_if_another_process_starting() -> bool:
         return False
 
 
+def _jobstore_url(database_url: str) -> str:
+    """Name the psycopg2 driver explicitly in a bare postgres URL.
+
+    SQLAlchemy 2.1 made psycopg (v3) the default for ``postgresql://``, but the
+    image only installs psycopg2-binary, so an unpinned upgrade left the
+    scheduler failing every restart with "No module named 'psycopg'".
+    """
+    for scheme in ("postgresql://", "postgres://"):
+        if database_url.startswith(scheme):
+            return "postgresql+psycopg2://" + database_url[len(scheme):]
+    return database_url
+
+
 def get_scheduler(create=True) -> Optional[BackgroundScheduler]:
     """Get or create the scheduler instance (thread-safe).
     
@@ -233,7 +246,8 @@ def get_scheduler(create=True) -> Optional[BackgroundScheduler]:
                 database_url = os.getenv("SUPABASE_DATABASE_URL")
                 if not database_url:
                     raise ValueError("SUPABASE_DATABASE_URL must be set in environment for SQLAlchemyJobStore")
-                
+                database_url = _jobstore_url(database_url)
+
                 # Fix IPv6 connection issues by forcing IPv4 preference
                 # Add connect_timeout and prefer IPv4 if connection string doesn't already have parameters
                 if '?' not in database_url:
