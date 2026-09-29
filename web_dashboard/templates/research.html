@@ -900,7 +900,7 @@
         const activeButtonLabel = activeButton ? activeButton.innerHTML : '';
 
         // Show progress
-        // TODO(style-audit): Keep JS-driven progressBar.style.width as an intentional inline-style exception unless we adopt an equivalent CSS-variable pattern.
+        // JS-driven progressBar.style.width is an intentional inline style (dynamic value).
         progressDiv.classList.remove('hidden');
         progressBar.style.width = '0%';
         statusText.textContent = 'Starting reprocessing...';

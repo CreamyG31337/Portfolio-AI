@@ -635,7 +635,6 @@ function toggleEmailView(view) {
 
         const doc = htmlView.contentDocument || htmlView.contentWindow.document;
         doc.open();
-        // TODO(ui-tailwind): Evaluate replacing this inline iframe style injection with a shared/minified Tailwind typography payload compatible with sandboxed newsletter rendering.
         // Resolve theme colors from the parent up front so the iframe doesn't have to
         // read parent CSS vars (it's same-origin today, but we want to keep the door
         // open to a tighter sandbox in the future).
