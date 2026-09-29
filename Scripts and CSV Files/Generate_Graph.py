@@ -1203,8 +1203,7 @@ def main(args) -> dict:
             else:
                 current_date += timedelta(days=1)
             
-            # TODO: Add major market holidays (New Year's, July 4th, Christmas, etc.)
-            # For now, just handle weekends which are the most common
+            # Note: only weekends are shaded; market holidays are not.
     
     add_market_closure_shading(llm_totals["Date"].min(), llm_totals["Date"].max())
     
