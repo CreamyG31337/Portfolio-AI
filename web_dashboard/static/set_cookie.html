@@ -5,23 +5,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Session...</title>
-    <link rel="stylesheet" href="/assets/css/theme.css">
     <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
     <script>
-        const theme = localStorage.getItem('theme');
-        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.setAttribute('data-theme', 'dark');
+        const theme = localStorage.getItem('theme') || 'system';
+        const darkThemes = ['dark', 'midnight-tokyo', 'abyss'];
+        let activeTheme = theme;
+        if (theme === 'system') {
+            activeTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', activeTheme);
+        if (darkThemes.includes(activeTheme)) {
+            document.documentElement.classList.add('dark');
         } else {
-            document.documentElement.setAttribute('data-theme', 'light');
+            document.documentElement.classList.remove('dark');
         }
     </script>
 </head>
 
 <body class="bg-dashboard-background text-text-primary min-h-screen flex items-center justify-center p-4">
     <div class="bg-dashboard-surface p-8 rounded-lg shadow-md w-full max-w-md border border-border text-center border-l-4 border-l-border" id="messageContainer">
-        <div class="text-xl font-bold mb-2" id="messageTitle">Processing...</div>
+        <div class="text-xl font-bold mb-2 text-text-primary" id="messageTitle">Processing...</div>
         <div class="text-text-secondary text-sm" id="messageText">Please wait...</div>
-        <div class="hidden mt-4 p-4 text-sm text-left break-words whitespace-pre-wrap font-mono text-xs max-h-40 overflow-y-auto rounded-lg border border-border bg-dashboard-background" id="messageReason"></div>
+        <div class="hidden mt-4 p-4 text-sm text-left break-words whitespace-pre-wrap font-mono text-xs max-h-40 overflow-y-auto rounded-lg border border-border bg-dashboard-background text-text-secondary" id="messageReason"></div>
     </div>
     <script>
         (function () {

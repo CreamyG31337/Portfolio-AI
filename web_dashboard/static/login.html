@@ -4,32 +4,37 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Trading Dashboard</title>
-    <link rel="stylesheet" href="/assets/css/theme.css">
     <link href="/assets/css/tailwind.css?v=2" rel="stylesheet">
     <script>
         // Match dashboard theme so CSS variables resolve correctly
-        const theme = localStorage.getItem('theme');
-        if (theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.setAttribute('data-theme', 'dark');
+        const theme = localStorage.getItem('theme') || 'system';
+        const darkThemes = ['dark', 'midnight-tokyo', 'abyss'];
+        let activeTheme = theme;
+        if (theme === 'system') {
+            activeTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        document.documentElement.setAttribute('data-theme', activeTheme);
+        if (darkThemes.includes(activeTheme)) {
+            document.documentElement.classList.add('dark');
         } else {
-            document.documentElement.setAttribute('data-theme', 'light');
+            document.documentElement.classList.remove('dark');
         }
     </script>
 </head>
 <body class="bg-dashboard-background text-text-primary min-h-screen flex items-center justify-center p-4">
     <div class="bg-dashboard-surface p-8 rounded-lg shadow-md w-full max-w-md border border-border">
-        <h1 class="text-2xl font-bold text-center mb-6">Login</h1>
+        <h1 class="text-2xl font-bold text-center mb-6 text-text-primary">Login</h1>
         <form id="loginForm">
             <div class="mb-4">
-                <label for="email" class="block mb-2 text-sm font-medium">Email</label>
-                <input type="email" id="email" name="email" class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" required autocomplete="email">
+                <label for="email" class="block mb-2 text-sm font-medium text-text-secondary">Email</label>
+                <input type="email" id="email" name="email" class="form-input-theme" required autocomplete="email">
             </div>
             <div class="mb-4">
-                <label for="password" class="block mb-2 text-sm font-medium">Password</label>
-                <input type="password" id="password" name="password" class="bg-dashboard-surface border border-border text-text-primary text-sm rounded-lg focus:ring-accent focus:border-accent block w-full p-2.5" required autocomplete="current-password">
+                <label for="password" class="block mb-2 text-sm font-medium text-text-secondary">Password</label>
+                <input type="password" id="password" name="password" class="form-input-theme" required autocomplete="current-password">
             </div>
-            <button type="submit" id="submitBtn" class="w-full text-white bg-accent hover:bg-accent-hover focus:ring-4 focus:outline-none focus:ring-accent/30 font-medium rounded-lg text-sm px-5 py-2.5 text-center mt-2">Login</button>
-            <div class="hidden mt-4 p-4 text-sm text-theme-error-text bg-theme-error-bg rounded-lg border border-theme-error-border" id="errorMsg"></div>
+            <button type="submit" id="submitBtn" class="btn-outline w-full mt-2">Login</button>
+            <div class="hidden mt-4 p-4 text-sm text-theme-error-text bg-theme-error-bg rounded-lg border border-theme-error-text" id="errorMsg"></div>
         </form>
         <div class="hidden mt-4 text-center text-text-secondary text-sm" id="loadingMsg">Logging in...</div>
     </div>
