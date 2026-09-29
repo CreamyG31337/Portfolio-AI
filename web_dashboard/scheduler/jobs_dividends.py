@@ -158,7 +158,8 @@ def get_unique_holdings(client) -> List[Tuple[str, str]]:
             client,
             "portfolio_positions",
             select="fund, ticker",
-            filters=[("shares", "gt", 0)]
+            filters=[("shares", "gt", 0)],
+            order="id",
         )
         
         unique_pairs = set()
@@ -380,7 +381,7 @@ def calculate_eligible_shares(fund: str, ticker: str, ex_date: date, client) -> 
                 ("date", "lt", ex_datetime_str)
             ],
             order="date",
-            order_desc=False
+            order_secondary="id",
         )
 
         net_shares = Decimal("0")
@@ -633,7 +634,9 @@ def process_dividends_job(lookback_days: int = 7) -> None:
         # ⚡ Bolt: Use paginated fetch to prevent missing dividend log entries on large databases
         # Supabase caps responses at 1000 rows. Without fetch_all_rows, we might replay past dividends
         # if the table grows past 1000 records, leading to false duplicates.
-        processed_data = fetch_all_rows(client, "dividend_log", select="fund, ticker, pay_date, ex_date")
+        processed_data = fetch_all_rows(
+            client, "dividend_log", select="fund, ticker, pay_date, ex_date", order="id"
+        )
 
         processed_keys = set()
         for row in processed_data:

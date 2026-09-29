@@ -608,13 +608,18 @@ def update_portfolio_prices_job(
                     # This ensures we have accurate positions even if database is stale
                     
                     # Get all trades for this fund
-                    trades_result = client.supabase.table("trade_log")\
-                        .select("*")\
-                        .eq("fund", fund_name)\
-                        .order("date")\
-                        .execute()
-                
-                    if not trades_result.data:
+                    from supabase_pagination import fetch_all_rows
+
+                    trades_data = fetch_all_rows(
+                        client,
+                        "trade_log",
+                        select="*",
+                        filters=[("fund", "eq", fund_name)],
+                        order="date",
+                        order_secondary="id",
+                    )
+
+                    if not trades_data:
                         logger.info(f"  No trades found for {fund_name}")
                         continue
                     
@@ -625,7 +630,7 @@ def update_portfolio_prices_job(
                         'currency': 'USD'
                     })
                     
-                    for trade in trades_result.data:
+                    for trade in trades_data:
                         ticker = trade['ticker']
                         shares = Decimal(str(trade.get('shares', 0) or 0))
                         price = Decimal(str(trade.get('price', 0) or 0))
@@ -1250,7 +1255,7 @@ def backfill_portfolio_prices_range(
                         select="*",
                         filters=[("fund", "eq", fund_name)],
                         order="date",
-                        order_desc=False
+                        order_secondary="id",
                     )
 
                     if not trades_data:

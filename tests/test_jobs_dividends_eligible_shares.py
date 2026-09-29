@@ -2,12 +2,9 @@
 
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from scheduler.jobs_dividends import calculate_eligible_shares
-
-
-from unittest.mock import patch
 
 
 @patch("supabase_pagination.fetch_all_rows")
@@ -38,3 +35,12 @@ def test_eligible_shares_includes_drip_before_ex_date(mock_fetch) -> None:
     ]
     client = MagicMock()
     assert calculate_eligible_shares("TEST", "FOO", date(2024, 3, 1), client) == Decimal("102.5")
+
+
+@patch("supabase_pagination.fetch_all_rows", return_value=[])
+def test_eligible_shares_pages_trade_log_with_stable_order(mock_fetch) -> None:
+    """Paging on the non-unique ``date`` alone can skip or repeat trades at page edges."""
+    calculate_eligible_shares("TEST", "FOO", date(2024, 3, 1), MagicMock())
+    kwargs = mock_fetch.call_args.kwargs
+    assert kwargs["order"] == "date"
+    assert kwargs["order_secondary"] == "id"
