@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from datetime import datetime, UTC
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 current_dir = Path(__file__).resolve().parent
@@ -50,34 +51,33 @@ def _production_fund_names(supabase_client) -> list[str] | None:
         return None
 
 
-def _trade_exists(supabase_client, record: dict) -> bool:
-    """Existence check matching ``insider_trades_unique_key``, incl. NULL price.
+def _as_decimal(value) -> Decimal | str | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return str(value)
+
+
+def _dedup_key(record: dict) -> tuple:
+    """Key matching ``insider_trades_unique_key``, incl. NULL price.
 
     Postgres treats a NULL ``price_per_share`` as *distinct* in the unique index,
     so a plain ``upsert(on_conflict=...)`` never collides for priceless rows and
-    re-inserts them on every weekly run. Pre-checking here (with an explicit IS
-    NULL branch) mirrors the SEC Form-4 path's dedup guard and keeps the table
-    free of duplicates.
+    re-inserts them on every weekly run. Checking against the ticker's stored
+    keys first mirrors the SEC Form-4 path's dedup guard.
+
+    Numbers compare as exact Decimals, like the numeric columns do: 1000 matches
+    1000.0, and sub-cent penny-stock prices stay distinct.
     """
-    query = (
-        supabase_client.supabase.table("insider_trades")
-        .select("id")
-        .eq("ticker", record["ticker"])
-        .eq("insider_name", record["insider_name"])
-        .eq("transaction_date", record["transaction_date"])
-        .eq("type", record["type"])
-        .eq("shares", record["shares"])
+    return (
+        str(record.get("insider_name") or ""),
+        str(record.get("transaction_date") or "")[:10],
+        str(record.get("type") or ""),
+        _as_decimal(record.get("shares")),
+        _as_decimal(record.get("price_per_share")),
     )
-    if record.get("price_per_share") is None:
-        query = query.is_("price_per_share", "null")
-    else:
-        query = query.eq("price_per_share", record["price_per_share"])
-    try:
-        res = query.limit(1).execute()
-        return bool(res.data)
-    except Exception as exc:
-        logger.debug("yahoo_sedi dup-check failed (will upsert): %s", exc)
-        return False
 
 
 def collect_canadian_tickers(supabase_client) -> list[str]:
@@ -155,7 +155,7 @@ def yahoo_sedi_insiders_job() -> None:
         from supabase_client import SupabaseClient
         from utils.job_tracking import mark_job_completed, mark_job_started
         from yahoo_sedi_insider_service import fetch_yahoo_insider_rows
-        from web_dashboard.supabase_pagination import fetch_all_rows
+        from supabase_pagination import fetch_all_rows
 
         mark_job_started(JOB_ID, target_date)
         supabase = SupabaseClient(use_service_role=True)
@@ -172,37 +172,22 @@ def yahoo_sedi_insiders_job() -> None:
                     continue
                 parsed += len(rows)
 
-                from decimal import Decimal, InvalidOperation
-
-                existing = fetch_all_rows(
-                    supabase,
-                    "insider_trades",
-                    select="insider_name,transaction_date,type,shares,price_per_share",
-                    filters=[("ticker", "eq", ticker)]
-                )
-
-                def _make_key(row_dict):
-                    pps = row_dict.get("price_per_share")
-                    if pps is not None:
-                        try:
-                            # Convert to Decimal for exact precision matching
-                            pps = str(Decimal(str(pps)).quantize(Decimal("0.01")))
-                        except (InvalidOperation, ValueError, TypeError):
-                            pps = str(pps)
-
-                    return (
-                        str(row_dict.get("insider_name") or ""),
-                        str(row_dict.get("transaction_date") or "")[:10],
-                        str(row_dict.get("type") or ""),
-                        str(row_dict.get("shares")) if row_dict.get("shares") is not None else "",
-                        pps
+                try:
+                    existing = fetch_all_rows(
+                        supabase,
+                        "insider_trades",
+                        select="insider_name,transaction_date,type,shares,price_per_share",
+                        filters=[("ticker", "eq", ticker)],
+                        order="id",
                     )
-
-                existing_keys = set(_make_key(r) for r in existing)
+                    existing_keys = {_dedup_key(r) for r in existing}
+                except Exception as exc:
+                    logger.debug("yahoo_sedi dup-check failed for %s (will upsert): %s", ticker, exc)
+                    existing_keys = set()
 
                 batch_records = []
                 for record in rows:
-                    if _make_key(record) in existing_keys:
+                    if _dedup_key(record) in existing_keys:
                         skipped_dupes += 1
                         continue
                     batch_records.append(record)
