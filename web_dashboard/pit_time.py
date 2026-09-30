@@ -19,6 +19,7 @@ reporting nothing. Two rules follow from that, and both are load-bearing:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -87,6 +88,49 @@ def article_as_of_expr(postgres: Any) -> str:
     if research_articles_have_available_at(postgres):
         return _coalesce_expr(postgres, "research_articles", "available_at", "fetched_at")
     return "fetched_at"
+
+
+_ARTICLE_MAX_PUBLISH_AGE_ENV = "ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS"
+_ARTICLE_MAX_PUBLISH_AGE_DEFAULT = 30
+
+
+def article_max_publish_age_days() -> int:
+    """Days an article may predate its first-known clock and still count as evidence.
+
+    0 or a negative value disables the filter. Malformed values fall back to the default.
+    """
+    raw = (os.environ.get(_ARTICLE_MAX_PUBLISH_AGE_ENV) or "").strip()
+    if not raw:
+        return _ARTICLE_MAX_PUBLISH_AGE_DEFAULT
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; using %s",
+            _ARTICLE_MAX_PUBLISH_AGE_ENV,
+            raw,
+            _ARTICLE_MAX_PUBLISH_AGE_DEFAULT,
+        )
+        return _ARTICLE_MAX_PUBLISH_AGE_DEFAULT
+
+
+def article_fresh_publish_predicate(postgres: Any) -> str:
+    """SQL predicate: the article was published near when we first knew about it.
+
+    ``article_as_of_expr`` answers "when did we learn of this", which is right for
+    point-in-time lookbacks but lets old content through as news: the YouTube holdings
+    sweep lands videos years after upload, and a 2019 video fetched last week sorts as
+    fresh. K5 (2026-09-29) found stances citing those videos had no edge vs baseline.
+    Rows without ``published_at`` pass; we cannot prove they are stale.
+    """
+    days = article_max_publish_age_days()
+    if days <= 0:
+        return "TRUE"
+    as_of = article_as_of_expr(postgres)
+    published = "published_at"
+    if _is_naive_timestamp(postgres, "research_articles", "published_at"):
+        published = "(published_at AT TIME ZONE 'UTC')"
+    return f"({published} IS NULL OR {published} >= {as_of} - INTERVAL '{int(days)} days')"
 
 
 def social_as_of_expr(postgres: Any) -> str:

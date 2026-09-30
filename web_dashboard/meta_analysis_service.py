@@ -184,9 +184,10 @@ class TickerMetaAnalysisService:
         ) or []
 
     def _fetch_article_snippets(self, ticker: str) -> list[dict[str, Any]]:
-        from pit_time import article_as_of_expr
+        from pit_time import article_as_of_expr, article_fresh_publish_predicate
 
         as_of = article_as_of_expr(self.postgres)
+        fresh = article_fresh_publish_predicate(self.postgres)
         return self.postgres.execute_query(
             f"""
             SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at
@@ -196,6 +197,7 @@ class TickerMetaAnalysisService:
                 OR (tickers IS NOT NULL AND %s = ANY(tickers))
             )
             AND {as_of} > NOW() - INTERVAL '90 days'
+            AND {fresh}
             ORDER BY {as_of} DESC
             LIMIT 6
             """,
