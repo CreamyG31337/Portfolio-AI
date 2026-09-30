@@ -34,7 +34,7 @@ import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from yt_captions import (
@@ -74,6 +74,7 @@ IngestStatus = Literal[
     "skipped_exists",  # already ingested (idempotent re-run)
     "skipped_duration",  # outside the source's min/max duration window
     "skipped_thin",  # caption body below YOUTUBE_TRANSCRIPT_MIN_CHARS
+    "skipped_too_old",  # published before the max-age cutoff (pull sweep recency guard)
     "soft_fail",  # CaptionFetchError — blocked / no_captions / age_restricted / ...
     "error",  # unexpected failure; nothing persisted
 ]
@@ -454,6 +455,7 @@ def ingest_video(
     fetch_fn: Callable[..., CaptionResult] | None = None,
     summarize_fn: Callable[..., Any] | None = None,
     enqueue_fn: Callable[..., Any] | None = None,
+    max_age_days: int | None = None,
 ) -> IngestOutcome:
     """Land one allowlisted video as a ``YouTube Transcript`` article, end to end.
 
@@ -508,6 +510,29 @@ def ingest_video(
             message=why,
             title=article.title,
         )
+
+    if max_age_days is not None and max_age_days > 0 and article.published_at is not None:
+        published_at = (
+            article.published_at
+            if article.published_at.tzinfo is not None
+            else article.published_at.replace(tzinfo=UTC)
+        )
+        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
+        if published_at < cutoff:
+            why = (
+                f"published_at {published_at.date()} is older than "
+                f"{max_age_days}d cutoff ({cutoff.date()})"
+            )
+            logger.info("Skipping %s: %s", article.video_id, why)
+            return IngestOutcome(
+                status="skipped_too_old",
+                video_id=article.video_id,
+                url=article.url,
+                reason="too_old",
+                message=why,
+                title=article.title,
+                source=article.source,
+            )
 
     if not force:
         try:

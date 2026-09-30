@@ -137,14 +137,18 @@ collectors while source-ROI, retro email hookup, and bundle injection of the new
 unbuilt. Hold the roadmap’s own sequencing: close Learn→Synthesize / Learn→Collect before any
 new feed.
 
-### Ordered next work → Phase I (prefer **I1**), then K/J
+### Ordered next work → Phase I (**I4**, **I2**), then J
 
-Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5 shipped.
-**I1 story dedup + K2/K3 YouTube→articles shipped 2026-07-29** — the poll job is registered but
-**disabled by default**, so the next YouTube step is ops work (curate `youtube_sources`, enable
-the job, then **K4** enrichment parity on a real earnings video), not more code. Otherwise prefer
-**I4** (SEC/Fed RSS — cheap) or **I2** (FRED → regime). Cross-source idea clusters stay later
-(need K2 ✅ + widen I1). Optional: measurement **M6**.
+*Updated 2026-09-29.* Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5
+shipped; I1 story dedup shipped 2026-07-29; Phase K through **K5** is done (allowlist kept,
+sweep staleness fixed — re-check ~2026-11-01). Aug–Sep work went to ops and polish off-roadmap:
+[Grok Bot](GROK_BOT_RESEARCH.md) weekday X sweeps → `grok_x_briefs` → Today / Action Queue
+(2026-09-10/12, Bot routine live), UI glossary + help tips, PostgREST 1000-row pagination
+fixes, Yahoo split-cliff back-adjustment, and Ollama routing while the 3090 was out.
+Next, in order: **I4** (SEC/Fed RSS + 3 SearXNG queries — cheap), **I2** (FRED stress →
+`regime_json`), then **J1–J3** (event corpus + abnormal-return engine; I1 prerequisite met).
+Parallel small items: AI Assistant **A10 / A5 / A6**, Pillar 5 **5.1b / 5.1c**, measurement
+**M6**. Cross-source idea clusters stay later (need widened I1).
 
 ---
 
@@ -799,7 +803,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K4 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 needs ~30d of outcomes; K6/K9/K10/K11 open |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29): allowlist earns its keep, sweep fixed for staleness, re-check ~2026-11-01; K6/K9/K10/K11 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1102,9 +1106,34 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   `research_articles` (`ingest_video` fetches captions *before* its own exists check, so a
   nightly re-offer would burn the whole budget on known videos), and round-robin the fetch
   budget across holdings so coverage wins over depth. Cap: `YOUTUBE_SWEEP_MAX_FETCHES` (15).
-- [ ] **K5 · Source-ROI slice** — after ~30d of outcomes, compare
-  `YouTube Transcript` (and channel domains) vs other article sources in the H1 report; kill
-  or shrink the allowlist if it never pays off.
+- [x] **K5 · Source-ROI slice** — **done 2026-09-29.** Stances since 2026-07-30 split by
+  whether their `evidence.article_ids` cite a `YouTube Transcript`, and by whether the cited
+  channel is on the allowlist (`youtube_sources`) or only reached via the K8 sweep. Same
+  after-cost hit rule and day-bucketed shuffled baseline as `/track-record`:
+
+  | Cites | n 7d | edge vs shuffled 7d | n 30d | edge vs shuffled 30d | mean excess after cost 30d |
+  |---|---|---|---|---|---|
+  | Allowlist video | 138 | **+11.3pp** | 111 | **+5.9pp** | **+3.75** |
+  | Sweep-only video | 1,552 | −1.2pp | 861 | −2.3pp | −2.01 |
+  | No YouTube, same tickers | 386 | +5.7pp | 323 | −0.2pp | −0.18 |
+
+  **Verdict: keep the allowlist; the sweep was feeding stale evidence.** 66% of sweep videos
+  were published >30d before fetch (31% >1y; some from 2010) because YouTube search ranks by
+  all-time relevance, and both analysis services select articles by first-known clock
+  (`available_at`/`fetched_at`), so an old video read as fresh news. In stances citing
+  YouTube, ~50% of cited articles were transcripts. Observational, overlapping daily stances
+  — effective n is smaller than shown; per-channel n is too thin to rank channels.
+  **Fixes (same PR):** evidence queries in `ticker_analysis_service` / `meta_analysis_service`
+  now require `published_at` within `ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS` (default 30, `0`
+  disables) of the first-known clock (`pit_time.article_fresh_publish_predicate`) — drops
+  376/726 transcripts, 59/396 Alpha Research, 20/2,205 Ticker News; and the sweep refuses
+  videos older than `YOUTUBE_SWEEP_MAX_AGE_DAYS` (30) — checked via `fetch_video_metadata`
+  (no caption quota) while planning fetches, so a stale hit costs no budget and is not
+  re-offered nightly, with a second guard in `ingest_video`. Date-sorted search was tried
+  and dropped: yt-dlp 2026.07.04 has no `ytsearchdate`, and the `sp=CAI%253D` results URL
+  no longer sorts by date (verified live).
+  **Re-check ~2026-11-01** once post-fix stances have 30d outcomes; if sweep-cited stances
+  still trail the baseline, disable `youtube_holdings_sweep`.
 - [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap
   model; still land as the same article type.
 

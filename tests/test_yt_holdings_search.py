@@ -6,6 +6,7 @@ production holdings. They are the reason this module exists, so they are the fix
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Any
 
@@ -21,6 +22,7 @@ from yt_holdings_search import (  # noqa: E402
     rank,
     score_title,
     search_holding,
+    sweep_max_age_days,
     targets_from_holdings,
     title_junk_reason,
 )
@@ -36,6 +38,7 @@ class FakeListing:
     view_count: int | None = None
     duration_s: int | None = None
     channel_name: str | None = None
+    upload_date: str | None = None
 
 
 CAMECO = HoldingTarget("CCO.TO", "Cameco Corporation", "Energy")
@@ -307,3 +310,67 @@ class TestSectorHintFallback:
 
         assert len(search_holding(CAMECO, search_fn=fake)) == 1
         assert len(seen) == 1
+
+
+class TestMaxAgeFilter:
+    def test_dated_listing_older_than_cutoff_is_rejected_too_old(self) -> None:
+        listing = FakeListing(
+            "old1",
+            "Cameco (TSX:CCO) Q4 earnings beat",
+            upload_date="20200101",
+        )
+        cand = evaluate_listing(listing, CAMECO, max_age_days=30)
+        assert cand.reject_reason == "too_old"
+        assert cand.confirmed is False
+
+    def test_dated_listing_recent_is_not_rejected(self) -> None:
+        recent_date = (datetime.now(timezone.utc) - timedelta(days=5)).strftime("%Y%m%d")
+        listing = FakeListing(
+            "new1",
+            "Cameco (TSX:CCO) Q4 earnings beat",
+            upload_date=recent_date,
+        )
+        cand = evaluate_listing(listing, CAMECO, max_age_days=30)
+        assert cand.reject_reason is None
+        assert cand.confirmed is True
+
+    def test_undated_listing_not_rejected_by_max_age(self) -> None:
+        listing = FakeListing(
+            "undated1",
+            "Cameco (TSX:CCO) Q4 earnings beat",
+            upload_date=None,
+        )
+        cand = evaluate_listing(listing, CAMECO, max_age_days=30)
+        assert cand.reject_reason is None
+        assert cand.confirmed is True
+
+    def test_zero_or_negative_max_age_disables_rejection(self) -> None:
+        listing = FakeListing(
+            "old2",
+            "Cameco (TSX:CCO) Q4 earnings beat",
+            upload_date="20200101",
+        )
+        cand_zero = evaluate_listing(listing, CAMECO, max_age_days=0)
+        assert cand_zero.reject_reason is None
+        assert cand_zero.confirmed is True
+
+        cand_neg = evaluate_listing(listing, CAMECO, max_age_days=-10)
+        assert cand_neg.reject_reason is None
+        assert cand_neg.confirmed is True
+
+    def test_sweep_max_age_days_env_parsing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("YOUTUBE_SWEEP_MAX_AGE_DAYS", raising=False)
+        assert sweep_max_age_days() == 30
+
+        monkeypatch.setenv("YOUTUBE_SWEEP_MAX_AGE_DAYS", "14")
+        assert sweep_max_age_days() == 14
+
+        monkeypatch.setenv("YOUTUBE_SWEEP_MAX_AGE_DAYS", "0")
+        assert sweep_max_age_days() == 0
+
+        monkeypatch.setenv("YOUTUBE_SWEEP_MAX_AGE_DAYS", "-5")
+        assert sweep_max_age_days() <= 0
+
+        monkeypatch.setenv("YOUTUBE_SWEEP_MAX_AGE_DAYS", "invalid")
+        assert sweep_max_age_days() == 30
+

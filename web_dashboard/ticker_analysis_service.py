@@ -397,15 +397,17 @@ class TickerAnalysisService:
         """
         try:
             start_str = start_date.isoformat()
-            from pit_time import article_as_of_expr
+            from pit_time import article_as_of_expr, article_fresh_publish_predicate
 
             as_of = article_as_of_expr(self.postgres)
+            fresh = article_fresh_publish_predicate(self.postgres)
             result = self.postgres.execute_query(f"""
                 SELECT id, title, url, summary, source, published_at, fetched_at,
                        relevance_score, sentiment, sentiment_score, article_type
                 FROM research_articles
                 WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
                   AND {as_of} >= %s
+                  AND {fresh}
                 ORDER BY {as_of} DESC
                 LIMIT %s
             """, (ticker.upper(), ticker.upper(), start_str, self.MAX_RESEARCH_ARTICLES))

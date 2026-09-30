@@ -19,6 +19,8 @@ def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_ANALYSIS_PHASE3_SECTOR", "false")
     monkeypatch.setenv("META_ANALYSIS_HUMAN_THESIS", "false")
     monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "false")
+    # Freshness predicate probes column types; covered in test_article_publish_freshness.
+    monkeypatch.setenv("ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS", "0")
 
 from meta_analysis_service import (  # noqa: E402
     TickerMetaAnalysisService,

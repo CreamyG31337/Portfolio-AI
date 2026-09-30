@@ -16,7 +16,7 @@ todos:
     status: completed
   - id: bot-setup
     content: "On the Bot VM: store only GROK_BOT_TOKEN, install X plugin, manual 1-2 ticker sweep then weekday 07:30 PT routine; check usage bar"
-    status: pending
+    status: completed
 isProject: false
 ---
 

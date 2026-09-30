@@ -7,7 +7,7 @@ re-runs on the canonical watch URL, queue vs inline enrichment, and soft-fails.
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
@@ -846,3 +846,89 @@ def test_scoped_glm_override_honored_for_long_transcript(
         summarize_fn=fake_summarize,
     )
     assert seen["model"] == "glm-4.7"
+
+
+def test_ingest_video_skips_old_video_when_max_age_days_set() -> None:
+    repo = _fake_repo()
+    # _fixture_caption_result has upload_date="20050424"
+    outcome = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=30,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome.status == "skipped_too_old"
+    assert outcome.reason == "too_old"
+    assert outcome.landed is False
+    repo.save_article.assert_not_called()
+
+
+def test_ingest_video_saves_old_video_when_max_age_days_none() -> None:
+    repo = _fake_repo()
+    outcome = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=None,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome.status == "saved"
+    assert outcome.landed is True
+    repo.save_article.assert_called_once()
+
+
+def test_ingest_video_saves_recent_video_when_max_age_days_set() -> None:
+    repo = _fake_repo()
+    recent_date = (datetime.now(UTC) - timedelta(days=2)).strftime("%Y%m%d")
+    outcome = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=30,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(upload_date=recent_date),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome.status == "saved"
+    assert outcome.landed is True
+    repo.save_article.assert_called_once()
+
+
+def test_ingest_video_max_age_days_zero_or_negative_disables() -> None:
+    repo = _fake_repo()
+    outcome_zero = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=0,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome_zero.status == "saved"
+
+    repo.reset_mock()
+    outcome_neg = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=-5,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome_neg.status == "saved"
+
+
+def test_ingest_video_undated_video_not_skipped_by_max_age() -> None:
+    repo = _fake_repo()
+    outcome = ingest_video(
+        "jNQXAC9IVRw",
+        research_repo=repo,
+        use_queue=False,
+        max_age_days=30,
+        fetch_fn=lambda *_a, **_k: _fixture_caption_result(upload_date=None),
+        summarize_fn=lambda text, article_type="": _summary_payload(),
+    )
+    assert outcome.status == "saved"
+    repo.save_article.assert_called_once()
