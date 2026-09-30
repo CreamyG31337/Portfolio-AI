@@ -878,9 +878,7 @@ use their BTC Market Radar as a micro-cap BUY/CASH gate.
   (dual-view hashed vectors + containment); wired into `market_research_job` +
   `rss_feed_ingest_job` (skip extract/summarize on match); `corroboration_count` /
   `corroboration_sources` on `research_articles`; relevance boost via
-  `calculate_relevance_score`. Flag: `STORY_DEDUP_ENABLED` (default on). Migration:
-  `database/migrations/2026-07_add_story_corroboration.sql` —
-  `python web_dashboard/scripts/apply_story_corroboration_migration.py --apply`.
+  `calculate_relevance_score`. Flag: `STORY_DEDUP_ENABLED` (default on). Schema: `database/schema/research/tables/research_articles.sql`.
   Shipped 2026-07-29.
   **Follow-on (later):** widen candidates beyond Market News and attach newsletters /
   YouTube once K2 lands — see [§2.2 cross-source idea clusters](#22-ideas-inbox--which-new-ideas-merit-attention).
@@ -1063,8 +1061,7 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   `source = youtube:{channel_id}` (channel grain — never bare `youtube.com`, so source-ROI
   can rank an IR channel apart from a macro pundit). Collector facts (`video_id`,
   `channel_id`, `duration_s`, `caption_lang`, `caption_kind`) live in the new additive
-  `research_articles.source_metadata` JSONB (migration
-  `database/migrations/2026-07_add_article_source_metadata.sql`) — not `claims`, which the
+  `research_articles.source_metadata` JSONB (schema `database/schema/research/tables/research_articles.sql`) — not `claims`, which the
   summarizer overwrites. Summarize + ticker extraction reuse the
   `symbol_article_scraper_job` path, queue-managed via new AI-task-queue job
   `youtube_transcript_summary` when enabled (falls back to inline). Transcript summarizer

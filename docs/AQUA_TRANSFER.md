@@ -21,10 +21,10 @@ This project steals research **governance** from [AQuA](https://arxiv.org/abs/26
 | `research_articles.available_at` | Immutable first-known | Set once on insert; **never** updated on `ON CONFLICT`. Analysis lookbacks `COALESCE` onto the legacy ingest clock, never `published_at`. One implementation, in `web_dashboard/pit_time.py`; `research_repository` delegates to it rather than building its own predicate. |
 | `social_metrics.available_at` / `social_posts.available_at` | Same idea | Lookbacks honor analysis windows; social sentiment no longer ignores `start_date`. |
 
-Migrations:
+Schema updates:
 
-- `database/migrations/2026-08_add_research_articles_available_at.sql`
-- `database/migrations/2026-08_add_social_available_at.sql`
+- `database/schema/research/tables/research_articles.sql`
+- `database/schema/research/tables/social_posts.sql`
 
 Apply:
 
@@ -103,11 +103,7 @@ mismatch as destroyed skill.
 `directional` otherwise; `after_cost_coverage` reports how many scored rows predate
 the cost columns. Pre-cost aggregates are never published under an after-cost label.
 
-Migration: `database/migrations/2026-08_add_stance_outcomes_cost_belief.sql`
-
-```powershell
-python web_dashboard/scripts/apply_stance_outcomes_cost_belief_migration.py --apply
-```
+Schema: `database/schema/research/tables/stance_outcomes.sql`
 
 ## Success criteria (v1)
 

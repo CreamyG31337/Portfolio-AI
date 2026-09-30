@@ -231,7 +231,7 @@ things worse. Investigate first.
 * **Restoring everything in one command.** There is no `--all-tables` flag and
   there will not be one. Restore is always one table at a time so blast
   radius is bounded.
-* **Restoring across schema migrations.** If the snapshot pre-dates a schema
+* **Restoring across schema changes.** If the snapshot pre-dates a schema
   change, the upsert may fail on a missing/new column. In that case,
   hand-write the migration before restoring.
 * **Restore from a partial backup.** The script trusts that the snapshot file
