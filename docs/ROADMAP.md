@@ -1126,8 +1126,12 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   **Fixes (same PR):** evidence queries in `ticker_analysis_service` / `meta_analysis_service`
   now require `published_at` within `ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS` (default 30, `0`
   disables) of the first-known clock (`pit_time.article_fresh_publish_predicate`) — drops
-  376/726 transcripts, 59/396 Alpha Research, 20/2,205 Ticker News; and the sweep now
-  searches newest-first and refuses videos older than `YOUTUBE_SWEEP_MAX_AGE_DAYS` (30).
+  376/726 transcripts, 59/396 Alpha Research, 20/2,205 Ticker News; and the sweep refuses
+  videos older than `YOUTUBE_SWEEP_MAX_AGE_DAYS` (30) — checked via `fetch_video_metadata`
+  (no caption quota) while planning fetches, so a stale hit costs no budget and is not
+  re-offered nightly, with a second guard in `ingest_video`. Date-sorted search was tried
+  and dropped: yt-dlp 2026.07.04 has no `ytsearchdate`, and the `sp=CAI%253D` results URL
+  no longer sorts by date (verified live).
   **Re-check ~2026-11-01** once post-fix stances have 30d outcomes; if sweep-cited stances
   still trail the baseline, disable `youtube_holdings_sweep`.
 - [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap

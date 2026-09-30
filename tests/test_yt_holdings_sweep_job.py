@@ -76,6 +76,22 @@ class TestPlanFetches:
         queue, _ = plan_fetches(results, budget=5)
         assert queue == []
 
+    def test_stale_hits_cost_no_budget(self) -> None:
+        """A too-old video is never saved, so is_known would re-offer it nightly."""
+        results = [_entry("AAA", "a1", "a2"), _entry("BBB", "b1")]
+        queue, _ = plan_fetches(results, budget=2, is_stale=lambda vid: vid == "a1")
+        assert [v["video_id"] for _t, v in queue] == ["b1", "a2"]
+
+    def test_stale_check_runs_only_for_hits_that_would_be_queued(self) -> None:
+        checked: list[str] = []
+
+        def is_stale(vid: str) -> bool:
+            checked.append(vid)
+            return False
+
+        plan_fetches([_entry("AAA", "a1", "a2", "a3")], budget=1, is_stale=is_stale)
+        assert checked == ["a1"]
+
 
 class TestMaxFetches:
     def test_default_and_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +137,31 @@ def patched_holdings(monkeypatch: pytest.MonkeyPatch):
     ]
     monkeypatch.setattr(sweep, "holdings_rows", lambda *a, **k: rows)
     monkeypatch.setattr(sweep, "_owned_tickers", lambda: ["CCO.TO", "OKLO"])
+    # The stale check's default metadata lookup would hit the network; an undated
+    # result fails open, so tests that don't care about age are unaffected.
+    import yt_captions
+
+    monkeypatch.setattr(
+        yt_captions, "fetch_video_metadata", lambda _vid: FakeMetadata(None)
+    )
     return rows
+
+
+@dataclass
+class FakeMetadata:
+    upload_date: str | None
+
+
+def _dated(**by_id: str | None):
+    """metadata_fn returning a fixed upload_date per video id (default: undated)."""
+    calls: list[str] = []
+
+    def fn(video_id: str) -> FakeMetadata:
+        calls.append(video_id)
+        return FakeMetadata(by_id.get(video_id))
+
+    fn.calls = calls  # type: ignore[attr-defined]
+    return fn
 
 
 class TestSweepHoldings:
@@ -239,9 +279,96 @@ class TestSweepHoldings:
         assert summary.holdings_searched == 0
         assert summary.coverage == 0.0
 
+    def test_skipped_too_old_is_tracked(self, patched_holdings) -> None:
+        summary = sweep_holdings(
+            research_repo=FakeRepo(),
+            search_fn=lambda target, **_k: [FakeCandidate(f"v-{target.ticker}")],
+            ingest_fn=lambda _vid, **_k: FakeOutcome("skipped_too_old"),
+            budget=5,
+            sleep_fn=lambda _s: None,
+        )
+        assert summary.planned == 2
+        assert summary.landed == 0
+        assert summary.skipped_too_old == 2
+        assert summary.statuses == {"skipped_too_old": 2}
+        assert "skipped_too_old 2" in summary.message
+
+    def test_max_age_days_passed_to_search_and_ingest(self, patched_holdings) -> None:
+        search_kwargs: list[dict[str, Any]] = []
+        ingest_kwargs: list[dict[str, Any]] = []
+
+        def spy_search(target, **kwargs):
+            search_kwargs.append(kwargs)
+            return [FakeCandidate(f"v-{target.ticker}")]
+
+        def spy_ingest(vid, **kwargs):
+            ingest_kwargs.append(kwargs)
+            return FakeOutcome("saved")
+
+        sweep_holdings(
+            research_repo=FakeRepo(),
+            search_fn=spy_search,
+            ingest_fn=spy_ingest,
+            max_age_days=15,
+            budget=5,
+            sleep_fn=lambda _s: None,
+        )
+        assert all(k.get("max_age_days") == 15 for k in search_kwargs)
+        assert all(k.get("max_age_days") == 15 for k in ingest_kwargs)
+
+    def test_old_videos_are_dropped_before_any_caption_fetch(self, patched_holdings) -> None:
+        ingested: list[str] = []
+        metadata = _dated(**{"v-CCO.TO": "20190301", "v-OKLO": None})
+        summary = sweep_holdings(
+            research_repo=FakeRepo(),
+            search_fn=lambda target, **_k: [FakeCandidate(f"v-{target.ticker}")],
+            ingest_fn=lambda vid, **_k: (ingested.append(vid), FakeOutcome("saved"))[1],
+            metadata_fn=metadata,
+            max_age_days=30,
+            budget=5,
+            sleep_fn=lambda _s: None,
+        )
+        assert ingested == ["v-OKLO"]  # undated fails open; ingest re-checks
+        assert summary.skipped_too_old == 1
+        assert summary.planned == 1
+
+    def test_metadata_failure_fails_open(self, patched_holdings) -> None:
+        def boom(_vid: str) -> FakeMetadata:
+            raise RuntimeError("blocked")
+
+        summary = sweep_holdings(
+            research_repo=FakeRepo(),
+            search_fn=lambda target, **_k: [FakeCandidate(f"v-{target.ticker}")],
+            ingest_fn=lambda _vid, **_k: FakeOutcome("saved"),
+            metadata_fn=boom,
+            max_age_days=30,
+            budget=5,
+            sleep_fn=lambda _s: None,
+        )
+        assert summary.planned == 2
+        assert summary.skipped_too_old == 0
+
+    def test_zero_max_age_skips_metadata_lookups(self, patched_holdings) -> None:
+        metadata = _dated()
+        sweep_holdings(
+            research_repo=FakeRepo(),
+            search_fn=lambda target, **_k: [FakeCandidate(f"v-{target.ticker}")],
+            ingest_fn=lambda _vid, **_k: FakeOutcome("saved"),
+            metadata_fn=metadata,
+            max_age_days=0,
+            budget=5,
+            sleep_fn=lambda _s: None,
+        )
+        assert metadata.calls == []  # type: ignore[attr-defined]
+
 
 class TestSummaryMessage:
     def test_message_reports_coverage_and_outcomes(self) -> None:
         s = SweepSummary(holdings_searched=77, with_confirmed_hits=71, landed=12)
         assert "71/77 holdings covered (92%)" in s.message
         assert "landed 12" in s.message
+
+    def test_message_reports_skipped_too_old(self) -> None:
+        s = SweepSummary(holdings_searched=10, with_confirmed_hits=8, landed=3, skipped_too_old=4)
+        assert "skipped_too_old 4" in s.message
+

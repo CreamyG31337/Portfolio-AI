@@ -27,11 +27,28 @@ Two things make this affordable and safe:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 logger = logging.getLogger(__name__)
+
+# K5 (2026-09-29): YouTube search ranks by all-time relevance, so without a recency
+# guard the sweep landed years-old videos that analysis then read as fresh news.
+_MAX_AGE_DAYS_ENV = "YOUTUBE_SWEEP_MAX_AGE_DAYS"
+_MAX_AGE_DAYS_DEFAULT = 30
+
+
+def sweep_max_age_days() -> int:
+    """Max video age in days for the pull sweep; 0 disables. Negative clamps to 0."""
+    raw = (os.environ.get(_MAX_AGE_DAYS_ENV) or "").strip()
+    try:
+        val = int(raw) if raw else _MAX_AGE_DAYS_DEFAULT
+    except ValueError:
+        return _MAX_AGE_DAYS_DEFAULT
+    return max(val, 0)
 
 # Corporate suffixes to strip so "Cameco Corporation" queries as "Cameco" and
 # "G Mining Ventures Corp." as "G Mining Ventures". Order matters: longest first.
@@ -210,6 +227,7 @@ class Candidate:
     score: int = 0
     matched: tuple[str, ...] = field(default_factory=tuple)
     reject_reason: str | None = None
+    upload_date: str | None = None
 
     @property
     def confirmed(self) -> bool:
@@ -252,9 +270,15 @@ def score_title(title: str, target: HoldingTarget) -> tuple[int, tuple[str, ...]
     return score, tuple(matched)
 
 
-def evaluate_listing(listing: Any, target: HoldingTarget) -> Candidate:
+def evaluate_listing(
+    listing: Any,
+    target: HoldingTarget,
+    *,
+    max_age_days: int | None = None,
+) -> Candidate:
     """Score one ``VideoListing`` against a holding, without fetching captions."""
     title = str(getattr(listing, "title", "") or "")
+    upload_date = getattr(listing, "upload_date", None)
     cand = Candidate(
         video_id=str(getattr(listing, "video_id", "") or ""),
         title=title,
@@ -263,7 +287,23 @@ def evaluate_listing(listing: Any, target: HoldingTarget) -> Candidate:
         view_count=getattr(listing, "view_count", None),
         duration_s=getattr(listing, "duration_s", None),
         channel_name=getattr(listing, "channel_name", None),
+        upload_date=upload_date,
     )
+    effective_max_age = (
+        sweep_max_age_days() if max_age_days is None else max(0, int(max_age_days))
+    )
+    # Flat search listings usually omit upload_date; an undated hit is not rejected
+    # here — ingest_video re-checks once captions reveal the real date.
+    if effective_max_age > 0 and upload_date:
+        from yt_articles import published_at_from_upload_date
+
+        parsed_dt = published_at_from_upload_date(upload_date)
+        if parsed_dt is not None:
+            cutoff = datetime.now(UTC) - timedelta(days=effective_max_age)
+            if parsed_dt < cutoff:
+                cand.reject_reason = "too_old"
+                return cand
+
     junk = title_junk_reason(title)
     if junk:
         cand.reject_reason = junk
@@ -298,6 +338,7 @@ def search_holding(
     *,
     limit: int = 12,
     search_fn: Callable[..., Sequence[Any]] | None = None,
+    max_age_days: int | None = None,
 ) -> list[Candidate]:
     """Search YouTube for one holding and return ranked, confirmed candidates.
 
@@ -306,6 +347,10 @@ def search_holding(
     """
     if search_fn is None:
         from yt_captions import list_search_videos as search_fn  # type: ignore
+
+    effective_max_age = (
+        sweep_max_age_days() if max_age_days is None else max(0, int(max_age_days))
+    )
 
     # The sector hint disambiguates brand collisions but can over-constrain a small
     # issuer: "G Mining Ventures basic materials stock" returns nothing while the
@@ -317,7 +362,10 @@ def search_holding(
         except Exception as exc:
             logger.warning("Search failed for %s (%s): %s", target.ticker, query, exc)
             return []
-        hits = rank(evaluate_listing(item, target) for item in listings)
+        hits = rank(
+            evaluate_listing(item, target, max_age_days=effective_max_age)
+            for item in listings
+        )
         if hits:
             return hits
     return []

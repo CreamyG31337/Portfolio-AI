@@ -31,7 +31,7 @@ import logging
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
@@ -75,6 +75,7 @@ class SweepSummary:
     planned: int = 0
     landed: int = 0
     skipped_known: int = 0
+    skipped_too_old: int = 0
     soft_failed: int = 0
     errors: int = 0
     statuses: dict[str, int] = field(default_factory=dict)
@@ -91,8 +92,8 @@ class SweepSummary:
         return (
             f"{self.with_confirmed_hits}/{self.holdings_searched} holdings covered "
             f"({self.coverage:.0%}); landed {self.landed}, "
-            f"skipped_known {self.skipped_known}, soft_fail {self.soft_failed}, "
-            f"errors {self.errors}"
+            f"skipped_known {self.skipped_known}, skipped_too_old {self.skipped_too_old}, "
+            f"soft_fail {self.soft_failed}, errors {self.errors}"
         )
 
 
@@ -146,11 +147,17 @@ def plan_fetches(
     *,
     budget: int,
     is_known: Callable[[str], bool] | None = None,
+    is_stale: Callable[[str], bool] | None = None,
 ) -> tuple[list[tuple[str, Mapping[str, Any]]], int]:
     """Choose which hits to spend caption fetches on.
 
     Round-robin: every holding's best unlanded hit, then every holding's second,
     and so on until the budget runs out. Returns ``(queue, skipped_known)``.
+
+    ``is_stale(video_id)`` drops too-old videos before they cost a caption fetch.
+    It matters beyond one night: a video rejected as too old is never saved, so the
+    ``is_known`` pre-filter would re-offer it — and re-spend the budget on it —
+    every night forever.
     """
     from yt_captions import watch_url_for
 
@@ -186,14 +193,52 @@ def plan_fetches(
         for hits in per_ticker:
             if depth >= len(hits):
                 continue
-            queue.append(hits[depth])
             progressed = True
+            # Checked here, not in the pre-filter pass, so the metadata lookup only
+            # runs for hits that would actually be queued. A stale hit costs no
+            # budget: the round-robin simply moves on to the next holding.
+            if is_stale is not None and is_stale(str(hits[depth][1].get("video_id") or "")):
+                continue
+            queue.append(hits[depth])
             if len(queue) >= budget:
                 break
         if not progressed:
             break
         depth += 1
     return queue, skipped_known
+
+
+def _stale_checker(
+    max_age_days: int,
+    metadata_fn: Callable[[str], Any] | None,
+    summary: SweepSummary,
+) -> Callable[[str], bool] | None:
+    """``is_stale`` for ``plan_fetches``: one metadata call (no caption quota) per hit.
+
+    Unknown dates and lookup failures return False — ``ingest_video`` re-checks the
+    date once captions land, so failing open here only costs one fetch, never data.
+    """
+    if max_age_days <= 0:
+        return None
+    if metadata_fn is None:
+        from yt_captions import fetch_video_metadata as metadata_fn  # type: ignore
+    from yt_articles import published_at_from_upload_date
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+
+    def is_stale(video_id: str) -> bool:
+        try:
+            meta = metadata_fn(video_id)
+        except Exception as exc:
+            logger.warning("Metadata lookup failed for %s: %s", video_id, exc)
+            return False
+        published = published_at_from_upload_date(getattr(meta, "upload_date", None))
+        if published is None or published >= cutoff:
+            return False
+        summary.skipped_too_old += 1
+        return True
+
+    return is_stale
 
 
 def sweep_holdings(
@@ -204,7 +249,9 @@ def sweep_holdings(
     supabase_client: Any | None = None,
     search_fn: Callable[..., Sequence[Any]] | None = None,
     ingest_fn: Callable[..., Any] | None = None,
+    metadata_fn: Callable[[str], Any] | None = None,
     budget: int | None = None,
+    max_age_days: int | None = None,
     search_limit: int = _SEARCH_LIMIT_DEFAULT,
     top_per_holding: int = _TOP_PER_HOLDING_DEFAULT,
     include_funds: bool = False,
@@ -212,11 +259,12 @@ def sweep_holdings(
     sleep_fn: Callable[[float], None] | None = None,
 ) -> SweepSummary:
     """Search every holding, then land captions for the best unlanded hits."""
-    from yt_holdings_search import search_holding, targets_from_holdings
+    from yt_holdings_search import search_holding, sweep_max_age_days, targets_from_holdings
 
     search = search_fn or search_holding
     sleep = sleep_fn if sleep_fn is not None else time.sleep
     fetch_budget = max_fetches() if budget is None else max(0, int(budget))
+    age_limit = sweep_max_age_days() if max_age_days is None else max(0, int(max_age_days))
     summary = SweepSummary()
 
     rows = holdings_rows(tickers, client=supabase_client)
@@ -240,7 +288,9 @@ def sweep_holdings(
 
     for index, target in enumerate(targets):
         try:
-            hits = list(search(target, limit=search_limit))[:top_per_holding]
+            hits = list(search(target, limit=search_limit, max_age_days=age_limit))[
+                :top_per_holding
+            ]
         except Exception as exc:
             # One bad name must never take the sweep down.
             logger.warning("Search failed for %s: %s", target.ticker, exc)
@@ -278,6 +328,7 @@ def sweep_holdings(
         summary.results,
         budget=fetch_budget,
         is_known=getattr(research_repo, "article_exists", None),
+        is_stale=_stale_checker(age_limit, metadata_fn, summary),
     )
     summary.planned = len(queue)
     summary.skipped_known = skipped_known
@@ -298,6 +349,9 @@ def sweep_holdings(
                 # come from the transcript (§26 / is_issuer_channel).
                 source_row={"label": f"search:{ticker}", "expected_tickers": []},
                 owned_tickers=owned,
+                # Flat search listings rarely carry upload_date, so this is the
+                # guard that actually bites: the date is known once captions land.
+                max_age_days=age_limit,
             )
         except Exception as exc:
             logger.error("Ingest failed for %s: %s", hit.get("video_id"), exc)
@@ -312,6 +366,8 @@ def sweep_holdings(
             summary.soft_failed += 1
         elif status == "skipped_exists":
             summary.skipped_known += 1
+        elif status == "skipped_too_old":
+            summary.skipped_too_old += 1
         elif status == "error":
             summary.errors += 1
 
