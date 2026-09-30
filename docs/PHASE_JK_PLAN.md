@@ -553,7 +553,7 @@ H7 (Ideas usage) ──► I1 (story dedup) ──┬──► K1–K4 (allowlis
 
 > Read `docs/ROADMAP.md` Phase J + this file’s Phase J sections. Implement **J1 schema + seed
 > SQL** and a pure-Python **J3** excess-return helper with mocked OHLC fixtures. No Today UI,
-> no LLM. Additive Research migrations only.
+> no LLM. Additive Research schema changes only.
 
 ---
 

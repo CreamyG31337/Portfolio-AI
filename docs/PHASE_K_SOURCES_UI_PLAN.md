@@ -1,6 +1,6 @@
 # Sources Admin Page — RSS + YouTube (Phase K support)
 
-**Status:** in progress (steps 1–6 implemented in code; apply migrations + verify UI). **Owner:** implementing agent (Cursor).
+**Status:** in progress (steps 1–6 implemented in code; apply schema changes + verify UI). **Owner:** implementing agent (Cursor).
 **Created:** 2026-07-28. **Updated:** 2026-07-28 (implementation started).
 
 Companion to [`PHASE_JK_PLAN.md`](PHASE_JK_PLAN.md) Phase K. That doc owns the ingest
@@ -156,10 +156,10 @@ or the SQL interface will reject queries against it.
 
 ### 4.4 Migration files
 
-Follow the numbered convention in [`migrations/`](../migrations/):
+Update the modular schema in [`database/schema/`](../database/schema/):
 
-- `migrations/008_create_yt_sources.sql`
-- `migrations/009_add_rss_feeds_health_columns.sql`
+- `database/schema/research/tables/yt_sources.sql` (and add to _init_schema.sql)
+- `database/schema/research/tables/rss_feeds.sql`
 
 Plus a seed/apply script mirroring
 [`restore_rss_tables.py`](../web_dashboard/scripts/restore_rss_tables.py):
@@ -328,7 +328,7 @@ the YouTube list being finalized.
 - [ ] `youtube_sources` exists with the constraints above; `rss_feeds` gained its 4 columns
       and the nightly RSS job still succeeds unchanged.
       *(DDL + apply script landed — run*
-      `python web_dashboard/scripts/apply_sources_migrations.py`*)*
+      `python scripts/export_clean_schema.py`*)*
 - [ ] `/admin/sources` renders both tabs; non-admins get the standard denial; read-only
       admins can view but every write returns 403.
 - [ ] An RSS feed can be added, renamed, toggled, and deleted entirely from the UI, and the

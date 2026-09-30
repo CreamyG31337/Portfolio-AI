@@ -28,7 +28,7 @@ Apply DDL on Research Postgres (already done on the URL in local `.env`):
 
 ```powershell
 .\venv\Scripts\activate
-Get-Content database\migrations\2026-09_add_grok_x_briefs.sql | .\venv\Scripts\python.exe -c "import os,sys; import psycopg2; sql=sys.stdin.read(); conn=psycopg2.connect(os.environ['RESEARCH_DATABASE_URL']); conn.autocommit=True; conn.cursor().execute(sql); print('ok')"
+Get-Content database\schema\research\tables\grok_x_briefs.sql | .\venv\Scripts\python.exe -c "import os,sys; import psycopg2; sql=sys.stdin.read(); conn=psycopg2.connect(os.environ['RESEARCH_DATABASE_URL']); conn.autocommit=True; conn.cursor().execute(sql); print('ok')"
 ```
 
 Or run the SQL file with `psql` against `RESEARCH_DATABASE_URL`. Do **not** apply this via Supabase MCP (wrong database).
