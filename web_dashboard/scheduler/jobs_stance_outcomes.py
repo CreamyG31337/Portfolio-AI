@@ -344,21 +344,23 @@ def select_unscored_stances(
     return [r for r in rows if is_directional_stance(r.get("stance"))]
 
 
-def record_scoring_attempt(
+def record_scoring_attempts(
     postgres: Any,
-    *,
-    stance_id: str,
-    horizon_days: int,
-    reason: str,
+    attempts: list[tuple[str, int, str]],
 ) -> None:
-    """Increment the failed-attempt counter for a (stance, horizon) pair.
+    """Increment the failed-attempt counter for a batch of (stance, horizon) pairs.
 
     Transient reasons ("not matured yet") must not burn attempts, or a stance could
     be dead-lettered before it was ever eligible to score.
     """
-    if reason in TRANSIENT_SKIP_REASONS:
+    valid_attempts = [
+        (str(stance_id), horizon_days, reason)
+        for stance_id, horizon_days, reason in attempts
+        if reason not in TRANSIENT_SKIP_REASONS
+    ]
+    if not valid_attempts:
         return
-    postgres.execute_update(
+    postgres.execute_many(
         """
         INSERT INTO stance_outcome_attempts (stance_id, horizon_days, attempts, last_reason, last_attempt_at)
         VALUES (%s::uuid, %s, 1, %s, NOW())
@@ -367,7 +369,7 @@ def record_scoring_attempt(
             last_reason = EXCLUDED.last_reason,
             last_attempt_at = NOW()
         """,
-        (str(stance_id), horizon_days, reason),
+        valid_attempts,
     )
 
 
@@ -528,6 +530,12 @@ def _run_stance_outcomes_job() -> None:
         ticker_cache: dict[str, list[dict[str, Any]]] = {}
         resolved_symbols: dict[str, str] = {}
         skip_reasons: dict[str, int] = {}
+
+        # Accumulators for batch inserts
+        outcome_batch = []
+        fallback_outcome_batch = []
+        attempts_batch = []
+
         for horizon, candidates in candidates_by_horizon.items():
             for row in candidates:
                 ticker = (row.get("ticker") or "").upper()
@@ -553,12 +561,7 @@ def _run_stance_outcomes_job() -> None:
                         reason = result.skip_reason or "unknown"
                         skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
                         skipped += 1
-                        record_scoring_attempt(
-                            postgres,
-                            stance_id=row["id"],
-                            horizon_days=horizon,
-                            reason=reason,
-                        )
+                        attempts_batch.append((row["id"], horizon, reason))
                         continue
                     payload = result.payload
                     from microcap_cost_model import (
@@ -587,73 +590,83 @@ def _run_stance_outcomes_job() -> None:
                         excess_after_cost_pct=eac,
                         stance=str(payload.get("stance") or ""),
                     )
-                    try:
-                        postgres.execute_update(
-                            """
-                            -- Price/return columns are immutable scored outcomes and
-                            -- are never overwritten. Only the cost verdict is filled
-                            -- in, and only when the stored row has none: without this
-                            -- a row scored while market cap was missing would keep a
-                            -- NULL (or, before this fix, a wrongly-refuted) verdict
-                            -- permanently, since the job never revisits it.
-                            INSERT INTO stance_outcomes (
-                                stance_id, horizon_days, baseline_price, end_price,
-                                ticker_return, benchmark_return, excess_return,
-                                benchmark_symbol, scoring_version,
-                                cost_bps, excess_after_cost, belief_status
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (stance_id, horizon_days) DO UPDATE SET
-                                cost_bps = EXCLUDED.cost_bps,
-                                excess_after_cost = EXCLUDED.excess_after_cost,
-                                belief_status = EXCLUDED.belief_status
-                            WHERE stance_outcomes.cost_bps IS NULL
-                              AND EXCLUDED.cost_bps IS NOT NULL
-                            """,
-                            (
-                                str(payload["stance_id"]),
-                                payload["horizon_days"],
-                                payload["baseline_price"],
-                                payload["end_price"],
-                                payload["ticker_return"],
-                                payload["benchmark_return"],
-                                payload["excess_return"],
-                                payload["benchmark_symbol"],
-                                SCORING_VERSION,
-                                cost_bps,
-                                eac,
-                                belief,
-                            ),
-                        )
-                    except Exception as insert_exc:
-                        # Pre-migration DBs: fall back to columns without cost fields.
-                        if "cost_bps" in str(insert_exc) or "excess_after_cost" in str(insert_exc):
-                            postgres.execute_update(
-                                """
-                                INSERT INTO stance_outcomes (
-                                    stance_id, horizon_days, baseline_price, end_price,
-                                    ticker_return, benchmark_return, excess_return,
-                                    benchmark_symbol, scoring_version
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (stance_id, horizon_days) DO NOTHING
-                                """,
-                                (
-                                    str(payload["stance_id"]),
-                                    payload["horizon_days"],
-                                    payload["baseline_price"],
-                                    payload["end_price"],
-                                    payload["ticker_return"],
-                                    payload["benchmark_return"],
-                                    payload["excess_return"],
-                                    payload["benchmark_symbol"],
-                                    SCORING_VERSION,
-                                ),
-                            )
-                        else:
-                            raise
+
+                    outcome_batch.append((
+                        str(payload["stance_id"]),
+                        payload["horizon_days"],
+                        payload["baseline_price"],
+                        payload["end_price"],
+                        payload["ticker_return"],
+                        payload["benchmark_return"],
+                        payload["excess_return"],
+                        payload["benchmark_symbol"],
+                        SCORING_VERSION,
+                        cost_bps,
+                        eac,
+                        belief,
+                    ))
+
+                    fallback_outcome_batch.append((
+                        str(payload["stance_id"]),
+                        payload["horizon_days"],
+                        payload["baseline_price"],
+                        payload["end_price"],
+                        payload["ticker_return"],
+                        payload["benchmark_return"],
+                        payload["excess_return"],
+                        payload["benchmark_symbol"],
+                        SCORING_VERSION,
+                    ))
                     scored += 1
                 except Exception as row_exc:
                     errors += 1
                     logger.warning("Failed scoring %s horizon=%s: %s", ticker, horizon, row_exc)
+
+        # Flush attempts
+        if attempts_batch:
+            record_scoring_attempts(postgres, attempts_batch)
+
+        # Flush outcomes
+        if outcome_batch:
+            try:
+                postgres.execute_many(
+                    """
+                    -- Price/return columns are immutable scored outcomes and
+                    -- are never overwritten. Only the cost verdict is filled
+                    -- in, and only when the stored row has none: without this
+                    -- a row scored while market cap was missing would keep a
+                    -- NULL (or, before this fix, a wrongly-refuted) verdict
+                    -- permanently, since the job never revisits it.
+                    INSERT INTO stance_outcomes (
+                        stance_id, horizon_days, baseline_price, end_price,
+                        ticker_return, benchmark_return, excess_return,
+                        benchmark_symbol, scoring_version,
+                        cost_bps, excess_after_cost, belief_status
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (stance_id, horizon_days) DO UPDATE SET
+                        cost_bps = EXCLUDED.cost_bps,
+                        excess_after_cost = EXCLUDED.excess_after_cost,
+                        belief_status = EXCLUDED.belief_status
+                    WHERE stance_outcomes.cost_bps IS NULL
+                      AND EXCLUDED.cost_bps IS NOT NULL
+                    """,
+                    outcome_batch,
+                )
+            except Exception as insert_exc:
+                if "cost_bps" in str(insert_exc) or "excess_after_cost" in str(insert_exc):
+                    postgres.execute_many(
+                        """
+                        INSERT INTO stance_outcomes (
+                            stance_id, horizon_days, baseline_price, end_price,
+                            ticker_return, benchmark_return, excess_return,
+                            benchmark_symbol, scoring_version
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (stance_id, horizon_days) DO NOTHING
+                        """,
+                        fallback_outcome_batch,
+                    )
+                else:
+                    raise
 
         # A ticker that resolved to nothing is either a bad symbol or a provider
         # outage. Name them so the two are separable from the job log alone.
