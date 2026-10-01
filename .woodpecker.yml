@@ -628,16 +628,64 @@ steps:
           echo "ℹ️  No Research folder or PDFs found, skipping..."
         fi
       
-      # Clean up old Docker images (keep last 5 versions)
-      # This prevents disk space issues from accumulating old image versions
-      # Run cleanup in parallel for faster execution
+      # Clean up old Docker image TAGS (keep the N most recent per repository).
+      #
+      # Why this is written the way it is (rewritten 2026-10-01): the previous version
+      # deleted by bare image ID, e.g. `docker images -q <repo> | tail -n +6 | xargs docker rmi`.
+      # That silently did nothing for ~9 months, because:
+      #   1. These images carry several tags (`:latest` plus one or more `:<SHA>`), and
+      #      `docker rmi <id>` refuses a multi-tagged image ("must be forced"). The
+      #      `> /dev/null 2>&1 || true` hid that error, so the step always claimed success.
+      #   2. `docker images -q <repo>` prints one row per TAG, not per image, so `tail -n +6`
+      #      did not mean "keep 5 images" and fed duplicate IDs to xargs.
+      #   3. `trading-dashboard` was never in the list, and was the biggest offender.
+      # By 2026-10-01 this had leaked 59 unused images on the CI host (51 of them >90 days
+      # old); clearing them plus build cache recovered ~98 GB and took / from 85% to 63%.
+      #
+      # Rules: delete by TAG so `:latest` can never be untagged; never remove a tag whose
+      # image is used by a running container; report what happened instead of hiding it.
+      # NOTE: this step runs in the `docker:27` image (Alpine/BusyBox ash) - POSIX sh only.
       - |
-        echo "Cleaning up old Docker images (keeping last 5)..."
-        (docker images -q trading-dashboard-flask | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
-        (docker images -q trading-dashboard-frontend | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
-        (docker images -q cookie-refresher | tail -n +6 | xargs -r docker rmi > /dev/null 2>&1 || true) &
-        wait
-        echo "✅ Cleanup complete"
+        KEEP=5
+        REPOS="trading-dashboard trading-dashboard-base trading-dashboard-frontend trading-dashboard-flask cookie-refresher"
+        echo "Cleaning up old Docker image tags (keeping ${KEEP} most recent per repository)..."
+        docker ps --format '{{.Image}}' | sort -u > /tmp/wp_inuse.txt
+        cleanup_rc=0
+        for repo in $REPOS; do
+          before=$(docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$before" = "0" ]; then
+            echo "  ${repo}: no images present, skipping"
+            continue
+          fi
+          # Newest-first list of this repo's tags, excluding :latest, minus the KEEP newest.
+          docker images --format '{{.CreatedAt}}|{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null             | grep -v ':latest$'             | sort -r             | cut -d'|' -f2-             | tail -n +$((KEEP + 1)) > /tmp/wp_del.txt
+          removed=0
+          inuse=0
+          failed=0
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            if grep -qxF "$tag" /tmp/wp_inuse.txt; then
+              echo "  SKIP (running container uses it): $tag"
+              inuse=$((inuse + 1))
+              continue
+            fi
+            if rmi_out=$(docker rmi "$tag" 2>&1); then
+              removed=$((removed + 1))
+            else
+              echo "  FAILED to remove ${tag}: ${rmi_out}"
+              failed=$((failed + 1))
+              cleanup_rc=1
+            fi
+          done < /tmp/wp_del.txt
+          after=$(docker images --format '{{.Repository}}:{{.Tag}}' "$repo" 2>/dev/null | wc -l | tr -d ' ')
+          echo "  ${repo}: tags ${before} -> ${after} (removed ${removed}, in-use ${inuse}, failed ${failed})"
+        done
+        rm -f /tmp/wp_inuse.txt /tmp/wp_del.txt
+        if [ "$cleanup_rc" != "0" ]; then
+          echo "⚠️  Some tags could not be removed - see FAILED lines above. Not failing the build."
+        else
+          echo "✅ Image cleanup complete"
+        fi
       
       - echo "✅ Build and deployment complete!"
     when:
