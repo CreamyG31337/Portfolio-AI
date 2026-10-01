@@ -144,11 +144,10 @@
                         <input type="text" id="contributor" name="contributor" autocomplete="off"
                             class="form-input-theme"
                             placeholder="Type to search contributors..."
-                            required>
+                            required role="combobox" aria-expanded="false" aria-controls="contributor-dropdown" aria-haspopup="listbox">
                         <input type="hidden" id="contributor-id" name="contributor_id">
                         <!-- Custom dropdown for contributors -->
-                        <!-- TODO(a11y): add combobox ARIA roles (role=combobox/listbox/option, aria-expanded, aria-activedescendant), keyboard navigation and click-outside close to this custom autocomplete. -->
-                        <div id="contributor-dropdown" 
+                        <div id="contributor-dropdown" role="listbox"
                             class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                             <!-- Populated by JS -->
                         </div>

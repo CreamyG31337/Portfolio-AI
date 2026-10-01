@@ -1,51 +1,22 @@
-export { }; // Ensure file is treated as a module
-
-// API Response interface
-interface TickerListResponse {
-    tickers: string[];
-    ticker_names?: Record<string, string>;
-}
-
-// Configuration interface for autocomplete setup
-interface TickerAutocompleteConfig {
-    inputId: string;
-    dropdownId: string;
-    hiddenInputId?: string;
-    onSelect?: (ticker: string, companyName?: string) => void;
-    allowAll?: boolean;
-    initialValue?: string;
-    tickerListUrl?: string;
-    appendFundParam?: (url: string) => string;
-    showCompanyNames?: boolean;
-}
-
 // Global ticker list cache
-let tickerListCache: string[] = [];
-let tickerNamesCache: Record<string, string> = {};
-let tickerListLoaded: boolean = false;
-let tickerListPending: Promise<{ tickers: string[]; names: Record<string, string> }> | null = null;
-
+let tickerListCache = [];
+let tickerNamesCache = {};
+let tickerListLoaded = false;
+let tickerListPending = null;
 /**
  * Load ticker list from API endpoint, with deduplication and retry
  */
-async function loadTickerList(
-    url: string = '/api/v2/ticker/list',
-    appendFundParam?: (url: string) => string,
-    withNames: boolean = false
-): Promise<{ tickers: string[]; names: Record<string, string> }> {
+async function loadTickerList(url = '/api/v2/ticker/list', appendFundParam, withNames = false) {
     if (tickerListLoaded && tickerListCache.length > 0) {
         return { tickers: tickerListCache, names: tickerNamesCache };
     }
-
     // Deduplicate concurrent calls — share the same in-flight promise
     if (tickerListPending) {
         return tickerListPending;
     }
-
-    const fetchOnce = async (): Promise<{ tickers: string[]; names: Record<string, string> }> => {
+    const fetchOnce = async () => {
         let finalUrl = withNames ? `${url}${url.includes('?') ? '&' : '?'}with_names=1` : url;
         finalUrl = appendFundParam ? appendFundParam(finalUrl) : finalUrl;
-
         // Retry up to 2 times for transient errors (e.g. token refresh in progress)
         const MAX_RETRIES = 2;
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -57,12 +28,13 @@ async function loadTickerList(
                 if (!response.ok) {
                     throw new Error(`Failed to load ticker list (HTTP ${response.status})`);
                 }
-                const data: TickerListResponse = await response.json();
+                const data = await response.json();
                 tickerListCache = data.tickers || [];
                 tickerNamesCache = data.ticker_names || {};
                 tickerListLoaded = true;
                 return { tickers: tickerListCache, names: tickerNamesCache };
-            } catch (error) {
+            }
+            catch (error) {
                 if (attempt === MAX_RETRIES) {
                     console.error('Error loading ticker list:', error);
                     return { tickers: [], names: {} };
@@ -71,51 +43,34 @@ async function loadTickerList(
         }
         return { tickers: [], names: {} };
     };
-
     tickerListPending = fetchOnce().finally(() => { tickerListPending = null; });
     return tickerListPending;
 }
-
 /**
  * Get the cached company name for a ticker (if available)
  */
-export function getCompanyName(ticker: string): string | undefined {
+export function getCompanyName(ticker) {
     return tickerNamesCache[ticker.toUpperCase()];
 }
-
 /**
  * Set up ticker autocomplete on an input element
  */
-export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void {
-    const {
-        inputId,
-        dropdownId,
-        hiddenInputId,
-        onSelect,
-        allowAll = false,
-        initialValue,
-        tickerListUrl = '/api/v2/ticker/list',
-        appendFundParam,
-        showCompanyNames = false
-    } = config;
-
-    const inputEl = document.getElementById(inputId) as HTMLInputElement | null;
-    const dropdownEl = document.getElementById(dropdownId) as HTMLDivElement | null;
-    const hiddenInputEl = hiddenInputId ? document.getElementById(hiddenInputId) as HTMLInputElement | null : null;
-
+export function setupTickerAutocomplete(config) {
+    const { inputId, dropdownId, hiddenInputId, onSelect, allowAll = false, initialValue, tickerListUrl = '/api/v2/ticker/list', appendFundParam, showCompanyNames = false } = config;
+    const inputEl = document.getElementById(inputId);
+    const dropdownEl = document.getElementById(dropdownId);
+    const hiddenInputEl = hiddenInputId ? document.getElementById(hiddenInputId) : null;
     if (!inputEl || !dropdownEl) {
         console.error(`Ticker autocomplete: Could not find input (${inputId}) or dropdown (${dropdownId})`);
         return;
     }
-
     // Store references to guarantee non-null in nested functions
-    const input: HTMLInputElement = inputEl;
-    const dropdown: HTMLDivElement = dropdownEl;
-    const hiddenInput: HTMLInputElement | null = hiddenInputEl;
+    const input = inputEl;
+    const dropdown = dropdownEl;
+    const hiddenInput = hiddenInputEl;
     let selectedIndex = -1;
-    let tickerList: string[] = [];
-    let tickerNames: Record<string, string> = {};
-
+    let tickerList = [];
+    let tickerNames = {};
     // Set initial value if provided
     if (initialValue) {
         input.value = initialValue;
@@ -123,17 +78,14 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             hiddenInput.value = initialValue;
         }
     }
-
     // Load ticker list (with names if configured)
     loadTickerList(tickerListUrl, appendFundParam, showCompanyNames).then((result) => {
         tickerList = result.tickers;
         tickerNames = result.names;
     });
-
     // Handle input changes
     input.addEventListener('input', () => {
         const query = input.value.toUpperCase().trim();
-
         // Handle "All" option if allowed
         if (allowAll && (query.length === 0 || query === 'ALL')) {
             if (hiddenInput) {
@@ -142,70 +94,69 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             hideAutocomplete();
             return;
         }
-
         if (query.length === 0) {
             hideAutocomplete();
             return;
         }
-
         // Filter tickers that start with the query, or whose company name contains the query
         const matches = tickerList.filter(t => {
-            if (t.toUpperCase().startsWith(query)) return true;
+            if (t.toUpperCase().startsWith(query))
+                return true;
             if (showCompanyNames && tickerNames[t.toUpperCase()]) {
                 return tickerNames[t.toUpperCase()].toUpperCase().includes(query);
             }
             return false;
         }).slice(0, 20);
-
         if (matches.length === 0) {
             hideAutocomplete();
             return;
         }
-
         selectedIndex = -1;
         showAutocomplete(matches);
     });
-
     // Handle keyboard navigation
     input.addEventListener('keydown', (e) => {
         const items = dropdown.querySelectorAll('[data-ticker]');
-
         if (e.key === 'ArrowDown') {
             e.preventDefault();
             selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
             updateSelection(items);
-        } else if (e.key === 'ArrowUp') {
+        }
+        else if (e.key === 'ArrowUp') {
             e.preventDefault();
             selectedIndex = Math.max(selectedIndex - 1, -1);
             updateSelection(items);
-        } else if (e.key === 'Enter') {
+        }
+        else if (e.key === 'Enter') {
             e.preventDefault();
             if (selectedIndex >= 0 && items[selectedIndex]) {
-                selectTicker((items[selectedIndex] as HTMLElement).dataset.ticker || '');
-            } else if (input.value.trim()) {
+                selectTicker(items[selectedIndex].dataset.ticker || '');
+            }
+            else if (input.value.trim()) {
                 const value = input.value.toUpperCase().trim();
                 if (allowAll && value === 'ALL') {
                     selectTicker('All');
-                } else {
+                }
+                else {
                     selectTicker(value);
                 }
             }
-        } else if (e.key === 'Escape') {
+        }
+        else if (e.key === 'Escape') {
             hideAutocomplete();
         }
     });
-
     // Handle blur (delayed to allow click on dropdown)
     input.addEventListener('blur', () => {
         setTimeout(() => hideAutocomplete(), 150);
     });
-
     // Focus shows dropdown if there's input
     input.addEventListener('focus', () => {
         const query = input.value.toUpperCase().trim();
         if (query.length > 0 && query !== 'ALL') {
             const matches = tickerList.filter(t => {
-                if (t.toUpperCase().startsWith(query)) return true;
+                if (t.toUpperCase().startsWith(query))
+                    return true;
                 if (showCompanyNames && tickerNames[t.toUpperCase()]) {
                     return tickerNames[t.toUpperCase()].toUpperCase().includes(query);
                 }
@@ -216,10 +167,8 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             }
         }
     });
-
-    function showAutocomplete(matches: string[]): void {
+    function showAutocomplete(matches) {
         dropdown.innerHTML = '';
-
         // Add "All" option if allowed and no query or query is "all"
         if (allowAll && (input.value.trim().length === 0 || input.value.toUpperCase().trim() === 'ALL')) {
             const allItem = document.createElement('div');
@@ -234,19 +183,16 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             });
             dropdown.appendChild(allItem);
         }
-
         matches.forEach((ticker) => {
             const item = document.createElement('div');
             item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary flex items-center justify-between gap-2';
             item.dataset.ticker = ticker;
             item.setAttribute('role', 'option');
             item.id = `ticker-option-${ticker}`;
-
             const tickerSpan = document.createElement('span');
             tickerSpan.className = 'font-semibold';
             tickerSpan.textContent = ticker;
             item.appendChild(tickerSpan);
-
             // Show company name if available
             const companyName = tickerNames[ticker.toUpperCase()];
             if (showCompanyNames && companyName) {
@@ -255,7 +201,6 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
                 nameSpan.textContent = companyName;
                 item.appendChild(nameSpan);
             }
-
             item.addEventListener('mousedown', (e) => {
                 e.preventDefault();
                 selectTicker(ticker);
@@ -265,15 +210,13 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         dropdown.classList.remove('hidden');
         input.setAttribute('aria-expanded', 'true');
     }
-
-    function hideAutocomplete(): void {
+    function hideAutocomplete() {
         dropdown.classList.add('hidden');
         input.setAttribute('aria-expanded', 'false');
         input.removeAttribute('aria-activedescendant');
         selectedIndex = -1;
     }
-
-    function updateSelection(items: NodeListOf<Element>): void {
+    function updateSelection(items) {
         items.forEach((item, idx) => {
             if (idx === selectedIndex) {
                 item.classList.add('bg-dashboard-background');
@@ -281,7 +224,8 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
                 if (item.id) {
                     input.setAttribute('aria-activedescendant', item.id);
                 }
-            } else {
+            }
+            else {
                 item.classList.remove('bg-dashboard-background');
                 item.removeAttribute('aria-selected');
             }
@@ -291,21 +235,18 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             items[selectedIndex].scrollIntoView({ block: 'nearest' });
         }
     }
-
-    function selectTicker(ticker: string): void {
+    function selectTicker(ticker) {
         if (ticker === 'All' && allowAll) {
             input.value = '';
-        } else {
+        }
+        else {
             input.value = ticker;
         }
-
         // Update hidden input if present
         if (hiddenInput) {
             hiddenInput.value = ticker;
         }
-
         hideAutocomplete();
-
         // Call custom callback if provided (include company name)
         if (onSelect) {
             const companyName = tickerNames[ticker.toUpperCase()];
@@ -313,3 +254,4 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         }
     }
 }
+//# sourceMappingURL=ticker_autocomplete.js.map

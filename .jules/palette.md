@@ -14,3 +14,7 @@
 ## 2026-09-29 - Ideas accept modal stays hand-rolled (PR #568 not merged)
 **Learning:** `ideas.html`'s accept modal handles Cancel and backdrop clicks in `ideas.ts`; the only real gap was ESC, fixed with a plain keydown listener. Converting it to a hidden Flowbite toggle button plus a MutationObserver added indirection for that one key.
 **Action:** Fix the specific missing behavior in place; only move a modal to Flowbite when that is the smaller change, and verify it in a browser.
+## $(date +%Y-%m-%d) - ARIA Roles & Combobox Accessibility
+ **Issue:** Custom autocomplete dropdowns (like ticker search and contributor entry) lacked ARIA roles, rendering them inaccessible to screen readers, and relied on a broken legacy keyboard navigation pattern that attempted to focus generic `<div>` elements without tabindexes.
+ **Learning:** When circumventing Flowbite for complex, dynamic data fetching dropdowns, manual W3C ARIA combobox requirements (e.g. `role="combobox"`, `aria-activedescendant`) are frequently forgotten. The TypeScript compiler enforces strict null-checks on `HTMLElement` manipulations.
+ **Prevention:** Always assign `role="combobox"` and `aria-expanded` to custom search inputs, ensure the list container has `role="listbox"`, give children `role="option"`, and handle keyboard navigation by dynamically updating `aria-activedescendant` rather than native `.focus()`.
