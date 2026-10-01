@@ -25,6 +25,7 @@ import os
 import time
 import random
 import logging
+import traceback
 from pathlib import Path
 from typing import Optional, Dict
 from datetime import datetime, timedelta
@@ -665,9 +666,13 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
             detected_challenges = []  # Initialize for later use
             
             logger.info(f"Navigating to {service_url}...")
+            nav_status = None
             try:
                 # Navigate with realistic timing
-                page.goto(service_url, wait_until="networkidle", timeout=30000)
+                response = page.goto(service_url, wait_until="networkidle", timeout=30000)
+                if response is not None:
+                    nav_status = response.status
+                    logger.info(f"Navigation HTTP status: {nav_status}")
             except PlaywrightTimeout:
                 logger.warning("Navigation timeout, but continuing...")
                 # Wait a bit for page to load
@@ -699,7 +704,6 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
             # Wait for page to fully load and cookies to be set
             logger.info("Waiting for page to load and cookies to be set...")
             # Simulate human-like behavior: small random delay
-            import random
             time.sleep(3 + random.uniform(0, 2))
             
             # Try to interact with page naturally (scroll, mouse movement simulation)
@@ -743,6 +747,28 @@ def refresh_cookies_with_browser(existing_cookies: Optional[Dict[str, str]]) -> 
             if cookies_dict:
                 logger.info(f"All cookie names: {list(cookies_dict.keys())}")
             
+            # Authentication check. The presence of __Secure-1PSID below proves nothing
+            # on its own: we injected it ourselves, so it is always in the jar. The
+            # honest signals are the HTTP status (Gemini answers 404, not a login
+            # redirect, when the session is dead) and whether Google rotated
+            # __Secure-1PSIDTS, which it does on every authenticated request.
+            if nav_status is not None and nav_status >= 400:
+                logger.error(f"Service returned HTTP {nav_status} - the session is not authenticated")
+                logger.error("   Google answers 404 for an unauthenticated Gemini app load.")
+                logger.error("   Cookies cannot be refreshed from a dead session; a human must")
+                logger.error("   log in and paste fresh cookies (admin UI -> POST /api/admin/ai/cookies).")
+                return None
+
+            if existing_cookies and "__Secure-1PSIDTS" in existing_cookies:
+                if cookies_dict.get("__Secure-1PSIDTS") == existing_cookies["__Secure-1PSIDTS"]:
+                    # Not fatal on its own: a cached authenticated load might not rotate,
+                    # and failing here would stall a healthy refresher. The HTTP status
+                    # check above is the authoritative dead-session signal.
+                    logger.warning("__Secure-1PSIDTS was not rotated - the session may not be authenticated")
+                    logger.warning("   Google rotates this token on every authenticated request, so an")
+                    logger.warning("   unchanged value suggests it only echoed back what we sent.")
+                    logger.warning("   If this repeats, a human must log in and paste fresh cookies.")
+
             # Check if we got the required cookies
             if "__Secure-1PSID" not in cookies_dict:
                 logger.error("Failed to get __Secure-1PSID cookie")
@@ -914,7 +940,13 @@ def main():
     
     if should_refresh:
         logger.info(f"Initial refresh needed: {reason}")
-        refresh_cookies()
+        # Must not be fatal: an exception here would exit the process and, under
+        # restart:unless-stopped, turn a single bug into a permanent restart loop.
+        try:
+            refresh_cookies()
+        except Exception as e:
+            logger.error(f"Initial refresh failed: {e}")
+            traceback.print_exc()
     else:
         logger.info(f"Skipping initial refresh: {reason}")
     
@@ -952,7 +984,6 @@ def main():
             break
         except Exception as e:
             logger.error(f"Unexpected error in main loop: {e}")
-            import traceback
             traceback.print_exc()
             # Continue running despite errors - wait with jitter
             error_wait = random.randint(60, 180)
