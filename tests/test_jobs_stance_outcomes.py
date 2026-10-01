@@ -11,7 +11,7 @@ from web_dashboard.scheduler.jobs_stance_outcomes import (
     SKIP_NOT_MATURED,
     candidate_price_symbols,
     compute_excess_return,
-    record_scoring_attempt,
+    record_scoring_attempts,
     score_stance_row,
     select_unscored_stances,
     _nearest_close_on_or_before,
@@ -137,11 +137,11 @@ def test_score_stance_row_not_matured_is_its_own_reason() -> None:
 def test_not_matured_does_not_burn_a_scoring_attempt() -> None:
     """A stance must never be dead-lettered before it was eligible to score."""
     pg = MagicMock()
-    record_scoring_attempt(pg, stance_id="uuid-1", horizon_days=30, reason=SKIP_NOT_MATURED)
-    assert not pg.execute_update.called
+    record_scoring_attempts(pg, [("uuid-1", 30, SKIP_NOT_MATURED)])
+    assert not pg.execute_many.called
 
-    record_scoring_attempt(pg, stance_id="uuid-1", horizon_days=30, reason=SKIP_NO_TICKER_PRICE)
-    assert pg.execute_update.called
+    record_scoring_attempts(pg, [("uuid-1", 30, SKIP_NO_TICKER_PRICE)])
+    assert pg.execute_many.called
 
 
 def test_select_unscored_stances_excludes_dead_lettered_rows() -> None:
@@ -205,4 +205,4 @@ def test_stance_outcomes_job_scores_row(mock_ticker_fetch, mock_bench_fetch) -> 
             [],
         ]
         _run_stance_outcomes_job()
-        assert pg.execute_update.called
+        assert pg.execute_many.called
