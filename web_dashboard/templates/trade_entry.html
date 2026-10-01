@@ -81,10 +81,10 @@
                                     class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none text-text-secondary">🔍</span>
                                 <input type="text" id="ticker" name="ticker"
                                     class="border text-sm rounded-lg block w-full ps-10 p-2.5 uppercase transition-colors duration-300"
-                                    placeholder="AAPL" autocomplete="off" aria-required="true" required>
+                                    placeholder="AAPL" autocomplete="off" aria-required="true" required
+                                    role="combobox" aria-expanded="false" aria-controls="ticker-autocomplete-dropdown" aria-haspopup="listbox">
                                 <!-- Autocomplete dropdown -->
-                                <!-- TODO(a11y): add combobox ARIA roles (role=combobox/listbox/option, aria-expanded, aria-activedescendant), keyboard navigation and click-outside close to this custom autocomplete. -->
-                                <div id="ticker-autocomplete-dropdown"
+                                <div id="ticker-autocomplete-dropdown" role="listbox"
                                     class="hidden absolute z-50 w-full mt-1 bg-dashboard-surface border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                 </div>
                             </div>
