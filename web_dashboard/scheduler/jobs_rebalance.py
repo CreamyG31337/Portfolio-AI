@@ -135,15 +135,13 @@ def _run_rebalance_recommendation_job(job_id: str, target_profile: str) -> None:
     try:
         from utils.job_tracking import mark_job_started, mark_job_completed
         from supabase_client import SupabaseClient
+        from supabase_pagination import fetch_all_rows
 
         mark_job_started(job_id, target_date)
         client = SupabaseClient(use_service_role=True)
         policy = get_rebalance_policy(target_profile)
 
-        funds_result = client.supabase.table("funds").select(
-            "name, fund_type, is_production"
-        ).execute()
-        fund_rows = funds_result.data or []
+        fund_rows = fetch_all_rows(client, "funds", "name, fund_type, is_production", order="id")
         production_rows = [row for row in fund_rows if row.get("is_production") is True]
         scoped_rows = production_rows if production_rows else fund_rows
 
@@ -174,16 +172,12 @@ def _run_rebalance_recommendation_job(job_id: str, target_profile: str) -> None:
             if not fund_name:
                 continue
 
-            positions_result = client.supabase.table("latest_positions").select(
-                "ticker, market_value"
-            ).eq("fund", fund_name).execute()
-            cash_result = client.supabase.table("cash_balances").select(
-                "amount"
-            ).eq("fund", fund_name).execute()
+            positions_rows = fetch_all_rows(client, "latest_positions", "ticker, market_value", filters=[("fund", "eq", fund_name)], order="ticker")
+            cash_rows = fetch_all_rows(client, "cash_balances", "amount", filters=[("fund", "eq", fund_name)], order="id")
 
             analysis = _analyze_fund_rebalance(
-                positions=positions_result.data or [],
-                cash_rows=cash_result.data or [],
+                positions=positions_rows,
+                cash_rows=cash_rows,
                 policy=policy,
             )
 
