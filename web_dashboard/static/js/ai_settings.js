@@ -1,0 +1,1175 @@
+import { getCsrfHeaders } from './csrf.js';
+import { showToast as showToastBase } from './toast.js';
+// DOM Elements
+const ollamaIndicator = document.getElementById('ollama-indicator');
+const ollamaMessage = document.getElementById('ollama-message');
+const testOllamaBtn = document.getElementById('test-ollama-btn');
+const postgresIndicator = document.getElementById('postgres-indicator');
+const postgresMessage = document.getElementById('postgres-message');
+const settingsForm = document.getElementById('settings-form');
+const autoBlacklistInput = document.getElementById('auto_blacklist_threshold');
+const maxBatchSizeInput = document.getElementById('max_research_batch_size');
+const fallbackModelSelect = document.getElementById('ai_summarizing_fallback_model');
+const saveSettingsBtn = document.getElementById('save-settings-btn');
+const modelRuntimeTableBody = document.getElementById('model-runtime-table-body');
+const modelRuntimeUpdated = document.getElementById('model-runtime-updated');
+const addDomainInput = document.getElementById('add-domain-input');
+const addDomainBtn = document.getElementById('add-domain-btn');
+const blacklistTableBody = document.getElementById('blacklist-table-body');
+const skipListTableBody = document.getElementById('skip-list-table-body');
+const refreshSkipListBtn = document.getElementById('refresh-skip-list-btn');
+const webaiIndicator = document.getElementById('webai-indicator');
+const webaiMessage = document.getElementById('webai-message');
+const webaiSource = document.getElementById('webai-source');
+const testWebaiBtn = document.getElementById('test-webai-btn');
+const glmIndicator = document.getElementById('glm-indicator');
+const glmMessage = document.getElementById('glm-message');
+const glmSource = document.getElementById('glm-source');
+const testGlmBtn = document.getElementById('test-glm-btn');
+const glmApiKeyInput = document.getElementById('glm-api-key-input');
+const saveGlmKeyBtn = document.getElementById('save-glm-key-btn');
+const cookieJsonMethod = document.getElementById('cookie-json-method');
+const cookieIndividualMethod = document.getElementById('cookie-individual-method');
+const cookieJsonInput = document.getElementById('cookie-json-input');
+const cookie1psidInput = document.getElementById('cookie-1psid-input');
+const cookie1psidtsInput = document.getElementById('cookie-1psidts-input');
+const saveCookiesBtn = document.getElementById('save-cookies-btn');
+const cookieRefresherLogs = document.getElementById('cookie-refresher-logs');
+const refreshCookieLogsBtn = document.getElementById('refresh-cookie-logs-btn');
+const cookieLogLinesInput = document.getElementById('cookie-log-lines');
+const cookieLogLinesValue = document.getElementById('cookie-log-lines-value');
+const cookieRefresherStatus = document.getElementById('cookie-refresher-status');
+const statusDot = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+// Helper function to escape HTML content
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+// Toast notification system for AI settings
+function showToastForAI(message, type = 'success') {
+    showToastBase(message, type);
+}
+// Confirmation toast with action buttons
+function showConfirmationToast(message, onConfirm, onCancel) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'flex flex-col w-full max-w-xs p-4 text-gray-500 bg-white rounded-lg shadow dark:text-gray-400 dark:bg-gray-800 border-l-4 border-yellow-500 transition-opacity duration-300 opacity-0';
+    const toastId = `toast-${Date.now()}`;
+    toast.id = toastId;
+    toast.innerHTML = `
+        <div class="mb-3 text-sm font-normal">${escapeHtml(message)}</div>
+        <div class="flex gap-2 justify-end">
+            <button type="button" class="confirm-btn px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 focus:ring-2 focus:ring-red-300 dark:bg-red-500 dark:hover:bg-red-600">
+                Confirm
+            </button>
+            <button type="button" class="cancel-btn px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 focus:ring-2 focus:ring-gray-300 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600">
+                Cancel
+            </button>
+        </div>
+    `;
+    container.appendChild(toast);
+    // Add event listeners
+    const confirmBtn = toast.querySelector('.confirm-btn');
+    const cancelBtn = toast.querySelector('.cancel-btn');
+    const removeToast = () => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0');
+        setTimeout(() => {
+            toast.remove();
+            const allToasts = container.querySelectorAll('div');
+            if (allToasts.length === 0) {
+                container.remove();
+            }
+        }, 300);
+    };
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            removeToast();
+            onConfirm();
+        });
+    }
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            removeToast();
+            if (onCancel) {
+                onCancel();
+            }
+        });
+    }
+    requestAnimationFrame(() => {
+        toast.classList.remove('opacity-0');
+        toast.classList.add('opacity-100');
+    });
+}
+/** Status dot beside each card — HTML uses bg-text-tertiary initially, not bg-gray-200. */
+function setStatusIndicator(el, state) {
+    if (!el) {
+        return;
+    }
+    el.classList.remove('bg-text-tertiary', 'bg-gray-200', 'bg-green-500', 'bg-red-500');
+    if (state === 'ok') {
+        el.classList.add('bg-green-500');
+    }
+    else if (state === 'error') {
+        el.classList.add('bg-red-500');
+    }
+    else {
+        el.classList.add('bg-text-tertiary');
+    }
+}
+// Status Check Function
+async function checkStatus() {
+    if (ollamaMessage)
+        ollamaMessage.textContent = 'Checking...';
+    if (postgresMessage)
+        postgresMessage.textContent = 'Checking...';
+    if (webaiMessage)
+        webaiMessage.textContent = 'Checking...';
+    if (glmMessage)
+        glmMessage.textContent = 'Checking...';
+    setStatusIndicator(ollamaIndicator, 'pending');
+    setStatusIndicator(postgresIndicator, 'pending');
+    setStatusIndicator(webaiIndicator, 'pending');
+    setStatusIndicator(glmIndicator, 'pending');
+    try {
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(() => controller.abort(), 15000);
+        const response = await fetch('/api/admin/ai/status', {
+            credentials: 'include',
+            signal: controller.signal,
+        });
+        window.clearTimeout(timeoutId);
+        const data = await response.json();
+        // Update Ollama Status
+        if (ollamaMessage) {
+            const ollamaOk = Boolean(data.ollama?.status);
+            setStatusIndicator(ollamaIndicator, ollamaOk ? 'ok' : 'error');
+            ollamaMessage.textContent = ollamaOk ? 'Online' : (data.ollama?.message || 'Offline');
+            ollamaMessage.classList.toggle('text-green-500', ollamaOk);
+            ollamaMessage.classList.toggle('text-red-500', !ollamaOk);
+        }
+        // Update Postgres Status
+        if (postgresMessage) {
+            const pgOk = data.postgres?.status === 'healthy';
+            setStatusIndicator(postgresIndicator, pgOk ? 'ok' : 'error');
+            postgresMessage.textContent = pgOk ? 'Connected' : (data.postgres?.message || 'Error');
+            postgresMessage.classList.toggle('text-green-500', pgOk);
+            postgresMessage.classList.toggle('text-red-500', !pgOk);
+        }
+        // Update WebAI Cookie Status
+        if (webaiMessage && data.webai) {
+            const webaiOk = Boolean(data.webai.status);
+            setStatusIndicator(webaiIndicator, webaiOk ? 'ok' : 'error');
+            webaiMessage.textContent = webaiOk ? 'Configured' : (data.webai.message || 'Not configured');
+            webaiMessage.classList.toggle('text-green-500', webaiOk);
+            webaiMessage.classList.toggle('text-red-500', !webaiOk);
+            if (webaiSource) {
+                webaiSource.textContent = webaiOk && data.webai.source ? `Source: ${data.webai.source}` : '';
+            }
+        }
+        // Update GLM 4.7 (Zhipu) API Key Status
+        if (glmMessage && data.glm) {
+            const glmOk = Boolean(data.glm.status);
+            setStatusIndicator(glmIndicator, glmOk ? 'ok' : 'error');
+            glmMessage.textContent = glmOk ? (data.glm.message || 'Set') : (data.glm.message || 'Not set');
+            glmMessage.classList.toggle('text-green-500', glmOk);
+            glmMessage.classList.toggle('text-red-500', !glmOk);
+            if (glmSource) {
+                glmSource.textContent = glmOk && data.glm.source ? `Source: ${data.glm.source}` : '';
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error checking status:', error);
+        if (ollamaMessage)
+            ollamaMessage.textContent = 'Error checking status';
+        if (postgresMessage)
+            postgresMessage.textContent = 'Error checking status';
+        if (webaiMessage)
+            webaiMessage.textContent = 'Error checking status';
+        if (glmMessage)
+            glmMessage.textContent = 'Error checking status';
+        setStatusIndicator(ollamaIndicator, 'error');
+        setStatusIndicator(postgresIndicator, 'error');
+        setStatusIndicator(webaiIndicator, 'error');
+        setStatusIndicator(glmIndicator, 'error');
+    }
+}
+// Toggle Cookie Method
+function toggleCookieMethod() {
+    const selectedMethod = document.querySelector('input[name="cookie-method"]:checked')?.value || 'json';
+    const cookieJsonContainer = document.getElementById('cookie-json-method');
+    const cookieIndividualContainer = document.getElementById('cookie-individual-method');
+    if (cookieJsonContainer && cookieIndividualContainer) {
+        if (selectedMethod === 'json') {
+            cookieJsonContainer.classList.remove('hidden');
+            cookieIndividualContainer.classList.add('hidden');
+        }
+        else {
+            cookieJsonContainer.classList.add('hidden');
+            cookieIndividualContainer.classList.remove('hidden');
+        }
+    }
+}
+// Test WebAI Cookies Function
+async function testWebaiCookies() {
+    if (!testWebaiBtn)
+        return;
+    console.log('[DEBUG] Testing WebAI cookies...');
+    const originalText = testWebaiBtn.textContent;
+    testWebaiBtn.textContent = 'Testing...';
+    testWebaiBtn.disabled = true;
+    // Create or get verbose output container
+    let verboseOutput = document.getElementById('cookie-test-verbose-output');
+    if (!verboseOutput) {
+        // Create container if it doesn't exist
+        const webaiStatusCard = document.querySelector('[data-status-card="webai"]');
+        if (webaiStatusCard) {
+            verboseOutput = document.createElement('div');
+            verboseOutput.id = 'cookie-test-verbose-output';
+            verboseOutput.className = 'mt-4 p-4 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg text-sm';
+            verboseOutput.classList.add('hidden');
+            webaiStatusCard.appendChild(verboseOutput);
+        }
+    }
+    // Show verbose output container
+    if (verboseOutput) {
+        verboseOutput.classList.remove('hidden');
+        verboseOutput.innerHTML = '<div class="text-gray-600 dark:text-gray-400">🔄 Running cookie connection test...</div>';
+    }
+    try {
+        console.log('[DEBUG] Sending POST request to /api/admin/ai/cookies/test');
+        const response = await fetch('/api/admin/ai/cookies/test', {
+            method: 'POST',
+            headers: {
+                ...getCsrfHeaders()
+            }
+        });
+        console.log('[DEBUG] Received response:', response.status, response.statusText);
+        const result = await response.json();
+        console.log('[DEBUG] Test result:', result);
+        // Build verbose output
+        let verboseHtml = '<div class="space-y-2">';
+        if (result.success) {
+            verboseHtml += '<div class="text-green-600 dark:text-green-400 font-semibold">✅ Connection Test Successful</div>';
+            verboseHtml += '<div class="text-gray-700 dark:text-gray-300">' + (result.message || 'Connection established successfully') + '</div>';
+        }
+        else {
+            verboseHtml += '<div class="text-red-600 dark:text-red-400 font-semibold">❌ Connection Test Failed</div>';
+            verboseHtml += '<div class="text-gray-700 dark:text-gray-300">' + (result.message || result.error || 'Unknown error') + '</div>';
+        }
+        // Add detailed information
+        if (result.details) {
+            verboseHtml += '<div class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600">';
+            verboseHtml += '<div class="font-semibold text-gray-900 dark:text-white mb-2">Test Details:</div>';
+            verboseHtml += '<div class="space-y-1 text-gray-700 dark:text-gray-300">';
+            // Cookie presence
+            if (result.details.has_1psid !== undefined) {
+                verboseHtml += `<div>${result.details.has_1psid ? '✅' : '❌'} __Secure-1PSID: ${result.details.has_1psid ? 'Present' : 'Missing'}</div>`;
+            }
+            if (result.details.has_1psidts !== undefined) {
+                verboseHtml += `<div>${result.details.has_1psidts ? '✅' : '⚠️'} __Secure-1PSIDTS: ${result.details.has_1psidts ? 'Present' : 'Missing (optional)'}</div>`;
+            }
+            // Client initialization
+            if (result.details.client_init) {
+                verboseHtml += `<div>${result.details.client_init === 'success' ? '✅' : '❌'} Client Initialization: ${result.details.client_init}</div>`;
+            }
+            // Response status
+            if (result.details.response_received !== undefined) {
+                verboseHtml += `<div>${result.details.response_received ? '✅' : '❌'} Response Received: ${result.details.response_received ? 'Yes' : 'No'}</div>`;
+            }
+            if (result.details.response_length !== undefined) {
+                verboseHtml += `<div>📏 Response Length: ${result.details.response_length} characters</div>`;
+            }
+            // Error details
+            if (result.details.error) {
+                verboseHtml += `<div class="text-red-600 dark:text-red-400">❌ Error: ${escapeHtml(result.details.error)}</div>`;
+            }
+            if (result.details.error_type) {
+                verboseHtml += `<div class="text-red-600 dark:text-red-400">🔍 Error Type: ${escapeHtml(result.details.error_type)}</div>`;
+            }
+            // Cookie file location
+            if (result.details.cookie_file) {
+                verboseHtml += `<div class="text-gray-600 dark:text-gray-400">📁 Cookie File: ${escapeHtml(result.details.cookie_file)}</div>`;
+            }
+            verboseHtml += '</div></div>';
+        }
+        verboseHtml += '</div>';
+        // Update verbose output
+        if (verboseOutput) {
+            verboseOutput.innerHTML = verboseHtml;
+        }
+        // Show toast notification
+        if (result.success) {
+            showToastForAI('Cookie test successful!', 'success');
+        }
+        else {
+            showToastForAI('Cookie test failed: ' + (result.message || result.error || 'Unknown error'), 'error');
+        }
+    }
+    catch (error) {
+        console.error('[DEBUG] Error testing cookies:', error);
+        // Show error in verbose output
+        if (verboseOutput) {
+            verboseOutput.innerHTML = `
+                <div class="space-y-2">
+                    <div class="text-red-600 dark:text-red-400 font-semibold">❌ Test Error</div>
+                    <div class="text-gray-700 dark:text-gray-300">Failed to execute test: ${escapeHtml(String(error))}</div>
+                    <div class="text-gray-600 dark:text-gray-400 text-xs mt-2">Check browser console for more details.</div>
+                </div>
+            `;
+        }
+        showToastForAI('Error testing cookies: ' + String(error), 'error');
+    }
+    finally {
+        testWebaiBtn.textContent = originalText;
+        testWebaiBtn.disabled = false;
+        console.log('[DEBUG] Test button reset');
+    }
+}
+// Save Cookies Function
+async function saveCookies() {
+    if (!saveCookiesBtn)
+        return;
+    console.log('[DEBUG] Saving cookies...');
+    const originalText = saveCookiesBtn.textContent;
+    saveCookiesBtn.textContent = 'Saving...';
+    saveCookiesBtn.disabled = true;
+    try {
+        // Get selected method
+        const selectedMethod = document.querySelector('input[name="cookie-method"]:checked')?.value || 'json';
+        console.log('[DEBUG] Selected method:', selectedMethod);
+        let cookies = {};
+        if (selectedMethod === 'json') {
+            if (!cookieJsonInput || !cookieJsonInput.value.trim()) {
+                console.log('[DEBUG] No JSON input provided');
+                showToastForAI('Please enter cookie JSON', 'error');
+                return;
+            }
+            try {
+                console.log('[DEBUG] Parsing JSON input...');
+                cookies = JSON.parse(cookieJsonInput.value);
+                console.log('[DEBUG] Parsed cookies:', Object.keys(cookies));
+                if (!cookies['__Secure-1PSID']) {
+                    console.log('[DEBUG] Missing __Secure-1PSID in parsed data');
+                    showToastForAI('Missing required cookie: __Secure-1PSID', 'error');
+                    return;
+                }
+                console.log('[DEBUG] __Secure-1PSID length:', cookies['__Secure-1PSID'].length);
+                if (cookies['__Secure-1PSIDTS']) {
+                    console.log('[DEBUG] __Secure-1PSIDTS length:', cookies['__Secure-1PSIDTS'].length);
+                }
+            }
+            catch (e) {
+                console.error('[DEBUG] JSON parse error:', e);
+                showToastForAI('Invalid JSON: ' + e.message, 'error');
+                return;
+            }
+        }
+        else {
+            if (!cookie1psidInput || !cookie1psidInput.value.trim()) {
+                console.log('[DEBUG] No __Secure-1PSID input provided');
+                showToastForAI('__Secure-1PSID is required', 'error');
+                return;
+            }
+            cookies['__Secure-1PSID'] = cookie1psidInput.value.trim();
+            console.log('[DEBUG] __Secure-1PSID length:', cookies['__Secure-1PSID'].length);
+            if (cookie1psidtsInput && cookie1psidtsInput.value.trim()) {
+                cookies['__Secure-1PSIDTS'] = cookie1psidtsInput.value.trim();
+                console.log('[DEBUG] __Secure-1PSIDTS length:', cookies['__Secure-1PSIDTS'].length);
+            }
+        }
+        console.log('[DEBUG] Sending POST request to /api/admin/ai/cookies');
+        console.log('[DEBUG] Request body:', JSON.stringify({ cookies: { ...cookies, '__Secure-1PSID': '[REDACTED]', '__Secure-1PSIDTS': '[REDACTED]' } }));
+        const response = await fetch('/api/admin/ai/cookies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
+            body: JSON.stringify({ cookies })
+        });
+        console.log('[DEBUG] Received response:', response.status, response.statusText);
+        const result = await response.json();
+        console.log('[DEBUG] Save result:', result);
+        if (result.success) {
+            console.log('[DEBUG] Cookies saved successfully');
+            showToastForAI('Cookies saved successfully!', 'success');
+            // Reload current cookies display after save
+            console.log('[DEBUG] Reloading current cookies display...');
+            await loadCurrentCookies();
+            // Reload refresher status
+            console.log('[DEBUG] Reloading refresher status...');
+            await loadCookieRefresherStatus();
+        }
+        else {
+            console.log('[DEBUG] Save failed:', result.error);
+            showToastForAI('Error saving cookies: ' + (result.error || 'Unknown error'), 'error');
+        }
+    }
+    catch (error) {
+        console.error('[DEBUG] Error saving cookies:', error);
+        showToastForAI('Error saving cookies', 'error');
+    }
+    finally {
+        saveCookiesBtn.textContent = originalText;
+        saveCookiesBtn.disabled = false;
+        console.log('[DEBUG] Save button reset');
+    }
+}
+// Test GLM 4.7 (Zhipu) API Key
+async function testGlmApiKey() {
+    if (!testGlmBtn)
+        return;
+    const originalText = testGlmBtn.textContent;
+    testGlmBtn.textContent = 'Testing...';
+    testGlmBtn.disabled = true;
+    try {
+        const response = await fetch('/api/admin/ai/glm-api-key/test', {
+            method: 'POST',
+            headers: {
+                ...getCsrfHeaders()
+            }
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToastForAI(result.message || 'GLM API key test successful', 'success');
+            await checkStatus();
+        }
+        else {
+            showToastForAI(result.error || 'GLM API key test failed', 'error');
+        }
+    }
+    catch (e) {
+        showToastForAI('Error testing GLM API key: ' + String(e), 'error');
+    }
+    finally {
+        testGlmBtn.textContent = originalText;
+        testGlmBtn.disabled = false;
+    }
+}
+// Save GLM 4.7 (Zhipu) API Key
+async function saveGlmApiKey() {
+    if (!saveGlmKeyBtn || !glmApiKeyInput)
+        return;
+    const val = glmApiKeyInput.value.trim();
+    if (!val) {
+        showToastForAI('Enter your Zhipu API key', 'error');
+        return;
+    }
+    const originalText = saveGlmKeyBtn.textContent;
+    saveGlmKeyBtn.textContent = 'Saving...';
+    saveGlmKeyBtn.disabled = true;
+    try {
+        const response = await fetch('/api/admin/ai/glm-api-key', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
+            body: JSON.stringify({ api_key: val })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToastForAI(result.message || 'GLM API key saved', 'success');
+            glmApiKeyInput.value = '';
+            await checkStatus();
+        }
+        else {
+            showToastForAI(result.error || 'Failed to save GLM API key', 'error');
+        }
+    }
+    catch (e) {
+        showToastForAI('Error saving GLM API key: ' + String(e), 'error');
+    }
+    finally {
+        saveGlmKeyBtn.textContent = originalText;
+        saveGlmKeyBtn.disabled = false;
+    }
+}
+// Load Current Cookies
+async function loadCurrentCookies() {
+    console.log('[DEBUG] Loading current cookies...');
+    // Update current cookies display (above input fields)
+    const currentDisplay = document.getElementById('cookie-current-display');
+    if (!currentDisplay) {
+        console.error('[DEBUG] cookie-current-display element not found');
+        return;
+    }
+    try {
+        const response = await fetch('/api/admin/ai/cookies');
+        console.log('[DEBUG] Received response:', response.status, response.statusText);
+        const result = await response.json();
+        console.log('[DEBUG] Current cookies result:', result);
+        if (result.success) {
+            const cookies = result.cookies || {};
+            const hasCookies = result.has_cookies === true;
+            console.log('[DEBUG] Loaded cookies:', Object.keys(cookies));
+            console.log('[DEBUG] has_cookies:', hasCookies);
+            // Don't auto-populate input fields - user wants to paste new cookies to compare
+            // Just display current cookies above for comparison
+            let html = '<div class="space-y-2">';
+            html += '<div class="grid grid-cols-1 md:grid-cols-2 gap-4">';
+            html += '<div class="bg-white p-3 rounded border border-gray-200 dark:bg-gray-800 dark:border-gray-700">';
+            html += '<h6 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">Current Cookies</h6>';
+            // Display cookie status
+            html += '<div class="space-y-1 text-sm text-gray-700 dark:text-gray-400">';
+            if (hasCookies) {
+                const psid = cookies['__Secure-1PSID'] || '';
+                const psidts = cookies['__Secure-1PSIDTS'] || '';
+                console.log('[DEBUG] __Secure-1PSID length:', psid.length);
+                console.log('[DEBUG] __Secure-1PSIDTS length:', psidts.length);
+                if (psid) {
+                    html += '<div class="flex items-center gap-2">';
+                    html += '<div class="w-2 h-2 bg-green-500 rounded-full"></div>';
+                    html += '<div>';
+                    html += '<div class="text-xs font-mono text-gray-600 dark:text-gray-400">__Secure-1PSID:</div>';
+                    html += '<div class="text-xs font-mono text-gray-900 dark:text-white truncate max-w-xs">' + psid.substring(0, 50) + (psid.length > 50 ? '...' : '') + '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                else {
+                    html += '<div class="text-xs text-gray-500 dark:text-gray-400">__Secure-1PSID: Not set</div>';
+                }
+                if (psidts) {
+                    html += '<div class="flex items-center gap-2">';
+                    html += '<div class="w-2 h-2 bg-green-500 rounded-full"></div>';
+                    html += '<div>';
+                    html += '<div class="text-xs font-mono text-gray-600 dark:text-gray-400">__Secure-1PSIDTS:</div>';
+                    html += '<div class="text-xs font-mono text-gray-900 dark:text-white truncate max-w-xs">' + psidts.substring(0, 50) + (psidts.length > 50 ? '...' : '') + '</div>';
+                    html += '</div>';
+                    html += '</div>';
+                }
+                else {
+                    html += '<div class="text-xs text-gray-500 dark:text-gray-400">__Secure-1PSIDTS: Not set</div>';
+                }
+            }
+            else {
+                html += '<div class="text-xs text-gray-500 dark:text-gray-400">No cookies configured</div>';
+            }
+            html += '</div>';
+            html += '</div>';
+            html += '</div>';
+            currentDisplay.innerHTML = html;
+            console.log('[DEBUG] Current cookies display updated');
+        }
+    }
+    catch (error) {
+        console.error('[DEBUG] Error loading current cookies:', error);
+        if (currentDisplay) {
+            currentDisplay.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">Error loading cookies</div>';
+        }
+    }
+}
+// Cookie Refresher Logs
+async function loadCookieRefresherLogs() {
+    console.log('[DEBUG] Loading cookie refresher logs...');
+    if (!cookieLogLinesInput) {
+        console.log('[DEBUG] cookieLogLinesInput not found');
+        return;
+    }
+    const lines = parseInt(cookieLogLinesInput.value) || 100;
+    console.log('[DEBUG] Requesting', lines, 'log lines');
+    const valueText = document.getElementById('cookie-log-lines-value');
+    try {
+        const response = await fetch(`/api/admin/ai/cookies/refresher/logs?lines=${lines}`);
+        console.log('[DEBUG] Logs response:', response.status, response.statusText);
+        const result = await response.json();
+        console.log('[DEBUG] Logs result:', {
+            success: result.success,
+            total_lines: result.total_lines,
+            showing_lines: result.showing_lines,
+            has_logs: !!result.logs,
+            logs_count: result.logs?.length,
+            error: result.error,
+            message: result.message
+        });
+        if (result.success && result.logs) {
+            if (valueText) {
+                valueText.textContent = `${result.logs.length} lines`;
+            }
+            console.log('[DEBUG] Rendering', result.logs.length, 'log lines');
+            // Display logs
+            const logsHtml = result.logs.map(line => `<div class="text-xs font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap break-all">${escapeHtml(line)}</div>`).join('');
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = logsHtml;
+                console.log('[DEBUG] Logs display updated');
+            }
+        }
+        else if (result.error) {
+            console.log('[DEBUG] Error loading logs:', result.error);
+            const errorMsg = result.message || result.error || 'Unknown error';
+            if (cookieRefresherLogs) {
+                cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">${escapeHtml(errorMsg)}</div>`;
+            }
+        }
+    }
+    catch (error) {
+        console.error('[DEBUG] Error loading logs:', error);
+        if (cookieRefresherLogs) {
+            cookieRefresherLogs.innerHTML = `<div class="text-sm text-red-600 dark:text-red-400">Error loading logs</div>`;
+        }
+    }
+}
+// Cookie Refresher Status
+async function loadCookieRefresherStatus() {
+    console.log('[DEBUG] Loading cookie refresher status...');
+    try {
+        const response = await fetch('/api/admin/ai/cookies/refresher/status');
+        console.log('[DEBUG] Received response:', response.status, response.statusText);
+        const result = await response.json();
+        console.log('[DEBUG] Status result:', result);
+        if (result.success) {
+            // Determine status based on cookie presence
+            const hasCookies = result.has_1psid && result.has_1psidts;
+            const partialCookies = result.has_1psid && !result.has_1psidts;
+            console.log('[DEBUG] Cookie status:', {
+                hasCookies,
+                partialCookies,
+                has_1psid: result.has_1psid,
+                has_1psidts: result.has_1psidts
+            });
+            if (statusDot) {
+                if (hasCookies) {
+                    statusDot.className = 'bg-green-500';
+                }
+                else if (partialCookies) {
+                    statusDot.className = 'bg-yellow-500';
+                }
+                else {
+                    statusDot.className = 'bg-red-500';
+                }
+            }
+            // Build status text
+            let statusTextContent = '';
+            if (result.status === 'full') {
+                statusTextContent = 'Configured';
+            }
+            else if (result.status === 'configured') {
+                statusTextContent = 'Partial';
+            }
+            else {
+                statusTextContent = 'Missing';
+            }
+            // Add grace period info
+            if (result.is_in_grace_period) {
+                console.log('[DEBUG] Cookie refresher is in grace period');
+                if (result.age_info?.age_hours !== undefined) {
+                    const remaining = Math.max(0, 2 - result.age_info.age_hours);
+                    statusTextContent += ` (Grace: ${remaining.toFixed(1)}h remaining)`;
+                }
+            }
+            // Add refresh info
+            if (result.metadata?.refresh_count !== undefined) {
+                statusTextContent += ` | Refreshes: ${result.metadata.refresh_count}`;
+            }
+            if (statusText) {
+                statusText.textContent = statusTextContent;
+            }
+            // Log additional details
+            if (result.metadata) {
+                console.log('[DEBUG] Metadata:', result.metadata);
+            }
+            if (result.age_info) {
+                console.log('[DEBUG] Age info:', result.age_info);
+            }
+        }
+        else if (result.error) {
+            console.log('[DEBUG] Error loading status:', result.error);
+            if (statusDot) {
+                statusDot.className = 'bg-red-500';
+            }
+            if (statusText) {
+                statusText.textContent = 'Error: ' + (result.message || result.error || 'Unknown');
+            }
+        }
+        else {
+            console.log('[DEBUG] No cookies configured');
+            if (statusDot) {
+                statusDot.className = 'bg-red-500';
+            }
+            if (statusText) {
+                statusText.textContent = 'No cookies';
+            }
+        }
+    }
+    catch (error) {
+        console.error('[DEBUG] Error loading refresher status:', error);
+        if (statusDot) {
+            statusDot.className = 'bg-red-500';
+        }
+        if (statusText) {
+            statusText.textContent = 'Error loading status';
+        }
+    }
+}
+// Blacklist Functions
+async function addDomain() {
+    if (!addDomainInput || !addDomainBtn)
+        return;
+    const domain = addDomainInput.value.trim();
+    if (!domain) {
+        showToastForAI('Please enter a domain', 'error');
+        return;
+    }
+    const originalText = addDomainBtn.textContent;
+    addDomainBtn.textContent = 'Adding...';
+    addDomainBtn.disabled = true;
+    try {
+        const response = await fetch('/api/admin/ai/blacklist/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
+            body: JSON.stringify({ domain })
+        });
+        const result = await response.json();
+        if (result.success) {
+            // Reload blacklist table
+            await loadBlacklist();
+            addDomainInput.value = '';
+            showToastForAI('Domain added to blacklist', 'success');
+        }
+        else {
+            showToastForAI('Error adding domain: ' + (result.error || 'Unknown error'), 'error');
+        }
+    }
+    catch (error) {
+        console.error('Error adding domain:', error);
+        showToastForAI('Error adding domain', 'error');
+    }
+    finally {
+        addDomainBtn.textContent = originalText;
+        addDomainBtn.disabled = false;
+    }
+}
+async function removeDomain(domain) {
+    showConfirmationToast(`Are you sure you want to remove "${domain}" from the blacklist?`, async () => {
+        try {
+            const response = await fetch('/api/admin/ai/blacklist/remove', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...getCsrfHeaders()
+                },
+                body: JSON.stringify({ domain })
+            });
+            const result = await response.json();
+            if (result.success) {
+                await loadBlacklist();
+                showToastForAI('Domain removed from blacklist', 'success');
+            }
+            else {
+                showToastForAI('Error removing domain: ' + (result.error || 'Unknown error'), 'error');
+            }
+        }
+        catch (error) {
+            console.error('Error removing domain:', error);
+            showToastForAI('Error removing domain', 'error');
+        }
+    });
+}
+async function toggleAutoBlacklist(domain, currentEntry) {
+    try {
+        const isAuto = !currentEntry.auto_blacklisted;
+        const response = await fetch('/api/admin/ai/blacklist/toggle', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
+            body: JSON.stringify({ domain, auto_blacklisted: isAuto })
+        });
+        const result = await response.json();
+        if (result.success) {
+            await loadBlacklist();
+            showToastForAI(`Domain ${isAuto ? 'added to' : 'removed from'} auto-blacklist`, 'success');
+        }
+        else {
+            showToastForAI(`Error toggling auto-blacklist: ${result.error || 'Unknown error'}`, 'error');
+        }
+    }
+    catch (error) {
+        console.error('Error toggling auto-blacklist:', error);
+        showToastForAI('Error toggling auto-blacklist', 'error');
+    }
+}
+async function loadBlacklist() {
+    try {
+        const response = await fetch('/api/admin/ai/blacklist');
+        const result = await response.json();
+        if ((result.success || result.blacklist) && result.blacklist && blacklistTableBody) {
+            blacklistTableBody.innerHTML = result.blacklist.map(entry => {
+                const lastFailure = entry.last_failure_reason ? `(${entry.last_failure_reason})` : '';
+                const consecutive = entry.consecutive_failures !== undefined ? `[${entry.consecutive_failures}]` : '';
+                const autoLabel = entry.auto_blacklisted ? `<span class="inline-flex items-center gap-1"><span class="w-2 h-2 rounded-full ${entry.auto_blacklisted ? 'bg-red-500' : 'bg-gray-400'}"></span> ${entry.auto_blacklisted ? 'Auto' : 'Manual'}</span>` : `<span class="text-gray-400">Manual</span>`;
+                return `
+                    <tr>
+                        <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">${escapeHtml(entry.domain)}</td>
+                        <td class="px-4 py-2 text-sm text-center">
+                            ${autoLabel}
+                        </td>
+                        <td class="px-4 py-2 text-sm text-center">
+                            <div class="inline-flex items-center justify-center gap-1">
+                                <button onclick="removeDomain('${escapeHtml(entry.domain)}')" class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 px-2 py-1 rounded text-sm">
+                                    Remove
+                                </button>
+                            </div>
+                            <td class="px-4 py-2 text-sm text-center">
+                                <button onclick="toggleAutoBlacklist('${escapeHtml(entry.domain)}', ${JSON.stringify(entry)})" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 px-2 py-1 rounded text-sm">
+                                    ${entry.auto_blacklisted ? 'Unban' : 'Ban'}
+                                </button>
+                            </td>
+                        </td>
+                        <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">${lastFailure}</td>
+                        <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">${consecutive}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        else if (result.error && blacklistTableBody) {
+            blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error: ${escapeHtml(result.error)}</td></tr>`;
+        }
+    }
+    catch (error) {
+        console.error('Error loading blacklist:', error);
+        if (blacklistTableBody) {
+            blacklistTableBody.innerHTML = `<tr><td colspan="5" class="px-4 py-4 text-red-600 dark:text-red-400">Error loading blacklist</td></tr>`;
+        }
+    }
+}
+// Settings Functions
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/admin/ai/settings');
+        const data = await response.json();
+        if (data.auto_blacklist_threshold && autoBlacklistInput) {
+            autoBlacklistInput.value = data.auto_blacklist_threshold;
+        }
+        if (data.max_research_batch_size && maxBatchSizeInput) {
+            maxBatchSizeInput.value = data.max_research_batch_size;
+        }
+        if (fallbackModelSelect) {
+            const fallbackRaw = data.ai_summarizing_fallback_models;
+            let fallbackModel = '';
+            if (Array.isArray(fallbackRaw) && fallbackRaw.length > 0) {
+                fallbackModel = String(fallbackRaw[0] ?? '').trim();
+            }
+            else if (typeof fallbackRaw === 'string') {
+                fallbackModel = fallbackRaw.split(',')[0]?.trim() || '';
+            }
+            fallbackModelSelect.value = fallbackModel;
+        }
+        renderModelRuntime(data.model_runtime || []);
+        if (modelRuntimeUpdated) {
+            const stamp = data.model_runtime_generated_at;
+            if (typeof stamp === 'string' && stamp.trim()) {
+                const parsed = new Date(stamp);
+                modelRuntimeUpdated.textContent = Number.isNaN(parsed.getTime())
+                    ? `Generated: ${stamp}`
+                    : `Generated: ${parsed.toLocaleString()}`;
+            }
+            else {
+                modelRuntimeUpdated.textContent = 'Generated: unknown';
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+function formatModelSetting(value) {
+    if (value === null || value === undefined) {
+        return 'n/a';
+    }
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return Number.isInteger(value) ? value.toString() : value.toFixed(3);
+    }
+    return String(value);
+}
+function formatTriplet(triplet) {
+    return `ctx ${formatModelSetting(triplet.num_ctx)} | out ${formatModelSetting(triplet.num_predict)} | temp ${formatModelSetting(triplet.temperature)}`;
+}
+function hasAnyOverride(triplet) {
+    return triplet.num_ctx !== null || triplet.num_predict !== null || triplet.temperature !== null;
+}
+function renderModelRuntime(rows) {
+    if (!modelRuntimeTableBody) {
+        return;
+    }
+    if (!rows || rows.length === 0) {
+        modelRuntimeTableBody.innerHTML = '<tr><td colspan="6" class="px-4 py-4 text-center text-text-secondary">No model runtime data found</td></tr>';
+        return;
+    }
+    modelRuntimeTableBody.innerHTML = rows.map((row) => {
+        const overridden = hasAnyOverride(row.override);
+        const sourceBadge = overridden
+            ? '<span class="px-2 py-1 text-xs rounded border border-amber-400 text-amber-600">system_settings override</span>'
+            : '<span class="px-2 py-1 text-xs rounded border border-green-500 text-green-600">model_config default</span>';
+        return `
+            <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt">
+                <td class="px-4 py-3 text-text-primary font-medium">${escapeHtml(row.model || 'unknown')}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(row.provider || 'ollama')}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(formatTriplet(row.base))}</td>
+                <td class="px-4 py-3 text-text-primary">${escapeHtml(formatTriplet(row.override))}</td>
+                <td class="px-4 py-3 text-text-primary font-medium">${escapeHtml(formatTriplet(row.effective))}</td>
+                <td class="px-4 py-3">${sourceBadge}</td>
+            </tr>
+        `;
+    }).join('');
+}
+async function saveSettings() {
+    if (!settingsForm || !saveSettingsBtn)
+        return;
+    const originalText = saveSettingsBtn.textContent;
+    saveSettingsBtn.textContent = 'Saving...';
+    saveSettingsBtn.disabled = true;
+    try {
+        const autoBlacklistThreshold = autoBlacklistInput?.value || '10';
+        const maxResearchBatchSize = maxBatchSizeInput?.value || '100';
+        const fallbackModel = fallbackModelSelect?.value?.trim() || '';
+        const response = await fetch('/api/admin/ai/settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getCsrfHeaders()
+            },
+            body: JSON.stringify({
+                auto_blacklist_threshold: autoBlacklistThreshold,
+                max_research_batch_size: maxResearchBatchSize,
+                ai_summarizing_fallback_models: fallbackModel ? [fallbackModel] : []
+            })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToastForAI('Settings saved successfully!', 'success');
+        }
+        else {
+            showToastForAI('Error saving settings: ' + (result.error || 'Unknown error'), 'error');
+        }
+    }
+    catch (error) {
+        console.error('Error saving settings:', error);
+        showToastForAI('Error saving settings', 'error');
+    }
+    finally {
+        if (saveSettingsBtn) {
+            saveSettingsBtn.textContent = originalText;
+            saveSettingsBtn.disabled = false;
+        }
+    }
+}
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('[DEBUG] Page loaded, initializing AI Settings...');
+    console.log('[DEBUG] DOM Elements found:', {
+        ollamaIndicator: !!ollamaIndicator,
+        ollamaMessage: !!ollamaMessage,
+        testOllamaBtn: !!testOllamaBtn,
+        postgresIndicator: !!postgresIndicator,
+        postgresMessage: !!postgresMessage,
+        webaiIndicator: !!webaiIndicator,
+        webaiMessage: !!webaiMessage,
+        webaiSource: !!webaiSource,
+        testWebaiBtn: !!testWebaiBtn,
+        cookieJsonInput: !!cookieJsonInput,
+        cookie1psidInput: !!cookie1psidInput,
+        cookie1psidtsInput: !!cookie1psidtsInput,
+        saveCookiesBtn: !!saveCookiesBtn,
+        cookieRefresherLogs: !!cookieRefresherLogs,
+        refreshCookieLogsBtn: !!refreshCookieLogsBtn,
+        cookieLogLinesInput: !!cookieLogLinesInput,
+        cookieLogLinesValue: !!cookieLogLinesValue,
+        cookieRefresherStatus: !!cookieRefresherStatus,
+        statusDot: !!statusDot,
+        statusText: !!statusText,
+        addDomainBtn: !!addDomainBtn,
+        addDomainInput: !!addDomainInput,
+        saveSettingsBtn: !!saveSettingsBtn,
+        settingsForm: !!settingsForm
+    });
+    // Initial load: status + settings + cookies in parallel (status was blocking ~30s
+    // when the API probed every model_config Ollama host sequentially).
+    console.log('[DEBUG] Checking initial status...');
+    await Promise.all([
+        checkStatus(),
+        loadSettings(),
+        loadCurrentCookies(),
+    ]);
+    // Load cookie refresher logs
+    if (cookieLogLinesInput) {
+        console.log('[DEBUG] Loading cookie refresher logs...');
+        loadCookieRefresherLogs();
+    }
+    // Load cookie refresher status
+    console.log('[DEBUG] Loading cookie refresher status...');
+    loadCookieRefresherStatus();
+    // Load blacklist
+    console.log('[DEBUG] Loading blacklist...');
+    await loadBlacklist();
+    console.log('[DEBUG] Setting up event listeners...');
+    // Event listeners
+    if (testOllamaBtn) {
+        testOllamaBtn.addEventListener('click', checkStatus);
+        console.log('[DEBUG] testOllamaBtn listener added');
+    }
+    if (testWebaiBtn) {
+        testWebaiBtn.addEventListener('click', testWebaiCookies);
+        console.log('[DEBUG] testWebaiBtn listener added');
+    }
+    if (testGlmBtn) {
+        testGlmBtn.addEventListener('click', testGlmApiKey);
+    }
+    if (saveGlmKeyBtn) {
+        saveGlmKeyBtn.addEventListener('click', saveGlmApiKey);
+    }
+    if (saveCookiesBtn) {
+        saveCookiesBtn.addEventListener('click', saveCookies);
+        console.log('[DEBUG] saveCookiesBtn listener added');
+    }
+    if (cookieLogLinesInput) {
+        cookieLogLinesInput.addEventListener('input', (e) => {
+            const value = e.target.value;
+            if (cookieLogLinesValue) {
+                cookieLogLinesValue.textContent = value;
+            }
+            loadCookieRefresherLogs();
+        });
+        console.log('[DEBUG] cookieLogLinesInput listener added');
+    }
+    if (refreshCookieLogsBtn) {
+        refreshCookieLogsBtn.addEventListener('click', loadCookieRefresherLogs);
+        console.log('[DEBUG] refreshCookieLogsBtn listener added');
+    }
+    if (addDomainBtn) {
+        addDomainBtn.addEventListener('click', addDomain);
+        console.log('[DEBUG] addDomainBtn listener added');
+    }
+    // Allow adding domain with Enter key
+    if (addDomainInput) {
+        addDomainInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addDomain();
+            }
+        });
+        console.log('[DEBUG] addDomainInput Enter listener added');
+    }
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', saveSettings);
+        console.log('[DEBUG] saveSettingsBtn listener added');
+    }
+    // Cookie method toggle
+    document.querySelectorAll('input[name="cookie-method"]').forEach(radio => {
+        radio.addEventListener('change', toggleCookieMethod);
+    });
+    // Skip list
+    if (refreshSkipListBtn) {
+        refreshSkipListBtn.addEventListener('click', loadSkipList);
+        console.log('[DEBUG] refreshSkipListBtn listener added');
+    }
+    // Load skip list on page load
+    loadSkipList();
+    console.log('[DEBUG] AI Settings initialization complete');
+});
+// Skip List Functions
+async function loadSkipList() {
+    if (!skipListTableBody)
+        return;
+    try {
+        const response = await fetch('/api/admin/ai/skip-list', {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        if (result.success && result.skip_list) {
+            renderSkipList(result.skip_list);
+        }
+        else {
+            skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No skipped tickers</td></tr>';
+        }
+    }
+    catch (error) {
+        console.error('Error loading skip list:', error);
+        if (skipListTableBody) {
+            skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading skip list</td></tr>';
+        }
+    }
+}
+function renderSkipList(skipList) {
+    if (!skipListTableBody)
+        return;
+    if (skipList.length === 0) {
+        skipListTableBody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-text-secondary">No skipped tickers</td></tr>';
+        return;
+    }
+    skipListTableBody.innerHTML = skipList.map(entry => {
+        const ticker = entry.ticker || 'N/A';
+        const reason = entry.reason || 'No reason provided';
+        const failureCount = entry.failure_count || 0;
+        const lastFailed = entry.last_failed_at ? new Date(entry.last_failed_at).toLocaleDateString() : 'N/A';
+        const skipUntil = entry.skip_until ? new Date(entry.skip_until).toLocaleDateString() : 'Forever';
+        const addedBy = entry.added_by || 'system';
+        return `
+            <tr class="bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt">
+                <td class="px-6 py-4">
+                    <a href="/ticker?ticker=${encodeURIComponent(ticker)}"
+                       class="font-medium text-accent hover:text-accent-hover hover:underline">
+                        ${escapeHtml(ticker)}
+                    </a>
+                </td>
+                <td class="px-6 py-4 text-text-primary">${escapeHtml(reason.substring(0, 100))}${reason.length > 100 ? '...' : ''}</td>
+                <td class="px-6 py-4 text-text-primary">${failureCount}</td>
+                <td class="px-6 py-4 text-text-primary">${lastFailed}</td>
+                <td class="px-6 py-4 text-right">
+                    <button onclick="removeFromSkipList('${escapeHtml(ticker)}')"
+                            class="px-3 py-1 text-sm text-theme-success-text bg-transparent border border-theme-success-text rounded-lg hover:bg-theme-success-bg/10">
+                        Remove
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+function removeFromSkipList(ticker) {
+    window.showConfirmModal({
+        title: 'Remove from skip list',
+        message: `Remove ${ticker} from skip list? It will be eligible for analysis again.`,
+        confirmLabel: 'Remove',
+        onConfirm: async () => {
+            try {
+                const response = await fetch(`/api/admin/ai/skip-list/${encodeURIComponent(ticker)}`, {
+                    method: 'DELETE',
+                    headers: { ...getCsrfHeaders() },
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    showToastForAI(`${ticker} removed from skip list`, 'success');
+                    loadSkipList();
+                }
+                else {
+                    const result = await response.json();
+                    showToastForAI(result.error || 'Failed to remove from skip list', 'error');
+                }
+            }
+            catch (error) {
+                console.error('Error removing from skip list:', error);
+                showToastForAI('Error removing from skip list', 'error');
+            }
+        }
+    });
+}
+// Make removeFromSkipList available globally
+window.removeFromSkipList = removeFromSkipList;
+//# sourceMappingURL=ai_settings.js.map

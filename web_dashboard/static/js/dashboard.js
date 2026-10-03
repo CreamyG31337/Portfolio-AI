@@ -1,0 +1,3175 @@
+/**
+ * Dashboard V2 - Matches dashboard.html template
+ * Uses /api/dashboard/* endpoints
+ *
+ * IMPORTANT: This is a TypeScript SOURCE file.
+ * - Edit this file: web_dashboard/src/js/dashboard.ts
+ * - Compiled output: web_dashboard/static/js/dashboard.js (auto-generated)
+ * - DO NOT edit the compiled .js file - it will be overwritten on build
+ * - Run `npm run build:ts` to compile changes
+ *
+ * See web_dashboard/src/js/README.md for development guidelines.
+ *
+ * TODO: Evaluate migrating FontAwesome icons (fas fa-...) to inline SVG icons
+ * (e.g. Heroicons) for better Tailwind integration and smaller bundle size.
+ */
+import { FormatterCache } from './formatters.js';
+// Global types are declared in globals.d.ts
+console.log('[Dashboard] dashboard.ts file loaded and executing...');
+/** Keep aligned with web_dashboard/market_brief_service.py BRIEF_BENCHMARK_TICKERS + common ETF prose aliases. */
+const DASHBOARD_AI_BENCHMARK_LINK_TICKERS = ['^GSPC', 'QQQ', '^RUT', 'VTI', 'SPY', 'IWM', 'DIA'];
+// Global state
+const state = {
+    currentFund: typeof window !== 'undefined' && window.INITIAL_FUND ? window.INITIAL_FUND : '',
+    timeRange: 'ALL',
+    useSolidLines: false, // Solid lines checkbox state
+    pnlChartView: 'top_bottom',
+    charts: {}, // Charts now use Plotly (no longer ApexCharts)
+    gridApi: null, // AG Grid API
+    // Individual holdings state
+    showIndividualHoldings: false,
+    individualHoldingsDays: 7,
+    individualHoldingsFilter: 'all',
+    // Exchange rate state
+    inverseExchangeRate: false,
+    /** Uppercase tickers from last successful /api/dashboard/holdings for current fund. */
+    holdingsTickerSet: new Set(),
+    /** Plaintext AI card payloads; DOM bodies are filled after refresh via linkify. */
+    aiCards: {
+        marketBrief: null,
+        portfolio: null,
+        fundDigest: null,
+    },
+};
+const chartResizeObservers = new Map();
+function setAiModelFootnote(el, model) {
+    if (!el)
+        return;
+    const m = (model ?? '').trim();
+    if (!m) {
+        el.textContent = '';
+        el.classList.add('hidden');
+        return;
+    }
+    el.textContent = `Model: ${m}`;
+    el.classList.remove('hidden');
+}
+function escapeRegexMeta(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function buildTickerLinkWhitelist() {
+    const u = new Set();
+    for (const t of DASHBOARD_AI_BENCHMARK_LINK_TICKERS) {
+        u.add(t.toUpperCase());
+    }
+    for (const t of state.holdingsTickerSet) {
+        u.add(t);
+    }
+    return u;
+}
+function buildTickerLinkRegex(whitelist) {
+    const syms = [...whitelist].filter((s) => s.length > 0).sort((a, b) => b.length - a.length);
+    if (syms.length === 0)
+        return null;
+    const inner = syms.map(escapeRegexMeta).join('|');
+    return new RegExp(`(?<![A-Za-z0-9])(?:${inner})(?![A-Za-z0-9])`, 'gi');
+}
+function linkifyWhitelistedTickers(text, whitelist) {
+    const frag = document.createDocumentFragment();
+    if (!text) {
+        return frag;
+    }
+    const re = buildTickerLinkRegex(whitelist);
+    if (!re) {
+        frag.appendChild(document.createTextNode(text));
+        return frag;
+    }
+    let lastIndex = 0;
+    let m;
+    const r = new RegExp(re.source, re.flags);
+    while ((m = r.exec(text)) !== null) {
+        const full = m[0];
+        if (m.index > lastIndex) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+        }
+        const upper = full.toUpperCase();
+        if (whitelist.has(upper)) {
+            const a = document.createElement('a');
+            a.href = `/ticker?ticker=${encodeURIComponent(upper)}`;
+            a.className = 'text-accent underline hover:opacity-80';
+            a.textContent = full;
+            frag.appendChild(a);
+        }
+        else {
+            frag.appendChild(document.createTextNode(full));
+        }
+        lastIndex = m.index + full.length;
+    }
+    if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    return frag;
+}
+function renderLinkifiedText(el, text, whitelist) {
+    if (!el)
+        return;
+    el.textContent = '';
+    el.appendChild(linkifyWhitelistedTickers(text, whitelist));
+}
+function applyTickerLinksToDashboardAiCards() {
+    const wl = buildTickerLinkWhitelist();
+    const mb = state.aiCards.marketBrief;
+    const mbCard = document.getElementById('market-brief-card');
+    if (mb && mbCard && !mbCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('market-brief-headline'), mb.headline, wl);
+        renderLinkifiedText(document.getElementById('market-brief-narrative'), mb.narrative, wl);
+    }
+    const pf = state.aiCards.portfolio;
+    const pfCard = document.getElementById('portfolio-ai-summary-card');
+    if (pf && pfCard && !pfCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('portfolio-ai-summary-headline'), pf.headline, wl);
+        renderLinkifiedText(document.getElementById('portfolio-ai-summary-narrative'), pf.narrative, wl);
+        const ul = document.getElementById('portfolio-ai-summary-bullets');
+        if (ul) {
+            ul.textContent = '';
+            for (const b of pf.bullets) {
+                const li = document.createElement('li');
+                li.appendChild(linkifyWhitelistedTickers(String(b), wl));
+                ul.appendChild(li);
+            }
+        }
+    }
+    const fd = state.aiCards.fundDigest;
+    const fdCard = document.getElementById('fund-digest-card');
+    if (fd && fdCard && !fdCard.classList.contains('hidden')) {
+        renderLinkifiedText(document.getElementById('fund-digest-headline'), fd.headline, wl);
+        renderLinkifiedText(document.getElementById('fund-digest-narrative'), fd.narrative, wl);
+    }
+}
+// Helper to get effective theme
+function getEffectiveTheme() {
+    const htmlElement = document.documentElement;
+    const dataTheme = htmlElement.getAttribute('data-theme') || 'system';
+    if (dataTheme === 'dark' || dataTheme === 'light' || dataTheme === 'midnight-tokyo' || dataTheme === 'abyss') {
+        return dataTheme;
+    }
+    if (dataTheme === 'system') {
+        // For 'system', check if page is actually in dark mode via CSS
+        const bodyBg = window.getComputedStyle(document.body).backgroundColor;
+        const isDark = bodyBg && (bodyBg.includes('rgb(31, 41, 55)') || // --bg-primary dark
+            bodyBg.includes('rgb(17, 24, 39)') || // --bg-secondary dark
+            bodyBg.includes('rgb(55, 65, 81)') // --bg-tertiary dark
+        );
+        return isDark ? 'dark' : 'light';
+    }
+    return 'light'; // default
+}
+function attachPlotlyContainerResize(chartId, relayoutBuilder) {
+    if (chartResizeObservers.has(chartId))
+        return;
+    if (typeof ResizeObserver === 'undefined')
+        return;
+    const el = document.getElementById(chartId);
+    if (!el)
+        return;
+    const observer = new ResizeObserver((entries) => {
+        const Plotly = window.Plotly;
+        if (!Plotly)
+            return;
+        for (const entry of entries) {
+            const target = entry.target;
+            if (!target.data)
+                continue; // Plotly not initialized yet
+            window.requestAnimationFrame(() => {
+                const relayout = relayoutBuilder ? relayoutBuilder(target) : null;
+                if (relayout && Object.keys(relayout).length > 0) {
+                    Plotly.relayout(target, relayout);
+                }
+                Plotly.Plots.resize(target);
+            });
+        }
+    });
+    observer.observe(el);
+    chartResizeObservers.set(chartId, observer);
+}
+// Initialize theme sync for charts
+function initThemeSync() {
+    // Import chart theme utilities
+    const themeManager = window.themeManager;
+    if (themeManager) {
+        themeManager.addListener((theme) => {
+            console.log('[Dashboard] Theme changed, refreshing charts...', { theme });
+            // Update AG Grid theme
+            updateGridTheme();
+            // Re-fetch charts with new theme
+            fetchPerformanceChart().catch(err => console.error('[Dashboard] Error refreshing performance chart on theme change:', err));
+            fetchSectorChart().catch(err => console.error('[Dashboard] Error refreshing sector chart on theme change:', err));
+            fetchCurrencyChart().catch(err => console.error('[Dashboard] Error refreshing currency chart on theme change:', err));
+            fetchExchangeRateData().catch(err => console.error('[Dashboard] Error refreshing exchange rate chart on theme change:', err));
+            fetchCommoditiesChart().catch(err => console.error('[Dashboard] Error refreshing commodities chart on theme change:', err));
+            // Refresh individual holdings chart if visible
+            if (state.showIndividualHoldings) {
+                fetchIndividualHoldingsChart().catch(err => console.error('[Dashboard] Error refreshing individual holdings chart on theme change:', err));
+            }
+        });
+    }
+    else {
+        console.warn('[Dashboard] ThemeManager not found. Chart theme synchronization disabled.');
+    }
+}
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Dashboard] DOMContentLoaded event fired, initializing dashboard...');
+    // Init components
+    initTimeDisplay();
+    initFundSelector();
+    initTimeRangeControls();
+    initSolidLinesCheckbox();
+    initIndividualHoldingsControls();
+    initExchangeRateControls();
+    initCommodityControls();
+    initCommodityControls();
+    initPnlChartControls();
+    initGrid(); // Initialize empty grid
+    initThemeSync(); // Initialize theme synchronization
+    // Fetch Data
+    refreshDashboard();
+    // Auto-refresh every 60s (optional)
+    // setInterval(refreshDashboard, 60000);
+});
+// --- Initialization Functions ---
+function formatTimestampForDisplay(date) {
+    const now = new Date();
+    const safeDate = date.getTime() > now.getTime() ? now : date;
+    const roundedDate = new Date(safeDate.getTime());
+    roundedDate.setSeconds(Math.round(roundedDate.getSeconds() / 60) * 60, 0);
+    // Guard against rounding into the future (e.g., xx:xx:40 -> next minute).
+    if (roundedDate.getTime() > now.getTime()) {
+        roundedDate.setMinutes(roundedDate.getMinutes() - 1, 0, 0);
+    }
+    const userLocales = navigator.languages && navigator.languages.length > 0
+        ? navigator.languages
+        : undefined;
+    const datePart = new Intl.DateTimeFormat(userLocales, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    }).format(roundedDate);
+    const timePart = new Intl.DateTimeFormat(userLocales, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    }).format(roundedDate);
+    const timeZonePart = new Intl.DateTimeFormat(userLocales, { timeZoneName: 'short' })
+        .formatToParts(roundedDate)
+        .find(part => part.type === 'timeZoneName')
+        ?.value ?? 'local time';
+    return `${datePart} at ${timePart} (${timeZonePart})`;
+}
+function formatSummaryUpdatedAt(value) {
+    if (!value)
+        return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime()))
+        return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hour}:${minute}`;
+}
+/** Postgres DATE serialized as YYYY-MM-DD — do not use ``new Date(str)`` (UTC midnight shifts local calendar day). */
+function formatCalendarDateFromYmd(value) {
+    if (!value)
+        return "";
+    const s = String(value).trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s))
+        return "";
+    const y = Number(s.slice(0, 4));
+    const mo = Number(s.slice(5, 7));
+    const d = Number(s.slice(8, 10));
+    const cal = new Date(y, mo - 1, d);
+    if (Number.isNaN(cal.getTime()))
+        return "";
+    return cal.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+/** Market brief: show trading-day date (brief_date) and real refresh time (updated_at) separately. */
+function formatMarketBriefAsOfLine(briefDate, updatedAt) {
+    const day = formatCalendarDateFromYmd(briefDate ?? "");
+    const refreshed = formatSummaryUpdatedAt(updatedAt ?? "");
+    if (day && refreshed)
+        return `Trading day ${day} · refreshed ${refreshed}`;
+    if (day)
+        return `Trading day ${day}`;
+    if (refreshed)
+        return `Refreshed ${refreshed}`;
+    return "";
+}
+async function initTimeDisplay() {
+    const el = document.getElementById('last-updated-text');
+    if (!el)
+        return;
+    try {
+        // Fetch latest timestamp from API (same as Streamlit)
+        const fund = state.currentFund || '';
+        const response = await fetch(`/api/dashboard/latest-timestamp?fund=${encodeURIComponent(fund)}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.timestamp) {
+                // Use browser locale and include timezone for an unambiguous timestamp.
+                const timestamp = new Date(data.timestamp);
+                const formatted = formatTimestampForDisplay(timestamp);
+                el.textContent = `Last updated: ${formatted}`;
+                return;
+            }
+        }
+    }
+    catch (error) {
+        console.warn('[Dashboard] Failed to fetch latest timestamp:', error);
+    }
+    // Fallback to current time if API fails
+    const now = new Date();
+    const formatted = formatTimestampForDisplay(now);
+    el.textContent = 'Last updated: ' + formatted;
+}
+async function initFundSelector() {
+    const selector = document.getElementById('global-fund-select');
+    console.log('[Dashboard] Initializing navigation fund selector...', {
+        found: !!selector,
+        current_state_fund: state.currentFund
+    });
+    if (!selector) {
+        console.warn('[Dashboard] Global fund selector not found in sidebar!');
+        return;
+    }
+    if (!state.currentFund) {
+        state.currentFund = selector.value;
+        console.log('[Dashboard] Initial state set from selector value:', state.currentFund);
+    }
+    else {
+        // Sync selector with state (e.g. if set from INITIAL_FUND)
+        if (selector.value !== state.currentFund) {
+            console.log('[Dashboard] Syncing selector value to state:', state.currentFund);
+            selector.value = state.currentFund;
+        }
+    }
+    // Listen for changes
+    selector.addEventListener('change', (e) => {
+        const target = e.target;
+        state.currentFund = target.value;
+        console.log('[Dashboard] Global fund changed to:', state.currentFund);
+        refreshDashboard();
+    });
+}
+function initTimeRangeControls() {
+    const activeClasses = ['active', 'ring-2', 'ring-accent', 'text-accent', 'z-10'];
+    const inactiveClasses = ['text-text-primary'];
+    document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const target = e.target;
+            // Update UI (theme-aligned: accent, not blue)
+            document.querySelectorAll('.range-btn').forEach(b => {
+                b.classList.remove(...activeClasses);
+                b.classList.add(...inactiveClasses);
+                b.setAttribute('aria-pressed', 'false');
+            });
+            target.classList.remove(...inactiveClasses);
+            target.classList.add(...activeClasses);
+            target.setAttribute('aria-pressed', 'true');
+            // Update State
+            const range = target.dataset.range;
+            if (range) {
+                state.timeRange = range;
+                console.log('[Dashboard] Time range changed to:', state.timeRange);
+                // Refresh range-dependent blocks
+                fetchPerformanceChart();
+                fetchActivity();
+                fetchDividends();
+                fetchSummary();
+                fetchMovers();
+                loadPnlChart(state.currentFund);
+                fetchHoldings();
+                fetchSectorChart();
+                fetchCurrencyChart();
+            }
+        });
+    });
+}
+function initSolidLinesCheckbox() {
+    const checkbox = document.getElementById('use-solid-lines');
+    if (!checkbox) {
+        console.warn('[Dashboard] Solid lines checkbox not found');
+        return;
+    }
+    // Set initial state
+    checkbox.checked = state.useSolidLines;
+    // Listen for changes
+    checkbox.addEventListener('change', () => {
+        state.useSolidLines = checkbox.checked;
+        console.log('[Dashboard] Solid lines changed to:', state.useSolidLines);
+        // Refresh performance chart only
+        fetchPerformanceChart();
+        // Also refresh individual holdings if visible
+        if (state.showIndividualHoldings) {
+            fetchIndividualHoldingsChart();
+        }
+    });
+}
+function initIndividualHoldingsControls() {
+    const showCheckbox = document.getElementById('show-individual-holdings');
+    const container = document.getElementById('individual-holdings-container');
+    const rangeButtons = document.querySelectorAll('.individual-range-btn');
+    const filterSelect = document.getElementById('individual-stock-filter');
+    if (!showCheckbox || !container) {
+        console.warn('[Dashboard] Individual holdings controls not found');
+        return;
+    }
+    // Toggle container visibility
+    showCheckbox.addEventListener('change', () => {
+        state.showIndividualHoldings = showCheckbox.checked;
+        if (showCheckbox.checked) {
+            container.classList.remove('hidden');
+            // Fetch chart if fund is selected (not "All")
+            if (state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            }
+            else {
+                const chartEl = document.getElementById('individual-holdings-chart');
+                if (chartEl) {
+                    chartEl.innerHTML = '<div class="text-center text-gray-500 py-8">Select a specific fund to view individual stock performance</div>';
+                }
+            }
+        }
+        else {
+            container.classList.add('hidden');
+        }
+    });
+    // Date range buttons
+    rangeButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const target = e.currentTarget;
+            const days = parseInt(target.dataset.days || '7', 10);
+            // Update visual state
+            rangeButtons.forEach(b => {
+                b.classList.remove('bg-blue-600', 'text-white');
+                b.classList.add('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            });
+            target.classList.remove('bg-gray-100', 'dark:bg-gray-700', 'text-gray-700', 'dark:text-gray-300');
+            target.classList.add('bg-blue-600', 'text-white');
+            // Update state and fetch
+            state.individualHoldingsDays = days;
+            if (state.showIndividualHoldings && state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            }
+        });
+    });
+    // Filter dropdown
+    if (filterSelect) {
+        filterSelect.addEventListener('change', () => {
+            state.individualHoldingsFilter = filterSelect.value;
+            if (state.showIndividualHoldings && state.currentFund && state.currentFund.toLowerCase() !== 'all') {
+                fetchIndividualHoldingsChart();
+            }
+        });
+    }
+}
+function initExchangeRateControls() {
+    const checkbox = document.getElementById('inverse-exchange-rate');
+    if (!checkbox) {
+        console.warn('[Dashboard] Exchange rate toggle not found');
+        return;
+    }
+    // Set initial state from localStorage if available
+    const savedPref = localStorage.getItem('inverse_exchange_rate');
+    if (savedPref !== null) {
+        state.inverseExchangeRate = savedPref === 'true';
+        checkbox.checked = state.inverseExchangeRate;
+    }
+    // Listen for changes
+    checkbox.addEventListener('change', () => {
+        state.inverseExchangeRate = checkbox.checked;
+        // Save preference to localStorage
+        localStorage.setItem('inverse_exchange_rate', String(checkbox.checked));
+        // Refresh exchange rate display
+        fetchExchangeRateData();
+    });
+}
+function initPnlChartControls() {
+    const buttons = document.querySelectorAll('.pnl-view-btn');
+    if (!buttons.length) {
+        return;
+    }
+    buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const view = button.getAttribute('data-pnl-view') || 'top_bottom';
+            if (view === state.pnlChartView) {
+                return;
+            }
+            state.pnlChartView = view;
+            updatePnlChartViewButtons();
+            loadPnlChart(state.currentFund);
+        });
+    });
+    updatePnlChartViewButtons();
+}
+function updatePnlChartViewButtons() {
+    const buttons = document.querySelectorAll('.pnl-view-btn');
+    buttons.forEach((button) => {
+        const view = button.getAttribute('data-pnl-view') || 'top_bottom';
+        const isActive = view === state.pnlChartView;
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+        button.classList.toggle('ring-2', isActive);
+        button.classList.toggle('ring-accent', isActive);
+        button.classList.toggle('z-10', isActive);
+        button.classList.toggle('text-accent', isActive);
+    });
+}
+// Global cache of tickers that don't have logos (to avoid repeated 404s)
+const failedLogoCache = new Set();
+function escapeHtml(text) {
+    if (text === null || text === undefined)
+        return '';
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+function appendRegimeDlRow(dl, label, value) {
+    const dt = document.createElement('dt');
+    dt.className = 'font-medium text-text-tertiary';
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.className = 'break-words';
+    dd.textContent = value;
+    dl.appendChild(dt);
+    dl.appendChild(dd);
+}
+/** Populate structured regime from ``regime_canonical`` (API); uses text nodes only. */
+function renderMarketBriefRegime(container, canon) {
+    if (!container)
+        return;
+    container.innerHTML = '';
+    if (!canon || typeof canon !== 'object') {
+        const p = document.createElement('p');
+        p.className = 'text-text-tertiary';
+        p.textContent = 'No structured regime data.';
+        container.appendChild(p);
+        return;
+    }
+    const str = (k) => {
+        const v = canon[k];
+        return typeof v === 'string' ? v : '';
+    };
+    const conf = canon.regime_confidence;
+    const confStr = typeof conf === 'number' && Number.isFinite(conf) ? String(conf) : '—';
+    const themes = Array.isArray(canon.macro_themes)
+        ? canon.macro_themes.filter((t) => typeof t === 'string').join(', ')
+        : '';
+    const caveats = Array.isArray(canon.caveats)
+        ? canon.caveats.filter((c) => typeof c === 'string')
+        : [];
+    appendRegimeDlRow(container, 'Risk regime', str('risk_regime') || '—');
+    appendRegimeDlRow(container, 'Breadth', str('breadth_proxy') || '—');
+    appendRegimeDlRow(container, 'Volatility', str('volatility_state') || '—');
+    appendRegimeDlRow(container, 'Confidence', confStr);
+    appendRegimeDlRow(container, 'Macro themes', themes || '—');
+    appendRegimeDlRow(container, 'Leadership', str('leadership_note') || '—');
+    appendRegimeDlRow(container, 'As of (regime)', str('as_of') || '—');
+    if (caveats.length) {
+        appendRegimeDlRow(container, 'Caveats', caveats.join(' · '));
+    }
+}
+/**
+ * Creates a logo image element with fallback handling.
+ *
+ * @param ticker - The ticker symbol
+ * @param logoUrl - The primary logo URL (from API)
+ * @param options - Optional configuration
+ * @returns HTMLImageElement configured with error handling and fallback logic
+ */
+function createLogoElement(ticker, logoUrl, options) {
+    const className = options?.className || 'inline-block w-6 h-6 mr-2 object-contain rounded align-middle';
+    const size = options?.size || 24;
+    const placeholder = `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"%3E%3C/svg%3E`;
+    // Clean ticker for fallback lookup (remove spaces and exchange suffixes)
+    const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+    const cacheKey = cleanTicker.toUpperCase();
+    // Create image element
+    const img = document.createElement('img');
+    img.className = className;
+    img.alt = ticker;
+    // Set up error handler BEFORE setting src
+    let fallbackAttempted = false;
+    img.onerror = function () {
+        if (fallbackAttempted) {
+            // Already tried fallback, use transparent placeholder for alignment
+            this.src = placeholder;
+            this.onerror = null;
+            failedLogoCache.add(cacheKey);
+            return;
+        }
+        // Mark that we've attempted fallback
+        fallbackAttempted = true;
+        // Try Yahoo Finance fallback
+        const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+        if (this.src !== yahooUrl) {
+            this.src = yahooUrl;
+        }
+        else {
+            // Same URL, use transparent placeholder for alignment
+            this.src = placeholder;
+            this.onerror = null;
+            failedLogoCache.add(cacheKey);
+        }
+    };
+    // Set the src (error handler is already attached)
+    if (logoUrl && !failedLogoCache.has(cacheKey)) {
+        img.src = logoUrl;
+    }
+    else if (!failedLogoCache.has(cacheKey)) {
+        // No logo URL provided, try Yahoo Finance directly
+        img.src = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+    }
+    else {
+        // Known to fail, use placeholder immediately
+        img.src = placeholder;
+        img.onerror = null;
+    }
+    return img;
+}
+class TickerCellRenderer {
+    init(params) {
+        this.eGui = document.createElement('div');
+        this.eGui.className = 'flex items-center gap-1.5';
+        if (params.value && params.value !== 'N/A') {
+            const ticker = params.value;
+            const logoUrl = params.data?._logo_url;
+            // Always add logo image (or transparent placeholder) for consistent alignment
+            // Use shared helper to handle caching, fallbacks, and error handling
+            const img = createLogoElement(ticker, logoUrl || '', {
+                size: 24,
+                className: 'w-6 h-6 object-contain rounded shrink-0'
+            });
+            this.eGui.appendChild(img);
+            // Add ticker text
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
+            tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
+            tickerSpan.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (ticker && ticker !== 'N/A') {
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
+                }
+            });
+            this.eGui.appendChild(tickerSpan);
+        }
+        else {
+            this.eGui.innerText = params.value || 'N/A';
+        }
+    }
+    getGui() {
+        return this.eGui;
+    }
+}
+function updateGridTheme() {
+    const gridEl = document.getElementById('holdings-grid');
+    if (!gridEl) {
+        return;
+    }
+    const effectiveTheme = getEffectiveTheme();
+    const isDark = effectiveTheme === 'dark' || effectiveTheme === 'midnight-tokyo' || effectiveTheme === 'abyss';
+    // Update AG Grid theme class
+    gridEl.classList.remove('ag-theme-alpine', 'ag-theme-alpine-dark');
+    if (isDark) {
+        gridEl.classList.add('ag-theme-alpine-dark');
+    }
+    else {
+        gridEl.classList.add('ag-theme-alpine');
+    }
+}
+function initGrid() {
+    console.log('[Dashboard] Initializing AG Grid...');
+    const gridEl = document.getElementById('holdings-grid');
+    if (!gridEl) {
+        console.warn('[Dashboard] Holdings grid element not found');
+        return;
+    }
+    // Apply theme before initializing
+    updateGridTheme();
+    const columnDefs = [
+        { field: 'ticker', headerName: 'Ticker', width: 100, minWidth: 80, maxWidth: 120, pinned: 'left', cellRenderer: TickerCellRenderer },
+        { field: 'name', headerName: 'Company', flex: 1.5, minWidth: 150, maxWidth: 300 },
+        { field: 'sector', headerName: 'Sector', flex: 1, minWidth: 100, maxWidth: 200 },
+        { field: 'opened', headerName: 'Opened', width: 100, minWidth: 80, maxWidth: 120 },
+        { field: 'shares', headerName: 'Shares', flex: 0.8, minWidth: 90, maxWidth: 130, type: 'numericColumn', valueFormatter: (params) => (params.value || 0).toFixed(2) },
+        { field: 'avg_price', headerName: 'Avg Price', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params) => formatMoney(params.value) },
+        { field: 'price', headerName: 'Current', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params) => formatMoney(params.value) },
+        { field: 'value', headerName: 'Value', flex: 1, minWidth: 100, maxWidth: 160, type: 'numericColumn', valueFormatter: (params) => formatMoney(params.value) },
+        {
+            field: 'total_return',
+            headerName: 'Total P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
+            valueFormatter: (params) => {
+                const val = params.value || 0;
+                const pct = params.data?.total_return_pct || 0;
+                const isNegative = val < 0;
+                const absVal = Math.abs(val);
+                const absPct = Math.abs(pct);
+                if (isNegative) {
+                    // Negative: Red color (handled by style), no negative sign
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                }
+                else {
+                    // Positive: Green color, no + sign
+                    return `${formatMoney(val)} ${pct.toFixed(1)}%`;
+                }
+            },
+            cellClass: (params) => {
+                const val = params.value || 0;
+                if (val > 0)
+                    return 'text-theme-success-text font-bold text-right';
+                if (val < 0)
+                    return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
+            }
+        },
+        {
+            field: 'day_change',
+            headerName: '1-Day P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
+            valueFormatter: (params) => {
+                const val = params.value;
+                const pct = params.data?.day_change_pct;
+                // No prior snapshot (e.g. new position) — show "—" so we don't imply $0 profit
+                if (val == null && pct == null)
+                    return '—';
+                const n = val ?? 0;
+                const p = pct ?? 0;
+                const isNegative = n < 0;
+                const absVal = Math.abs(n);
+                const absPct = Math.abs(p);
+                if (isNegative)
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                return `${formatMoney(n)} ${p.toFixed(1)}%`;
+            },
+            cellClass: (params) => {
+                const val = params.value;
+                if (val == null && params.data?.day_change_pct == null)
+                    return 'text-right';
+                const n = val ?? 0;
+                if (n > 0)
+                    return 'text-theme-success-text font-bold text-right';
+                if (n < 0)
+                    return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
+            }
+        },
+        {
+            field: 'five_day_pnl',
+            headerName: '5-Day P&L',
+            flex: 1.2,
+            minWidth: 130,
+            maxWidth: 180,
+            type: 'numericColumn',
+            valueFormatter: (params) => {
+                const val = params.value;
+                const pct = params.data?.five_day_pnl_pct;
+                // No prior snapshot (e.g. new position) — show "—" so we don't imply $0 profit
+                if (val == null && pct == null)
+                    return '—';
+                const n = val ?? 0;
+                const p = pct ?? 0;
+                const isNegative = n < 0;
+                const absVal = Math.abs(n);
+                const absPct = Math.abs(p);
+                if (isNegative)
+                    return `${formatMoney(absVal)} ${absPct.toFixed(1)}%`;
+                return `${formatMoney(n)} ${p.toFixed(1)}%`;
+            },
+            cellClass: (params) => {
+                const val = params.value;
+                if (val == null && params.data?.five_day_pnl_pct == null)
+                    return 'text-right';
+                const n = val ?? 0;
+                if (n > 0)
+                    return 'text-theme-success-text font-bold text-right';
+                if (n < 0)
+                    return 'text-theme-error-text font-bold text-right';
+                return 'text-right';
+            }
+        },
+        { field: 'weight', headerName: 'Weight', flex: 0.6, minWidth: 70, maxWidth: 100, type: 'numericColumn', valueFormatter: (params) => (params.value || 0).toFixed(1) + '%' }
+    ];
+    const gridOptions = {
+        columnDefs: columnDefs,
+        defaultColDef: {
+            sortable: true,
+            filter: true,
+            resizable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true
+        },
+        rowData: [],
+        animateRows: true
+    };
+    // agGrid is loaded from CDN and available globally
+    if (typeof window.agGrid === 'undefined') {
+        console.error('[Dashboard] AG Grid not loaded');
+        return;
+    }
+    const agGrid = window.agGrid;
+    // Debug: Log what's available in agGrid
+    console.log('[Dashboard] AG Grid object check:', {
+        agGrid_available: !!agGrid,
+        agGrid_type: typeof agGrid,
+        has_createGrid: typeof agGrid.createGrid === 'function',
+        has_Grid: typeof agGrid.Grid !== 'undefined',
+        agGrid_keys: agGrid ? Object.keys(agGrid).slice(0, 20) : []
+    });
+    // AG Grid v31+ recommends createGrid() which returns the API directly
+    // Check for createGrid first (v31+)
+    if (typeof agGrid.createGrid === 'function') {
+        console.log('[Dashboard] createGrid() is available, attempting to use it...');
+        try {
+            const gridApi = agGrid.createGrid(gridEl, gridOptions);
+            if (gridApi && typeof gridApi.setRowData === 'function') {
+                state.gridApi = gridApi;
+                // Set default sort by weight descending (matching console app)
+                // AG Grid v31+ uses applyColumnState instead of sortModel
+                if (typeof gridApi.applyColumnState === 'function') {
+                    gridApi.applyColumnState({
+                        state: [{ colId: 'weight', sort: 'desc' }],
+                        defaultState: { sort: null }
+                    });
+                }
+                console.log('[Dashboard] AG Grid initialized with createGrid()', {
+                    has_api: !!state.gridApi,
+                    has_setRowData: typeof state.gridApi.setRowData === 'function',
+                    gridApi_type: typeof state.gridApi,
+                    gridApi_keys: state.gridApi ? Object.keys(state.gridApi).slice(0, 10) : []
+                });
+                return; // Success, exit early
+            }
+            else {
+                console.error('[Dashboard] createGrid() returned invalid API:', {
+                    gridApi,
+                    has_setRowData: gridApi && typeof gridApi.setRowData === 'function'
+                });
+            }
+        }
+        catch (createError) {
+            console.error('[Dashboard] Error creating grid with createGrid():', createError);
+        }
+    }
+    console.error('[Dashboard] AG Grid createGrid() not available', {
+        agGrid_available: typeof agGrid !== 'undefined',
+        agGrid_keys: agGrid ? Object.keys(agGrid) : [],
+        has_createGrid: typeof agGrid.createGrid === 'function'
+    });
+}
+async function refreshDashboard() {
+    console.log('[Dashboard] Starting dashboard refresh...', {
+        fund: state.currentFund,
+        timeRange: state.timeRange,
+        timestamp: new Date().toISOString()
+    });
+    // Hide any previous errors
+    const errorContainer = document.getElementById('dashboard-error-container');
+    if (errorContainer) {
+        errorContainer.classList.add('hidden');
+    }
+    const startTime = performance.now();
+    try {
+        await Promise.all([
+            fetchSummary(),
+            fetchPerformanceChart(),
+            fetchSectorChart(),
+            fetchCurrencyChart(),
+            fetchExchangeRateData(),
+            fetchCommoditiesChart(),
+            fetchMarketBrief(),
+            fetchPortfolioAiSummary(),
+            fetchFundDigest(),
+            fetchActionQueue(),
+            loadPnlChart(state.currentFund),
+            fetchMovers(),
+            fetchHoldings(),
+            fetchActivity(),
+            fetchDividends()
+        ]);
+        // Refresh individual holdings chart if visible
+        if (state.showIndividualHoldings) {
+            await fetchIndividualHoldingsChart();
+        }
+        applyTickerLinksToDashboardAiCards();
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Dashboard refresh completed successfully', {
+            duration: `${duration.toFixed(2)}ms`,
+            timestamp: new Date().toISOString()
+        });
+        // Update Time
+        await initTimeDisplay();
+    }
+    catch (error) {
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error refreshing dashboard:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            traceback: traceback ? 'present' : 'missing',
+            duration: `${duration.toFixed(2)}ms`,
+            timestamp: new Date().toISOString()
+        });
+        showDashboardError(error, traceback);
+    }
+}
+/**
+ * Extract error information from API response, including traceback if available
+ */
+function extractErrorInfo(errorData) {
+    const message = errorData.error || errorData.message || 'Unknown error';
+    const traceback = errorData.traceback || undefined;
+    return { message, traceback };
+}
+function showDashboardError(error, traceback) {
+    const errorContainer = document.getElementById('dashboard-error-container');
+    const errorMessage = document.getElementById('dashboard-error-message');
+    if (errorContainer && errorMessage) {
+        const errorText = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error && error.stack ? `<pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded">${error.stack}</pre>` : '';
+        // Include server traceback if available (from API response)
+        const serverTraceback = traceback ? `<div class="mt-4"><h4 class="text-sm font-semibold mb-2">Server Stack Trace:</h4><pre class="text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></div>` : '';
+        errorMessage.innerHTML = `<p class="font-semibold">${errorText}</p>${errorStack}${serverTraceback}`;
+        errorContainer.classList.remove('hidden');
+    }
+}
+// --- Spinner Helpers ---
+function showSpinner(spinnerId) {
+    let spinner = document.getElementById(spinnerId);
+    if (!spinner) {
+        // Spinner doesn't exist (might have been removed by Plotly), create it
+        const chartEl = document.getElementById(spinnerId.replace('-spinner', ''));
+        if (chartEl) {
+            spinner = document.createElement('div');
+            spinner.id = spinnerId;
+            if (spinnerId === 'sector-chart-spinner') {
+                spinner.className = 'flex items-center justify-center h-full';
+            }
+            else {
+                spinner.className = 'absolute inset-0 flex items-center justify-center bg-dashboard-surface z-10';
+            }
+            spinner.innerHTML = '<div class="animate-spin rounded-full h-12 w-12 border-b-2 border-accent"></div>';
+            chartEl.appendChild(spinner);
+        }
+        else {
+            return; // Can't create spinner without parent element
+        }
+    }
+    spinner.classList.remove('hidden');
+}
+function hideSpinner(spinnerId) {
+    const spinner = document.getElementById(spinnerId);
+    if (spinner) {
+        spinner.classList.add('hidden');
+    }
+}
+// --- Data Fetching ---
+async function fetchSummary() {
+    const url = `/api/dashboard/summary?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching summary...', { url, fund: state.currentFund });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Summary response received', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`,
+            url: url
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Summary API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            // Create error with traceback attached
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] Summary data received', {
+            total_value: data.total_value,
+            cash_balance: data.cash_balance,
+            day_change: data.day_change,
+            unrealized_pnl: data.unrealized_pnl,
+            display_currency: data.display_currency,
+            has_thesis: !!data.thesis,
+            has_pillars: !!data.thesis?.pillars,
+            investors: data.investor_count,
+            holdings: data.holdings_count,
+            first_trade_date: data.first_trade_date,
+            processing_time: data.processing_time,
+            from_cache: data.from_cache
+        });
+        console.log('[Dashboard][Debug] User investment payload snapshot', {
+            ui_fund_from_state: state.currentFund,
+            ui_range_from_state: state.timeRange,
+            api_range: data.range ?? null,
+            api_investor_count: data.investor_count ?? null,
+            api_total_value: data.total_value ?? null,
+            api_cash_balance: data.cash_balance ?? null,
+            api_day_change: data.day_change ?? null,
+            api_day_change_pct: data.day_change_pct ?? null,
+            user_investment_present: data.user_investment != null,
+            user_current_value: data.user_investment?.current_value ?? null,
+            user_ownership_pct: data.user_investment?.ownership_pct ?? null,
+            user_net_contribution: data.user_investment?.net_contribution ?? null,
+            user_gain_loss: data.user_investment?.gain_loss ?? null,
+            user_gain_loss_pct: data.user_investment?.gain_loss_pct ?? null,
+            user_day_change: data.user_investment?.user_day_change ?? null,
+            user_day_change_pct: data.user_investment?.user_day_change_pct ?? null,
+        });
+        console.log('[Dashboard][Debug][JSON] User investment payload snapshot', JSON.stringify({
+            ui_fund_from_state: state.currentFund,
+            ui_range_from_state: state.timeRange,
+            api_range: data.range ?? null,
+            api_investor_count: data.investor_count ?? null,
+            api_total_value: data.total_value ?? null,
+            api_cash_balance: data.cash_balance ?? null,
+            api_day_change: data.day_change ?? null,
+            api_day_change_pct: data.day_change_pct ?? null,
+            user_investment_present: data.user_investment != null,
+            user_net_contribution: data.user_investment?.net_contribution ?? null,
+            user_current_value: data.user_investment?.current_value ?? null,
+            user_ownership_pct: data.user_investment?.ownership_pct ?? null,
+            user_gain_loss: data.user_investment?.gain_loss ?? null,
+            user_gain_loss_pct: data.user_investment?.gain_loss_pct ?? null,
+            user_day_change: data.user_investment?.user_day_change ?? null,
+            user_day_change_pct: data.user_investment?.user_day_change_pct ?? null,
+        }, null, 0));
+        // Update Metrics
+        updateMetric('metric-total-value', data.total_value, data.display_currency, true);
+        updateMetric('metric-cash', data.cash_balance, data.display_currency, true);
+        const usePeriodChange = data.range && data.range !== 'ALL' && data.period_change !== undefined && data.period_change !== null;
+        if (usePeriodChange) {
+            updateChangeMetric('metric-day-change', 'metric-day-pct', data.period_change || 0, data.period_change_pct || 0, data.display_currency);
+        }
+        else {
+            updateChangeMetric('metric-day-change', 'metric-day-pct', data.day_change, data.day_change_pct, data.display_currency);
+        }
+        updateChangeMetric('metric-total-pnl', 'metric-total-pnl-pct', data.unrealized_pnl, data.unrealized_pnl_pct, data.display_currency);
+        const currencyEl = document.getElementById('metric-currency');
+        if (currencyEl) {
+            currencyEl.textContent = data.display_currency;
+        }
+        const dayChangeLabelEl = document.getElementById('metric-day-change-label');
+        if (dayChangeLabelEl) {
+            dayChangeLabelEl.textContent = usePeriodChange ? `${data.range} Change` : 'Day Change';
+        }
+        // Update Fund Stats & Rates
+        if (data.investor_count !== undefined) {
+            const investorContainer = document.getElementById('investor-metric-container');
+            if (investorContainer) {
+                // Hide Investors metric if count <= 1 (single-investor or no-investor funds)
+                if (data.investor_count <= 1) {
+                    investorContainer.classList.add('hidden');
+                }
+                else {
+                    investorContainer.classList.remove('hidden');
+                    updateMetric('metric-investors', data.investor_count, '', false);
+                }
+            }
+        }
+        const totalValueLabelEl = document.getElementById('metric-total-value-label');
+        const userShareSection = document.getElementById('user-share-section');
+        const userShareGrid = document.getElementById('user-share-grid');
+        const userShareNoData = document.getElementById('user-share-no-data');
+        // Match Streamlit: contributor count can exceed dashboard login accounts per fund.
+        // Show "Your share" when the fund has multiple capital contributors or API sent a slice.
+        const multiInvestor = (data.investor_count ?? 0) > 1;
+        const isAggregateAllFunds = (state.currentFund || '').toLowerCase() === 'all';
+        const showYourShare = !isAggregateAllFunds && (multiInvestor || data.user_investment != null);
+        console.log('[Dashboard][Debug] User share visibility inputs', {
+            ui_fund_from_state: state.currentFund,
+            multiInvestor,
+            isAggregateAllFunds,
+            showYourShare,
+            user_investment_present: data.user_investment != null,
+        });
+        console.log('[Dashboard][Debug][JSON] User share visibility inputs', JSON.stringify({
+            ui_fund_from_state: state.currentFund,
+            multiInvestor,
+            isAggregateAllFunds,
+            showYourShare,
+            user_investment_present: data.user_investment != null,
+        }, null, 0));
+        if (totalValueLabelEl) {
+            totalValueLabelEl.textContent = multiInvestor ? 'Fund total value' : 'Total value';
+        }
+        if (userShareSection && userShareGrid && userShareNoData) {
+            if (showYourShare) {
+                userShareSection.classList.remove('hidden');
+                const ui = data.user_investment;
+                if (ui) {
+                    userShareGrid.classList.remove('hidden');
+                    userShareNoData.classList.add('hidden');
+                    updateMetric('user-metric-value', ui.current_value, data.display_currency, true);
+                    const userCur = document.getElementById('user-metric-currency');
+                    if (userCur) {
+                        userCur.textContent = data.display_currency;
+                    }
+                    const uChange = ui.user_day_change ?? 0;
+                    const uPct = ui.user_day_change_pct ?? 0;
+                    updateChangeMetric('user-metric-change', 'user-metric-change-pct', uChange, uPct, data.display_currency);
+                    const userChangeLabel = document.getElementById('user-metric-change-label');
+                    if (userChangeLabel) {
+                        userChangeLabel.textContent = usePeriodChange
+                            ? `${data.range} change (your est.)`
+                            : 'Your change (est.)';
+                    }
+                    const gl = ui.gain_loss ?? 0;
+                    const glp = ui.gain_loss_pct ?? 0;
+                    updateChangeMetric('user-metric-return', 'user-metric-return-pct', gl, glp, data.display_currency);
+                    const ownEl = document.getElementById('user-metric-ownership');
+                    if (ownEl) {
+                        ownEl.textContent = `${(ui.ownership_pct ?? 0).toFixed(2)}%`;
+                    }
+                }
+                else {
+                    userShareGrid.classList.add('hidden');
+                    userShareNoData.classList.remove('hidden');
+                }
+            }
+            else {
+                userShareSection.classList.add('hidden');
+            }
+        }
+        if (data.holdings_count !== undefined)
+            updateMetric('metric-holdings-count', data.holdings_count, '', false);
+        // Update First Trade Date
+        if (data.first_trade_date) {
+            const firstTradeDateEl = document.getElementById('metric-first-trade-date');
+            if (firstTradeDateEl) {
+                // Format date as MM/DD/YYYY
+                const date = new Date(data.first_trade_date);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit'
+                });
+                firstTradeDateEl.textContent = formattedDate;
+            }
+        }
+        else {
+            const firstTradeDateEl = document.getElementById('metric-first-trade-date');
+            if (firstTradeDateEl) {
+                firstTradeDateEl.textContent = '--';
+            }
+        }
+        // Update Thesis
+        const thesisContainer = document.getElementById('thesis-container');
+        if (data.thesis && data.thesis.title) {
+            if (thesisContainer) {
+                thesisContainer.classList.remove('hidden');
+            }
+            const titleEl = document.getElementById('thesis-title');
+            const contentEl = document.getElementById('thesis-content');
+            if (titleEl)
+                titleEl.textContent = data.thesis.title;
+            if (contentEl) {
+                // Use marked.js if available, otherwise plain text
+                if (typeof window.marked !== 'undefined') {
+                    contentEl.innerHTML = window.marked.parse(data.thesis.overview || '');
+                }
+                else {
+                    contentEl.textContent = data.thesis.overview || '';
+                }
+            }
+            // Render Pillars
+            if (data.thesis.pillars && data.thesis.pillars.length > 0) {
+                renderPillars(data.thesis.pillars);
+            }
+        }
+        else {
+            if (thesisContainer) {
+                thesisContainer.classList.add('hidden');
+            }
+        }
+    }
+    catch (error) {
+        const duration = performance.now() - startTime;
+        console.error('[Dashboard] Error fetching summary:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            url: url,
+            fund: state.currentFund,
+            duration: `${duration.toFixed(2)}ms`,
+            timestamp: new Date().toISOString()
+        });
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        // Show error in metrics
+        const totalValueEl = document.getElementById('metric-total-value');
+        const dayChangeEl = document.getElementById('metric-day-change');
+        const totalPnlEl = document.getElementById('metric-total-pnl');
+        const cashEl = document.getElementById('metric-cash');
+        if (totalValueEl)
+            totalValueEl.textContent = 'Error';
+        if (dayChangeEl)
+            dayChangeEl.textContent = 'Error';
+        if (totalPnlEl)
+            totalPnlEl.textContent = 'Error';
+        if (cashEl)
+            cashEl.textContent = 'Error';
+        // Show error in UI (include traceback if available)
+        const traceback = error?.traceback;
+        showDashboardError(new Error(`Failed to load summary: ${errorMsg}`), traceback);
+        throw error; // Re-throw so refreshDashboard can catch it
+    }
+}
+async function fetchPerformanceChart() {
+    // Show spinner
+    showSpinner('performance-chart-spinner');
+    const theme = getEffectiveTheme();
+    // Match Streamlit: use_solid_lines parameter from checkbox
+    const url = `/api/dashboard/charts/performance?fund=${encodeURIComponent(state.currentFund)}&range=${state.timeRange}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching performance chart...', { url, fund: state.currentFund, range: state.timeRange, use_solid: state.useSolidLines });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Performance chart response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Performance chart API error:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorInfo.message,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                errorData: JSON.stringify(errorData),
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] Performance chart data received', {
+            has_data: !!data.data,
+            has_layout: !!data.layout,
+            trace_count: data.data ? data.data.length : 0
+        });
+        renderPerformanceChart(data);
+        hideSpinner('performance-chart-spinner');
+    }
+    catch (error) {
+        hideSpinner('performance-chart-spinner');
+        const duration = performance.now() - startTime;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error('[Dashboard] Error fetching performance chart:', {
+            error: errorMsg,
+            stack: errorStack,
+            url: url,
+            duration: `${duration.toFixed(2)}ms`,
+            errorObject: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        });
+        const chartEl = document.getElementById('performance-chart');
+        if (chartEl) {
+            const traceback = error?.traceback;
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+        }
+    }
+}
+async function fetchSectorChart() {
+    // Show spinner
+    showSpinner('sector-chart-spinner');
+    const theme = getEffectiveTheme();
+    const url = `/api/dashboard/charts/allocation?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching sector chart...', { url, fund: state.currentFund, theme });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Sector chart response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Sector chart API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] Sector chart data received', {
+            has_data: !!data.data,
+            has_layout: !!data.layout,
+            trace_count: data.data ? data.data.length : 0
+        });
+        renderSectorChart(data);
+    }
+    catch (error) {
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error fetching sector chart:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        const chartEl = document.getElementById('sector-chart');
+        if (chartEl) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading sector chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+        }
+    }
+}
+async function fetchHoldings() {
+    // Show spinner
+    showSpinner('holdings-grid-spinner');
+    const url = `/api/dashboard/holdings?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching holdings...', { url, fund: state.currentFund });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Holdings response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Holdings API error:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorInfo.message,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                errorData: JSON.stringify(errorData),
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        const rowCount = data.data ? data.data.length : 0;
+        state.holdingsTickerSet = new Set((data.data || []).map((r) => String(r.ticker || '').trim().toUpperCase()).filter(Boolean));
+        console.log('[Dashboard] Holdings data received', {
+            row_count: rowCount,
+            has_grid_api: !!state.gridApi
+        });
+        if (state.gridApi && typeof state.gridApi.setRowData === 'function') {
+            state.gridApi.setRowData(data.data || []);
+            console.log('[Dashboard] Holdings grid updated with', rowCount, 'rows');
+            // Auto-size columns to fit content better
+            if (typeof state.gridApi.autoSizeColumns === 'function') {
+                // Auto-size all columns except pinned ticker
+                const allColumns = state.gridApi.getColumns();
+                if (allColumns && allColumns.length > 0) {
+                    const columnsToAutoSize = allColumns.filter((col) => col.getColId() !== 'ticker');
+                    if (columnsToAutoSize.length > 0) {
+                        state.gridApi.autoSizeColumns(columnsToAutoSize, false);
+                    }
+                }
+            }
+            else if (typeof state.gridApi.sizeColumnsToFit === 'function') {
+                // Fallback to sizeColumnsToFit if autoSizeColumns is not available
+                setTimeout(() => {
+                    state.gridApi.sizeColumnsToFit();
+                }, 100);
+            }
+        }
+        else {
+            console.error('[Dashboard] Grid API not available for updating holdings', {
+                has_gridApi: !!state.gridApi,
+                gridApi_type: typeof state.gridApi,
+                has_setRowData: state.gridApi && typeof state.gridApi.setRowData === 'function',
+                gridApi_keys: state.gridApi ? Object.keys(state.gridApi).slice(0, 10) : []
+            });
+            // Try to reinitialize the grid
+            console.log('[Dashboard] Attempting to reinitialize grid...');
+            initGrid();
+            // Try again after a short delay
+            setTimeout(() => {
+                if (state.gridApi && typeof state.gridApi.setRowData === 'function') {
+                    state.gridApi.setRowData(data.data || []);
+                    console.log('[Dashboard] Holdings grid updated after reinitialization');
+                    // Auto-size columns after reinitialization
+                    if (typeof state.gridApi.autoSizeColumns === 'function') {
+                        const allColumns = state.gridApi.getColumns();
+                        if (allColumns && allColumns.length > 0) {
+                            const columnsToAutoSize = allColumns.filter((col) => col.getColId() !== 'ticker');
+                            if (columnsToAutoSize.length > 0) {
+                                state.gridApi.autoSizeColumns(columnsToAutoSize, false);
+                            }
+                        }
+                    }
+                    else if (typeof state.gridApi.sizeColumnsToFit === 'function') {
+                        state.gridApi.sizeColumnsToFit();
+                    }
+                }
+            }, 100);
+        }
+        hideSpinner('holdings-grid-spinner');
+    }
+    catch (error) {
+        state.holdingsTickerSet = new Set();
+        hideSpinner('holdings-grid-spinner');
+        const duration = performance.now() - startTime;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error fetching holdings:', {
+            error: errorMsg,
+            stack: errorStack,
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`,
+            errorObject: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        });
+        const gridEl = document.getElementById('holdings-grid');
+        if (gridEl) {
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            gridEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading holdings: ${errorMsg}</p>${tracebackHtml}</div>`;
+        }
+    }
+}
+async function fetchActivity() {
+    // Show spinner
+    showSpinner('activity-table-spinner');
+    const url = `/api/dashboard/activity?fund=${encodeURIComponent(state.currentFund)}&limit=100&range=${encodeURIComponent(state.timeRange)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching activity...', { url, fund: state.currentFund });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Activity response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Activity API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        const activityCount = data.data ? data.data.length : 0;
+        console.log('[Dashboard] Activity data received', {
+            activity_count: activityCount
+        });
+        const tbody = document.getElementById('activity-table-body');
+        if (!tbody) {
+            console.warn('[Dashboard] Activity table body not found');
+            return;
+        }
+        tbody.innerHTML = '';
+        if (!data.data || data.data.length === 0) {
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="7" class="px-6 py-4 text-center text-text-secondary">No recent activity</td></tr>';
+        }
+        else {
+            data.data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
+                // Action badge with DRIP support - using semantic theme tokens
+                let actionBadge;
+                if (row.action === 'DRIP') {
+                    actionBadge = '<span class="bg-theme-info-bg text-theme-info-text text-xs font-medium px-2.5 py-0.5 rounded">DRIP</span>';
+                }
+                else if (row.action === 'SELL') {
+                    actionBadge = '<span class="bg-theme-error-bg text-theme-error-text text-xs font-medium px-2.5 py-0.5 rounded">SELL</span>';
+                }
+                else {
+                    actionBadge = '<span class="bg-theme-success-bg text-theme-success-text text-xs font-medium px-2.5 py-0.5 rounded">BUY</span>';
+                }
+                // Format shares to 4 decimal places
+                const sharesFormatted = row.shares.toFixed(4);
+                // Use display_amount (P&L for sells, amount for buys/drips)
+                const displayAmount = row.display_amount || row.amount || (row.shares * row.price);
+                // Company name (or empty string)
+                const companyName = row.company_name || '';
+                // Create logo image using shared helper function
+                const logoImg = createLogoElement(row.ticker, row._logo_url || '');
+                // Build table row using DOM methods for better control
+                const dateCell = document.createElement('td');
+                dateCell.className = 'px-6 py-4 whitespace-nowrap';
+                dateCell.textContent = row.date;
+                tr.appendChild(dateCell);
+                const tickerCell = document.createElement('td');
+                tickerCell.className = 'px-6 py-4 font-bold text-accent';
+                tickerCell.appendChild(logoImg);
+                const tickerLink = document.createElement('a');
+                tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                tickerLink.className = 'hover:underline';
+                tickerLink.textContent = row.ticker;
+                tickerCell.appendChild(tickerLink);
+                tr.appendChild(tickerCell);
+                const companyCell = document.createElement('td');
+                companyCell.className = 'px-6 py-4 text-gray-700 dark:text-gray-300';
+                companyCell.textContent = companyName;
+                tr.appendChild(companyCell);
+                const actionCell = document.createElement('td');
+                actionCell.className = 'px-6 py-4';
+                actionCell.innerHTML = actionBadge;
+                tr.appendChild(actionCell);
+                const sharesCell = document.createElement('td');
+                sharesCell.className = 'px-6 py-4 text-right';
+                sharesCell.textContent = sharesFormatted;
+                tr.appendChild(sharesCell);
+                const priceCell = document.createElement('td');
+                priceCell.className = 'px-6 py-4 text-right format-currency';
+                priceCell.textContent = formatMoney(row.price);
+                tr.appendChild(priceCell);
+                const amountCell = document.createElement('td');
+                // Color coding: green for BUY/DRIP, green for SELL profit, red for SELL loss
+                let amountColorClass = '';
+                if (row.action === 'BUY' || row.action === 'DRIP') {
+                    // Purchases are always green
+                    amountColorClass = 'text-theme-success-text';
+                }
+                else if (row.action === 'SELL') {
+                    // For sells, display_amount is P&L: green if profit, red if loss
+                    if (displayAmount > 0) {
+                        amountColorClass = 'text-theme-success-text';
+                    }
+                    else if (displayAmount < 0) {
+                        amountColorClass = 'text-theme-error-text';
+                    }
+                }
+                amountCell.className = `px-6 py-4 text-right format-currency font-medium ${amountColorClass}`;
+                amountCell.textContent = formatMoney(displayAmount);
+                tr.appendChild(amountCell);
+                tbody.appendChild(tr);
+            });
+        }
+        hideSpinner('activity-table-spinner');
+    }
+    catch (error) {
+        hideSpinner('activity-table-spinner');
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error fetching activity:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        const tableBody = document.getElementById('activity-table-body');
+        if (tableBody) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            tableBody.innerHTML = `<tr><td colspan="6" class="text-center text-theme-error-text py-4"><p>Error loading activity: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+        }
+    }
+}
+async function fetchMovers() {
+    showSpinner('gainers-spinner');
+    showSpinner('losers-spinner');
+    const url = `/api/dashboard/movers?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&limit=10`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching movers...', { url, fund: state.currentFund });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Movers response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Movers API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] Movers data received', {
+            gainers_count: data.gainers ? data.gainers.length : 0,
+            losers_count: data.losers ? data.losers.length : 0
+        });
+        renderMovers(data);
+        hideSpinner('gainers-spinner');
+        hideSpinner('losers-spinner');
+    }
+    catch (error) {
+        hideSpinner('gainers-spinner');
+        hideSpinner('losers-spinner');
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Dashboard] Error fetching movers:', {
+            error: error,
+            message: errorMsg,
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-text-secondary">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-dashboard-surface-alt p-2 rounded whitespace-pre-wrap text-text-primary">${traceback}</pre></details>` : '';
+        const gainersBody = document.getElementById('gainers-table-body');
+        if (gainersBody) {
+            gainersBody.innerHTML = `<tr><td colspan="4" class="text-center text-theme-error-text py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+        }
+        const losersBody = document.getElementById('losers-table-body');
+        if (losersBody) {
+            losersBody.innerHTML = `<tr><td colspan="4" class="text-center text-theme-error-text py-4"><p>Error: ${errorMsg}</p>${tracebackHtml}</td></tr>`;
+        }
+    }
+}
+async function fetchPortfolioAiSummary() {
+    showSpinner('portfolio-ai-summary-spinner');
+    const card = document.getElementById('portfolio-ai-summary-card');
+    const unavail = document.getElementById('portfolio-ai-summary-unavailable');
+    const headlineEl = document.getElementById('portfolio-ai-summary-headline');
+    const narrativeEl = document.getElementById('portfolio-ai-summary-narrative');
+    const bulletsEl = document.getElementById('portfolio-ai-summary-bullets');
+    const asofEl = document.getElementById('portfolio-ai-summary-asof');
+    const fallbackEl = document.getElementById('portfolio-ai-summary-fallback');
+    const fund = state.currentFund;
+    if (!fund || fund.toLowerCase() === 'all') {
+        hideSpinner('portfolio-ai-summary-spinner');
+        state.aiCards.portfolio = null;
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+        if (headlineEl)
+            headlineEl.textContent = '';
+        if (narrativeEl)
+            narrativeEl.textContent = '';
+        if (bulletsEl)
+            bulletsEl.textContent = '';
+        if (card)
+            card.classList.add('hidden');
+        if (unavail)
+            unavail.classList.add('hidden');
+        return;
+    }
+    const url = `/api/dashboard/ai-summary?fund=${encodeURIComponent(fund)}&range=${encodeURIComponent(state.timeRange)}`;
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        hideSpinner('portfolio-ai-summary-spinner');
+        if (response.status === 503) {
+            state.aiCards.portfolio = null;
+            setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (bulletsEl)
+                bulletsEl.textContent = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = 'Portfolio AI summary table not installed on server.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+        const data = (await response.json());
+        if (!data.summary) {
+            state.aiCards.portfolio = null;
+            setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (bulletsEl)
+                bulletsEl.textContent = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = data.hint || 'No portfolio AI summary yet.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+        if (unavail)
+            unavail.classList.add('hidden');
+        if (card)
+            card.classList.remove('hidden');
+        const s = data.summary;
+        const h = s.headline || (s.summary_json && s.summary_json.headline) || '';
+        const n = s.narrative || (s.summary_json && s.summary_json.narrative) || '';
+        const bulletsRaw = s.bullets || (s.summary_json && s.summary_json.bullets) || [];
+        const bullets = Array.isArray(bulletsRaw) ? bulletsRaw.map((b) => String(b)) : [];
+        state.aiCards.portfolio = { headline: h, narrative: n, bullets };
+        if (headlineEl)
+            headlineEl.textContent = h;
+        if (narrativeEl)
+            narrativeEl.textContent = n;
+        if (bulletsEl) {
+            bulletsEl.textContent = '';
+            for (const b of bullets) {
+                const li = document.createElement('li');
+                li.textContent = b;
+                bulletsEl.appendChild(li);
+            }
+        }
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), s.model_used);
+        if (asofEl) {
+            const d = s.updated_at || '';
+            const formatted = formatSummaryUpdatedAt(d);
+            asofEl.textContent = formatted ? `Updated ${formatted}` : '';
+        }
+        if (fallbackEl) {
+            if (s.currency_fallback_note) {
+                fallbackEl.textContent = s.currency_fallback_note;
+                fallbackEl.classList.remove('hidden');
+            }
+            else {
+                fallbackEl.textContent = '';
+                fallbackEl.classList.add('hidden');
+            }
+        }
+    }
+    catch {
+        hideSpinner('portfolio-ai-summary-spinner');
+        state.aiCards.portfolio = null;
+        setAiModelFootnote(document.getElementById('portfolio-ai-summary-model'), null);
+        if (headlineEl)
+            headlineEl.textContent = '';
+        if (narrativeEl)
+            narrativeEl.textContent = '';
+        if (bulletsEl)
+            bulletsEl.textContent = '';
+        if (card)
+            card.classList.add('hidden');
+        if (unavail)
+            unavail.classList.remove('hidden');
+    }
+}
+async function fetchFundDigest() {
+    showSpinner('fund-digest-spinner');
+    const card = document.getElementById('fund-digest-card');
+    const unavail = document.getElementById('fund-digest-unavailable');
+    const headlineEl = document.getElementById('fund-digest-headline');
+    const narrativeEl = document.getElementById('fund-digest-narrative');
+    const asofEl = document.getElementById('fund-digest-asof');
+    const fund = state.currentFund;
+    if (!fund || fund.toLowerCase() === 'all') {
+        hideSpinner('fund-digest-spinner');
+        state.aiCards.fundDigest = null;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+        if (headlineEl)
+            headlineEl.textContent = '';
+        if (narrativeEl)
+            narrativeEl.textContent = '';
+        if (card)
+            card.classList.add('hidden');
+        if (unavail)
+            unavail.classList.add('hidden');
+        return;
+    }
+    const url = `/api/dashboard/fund-digest?fund=${encodeURIComponent(fund)}`;
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        hideSpinner('fund-digest-spinner');
+        if (response.status === 503) {
+            state.aiCards.fundDigest = null;
+            setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = 'Fund digest table not installed on server.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+        const data = (await response.json());
+        if (!data.digest) {
+            state.aiCards.fundDigest = null;
+            setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail) {
+                unavail.textContent = data.hint || 'No fund digest yet.';
+                unavail.classList.remove('hidden');
+            }
+            return;
+        }
+        if (unavail)
+            unavail.classList.add('hidden');
+        if (card)
+            card.classList.remove('hidden');
+        const d = data.digest;
+        const h = d.headline || '';
+        const n = d.narrative || '';
+        state.aiCards.fundDigest = { headline: h, narrative: n };
+        if (headlineEl)
+            headlineEl.textContent = h;
+        if (narrativeEl)
+            narrativeEl.textContent = n;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), d.model_used);
+        if (asofEl) {
+            const t = d.updated_at || '';
+            const formatted = formatSummaryUpdatedAt(t);
+            asofEl.textContent = formatted ? `Updated ${formatted}` : '';
+        }
+    }
+    catch {
+        hideSpinner('fund-digest-spinner');
+        state.aiCards.fundDigest = null;
+        setAiModelFootnote(document.getElementById('fund-digest-model'), null);
+        if (headlineEl)
+            headlineEl.textContent = '';
+        if (narrativeEl)
+            narrativeEl.textContent = '';
+        if (card)
+            card.classList.add('hidden');
+        if (unavail)
+            unavail.classList.remove('hidden');
+    }
+}
+async function fetchMarketBrief() {
+    showSpinner('market-brief-spinner');
+    const card = document.getElementById('market-brief-card');
+    const unavail = document.getElementById('market-brief-unavailable');
+    const headlineEl = document.getElementById('market-brief-headline');
+    const narrativeEl = document.getElementById('market-brief-narrative');
+    const asofEl = document.getElementById('market-brief-asof');
+    const inputsEl = document.getElementById('market-brief-inputs');
+    const regimeEl = document.getElementById('market-brief-regime');
+    try {
+        const response = await fetch('/api/dashboard/market-brief', { credentials: 'include' });
+        hideSpinner('market-brief-spinner');
+        if (response.status === 404) {
+            state.aiCards.marketBrief = null;
+            setAiModelFootnote(document.getElementById('market-brief-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (regimeEl)
+                regimeEl.innerHTML = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail)
+                unavail.classList.remove('hidden');
+            return;
+        }
+        if (!response.ok) {
+            state.aiCards.marketBrief = null;
+            setAiModelFootnote(document.getElementById('market-brief-model'), null);
+            if (headlineEl)
+                headlineEl.textContent = '';
+            if (narrativeEl)
+                narrativeEl.textContent = '';
+            if (regimeEl)
+                regimeEl.innerHTML = '';
+            if (card)
+                card.classList.add('hidden');
+            if (unavail)
+                unavail.classList.remove('hidden');
+            return;
+        }
+        const data = (await response.json());
+        if (unavail)
+            unavail.classList.add('hidden');
+        if (card)
+            card.classList.remove('hidden');
+        const h = data.headline || '';
+        const n = data.narrative || '';
+        state.aiCards.marketBrief = { headline: h, narrative: n };
+        if (headlineEl)
+            headlineEl.textContent = h;
+        if (narrativeEl)
+            narrativeEl.textContent = n;
+        setAiModelFootnote(document.getElementById('market-brief-model'), data.model_used);
+        if (asofEl) {
+            const line = formatMarketBriefAsOfLine(data.brief_date ?? null, data.updated_at ?? null);
+            asofEl.textContent = line ? `As of ${line}` : '';
+        }
+        if (inputsEl) {
+            try {
+                inputsEl.textContent =
+                    data.inputs_digest !== undefined && data.inputs_digest !== null
+                        ? JSON.stringify(data.inputs_digest, null, 2)
+                        : '';
+            }
+            catch {
+                inputsEl.textContent = '';
+            }
+        }
+        renderMarketBriefRegime(regimeEl, data.regime_canonical ?? null);
+    }
+    catch {
+        hideSpinner('market-brief-spinner');
+        state.aiCards.marketBrief = null;
+        setAiModelFootnote(document.getElementById('market-brief-model'), null);
+        if (headlineEl)
+            headlineEl.textContent = '';
+        if (narrativeEl)
+            narrativeEl.textContent = '';
+        const regimeCatch = document.getElementById('market-brief-regime');
+        if (regimeCatch)
+            regimeCatch.innerHTML = '';
+        if (card)
+            card.classList.add('hidden');
+        if (unavail)
+            unavail.classList.remove('hidden');
+    }
+}
+async function fetchActionQueue() {
+    showSpinner('action-queue-spinner');
+    const url = `/api/dashboard/action-queue?fund=${encodeURIComponent(state.currentFund)}&limit=10`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching action queue...', { url, fund: state.currentFund });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Action queue response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] Action queue API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] Action queue data received', {
+            items_count: data.data ? data.data.length : 0
+        });
+        renderActionQueue(data);
+        hideSpinner('action-queue-spinner');
+    }
+    catch (error) {
+        hideSpinner('action-queue-spinner');
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[Dashboard] Error fetching action queue:', {
+            error: error,
+            message: errorMsg,
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        const tableBody = document.getElementById('action-queue-table-body');
+        if (tableBody) {
+            tableBody.innerHTML = `<tr><td colspan="11" class="text-center text-theme-error-text py-4"><p>Error loading action queue: ${errorMsg}</p></td></tr>`;
+        }
+        const emptyEl = document.getElementById('action-queue-empty');
+        if (emptyEl) {
+            emptyEl.classList.add('hidden');
+        }
+    }
+}
+function renderActionQueue(data) {
+    const tableBody = document.getElementById('action-queue-table-body');
+    const emptyEl = document.getElementById('action-queue-empty');
+    const updatedEl = document.getElementById('action-queue-updated');
+    if (!tableBody)
+        return;
+    // Update timestamp
+    if (updatedEl && data.updated_at) {
+        const date = new Date(data.updated_at);
+        updatedEl.textContent = `Updated: ${formatTimestampForDisplay(date)}`;
+    }
+    // Handle empty data
+    if (!data.data || data.data.length === 0) {
+        tableBody.innerHTML = '';
+        if (emptyEl) {
+            emptyEl.classList.remove('hidden');
+        }
+        return;
+    }
+    // Hide empty message
+    if (emptyEl) {
+        emptyEl.classList.add('hidden');
+    }
+    const actionColors = {
+        'BUY': 'bg-theme-success-bg text-theme-success-text',
+        'SELL': 'bg-theme-error-bg text-theme-error-text',
+        'RISK': 'bg-theme-warning-bg text-theme-warning-text',
+        'WATCH': 'bg-theme-info-bg text-theme-info-text'
+    };
+    const fearColors = {
+        'EXTREME': 'text-theme-error-text',
+        'HIGH': 'text-orange-500 dark:text-orange-400',
+        'MODERATE': 'text-theme-warning-text',
+        'LOW': 'text-theme-success-text'
+    };
+    const fearIcons = {
+        'EXTREME': '🔴',
+        'HIGH': '🟠',
+        'MODERATE': '🟡',
+        'LOW': '🟢'
+    };
+    tableBody.innerHTML = '';
+    const fragment = document.createDocumentFragment();
+    data.data.forEach((item, index) => {
+        const actionClass = actionColors[item.action] || 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+        const fearClass = fearColors[item.fear_level] || '';
+        const fearIcon = fearIcons[item.fear_level] || '';
+        const confidencePct = Math.max(0, Math.min(100, Math.round((item.confidence || 0) * 100)));
+        const analysisDate = item.analysis_date ? new Date(item.analysis_date).toLocaleDateString() : '-';
+        const tr = document.createElement('tr');
+        tr.className = 'border-b border-border hover:bg-dashboard-hover';
+        const rankCell = document.createElement('td');
+        rankCell.className = 'px-4 py-3';
+        const rankBadge = document.createElement('span');
+        rankBadge.className = 'inline-flex items-center justify-center w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold';
+        rankBadge.textContent = String(index + 1);
+        rankCell.appendChild(rankBadge);
+        tr.appendChild(rankCell);
+        const tickerCell = document.createElement('td');
+        tickerCell.className = 'px-4 py-3 font-medium text-text-primary';
+        if (item._logo_url) {
+            const logo = document.createElement('img');
+            logo.src = item._logo_url;
+            logo.alt = item.ticker;
+            logo.className = 'w-5 h-5 rounded-full inline-block mr-1';
+            logo.onerror = () => {
+                logo.classList.add('hidden');
+            };
+            tickerCell.appendChild(logo);
+        }
+        const tickerLink = document.createElement('a');
+        tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+        tickerLink.className = 'hover:text-accent hover:underline';
+        tickerLink.textContent = item.ticker;
+        tickerCell.appendChild(tickerLink);
+        if (item.is_held) {
+            const held = document.createElement('span');
+            held.className = 'ml-1 text-xs text-text-tertiary';
+            held.textContent = '(held)';
+            tickerCell.appendChild(held);
+        }
+        tr.appendChild(tickerCell);
+        const companyCell = document.createElement('td');
+        companyCell.className = 'px-4 py-3 text-text-secondary text-xs max-w-[180px] truncate';
+        companyCell.title = item.company_name || '';
+        companyCell.textContent = item.company_name || '';
+        tr.appendChild(companyCell);
+        const actionCell = document.createElement('td');
+        actionCell.className = 'px-4 py-3';
+        const actionBadge = document.createElement('span');
+        actionBadge.className = `px-2 py-0.5 rounded text-xs font-medium ${actionClass}`;
+        actionBadge.textContent = item.action;
+        actionCell.appendChild(actionBadge);
+        tr.appendChild(actionCell);
+        const signalCell = document.createElement('td');
+        signalCell.className = 'px-4 py-3 text-text-secondary';
+        signalCell.textContent = item.overall_signal;
+        tr.appendChild(signalCell);
+        const confidenceCell = document.createElement('td');
+        confidenceCell.className = 'px-4 py-3 text-right';
+        const confidenceWrap = document.createElement('div');
+        confidenceWrap.className = 'flex items-center justify-end gap-1';
+        const progressOuter = document.createElement('div');
+        progressOuter.className = 'w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2';
+        const progressInner = document.createElement('div');
+        progressInner.className = 'bg-accent h-2 rounded-full';
+        progressInner.style.width = `${confidencePct}%`;
+        progressOuter.appendChild(progressInner);
+        const confidenceText = document.createElement('span');
+        confidenceText.className = 'text-xs text-text-secondary w-8';
+        confidenceText.textContent = `${confidencePct}%`;
+        confidenceWrap.append(progressOuter, confidenceText);
+        confidenceCell.appendChild(confidenceWrap);
+        tr.appendChild(confidenceCell);
+        const fearCell = document.createElement('td');
+        fearCell.className = `px-4 py-3 ${fearClass}`.trim();
+        fearCell.textContent = `${fearIcon} ${item.fear_level}`.trim();
+        tr.appendChild(fearCell);
+        const noteCell = document.createElement('td');
+        noteCell.className = 'px-4 py-3 text-text-secondary text-xs max-w-[200px] truncate';
+        noteCell.title = item.note || '';
+        noteCell.textContent = item.note || '-';
+        tr.appendChild(noteCell);
+        const researchCell = document.createElement('td');
+        researchCell.className = 'px-4 py-3 text-xs text-text-secondary max-w-[200px] align-top';
+        const rc = item.research_context;
+        if (rc && (rc.analysis_stance || rc.meta_conviction || rc.analysis_age_hours != null)) {
+            const wrap = document.createElement('div');
+            wrap.className = 'flex flex-col gap-1';
+            if (rc.analysis_stance) {
+                const b = document.createElement('span');
+                b.className =
+                    'inline-block px-1.5 py-0.5 rounded bg-dashboard-surface-alt text-[10px] font-medium text-text-primary';
+                b.textContent = `TA ${rc.analysis_stance}`;
+                wrap.appendChild(b);
+            }
+            if (rc.meta_conviction) {
+                const m = document.createElement('span');
+                m.className =
+                    'inline-block px-1.5 py-0.5 rounded bg-accent/10 text-[10px] font-medium text-accent';
+                m.textContent = `Meta ${rc.meta_conviction}`;
+                wrap.appendChild(m);
+            }
+            const ages = [];
+            if (rc.analysis_age_hours != null)
+                ages.push(`TA ${rc.analysis_age_hours}h`);
+            if (rc.meta_age_hours != null)
+                ages.push(`Meta ${rc.meta_age_hours}h`);
+            if (ages.length) {
+                const ageEl = document.createElement('span');
+                ageEl.className = 'text-[10px] text-text-tertiary';
+                ageEl.textContent = ages.join(' · ');
+                wrap.appendChild(ageEl);
+            }
+            const rlink = document.createElement('a');
+            rlink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            rlink.className = 'text-accent hover:underline text-[10px]';
+            rlink.textContent = 'Open analysis';
+            wrap.appendChild(rlink);
+            researchCell.appendChild(wrap);
+        }
+        else {
+            const dash = document.createElement('span');
+            dash.textContent = '—';
+            researchCell.appendChild(dash);
+            const rlink = document.createElement('a');
+            rlink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            rlink.className = 'block mt-1 text-accent hover:underline text-[10px]';
+            rlink.textContent = 'Ticker';
+            researchCell.appendChild(rlink);
+        }
+        tr.appendChild(researchCell);
+        const aiCell = document.createElement('td');
+        aiCell.className = 'px-4 py-3 text-xs max-w-[200px] align-top';
+        const ar = item.ai_review;
+        if (ar?.verdict) {
+            const verdictColors = {
+                ALIGNED: 'bg-theme-success-bg text-theme-success-text',
+                TENSION: 'bg-theme-warning-bg text-theme-warning-text',
+                STALE: 'bg-theme-info-bg text-theme-info-text',
+                INSUFFICIENT_DATA: 'bg-dashboard-surface-alt text-text-secondary'
+            };
+            const vb = document.createElement('span');
+            vb.className = `inline-block px-1.5 py-0.5 rounded text-[10px] font-medium ${verdictColors[ar.verdict] || 'bg-dashboard-surface-alt text-text-secondary'}`;
+            vb.textContent = ar.verdict;
+            aiCell.appendChild(vb);
+            if (ar.one_liner) {
+                const ol = document.createElement('div');
+                ol.className = 'text-text-tertiary mt-1 line-clamp-2';
+                ol.title = ar.one_liner;
+                ol.textContent = ar.one_liner;
+                aiCell.appendChild(ol);
+            }
+        }
+        else {
+            aiCell.textContent = '—';
+            aiCell.className += ' text-text-tertiary';
+        }
+        tr.appendChild(aiCell);
+        const dateCell = document.createElement('td');
+        dateCell.className = 'px-4 py-3 text-text-tertiary text-xs';
+        dateCell.textContent = analysisDate;
+        tr.appendChild(dateCell);
+        fragment.appendChild(tr);
+    });
+    tableBody.appendChild(fragment);
+}
+function renderPillars(pillars) {
+    const container = document.getElementById('thesis-pillars');
+    if (!container)
+        return;
+    container.innerHTML = '';
+    container.classList.remove('hidden');
+    pillars.forEach(pillar => {
+        const div = document.createElement('div');
+        div.className = 'flex flex-col gap-2';
+        // Parse markdown for thesis text if available
+        let thesisHtml = pillar.thesis || '';
+        if (typeof window.marked !== 'undefined') {
+            thesisHtml = window.marked.parse(thesisHtml);
+        }
+        div.innerHTML = `
+            <div class="font-bold text-text-primary border-b border-border pb-1 mb-1 flex justify-between">
+                <span>${pillar.name}</span>
+                <span class="text-xs font-normal text-text-secondary bg-dashboard-surface-alt px-2 py-0.5 rounded">${pillar.allocation || 'N/A'}</span>
+            </div>
+            <div class="text-sm text-text-secondary prose dark:prose-invert max-w-none text-xs">
+                ${thesisHtml}
+            </div>
+        `;
+        container.appendChild(div);
+    });
+}
+async function fetchDividends() {
+    const url = `/api/dashboard/dividends?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}`;
+    console.log('[Dashboard] Fetching dividends...', { url });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        renderDividends(data);
+    }
+    catch (error) {
+        console.error('[Dashboard] Error fetching dividends:', error);
+        // Set values to error state
+        ['div-total', 'div-tax', 'div-largest', 'div-reinvested', 'div-events'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el)
+                el.textContent = 'Error';
+        });
+    }
+}
+function renderDividends(data) {
+    const currency = data.currency || 'USD';
+    // Update Metrics - use formatMoney to avoid currency code prefix
+    updateMetricText('div-total', formatMoney(data.metrics.total_dividends, currency));
+    updateMetricText('div-tax', formatMoney(data.metrics.total_us_tax, currency));
+    updateMetricText('div-largest', formatMoney(data.metrics.largest_dividend, currency));
+    updateMetricText('div-reinvested', data.metrics.reinvested_shares.toFixed(4));
+    updateMetricText('div-events', data.metrics.payout_events.toString());
+    const largestTickerEl = document.getElementById('div-largest-ticker');
+    if (largestTickerEl)
+        largestTickerEl.textContent = data.metrics.largest_ticker;
+    // Update Log Table
+    const tbody = document.getElementById('dividend-log-body');
+    if (tbody) {
+        tbody.innerHTML = '';
+        if (data.log.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-2 text-center text-text-secondary">No dividend history</td></tr>';
+        }
+        else {
+            data.log.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
+                // Pay Date
+                const dateCell = document.createElement('td');
+                dateCell.className = 'px-4 py-2 font-medium text-gray-900 dark:text-white whitespace-nowrap';
+                dateCell.textContent = row.date;
+                tr.appendChild(dateCell);
+                // Ticker (clickable) with logo
+                const tickerCell = document.createElement('td');
+                tickerCell.className = 'px-4 py-2 text-accent font-bold cursor-pointer hover:underline';
+                // Create logo image using shared helper function (always create for consistent alignment)
+                const logoUrl = row._logo_url || '';
+                const img = createLogoElement(row.ticker, logoUrl);
+                tickerCell.appendChild(img);
+                const tickerLink = document.createElement('a');
+                tickerLink.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                tickerLink.className = 'hover:underline';
+                tickerLink.textContent = row.ticker;
+                tickerLink.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+                tickerCell.appendChild(tickerLink);
+                tickerCell.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (row.ticker && row.ticker !== 'N/A') {
+                        window.location.href = `/ticker?ticker=${encodeURIComponent(row.ticker)}`;
+                    }
+                });
+                tr.appendChild(tickerCell);
+                // Company Name
+                const companyCell = document.createElement('td');
+                companyCell.className = 'px-4 py-2 text-gray-700 dark:text-gray-300';
+                companyCell.textContent = row.company_name || '';
+                tr.appendChild(companyCell);
+                // Gross ($)
+                const grossCell = document.createElement('td');
+                grossCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                grossCell.textContent = formatMoney(row.gross || 0, currency);
+                tr.appendChild(grossCell);
+                // Net ($)
+                const netCell = document.createElement('td');
+                netCell.className = 'px-4 py-2 text-right font-medium text-theme-success-text';
+                netCell.textContent = formatMoney(row.amount, currency);
+                tr.appendChild(netCell);
+                // Reinvested Shares
+                const sharesCell = document.createElement('td');
+                sharesCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                sharesCell.textContent = (row.shares || 0).toFixed(4);
+                tr.appendChild(sharesCell);
+                // DRIP Price ($)
+                const dripPriceCell = document.createElement('td');
+                dripPriceCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
+                dripPriceCell.textContent = row.drip_price > 0 ? formatMoney(row.drip_price, currency) : 'N/A';
+                tr.appendChild(dripPriceCell);
+                tbody.appendChild(tr);
+            });
+        }
+    }
+}
+function updateMetricText(id, text) {
+    const el = document.getElementById(id);
+    if (el)
+        el.textContent = text;
+}
+async function fetchCurrencyChart() {
+    showSpinner('currency-chart-spinner');
+    const theme = getEffectiveTheme();
+    const url = `/api/dashboard/charts/currency?fund=${encodeURIComponent(state.currentFund)}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}`;
+    console.log('[Dashboard] Fetching currency chart...', { url });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        renderCurrencyChart(data);
+    }
+    catch (error) {
+        console.error('[Dashboard] Error fetching currency chart:', error);
+        const chartEl = document.getElementById('currency-chart');
+        if (chartEl)
+            chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>Error loading chart</p></div>';
+    }
+    finally {
+        hideSpinner('currency-chart-spinner');
+    }
+}
+function renderCurrencyChart(data) {
+    const chartEl = document.getElementById('currency-chart');
+    if (!chartEl)
+        return;
+    const Plotly = window.Plotly;
+    if (!Plotly)
+        return;
+    const layout = { ...data.layout };
+    // Constrain height to container size, with max of 400px
+    const containerHeight = Math.min(chartEl.offsetHeight || 350, 400);
+    layout.height = containerHeight;
+    layout.autosize = true;
+    layout.margin = { l: 20, r: 20, t: 30, b: 20 };
+    // Ensure chart doesn't overflow
+    layout.width = chartEl.offsetWidth || undefined;
+    try {
+        Plotly.newPlot('currency-chart', data.data, layout, {
+            responsive: true,
+            displayModeBar: false,
+            useResizeHandler: true
+        });
+        attachPlotlyContainerResize('currency-chart', (containerEl) => ({
+            height: Math.min(containerEl.offsetHeight || 350, 400),
+            width: containerEl.offsetWidth || undefined
+        }));
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering currency chart:', error);
+    }
+}
+async function fetchExchangeRateData() {
+    showSpinner('exchange-rate-chart-spinner');
+    const theme = getEffectiveTheme();
+    const url = `/api/dashboard/exchange-rate?inverse=${state.inverseExchangeRate}&theme=${encodeURIComponent(theme)}`;
+    console.log('[Dashboard] Fetching exchange rate data...', { url });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        renderExchangeRateData(data);
+    }
+    catch (error) {
+        console.error('[Dashboard] Error fetching exchange rate data:', error);
+        const valueEl = document.getElementById('exchange-rate-value');
+        if (valueEl)
+            valueEl.textContent = '--';
+    }
+    finally {
+        hideSpinner('exchange-rate-chart-spinner');
+    }
+}
+function renderExchangeRateData(data) {
+    // Update metric display
+    const labelEl = document.getElementById('exchange-rate-label');
+    const valueEl = document.getElementById('exchange-rate-value');
+    const helpEl = document.getElementById('exchange-rate-help');
+    if (labelEl)
+        labelEl.textContent = data.rate_label;
+    if (valueEl)
+        valueEl.textContent = data.current_rate !== null ? data.current_rate.toFixed(4) : '--';
+    if (helpEl)
+        helpEl.textContent = data.rate_help;
+    // Render historical chart
+    if (data.chart) {
+        const chartEl = document.getElementById('exchange-rate-chart');
+        if (!chartEl)
+            return;
+        const Plotly = window.Plotly;
+        if (!Plotly)
+            return;
+        const layout = { ...data.chart.layout };
+        layout.height = 200;
+        layout.autosize = true;
+        try {
+            Plotly.newPlot('exchange-rate-chart', data.chart.data, layout, {
+                responsive: true,
+                displayModeBar: false
+            });
+            attachPlotlyContainerResize('exchange-rate-chart');
+        }
+        catch (error) {
+            console.error('[Dashboard] Error rendering exchange rate chart:', error);
+        }
+    }
+}
+// ============================================================================
+// Commodity Chart Functions
+// ============================================================================
+async function fetchCommoditiesChart() {
+    showSpinner('commodities-chart-spinner');
+    const theme = getEffectiveTheme();
+    // Get selected commodities from checkboxes
+    const selected = [];
+    const checkboxes = document.querySelectorAll('.commodity-toggle');
+    checkboxes.forEach((cb) => {
+        const input = cb;
+        if (input.checked) {
+            const commodityName = input.id.replace('commodity-', '');
+            selected.push(commodityName);
+        }
+    });
+    if (selected.length === 0) {
+        const chartEl = document.getElementById('commodities-chart');
+        if (chartEl) {
+            chartEl.innerHTML = '<div class="text-center text-text-secondary py-12"><p>Select at least one commodity to display</p></div>';
+        }
+        hideSpinner('commodities-chart-spinner');
+        return;
+    }
+    const commoditiesParam = selected.join(',');
+    const url = `/api/dashboard/charts/commodities?commodities=${encodeURIComponent(commoditiesParam)}&days=365&theme=${encodeURIComponent(theme)}`;
+    console.log('[Dashboard] Fetching commodities chart...', { url, selected });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok)
+            throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        renderCommoditiesChart(data);
+    }
+    catch (error) {
+        console.error('[Dashboard] Error fetching commodities chart:', error);
+        const chartEl = document.getElementById('commodities-chart');
+        if (chartEl)
+            chartEl.innerHTML = '<div class="text-center text-text-secondary py-8"><p>Error loading chart</p></div>';
+    }
+    finally {
+        hideSpinner('commodities-chart-spinner');
+    }
+}
+function renderCommoditiesChart(data) {
+    const chartEl = document.getElementById('commodities-chart');
+    if (!chartEl)
+        return;
+    const Plotly = window.Plotly;
+    if (!Plotly)
+        return;
+    const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
+    const layout = { ...data.layout };
+    layout.height = 400;
+    layout.autosize = true;
+    layout.showlegend = !isMobileViewport;
+    layout.margin = isMobileViewport
+        ? { l: 50, r: 12, t: 28, b: 56 }
+        : { l: 60, r: 20, t: 40, b: 60 };
+    try {
+        Plotly.newPlot('commodities-chart', data.data, layout, {
+            responsive: true,
+            displayModeBar: false,
+            useResizeHandler: true
+        });
+        attachPlotlyContainerResize('commodities-chart', () => {
+            const isMobile = window.matchMedia('(max-width: 767px)').matches;
+            return {
+                showlegend: !isMobile,
+                margin: isMobile
+                    ? { l: 50, r: 12, t: 28, b: 56 }
+                    : { l: 60, r: 20, t: 40, b: 60 }
+            };
+        });
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering commodities chart:', error);
+    }
+}
+function initCommodityControls() {
+    const checkboxes = document.querySelectorAll('.commodity-toggle');
+    if (checkboxes.length === 0) {
+        console.warn('[Dashboard] Commodity toggles not found');
+        return;
+    }
+    const savedPrefs = localStorage.getItem('commodity_selections');
+    if (savedPrefs) {
+        try {
+            const prefs = JSON.parse(savedPrefs);
+            checkboxes.forEach((cb) => {
+                const input = cb;
+                const commodityName = input.id.replace('commodity-', '');
+                if (typeof prefs[commodityName] === 'boolean') {
+                    input.checked = prefs[commodityName];
+                }
+            });
+        }
+        catch (e) {
+            console.warn('[Dashboard] Error loading commodity preferences:', e);
+        }
+    }
+    checkboxes.forEach((cb) => {
+        cb.addEventListener('change', () => {
+            const prefs = {};
+            checkboxes.forEach((checkbox) => {
+                const input = checkbox;
+                const commodityName = input.id.replace('commodity-', '');
+                prefs[commodityName] = input.checked;
+            });
+            localStorage.setItem('commodity_selections', JSON.stringify(prefs));
+            fetchCommoditiesChart();
+        });
+    });
+}
+const MOVERS_COLUMN_COUNT = 7;
+function renderMovers(data) {
+    const gainersBody = document.getElementById('gainers-table-body');
+    const losersBody = document.getElementById('losers-table-body');
+    // Helper to format merged P&L column: "P&L Pct%"
+    // Rules:
+    // - Green/Red color based on value
+    // - No negative signs if red (color indicates negative)
+    // - Positive values have + sign
+    // - Currencies removed, percentages in brackets with 1 decimal
+    const formatMergedPnl = (pnl, pct, currency) => {
+        if (pnl == null && pct == null)
+            return '--';
+        const absPct = pct != null ? Math.abs(pct) : null;
+        const pctStr = absPct != null ? `(${absPct.toFixed(1)}%)` : '';
+        if (pnl == null) {
+            return pctStr || '--';
+        }
+        const isNegative = pnl < 0;
+        const absPnl = Math.abs(pnl);
+        // formatMoney now handles removing currency code globally
+        const pnlStr = formatMoney(absPnl, currency);
+        if (pctStr) {
+            return `${pnlStr} ${pctStr}`;
+        }
+        return pnlStr;
+    };
+    const getPnlColor = (val, pct) => {
+        const compareVal = val != null ? val : pct;
+        if (compareVal == null)
+            return '';
+        return compareVal > 0
+            ? 'text-theme-success-text font-bold'
+            : (compareVal < 0 ? 'text-theme-error-text font-bold' : '');
+    };
+    const renderTable = (tbody, items, isGainer) => {
+        tbody.innerHTML = '';
+        if (!items || items.length === 0) {
+            tbody.innerHTML = `<tr class="bg-dashboard-surface"><td colspan="${MOVERS_COLUMN_COUNT}" class="px-4 py-4 text-center text-text-secondary">No ${isGainer ? 'gainers' : 'losers'} to display</td></tr>`;
+            return;
+        }
+        items.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
+            // Calculate colors
+            const dayColor = getPnlColor(item.daily_pnl, item.daily_pnl_pct);
+            const fiveDayColor = getPnlColor(item.five_day_pnl, item.five_day_pnl_pct);
+            const totalColor = getPnlColor(item.total_pnl, item.total_return_pct);
+            // Create logo image using shared helper function
+            const logoImg = createLogoElement(item.ticker, item._logo_url || '');
+            const escapedTicker = item.ticker.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            const escapedCompanyName = (item.company_name || item.ticker).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            // Use font-mono for numerical columns to ensure alignment
+            const tickerCell = document.createElement('td');
+            tickerCell.className = 'px-4 py-3 font-bold text-accent';
+            tickerCell.appendChild(logoImg);
+            const tickerLink = document.createElement('a');
+            tickerLink.href = `/ticker?ticker=${encodeURIComponent(item.ticker)}`;
+            tickerLink.className = 'hover:underline';
+            tickerLink.textContent = item.ticker;
+            tickerCell.appendChild(tickerLink);
+            tr.appendChild(tickerCell);
+            const companyCell = document.createElement('td');
+            companyCell.className = 'px-4 py-3 line-clamp-2 max-w-[150px]';
+            companyCell.title = item.company_name || item.ticker;
+            companyCell.textContent = item.company_name || item.ticker;
+            tr.appendChild(companyCell);
+            const dayPnlCell = document.createElement('td');
+            dayPnlCell.className = `px-4 py-3 text-right font-mono ${dayColor}`;
+            dayPnlCell.textContent = formatMergedPnl(item.daily_pnl, item.daily_pnl_pct, data.display_currency);
+            tr.appendChild(dayPnlCell);
+            const fiveDayPnlCell = document.createElement('td');
+            fiveDayPnlCell.className = `px-4 py-3 text-right font-mono ${fiveDayColor}`;
+            fiveDayPnlCell.textContent = formatMergedPnl(item.five_day_pnl, item.five_day_pnl_pct, data.display_currency);
+            tr.appendChild(fiveDayPnlCell);
+            const totalPnlCell = document.createElement('td');
+            totalPnlCell.className = `px-4 py-3 text-right font-mono ${totalColor}`;
+            totalPnlCell.textContent = formatMergedPnl(item.total_pnl, item.total_return_pct, data.display_currency);
+            tr.appendChild(totalPnlCell);
+            const priceCell = document.createElement('td');
+            priceCell.className = 'px-4 py-3 text-right font-mono';
+            priceCell.textContent = formatMoney(item.current_price || 0, data.display_currency);
+            tr.appendChild(priceCell);
+            const valueCell = document.createElement('td');
+            valueCell.className = 'px-4 py-3 text-right font-mono font-medium';
+            valueCell.textContent = formatMoney(item.market_value || 0, data.display_currency);
+            tr.appendChild(valueCell);
+            tbody.appendChild(tr);
+        });
+    };
+    if (gainersBody)
+        renderTable(gainersBody, data.gainers, true);
+    if (losersBody)
+        renderTable(losersBody, data.losers, false);
+}
+// --- Rendering Helpers ---
+// Use FormatterCache for better performance
+const getUsdFormatter = () => FormatterCache.get('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+});
+function formatMoney(val, currency) {
+    if (typeof val !== 'number' || isNaN(val))
+        return '--';
+    // Use cached formatter
+    const formatted = getUsdFormatter().format(val);
+    // Remove any currency code that might have been added (e.g., "CA$" -> "$")
+    return formatted.replace(/^[A-Z]{2,3}\$?/, '$').replace(/\s*[A-Z]{2,3}$/, '');
+}
+function updateMetric(id, value, currency, isCurrency) {
+    const el = document.getElementById(id);
+    if (el) {
+        if (isCurrency) {
+            // Format number with commas and 2 decimal places, with symbol but no code
+            const formatted = FormatterCache.get('en-US', {
+                style: 'currency',
+                currency: currency || 'USD',
+                currencyDisplay: 'narrowSymbol',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(value);
+            el.textContent = formatted;
+        }
+        else {
+            el.textContent = String(value);
+        }
+    }
+}
+function updateChangeMetric(valId, pctId, change, pct, currency) {
+    const valEl = document.getElementById(valId);
+    const pctEl = document.getElementById(pctId);
+    if (valEl) {
+        // Format number with $ sign, without currency code prefix
+        const formatted = FormatterCache.get('en-US', {
+            style: 'currency',
+            currency: 'USD', // Use USD to get $ sign, then we'll replace if needed
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(change);
+        valEl.textContent = (change >= 0 ? '+' : '') + formatted;
+    }
+    if (pctEl) {
+        pctEl.textContent = (pct >= 0 ? '+' : '') + pct.toFixed(2) + '%';
+        // Color classes - using semantic theme tokens
+        pctEl.className = `text-sm font-medium px-2 py-0.5 rounded ${change >= 0
+            ? 'bg-theme-success-bg text-theme-success-text'
+            : 'bg-theme-error-bg text-theme-error-text'}`;
+        if (valEl) {
+            valEl.className = `text-2xl font-bold ${change >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;
+        }
+    }
+}
+function renderPerformanceChart(data) {
+    // Clear any existing chart
+    const chartEl = document.getElementById('performance-chart');
+    if (!chartEl) {
+        console.warn('[Dashboard] Performance chart element not found');
+        return;
+    }
+    // Clear previous content
+    chartEl.innerHTML = '';
+    if (!data || !data.layout || !data.data || !data.data.length) {
+        const meta = data?.meta;
+        let hint = 'No portfolio history for this fund and time range.';
+        if (meta && meta.had_supabase_jwt === false) {
+            hint = 'Database session unavailable. Log out, log back in, then hard-refresh (Ctrl+Shift+R).';
+        }
+        else if (meta?.reason === 'no_portfolio_rows') {
+            hint = 'Portfolio history query returned no rows for this fund/range.';
+        }
+        chartEl.innerHTML = `<div class="text-center text-gray-500 py-8"><p>No performance data available</p><p class="text-sm mt-2">${hint}</p></div>`;
+        return;
+    }
+    // Render with Plotly (same as ticker_details.ts)
+    const Plotly = window.Plotly;
+    if (!Plotly) {
+        console.error('[Dashboard] Plotly not loaded');
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
+        return;
+    }
+    // Match Streamlit exactly: use_container_width=True means use full width and keep original height
+    // Streamlit doesn't modify the layout at all - it just passes the figure through
+    // Use the layout directly without any modifications
+    try {
+        // Create custom fullscreen button
+        const fullscreenButton = {
+            name: 'fullscreen',
+            title: 'Fullscreen',
+            icon: {
+                'width': 857.1,
+                'height': 1000,
+                'path': 'M214.3 0h428.6v214.3H214.3V0zm0 642.9h428.6v357.1H214.3V642.9zM642.9 0h214.3v214.3H642.9V0zm0 642.9h214.3v357.1H642.9V642.9z',
+                'transform': 'matrix(1 0 0 1 0 0)'
+            },
+            click: function (gd) {
+                const chartContainer = document.getElementById('performance-chart');
+                if (!chartContainer)
+                    return;
+                // Check if already in fullscreen
+                if (document.fullscreenElement || document.webkitFullscreenElement ||
+                    document.mozFullScreenElement || document.msFullscreenElement) {
+                    // Exit fullscreen
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen();
+                    }
+                    else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    }
+                    else if (document.mozCancelFullScreen) {
+                        document.mozCancelFullScreen();
+                    }
+                    else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                    }
+                }
+                else {
+                    // Enter fullscreen
+                    if (chartContainer.requestFullscreen) {
+                        chartContainer.requestFullscreen();
+                    }
+                    else if (chartContainer.webkitRequestFullscreen) {
+                        chartContainer.webkitRequestFullscreen();
+                    }
+                    else if (chartContainer.mozRequestFullScreen) {
+                        chartContainer.mozRequestFullScreen();
+                    }
+                    else if (chartContainer.msRequestFullscreen) {
+                        chartContainer.msRequestFullscreen();
+                    }
+                }
+            }
+        };
+        Plotly.newPlot('performance-chart', data.data, data.layout, {
+            responsive: true, // Equivalent to use_container_width=True in Streamlit
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d'],
+            modeBarButtonsToAdd: [fullscreenButton]
+        });
+        attachPlotlyContainerResize('performance-chart');
+        // Handle fullscreen change to resize chart
+        const handleFullscreenChange = () => {
+            setTimeout(() => {
+                const Plotly = window.Plotly;
+                if (Plotly) {
+                    Plotly.Plots.resize('performance-chart');
+                }
+            }, 100);
+        };
+        // Add event listeners for fullscreen changes (cross-browser support)
+        document.addEventListener('fullscreenchange', handleFullscreenChange);
+        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+        console.log('[Dashboard] Performance chart rendered with Plotly (fullscreen enabled)');
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering Plotly chart:', error);
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
+    }
+}
+async function fetchIndividualHoldingsChart() {
+    // Check if fund is selected
+    if (!state.currentFund || state.currentFund.toLowerCase() === 'all') {
+        const chartEl = document.getElementById('individual-holdings-chart');
+        if (chartEl) {
+            chartEl.innerHTML = '<div class="text-center text-gray-500 py-8">Select a specific fund to view individual stock performance</div>';
+        }
+        return;
+    }
+    // Show spinner
+    showSpinner('individual-holdings-spinner');
+    const theme = getEffectiveTheme();
+    const url = `/api/dashboard/charts/individual-holdings?fund=${encodeURIComponent(state.currentFund)}&days=${state.individualHoldingsDays}&filter=${encodeURIComponent(state.individualHoldingsFilter)}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
+    const startTime = performance.now();
+    console.log('[Dashboard] Fetching individual holdings chart...', { url, fund: state.currentFund, days: state.individualHoldingsDays, filter: state.individualHoldingsFilter });
+    try {
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] Individual holdings chart response received', {
+            status: response.status,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        renderIndividualHoldingsChart(data);
+        hideSpinner('individual-holdings-spinner');
+    }
+    catch (error) {
+        hideSpinner('individual-holdings-spinner');
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error fetching individual holdings chart:', {
+            error: errorMsg,
+            traceback: traceback ? 'present' : 'missing'
+        });
+        const chartEl = document.getElementById('individual-holdings-chart');
+        if (chartEl) {
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error loading chart: ${errorMsg}</p>${tracebackHtml}</div>`;
+        }
+    }
+}
+function renderIndividualHoldingsChart(data) {
+    const chartEl = document.getElementById('individual-holdings-chart');
+    if (!chartEl) {
+        console.warn('[Dashboard] Individual holdings chart element not found');
+        return;
+    }
+    // Clear previous content
+    chartEl.innerHTML = '';
+    if (!data || !data.data || !data.layout) {
+        chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No holdings data available</p></div>';
+        return;
+    }
+    // Render with Plotly
+    const Plotly = window.Plotly;
+    if (!Plotly) {
+        console.error('[Dashboard] Plotly not loaded');
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
+        return;
+    }
+    try {
+        Plotly.newPlot('individual-holdings-chart', data.data, data.layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+        });
+        attachPlotlyContainerResize('individual-holdings-chart');
+        console.log('[Dashboard] Individual holdings chart rendered with Plotly');
+        // Update stock count display
+        if (data.metadata) {
+            const countEl = document.getElementById('individual-stock-count');
+            if (countEl) {
+                const daysText = data.metadata.days === 0 ? 'all time' : `last ${data.metadata.days} days`;
+                countEl.textContent = `Showing ${data.metadata.num_stocks} stocks over ${daysText}`;
+            }
+            // Update filter dropdown with dynamic sector/industry options
+            updateIndividualHoldingsFilters(data.metadata.sectors, data.metadata.industries);
+        }
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering individual holdings chart:', error);
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
+    }
+}
+function updateIndividualHoldingsFilters(sectors, industries) {
+    const filterSelect = document.getElementById('individual-stock-filter');
+    if (!filterSelect)
+        return;
+    // Get current value to preserve selection
+    const currentValue = filterSelect.value;
+    // Remove any existing sector/industry options
+    const existingOptions = Array.from(filterSelect.options);
+    let foundSeparator = false;
+    for (const opt of existingOptions) {
+        if (opt.value.startsWith('---') || opt.value.startsWith('sector:') || opt.value.startsWith('industry:')) {
+            opt.remove();
+            foundSeparator = true;
+        }
+    }
+    // Add sector options if available
+    if (sectors.length > 0) {
+        const sectorSep = document.createElement('option');
+        sectorSep.value = '---sectors---';
+        sectorSep.textContent = '--- By Sector ---';
+        sectorSep.disabled = true;
+        filterSelect.appendChild(sectorSep);
+        for (const sector of sectors) {
+            const opt = document.createElement('option');
+            opt.value = `sector:${sector}`;
+            opt.textContent = `Sector: ${sector}`;
+            filterSelect.appendChild(opt);
+        }
+    }
+    // Add industry options if available
+    if (industries.length > 0) {
+        const industrySep = document.createElement('option');
+        industrySep.value = '---industries---';
+        industrySep.textContent = '--- By Industry ---';
+        industrySep.disabled = true;
+        filterSelect.appendChild(industrySep);
+        for (const industry of industries) {
+            const opt = document.createElement('option');
+            opt.value = `industry:${industry}`;
+            opt.textContent = `Industry: ${industry}`;
+            filterSelect.appendChild(opt);
+        }
+    }
+    // Restore selection if still valid
+    if (currentValue && Array.from(filterSelect.options).some(o => o.value === currentValue)) {
+        filterSelect.value = currentValue;
+    }
+}
+function renderSectorChart(data) {
+    // Clear any existing chart
+    const chartEl = document.getElementById('sector-chart');
+    if (!chartEl) {
+        console.warn('[Dashboard] Sector chart element not found');
+        return;
+    }
+    // Hide spinner before rendering (Plotly will replace content)
+    hideSpinner('sector-chart-spinner');
+    if (!data || !data.data || !data.layout) {
+        chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No sector data available</p></div>';
+        return;
+    }
+    // Render with Plotly (same as performance chart)
+    const Plotly = window.Plotly;
+    if (!Plotly) {
+        console.error('[Dashboard] Plotly not loaded');
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
+        return;
+    }
+    // Update layout to be responsive
+    const layout = { ...data.layout };
+    layout.autosize = true;
+    layout.showlegend = false;
+    // Reserve space for outside pie labels + leader lines.
+    const isMobileViewport = window.matchMedia('(max-width: 767px)').matches;
+    layout.margin = isMobileViewport
+        ? { l: 20, r: 20, t: 40, b: 40 }
+        : { l: 60, r: 90, t: 40, b: 40 };
+    try {
+        Plotly.newPlot('sector-chart', data.data, layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+        });
+        attachPlotlyContainerResize('sector-chart');
+        console.log('[Dashboard] Sector chart rendered with Plotly');
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering Plotly sector chart:', error);
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
+    }
+}
+function renderPnlChart(data) {
+    // Clear any existing chart
+    const chartEl = document.getElementById('pnl-chart');
+    if (!chartEl) {
+        console.warn('[Dashboard] P&L chart element not found');
+        return;
+    }
+    // Hide spinner before rendering (Plotly will replace content)
+    hideSpinner('pnl-chart-spinner');
+    if (!data || !data.data || !data.layout) {
+        chartEl.innerHTML = '<div class="text-center text-gray-500 py-8"><p>No P&L data available</p></div>';
+        return;
+    }
+    // Render with Plotly (same as sector chart)
+    const Plotly = window.Plotly;
+    if (!Plotly) {
+        console.error('[Dashboard] Plotly not loaded');
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error: Plotly library not loaded</p></div>';
+        return;
+    }
+    // Update layout height to match container
+    const layout = { ...data.layout };
+    // Get actual container height or use default
+    const containerHeight = chartEl.offsetHeight || 500;
+    layout.height = containerHeight;
+    layout.autosize = true;
+    // Ensure proper margins - increase left margin for y-axis labels
+    if (!layout.margin) {
+        layout.margin = { l: 80, r: 20, t: 50, b: 100 };
+    }
+    else {
+        // Use larger left margin to prevent y-axis labels from being cut off
+        layout.margin.l = Math.max(80, layout.margin.l || 80);
+        layout.margin.r = Math.max(20, layout.margin.r || 20);
+        // Reserve space for legend below plot and keep title clear at top.
+        layout.margin.t = Math.max(70, layout.margin.t || 70);
+        layout.margin.b = Math.max(140, layout.margin.b || 140);
+    }
+    // Keep legend below chart to avoid title overlap on desktop.
+    layout.legend = {
+        ...(layout.legend || {}),
+        orientation: 'h',
+        xanchor: 'center',
+        x: 0.5,
+        yanchor: 'top',
+        y: -0.2
+    };
+    try {
+        Plotly.newPlot('pnl-chart', data.data, layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: ['pan2d', 'lasso2d']
+        });
+        attachPlotlyContainerResize('pnl-chart');
+        // Make bars clickable: open ticker details page from the selected position.
+        const pnlGraphEl = document.getElementById('pnl-chart');
+        if (pnlGraphEl) {
+            if (typeof pnlGraphEl.removeAllListeners === 'function') {
+                pnlGraphEl.removeAllListeners('plotly_click');
+                pnlGraphEl.removeAllListeners('plotly_hover');
+                pnlGraphEl.removeAllListeners('plotly_unhover');
+            }
+            pnlGraphEl.on('plotly_click', (event) => {
+                const point = event?.points?.[0];
+                const tickerRaw = point?.x;
+                const ticker = tickerRaw ? String(tickerRaw).trim() : '';
+                if (!ticker)
+                    return;
+                window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
+            });
+            pnlGraphEl.on('plotly_hover', () => {
+                pnlGraphEl.classList.add('cursor-pointer');
+            });
+            pnlGraphEl.on('plotly_unhover', () => {
+                pnlGraphEl.classList.remove('cursor-pointer');
+            });
+        }
+        console.log('[Dashboard] P&L chart rendered with Plotly');
+    }
+    catch (error) {
+        console.error('[Dashboard] Error rendering Plotly P&L chart:', error);
+        chartEl.innerHTML = '<div class="text-center text-theme-error-text py-8"><p>Error rendering chart</p></div>';
+    }
+}
+async function loadPnlChart(fund) {
+    const theme = getEffectiveTheme();
+    const startTime = performance.now();
+    const view = state.pnlChartView || 'top_bottom';
+    const url = `/api/dashboard/charts/pnl?fund=${encodeURIComponent(fund || '')}&range=${encodeURIComponent(state.timeRange)}&theme=${encodeURIComponent(theme)}&view=${encodeURIComponent(view)}`;
+    console.log('[Dashboard] Loading P&L chart:', { fund, theme, view, url });
+    try {
+        showSpinner('pnl-chart-spinner');
+        const response = await fetch(url, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+        const duration = performance.now() - startTime;
+        console.log('[Dashboard] P&L chart API response', {
+            status: response.status,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            const errorInfo = extractErrorInfo(errorData);
+            console.error('[Dashboard] P&L chart API error:', {
+                status: response.status,
+                errorData: errorData,
+                traceback: errorInfo.traceback ? 'present' : 'missing',
+                url: url
+            });
+            const error = new Error(errorInfo.message || `HTTP ${response.status}: ${response.statusText}`);
+            error.traceback = errorInfo.traceback;
+            throw error;
+        }
+        const data = await response.json();
+        console.log('[Dashboard] P&L chart data received');
+        renderPnlChart(data);
+    }
+    catch (error) {
+        hideSpinner('pnl-chart-spinner');
+        const duration = performance.now() - startTime;
+        const traceback = error?.traceback;
+        console.error('[Dashboard] Error fetching P&L chart:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            traceback: traceback ? 'present' : 'missing',
+            url: url,
+            duration: `${duration.toFixed(2)}ms`
+        });
+        const chartEl = document.getElementById('pnl-chart');
+        if (chartEl) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            const tracebackHtml = traceback ? `<details class="mt-2 text-left"><summary class="cursor-pointer text-xs text-gray-600 dark:text-gray-400">Show stack trace</summary><pre class="mt-2 text-xs overflow-auto bg-gray-100 dark:bg-gray-800 p-2 rounded whitespace-pre-wrap">${traceback}</pre></details>` : '';
+            chartEl.innerHTML = `<div class="text-center text-theme-error-text py-8"><p>Error: ${errorMsg}</p>${tracebackHtml}</div>`;
+        }
+    }
+}
+// Expose refreshDashboard globally for template onclick handlers
+if (typeof window !== 'undefined') {
+    window.refreshDashboard = refreshDashboard;
+    console.log('[Dashboard] refreshDashboard function exposed globally');
+    window.dispatchEvent(new CustomEvent('dashboard-ready'));
+}
+// Force rebuild: Fix missing logos by updating backend API
+//# sourceMappingURL=dashboard.js.map

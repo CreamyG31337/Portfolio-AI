@@ -1,0 +1,906 @@
+/**
+ * Trade Entry Dashboard
+ * Handles manual trade entry, email parsing, and trade history
+ */
+import { getCsrfHeaders } from './csrf.js';
+import { setupTickerAutocomplete, getCompanyName } from './ticker_autocomplete.js';
+import { showToast as showToastBase } from './toast.js';
+// EST timezone constant
+const TZ_EST = 'America/New_York';
+// Get current time string (HH:MM) in EST
+function nowEstTimeString() {
+    return new Date().toLocaleTimeString('en-US', {
+        timeZone: TZ_EST, hour12: false, hour: '2-digit', minute: '2-digit'
+    });
+}
+// Format a Date to YYYY-MM-DD in EST
+function toEstDateString(dt) {
+    const parts = dt.toLocaleDateString('en-CA', { timeZone: TZ_EST }); // en-CA gives YYYY-MM-DD
+    return parts;
+}
+// Format a Date to HH:MM in EST
+function toEstTimeString(dt) {
+    return dt.toLocaleTimeString('en-US', {
+        timeZone: TZ_EST, hour12: false, hour: '2-digit', minute: '2-digit'
+    });
+}
+// Utility functions (scoped to trade_entry.ts to avoid conflicts)
+function escapeHtmlForTradeEntry(text) {
+    if (!text)
+        return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+function showToastForTradeEntry(message, type = 'success') {
+    showToastBase(message, type);
+}
+// Update the company name display below the ticker input
+function updateCompanyNameDisplay(companyName) {
+    const el = document.getElementById('ticker-company-name');
+    if (!el)
+        return;
+    if (companyName) {
+        el.textContent = companyName;
+        el.classList.remove('hidden');
+    }
+    else {
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+}
+// Get selected fund from global selector
+function getSelectedFund() {
+    const globalSelector = document.getElementById('global-fund-select');
+    if (!globalSelector) {
+        console.warn('[Trade Entry] Global fund selector not found');
+        return '';
+    }
+    const fund = globalSelector.value;
+    // Don't allow "all" for trade entry - need a specific fund
+    if (!fund || fund === 'all') {
+        return '';
+    }
+    return fund;
+}
+// Update the visible "Selected fund" banner (clear confirmation of where trades will go)
+function updateSelectedFundDisplay() {
+    const nameEl = document.getElementById('trade-entry-fund-name');
+    const hintEl = document.getElementById('trade-entry-fund-hint');
+    const banner = document.getElementById('trade-entry-fund-banner');
+    if (!nameEl || !hintEl || !banner)
+        return;
+    const fund = getSelectedFund();
+    const globalSelector = document.getElementById('global-fund-select');
+    const rawValue = globalSelector ? globalSelector.value : '';
+    if (fund) {
+        nameEl.textContent = fund;
+        nameEl.classList.remove('text-theme-warning-text');
+        hintEl.classList.add('hidden');
+        banner.classList.remove('border-theme-warning-text', 'bg-theme-warning-bg');
+    }
+    else {
+        nameEl.textContent = rawValue === 'all' ? 'All Funds (select one)' : '—';
+        nameEl.classList.add('text-theme-warning-text');
+        hintEl.classList.remove('hidden');
+        banner.classList.add('border-theme-warning-text', 'bg-theme-warning-bg');
+    }
+}
+// State
+let parsedTradeData = null;
+let currentPage = 0;
+const TRADE_HISTORY_PAGE_SIZES = [10, 20, 50, 100];
+function getTradeHistoryPageSize() {
+    const sel = document.getElementById('trade-history-page-size');
+    const n = parseInt(sel?.value || '20', 10);
+    if (!Number.isFinite(n))
+        return 20;
+    return TRADE_HISTORY_PAGE_SIZES.includes(n) ? n : 20;
+}
+function getTradeHistorySideFilter() {
+    const sel = document.getElementById('trade-history-side-filter');
+    const v = (sel?.value || 'all').toLowerCase();
+    if (v === 'buy' || v === 'sell')
+        return v;
+    return 'all';
+}
+const tabs = [
+    { id: 'manual-tab', target: 'manual-content' },
+    { id: 'email-tab', target: 'email-content' },
+    { id: 'history-tab', target: 'history-content' }
+];
+// Initialize tabs
+function initTabs() {
+    const tabsElement = document.getElementById('trade-tabs');
+    if (!tabsElement) {
+        console.warn('[Trade Entry] Tabs container not found');
+        return;
+    }
+    tabs.forEach(tab => {
+        const btn = document.getElementById(tab.id);
+        if (!btn) {
+            console.warn(`[Trade Entry] Tab button ${tab.id} not found`);
+            return;
+        }
+        btn.addEventListener('click', () => {
+            const activeClasses = ['text-accent', 'border-accent'];
+            const inactiveClasses = ['text-text-secondary', 'border-transparent', 'hover:text-text-primary', 'hover:border-border-hover'];
+            tabs.forEach(t => {
+                const b = document.getElementById(t.id);
+                const c = document.getElementById(t.target);
+                if (t.id === tab.id) {
+                    // Activate this tab
+                    b?.classList.remove(...inactiveClasses);
+                    b?.classList.add(...activeClasses);
+                    b?.setAttribute('aria-selected', 'true');
+                    c?.classList.remove('hidden');
+                }
+                else {
+                    // Deactivate other tabs
+                    b?.classList.remove(...activeClasses);
+                    b?.classList.add(...inactiveClasses);
+                    b?.setAttribute('aria-selected', 'false');
+                    c?.classList.add('hidden');
+                }
+            });
+            // Refresh data if history tab selected
+            if (tab.id === 'history-tab') {
+                fetchRecentTrades();
+            }
+        });
+    });
+    // Ensure first tab is active (it should already be visible from template)
+    const firstTab = document.getElementById('manual-tab');
+    const firstContent = document.getElementById('manual-content');
+    if (firstTab && firstContent) {
+        // Make sure it's visible and styled correctly
+        firstContent.classList.remove('hidden');
+        firstTab.setAttribute('aria-selected', 'true');
+    }
+}
+// Update manual total preview
+function updateManualTotal() {
+    const sharesInput = document.getElementById('shares');
+    const priceInput = document.getElementById('price');
+    const display = document.getElementById('total-value-display');
+    const previewBox = document.getElementById('manual-total-preview');
+    if (!sharesInput || !priceInput || !display || !previewBox)
+        return;
+    const shares = parseFloat(sharesInput.value) || 0;
+    const price = parseFloat(priceInput.value) || 0;
+    const total = shares * price;
+    display.textContent = '$' + total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (total > 0) {
+        previewBox.classList.remove('hidden');
+    }
+    else {
+        previewBox.classList.add('hidden');
+    }
+}
+// Handle manual trade submission
+async function handleManualSubmit(e) {
+    e.preventDefault();
+    const fund = getSelectedFund();
+    if (!fund) {
+        showToastForTradeEntry('Please select a fund from the sidebar menu first', 'error');
+        return;
+    }
+    const submitBtn = document.getElementById('submit-manual-btn');
+    if (!submitBtn)
+        return;
+    const originalText = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<span class="animate-spin text-xl">↻</span> Submitting...';
+    submitBtn.disabled = true;
+    try {
+        const form = e.target;
+        const formData = new FormData(form);
+        const date = formData.get('date');
+        const time = formData.get('time');
+        const timestamp = new Date(`${date}T${time}`).toISOString();
+        const payload = {
+            fund: fund,
+            action: formData.get('action'),
+            ticker: formData.get('ticker'),
+            shares: formData.get('shares'),
+            price: formData.get('price'),
+            currency: formData.get('currency'),
+            reason: formData.get('reason'),
+            timestamp: timestamp
+        };
+        const response = await fetch('/api/admin/trades/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Submission failed');
+        }
+        showToastForTradeEntry('✅ Trade Submitted Successfully');
+        form.reset();
+        // Reset date/time — re-read server default to avoid UTC bugs
+        const dateInput = document.getElementById('trade-date');
+        const timeInput = document.getElementById('trade-time');
+        if (dateInput) {
+            const serverDate = dateInput.getAttribute('data-default-date');
+            if (serverDate) {
+                dateInput.value = serverDate;
+            }
+            else {
+                const resetNow = new Date();
+                const ry = resetNow.getFullYear();
+                const rm = String(resetNow.getMonth() + 1).padStart(2, '0');
+                const rd = String(resetNow.getDate()).padStart(2, '0');
+                dateInput.value = `${ry}-${rm}-${rd}`;
+            }
+        }
+        if (timeInput) {
+            timeInput.value = nowEstTimeString();
+        }
+        updateManualTotal();
+        updateCompanyNameDisplay();
+        if (result.rebuild_job_id) {
+            showToastForTradeEntry('⏳ Background rebuild started (backdated trade)', 'info');
+        }
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error submitting trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry('❌ ' + errorMsg, 'error');
+    }
+    finally {
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+    }
+}
+// Handle email parsing
+async function handleEmailParse() {
+    const textArea = document.getElementById('email-text');
+    if (!textArea || !textArea.value.trim()) {
+        showToastForTradeEntry('Please paste email text', 'error');
+        return;
+    }
+    const btn = document.getElementById('parse-email-btn');
+    if (!btn)
+        return;
+    btn.disabled = true;
+    btn.textContent = 'Parsing...';
+    try {
+        const response = await fetch('/api/admin/trades/preview-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({ text: textArea.value }),
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Parse failed');
+        }
+        if (!result.trade) {
+            throw new Error('No trade data returned');
+        }
+        parsedTradeData = result.trade;
+        // Fill preview
+        const previewTicker = document.getElementById('preview-ticker');
+        const previewAction = document.getElementById('preview-action');
+        const previewShares = document.getElementById('preview-shares');
+        const previewPrice = document.getElementById('preview-price');
+        const previewTotal = document.getElementById('preview-total');
+        const previewDate = document.getElementById('preview-date');
+        const parsedResult = document.getElementById('parsed-result');
+        if (previewTicker)
+            previewTicker.textContent = result.trade.ticker;
+        // Show company name for parsed ticker
+        const previewCompanyName = document.getElementById('preview-company-name');
+        if (previewCompanyName) {
+            const companyName = getCompanyName(result.trade.ticker);
+            previewCompanyName.textContent = companyName || '';
+        }
+        if (previewAction) {
+            const action = inferAction(result.trade);
+            previewAction.textContent = action;
+            // Color action
+            if (action === 'SELL') {
+                previewAction.className = 'font-bold text-lg text-theme-error-text';
+            }
+            else if (action === 'DIVIDEND') {
+                previewAction.className = 'font-bold text-lg text-theme-info-text';
+            }
+            else {
+                previewAction.className = 'font-bold text-lg text-theme-success-text';
+            }
+        }
+        if (previewShares)
+            previewShares.textContent = result.trade.shares.toString();
+        if (previewPrice)
+            previewPrice.textContent = '$' + result.trade.price.toFixed(2);
+        if (previewTotal)
+            previewTotal.textContent = '$' + (result.trade.shares * result.trade.price).toFixed(2);
+        if (previewDate)
+            previewDate.textContent = new Date(result.trade.timestamp).toLocaleString('en-US', { timeZone: TZ_EST }) + ' EST';
+        if (parsedResult)
+            parsedResult.classList.remove('hidden');
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error parsing email:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry('❌ ' + errorMsg, 'error');
+        parsedTradeData = null;
+    }
+    finally {
+        btn.disabled = false;
+        btn.textContent = '🔍 Parse Email';
+    }
+}
+// Handle email trade confirmation
+async function handleEmailConfirm() {
+    if (!parsedTradeData)
+        return;
+    const fund = getSelectedFund();
+    if (!fund) {
+        showToastForTradeEntry('Please select a fund from the sidebar menu first', 'error');
+        return;
+    }
+    const action = inferAction(parsedTradeData);
+    const payload = {
+        fund: fund,
+        action: action,
+        ticker: parsedTradeData.ticker,
+        shares: parsedTradeData.shares,
+        price: parsedTradeData.price,
+        currency: parsedTradeData.currency,
+        reason: parsedTradeData.reason,
+        timestamp: parsedTradeData.timestamp
+    };
+    try {
+        const response = await fetch('/api/admin/trades/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Failed to save trade');
+        }
+        showToastForTradeEntry('✅ Trade Saved');
+        const parsedResult = document.getElementById('parsed-result');
+        const emailText = document.getElementById('email-text');
+        if (parsedResult)
+            parsedResult.classList.add('hidden');
+        if (emailText)
+            emailText.value = '';
+        parsedTradeData = null;
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error saving trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry('❌ ' + errorMsg, 'error');
+    }
+}
+// Infer action from trade data
+function inferAction(trade) {
+    const a = (trade.action || '').trim().toUpperCase();
+    if (a === 'BUY' || a === 'SELL' || a === 'DIVIDEND') {
+        return a;
+    }
+    const reason = (trade.reason || '').toLowerCase();
+    if (reason.includes('sell') || reason.includes('sold'))
+        return 'SELL';
+    if (reason.includes('drip') || reason.includes('dividend'))
+        return 'DIVIDEND';
+    return 'BUY';
+}
+// Fetch recent trades
+async function fetchRecentTrades(page = 0) {
+    const fund = getSelectedFund();
+    if (!fund) {
+        const tbody = document.getElementById('trades-table-body');
+        if (tbody) {
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-text-secondary">Please select a fund from the sidebar menu</td></tr>';
+        }
+        return;
+    }
+    currentPage = page;
+    const pageSize = getTradeHistoryPageSize();
+    const side = getTradeHistorySideFilter();
+    const tbody = document.getElementById('trades-table-body');
+    if (!tbody)
+        return;
+    tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center">Loading...</td></tr>';
+    try {
+        const params = new URLSearchParams({
+            fund,
+            page: String(page),
+            limit: String(pageSize),
+            side
+        });
+        const response = await fetch(`/api/admin/trades/recent?${params.toString()}`, {
+            credentials: 'include'
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        tbody.innerHTML = '';
+        if (data.trades.length === 0) {
+            tbody.innerHTML = '<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-text-secondary">No trades found</td></tr>';
+        }
+        else {
+            data.trades.forEach(trade => {
+                const tr = document.createElement('tr');
+                tr.className = 'bg-dashboard-surface border-b border-border hover:bg-dashboard-surface-alt';
+                const action = inferAction(trade);
+                const actionBadge = action === 'SELL'
+                    ? '<span class="bg-red-100 text-red-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-red-900 dark:text-red-300">SELL</span>'
+                    : action === 'DIVIDEND'
+                        ? '<span class="bg-sky-100 text-sky-900 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-sky-900 dark:text-sky-100">DIVIDEND</span>'
+                        : '<span class="bg-green-100 text-green-800 text-xs font-medium px-2.5 py-0.5 rounded dark:bg-green-900 dark:text-green-300">BUY</span>';
+                const dateStr = new Date(trade.date).toLocaleString('en-US', {
+                    timeZone: TZ_EST,
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                const total = trade.shares * trade.price;
+                const tradeId = trade.id;
+                const reason = trade.reason || '';
+                const isGenericReason = reason.startsWith('Imported from Webull');
+                // Full reason in-cell (wrapped); wide column on td. Title duplicates for tooltip/copy.
+                const reasonBody = escapeHtmlForTradeEntry(reason) || '—';
+                const reasonCell = isGenericReason
+                    ? `<span class="text-theme-warning-text block break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">⚠ ${reasonBody}</span>`
+                    : `<span class="text-text-secondary block break-words whitespace-normal" title="${escapeHtmlForTradeEntry(reason)}">${reasonBody}</span>`;
+                tr.innerHTML = `
+                    <td class="px-6 py-4">${escapeHtmlForTradeEntry(dateStr)}</td>
+                    <td class="px-6 py-4">${actionBadge}</td>
+                    <td class="px-6 py-4 font-bold text-text-primary">${escapeHtmlForTradeEntry(trade.ticker)}</td>
+                    <td class="px-6 py-4 text-right">${trade.shares}</td>
+                    <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-sm min-w-[14rem] max-w-2xl align-top">${reasonCell}</td>
+                    <td class="px-6 py-4 text-center whitespace-nowrap">
+                        <button type="button" data-trade-id="${tradeId}" class="edit-trade-btn text-accent hover:text-accent/80 text-sm font-medium me-2" title="Edit trade">
+                            <i class="fas fa-pen-to-square"></i>
+                        </button>
+                        <button type="button" data-trade-id="${tradeId}" class="delete-trade-btn text-theme-error-text hover:text-theme-error-text/80 text-sm font-medium" title="Delete trade">
+                            <i class="fas fa-trash-can"></i>
+                        </button>
+                    </td>
+                `;
+                // Attach event listeners for edit/delete buttons
+                const editBtn = tr.querySelector('.edit-trade-btn');
+                const deleteBtn = tr.querySelector('.delete-trade-btn');
+                if (editBtn) {
+                    editBtn.addEventListener('click', () => openEditModal(trade));
+                }
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', () => openDeleteModal(trade));
+                }
+                tbody.appendChild(tr);
+            });
+        }
+        // Update Pagination
+        const pageStart = document.getElementById('page-start');
+        const pageEnd = document.getElementById('page-end');
+        const totalCount = document.getElementById('total-count');
+        if (pageStart) {
+            pageStart.textContent = data.total === 0 ? '0' : String(page * pageSize + 1);
+        }
+        if (pageEnd) {
+            pageEnd.textContent = String(data.total === 0 ? 0 : Math.min((page + 1) * pageSize, data.total));
+        }
+        if (totalCount)
+            totalCount.textContent = data.total.toString();
+        renderPagination(data.pages, page);
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error fetching trades:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        tbody.innerHTML = `<tr class="bg-dashboard-surface border-b border-border"><td colspan="8" class="px-6 py-4 text-center text-theme-error-text">Error loading trades: ${escapeHtmlForTradeEntry(errorMsg)}</td></tr>`;
+    }
+}
+// ==========================================
+// Edit Trade Modal
+// ==========================================
+// Update edit modal company name display
+function updateEditCompanyName(companyName) {
+    const el = document.getElementById('edit-ticker-company-name');
+    if (!el)
+        return;
+    if (companyName) {
+        el.textContent = companyName;
+        el.classList.remove('hidden');
+    }
+    else {
+        el.textContent = '';
+        el.classList.add('hidden');
+    }
+}
+function openEditModal(trade) {
+    const modal = document.getElementById('edit-trade-modal');
+    if (!modal)
+        return;
+    if (modal instanceof HTMLElement) {
+        modal.dataset.storedAction = (trade.action || '').trim().toUpperCase();
+    }
+    // Populate form fields
+    const idInput = document.getElementById('edit-trade-id');
+    const buyRadio = document.getElementById('edit-action-buy');
+    const sellRadio = document.getElementById('edit-action-sell');
+    const tickerInput = document.getElementById('edit-ticker');
+    const sharesInput = document.getElementById('edit-shares');
+    const priceInput = document.getElementById('edit-price');
+    const currencySelect = document.getElementById('edit-currency');
+    const dateInput = document.getElementById('edit-date');
+    const timeInput = document.getElementById('edit-time');
+    const reasonInput = document.getElementById('edit-reason');
+    if (idInput)
+        idInput.value = trade.id.toString();
+    if (tickerInput)
+        tickerInput.value = trade.ticker || '';
+    if (sharesInput)
+        sharesInput.value = Math.abs(trade.shares).toString();
+    if (priceInput)
+        priceInput.value = trade.price.toString();
+    if (currencySelect)
+        currencySelect.value = trade.currency || 'USD';
+    if (reasonInput)
+        reasonInput.value = trade.reason || '';
+    // Set action radio
+    const action = inferAction(trade);
+    if (buyRadio && sellRadio) {
+        if (action === 'DIVIDEND') {
+            buyRadio.checked = false;
+            sellRadio.checked = false;
+        }
+        else {
+            buyRadio.checked = action === 'BUY';
+            sellRadio.checked = action === 'SELL';
+        }
+    }
+    // Parse date/time from ISO string, displayed in EST
+    if (dateInput && timeInput && trade.date) {
+        const dt = new Date(trade.date);
+        dateInput.value = toEstDateString(dt);
+        timeInput.value = toEstTimeString(dt);
+    }
+    // Show company name for the current ticker
+    const name = getCompanyName(trade.ticker || '');
+    updateEditCompanyName(name);
+    // Open via Flowbite's hidden trigger (data-modal-toggle). Do not
+    // `import { Modal } from "flowbite"` — tsc emits a bare specifier and the
+    // browser never runs this module (spinners hang forever).
+    document.getElementById('edit-trade-modal-trigger')?.click();
+}
+function closeEditModal() {
+    document.querySelector('[data-modal-hide="edit-trade-modal"]')?.click();
+}
+async function handleEditSubmit(e) {
+    e.preventDefault();
+    const idInput = document.getElementById('edit-trade-id');
+    const tradeId = idInput ? idInput.value.trim() : '';
+    if (!tradeId)
+        return;
+    const saveBtn = document.getElementById('edit-modal-save');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+    }
+    try {
+        const editModal = document.getElementById('edit-trade-modal');
+        const storedRaw = editModal instanceof HTMLElement ? (editModal.dataset.storedAction || '') : '';
+        const buyRadio = document.getElementById('edit-action-buy');
+        const sellRadio = document.getElementById('edit-action-sell');
+        let action;
+        if (buyRadio?.checked) {
+            action = 'BUY';
+        }
+        else if (sellRadio?.checked) {
+            action = 'SELL';
+        }
+        else if (storedRaw === 'DIVIDEND') {
+            action = 'DIVIDEND';
+        }
+        else {
+            action = 'BUY';
+        }
+        const tickerInput = document.getElementById('edit-ticker');
+        const sharesInput = document.getElementById('edit-shares');
+        const priceInput = document.getElementById('edit-price');
+        const currencySelect = document.getElementById('edit-currency');
+        const dateInput = document.getElementById('edit-date');
+        const timeInput = document.getElementById('edit-time');
+        const reasonInput = document.getElementById('edit-reason');
+        const date = dateInput?.value || '';
+        const time = timeInput?.value || '12:00';
+        const timestamp = new Date(`${date}T${time}`).toISOString();
+        const payload = {
+            action,
+            ticker: tickerInput?.value || '',
+            shares: sharesInput?.value || '0',
+            price: priceInput?.value || '0',
+            currency: currencySelect?.value || 'USD',
+            timestamp,
+            reason: reasonInput?.value || ''
+        };
+        const response = await fetch(`/api/admin/trades/${encodeURIComponent(tradeId)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(payload),
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Update failed');
+        }
+        closeEditModal();
+        showToastForTradeEntry('Trade updated successfully');
+        fetchRecentTrades(currentPage);
+        if (result.rebuild_job_id) {
+            showToastForTradeEntry('Background rebuild started', 'info');
+        }
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error updating trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry(errorMsg, 'error');
+    }
+    finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Changes';
+        }
+    }
+}
+// ==========================================
+// Delete Trade Modal
+// ==========================================
+function openDeleteModal(trade) {
+    const modal = document.getElementById('delete-trade-modal');
+    if (!modal)
+        return;
+    const idInput = document.getElementById('delete-trade-id');
+    const summary = document.getElementById('delete-trade-summary');
+    if (idInput)
+        idInput.value = trade.id.toString();
+    if (summary) {
+        const action = inferAction(trade);
+        const dateStr = new Date(trade.date).toLocaleDateString('en-US', { timeZone: TZ_EST });
+        summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${trade.price.toFixed(2)} on ${dateStr}`;
+    }
+    document.getElementById('delete-trade-modal-trigger')?.click();
+}
+function closeDeleteModal() {
+    document.querySelector('[data-modal-hide="delete-trade-modal"]')?.click();
+}
+async function handleDeleteConfirm() {
+    const idInput = document.getElementById('delete-trade-id');
+    const tradeId = idInput ? idInput.value.trim() : '';
+    if (!tradeId)
+        return;
+    const confirmBtn = document.getElementById('delete-modal-confirm');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+    }
+    try {
+        const response = await fetch(`/api/admin/trades/${encodeURIComponent(tradeId)}`, {
+            method: 'DELETE',
+            headers: { ...getCsrfHeaders() },
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Delete failed');
+        }
+        closeDeleteModal();
+        showToastForTradeEntry('Trade deleted');
+        fetchRecentTrades(currentPage);
+        if (result.rebuild_job_id) {
+            showToastForTradeEntry('Background rebuild started', 'info');
+        }
+    }
+    catch (error) {
+        console.error('[Trade Entry] Error deleting trade:', error);
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        showToastForTradeEntry(errorMsg, 'error');
+    }
+    finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Yes, Delete';
+        }
+    }
+}
+// Render pagination
+function renderPagination(totalPages, currPage) {
+    const container = document.getElementById('pagination');
+    if (!container)
+        return;
+    container.innerHTML = '';
+    // Prev
+    const prevLi = document.createElement('li');
+    prevLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 ms-0 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-s-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${currPage === 0 ? 'pointer-events-none opacity-50' : ''}">
+            <span class="sr-only">Previous</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 1 1 5l4 4"/>
+            </svg>
+        </a>
+    `;
+    prevLi.onclick = (e) => {
+        e.preventDefault();
+        if (currPage > 0) {
+            fetchRecentTrades(currPage - 1);
+        }
+    };
+    container.appendChild(prevLi);
+    // Next
+    const nextLi = document.createElement('li');
+    nextLi.innerHTML = `
+        <a href="#" class="flex items-center justify-center px-3 h-8 leading-tight text-text-secondary bg-dashboard-surface border border-border rounded-e-lg hover:bg-dashboard-surface-alt hover:text-text-primary ${currPage >= totalPages - 1 ? 'pointer-events-none opacity-50' : ''}">
+            <span class="sr-only">Next</span>
+            <svg class="w-2.5 h-2.5 rtl:rotate-180" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 6 10">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 9 4-4-4-4"/>
+            </svg>
+        </a>
+    `;
+    nextLi.onclick = (e) => {
+        e.preventDefault();
+        if (currPage < totalPages - 1) {
+            fetchRecentTrades(currPage + 1);
+        }
+    };
+    container.appendChild(nextLi);
+}
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    updateSelectedFundDisplay();
+    // Retry once after a short delay (sidebar/select may render or become ready slightly later)
+    setTimeout(() => {
+        updateSelectedFundDisplay();
+    }, 150);
+    // Initialize tabs
+    initTabs();
+    // Live calc for manual form
+    const sharesInput = document.getElementById('shares');
+    const priceInput = document.getElementById('price');
+    if (sharesInput) {
+        sharesInput.addEventListener('input', updateManualTotal);
+    }
+    if (priceInput) {
+        priceInput.addEventListener('input', updateManualTotal);
+    }
+    // Set up ticker autocomplete with company names
+    setupTickerAutocomplete({
+        inputId: 'ticker',
+        dropdownId: 'ticker-autocomplete-dropdown',
+        showCompanyNames: true,
+        onSelect: (_ticker, companyName) => {
+            updateCompanyNameDisplay(companyName);
+        }
+    });
+    // Also update company name on manual ticker change (blur)
+    const tickerInput = document.getElementById('ticker');
+    if (tickerInput) {
+        tickerInput.addEventListener('change', () => {
+            const originalValue = tickerInput.value;
+            tickerInput.value = tickerInput.value.toUpperCase();
+            // Visual feedback if value changed
+            if (originalValue !== tickerInput.value) {
+                tickerInput.classList.add('border-theme-success-text');
+                setTimeout(() => {
+                    tickerInput.classList.remove('border-theme-success-text');
+                }, 300);
+            }
+            // Show company name for manually typed tickers
+            const name = getCompanyName(tickerInput.value);
+            updateCompanyNameDisplay(name);
+        });
+    }
+    // Event Listeners
+    const manualForm = document.getElementById('manual-trade-form');
+    if (manualForm) {
+        manualForm.addEventListener('submit', handleManualSubmit);
+    }
+    const parseEmailBtn = document.getElementById('parse-email-btn');
+    if (parseEmailBtn) {
+        parseEmailBtn.addEventListener('click', handleEmailParse);
+    }
+    const clearEmailBtn = document.getElementById('clear-email-btn');
+    if (clearEmailBtn) {
+        clearEmailBtn.addEventListener('click', () => {
+            const emailText = document.getElementById('email-text');
+            const parsedResult = document.getElementById('parsed-result');
+            if (emailText)
+                emailText.value = '';
+            if (parsedResult)
+                parsedResult.classList.add('hidden');
+        });
+    }
+    const confirmEmailBtn = document.getElementById('confirm-email-trade-btn');
+    if (confirmEmailBtn) {
+        confirmEmailBtn.addEventListener('click', handleEmailConfirm);
+    }
+    // Listen to global fund selector changes (update banner + history tab)
+    const globalFundSelect = document.getElementById('global-fund-select');
+    if (globalFundSelect) {
+        globalFundSelect.addEventListener('change', () => {
+            updateSelectedFundDisplay();
+            const historyContent = document.getElementById('history-content');
+            if (historyContent && !historyContent.classList.contains('hidden')) {
+                currentPage = 0;
+                fetchRecentTrades(0);
+            }
+        });
+    }
+    const tradeHistoryPageSize = document.getElementById('trade-history-page-size');
+    const tradeHistorySide = document.getElementById('trade-history-side-filter');
+    const resetHistoryPageAndFetch = () => {
+        currentPage = 0;
+        void fetchRecentTrades(0);
+    };
+    tradeHistoryPageSize?.addEventListener('change', resetHistoryPageAndFetch);
+    tradeHistorySide?.addEventListener('change', resetHistoryPageAndFetch);
+    // Set default date/time
+    // Use server-provided last trading date (avoids UTC timezone bugs and handles weekends)
+    const dateInput = document.getElementById('trade-date');
+    const timeInput = document.getElementById('trade-time');
+    if (dateInput) {
+        const serverDate = dateInput.getAttribute('data-default-date');
+        if (serverDate) {
+            dateInput.value = serverDate; // YYYY-MM-DD from server
+        }
+        else {
+            // Fallback: format local date to avoid UTC offset issues
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            dateInput.value = `${y}-${m}-${d}`;
+        }
+    }
+    if (timeInput) {
+        timeInput.value = nowEstTimeString();
+    }
+    // ==========================================
+    // Edit / Delete Modal Event Listeners
+    // ==========================================
+    // Edit modal
+    const editForm = document.getElementById('edit-trade-form');
+    if (editForm) {
+        editForm.addEventListener('submit', handleEditSubmit);
+    }
+    // Close (X), Cancel, backdrop-click and Esc are handled by Flowbite via the
+    // modal's data-modal-hide attributes and its managed backdrop.
+    // Set up ticker autocomplete on the edit modal's ticker field
+    setupTickerAutocomplete({
+        inputId: 'edit-ticker',
+        dropdownId: 'edit-ticker-autocomplete-dropdown',
+        showCompanyNames: true,
+        onSelect: (_ticker, companyName) => {
+            updateEditCompanyName(companyName);
+        }
+    });
+    // Also update company name on manual ticker change in edit modal
+    const editTickerInput = document.getElementById('edit-ticker');
+    if (editTickerInput) {
+        editTickerInput.addEventListener('change', () => {
+            editTickerInput.value = editTickerInput.value.toUpperCase();
+            const name = getCompanyName(editTickerInput.value);
+            updateEditCompanyName(name);
+        });
+    }
+    // Delete modal
+    const deleteConfirmBtn = document.getElementById('delete-modal-confirm');
+    if (deleteConfirmBtn) {
+        deleteConfirmBtn.addEventListener('click', handleDeleteConfirm);
+    }
+    // Delete modal Cancel, backdrop-click and Esc are handled by Flowbite via
+    // the modal's data-modal-hide attribute and its managed backdrop.
+});
+//# sourceMappingURL=trade_entry.js.map
