@@ -94,17 +94,11 @@ function setAcceptError(text: string): void {
 }
 
 function openAcceptModal(): void {
-  const modal = document.getElementById("ideas-accept-modal");
-  if (!modal) return;
-  modal.classList.remove("hidden");
-  modal.setAttribute("aria-hidden", "false");
+  document.getElementById("ideas-accept-modal-trigger")?.click();
 }
 
 function closeAcceptModal(): void {
-  const modal = document.getElementById("ideas-accept-modal");
-  if (!modal) return;
-  modal.classList.add("hidden");
-  modal.setAttribute("aria-hidden", "true");
+  document.querySelector<HTMLElement>('[data-modal-hide="ideas-accept-modal"]')?.click();
   acceptPending = null;
   setAcceptError("");
 }
@@ -236,15 +230,7 @@ function setupAcceptModal(): void {
       closeAcceptModal();
     }
   });
-  // Backdrop click closes (modal root is the full-screen overlay).
-  document.getElementById("ideas-accept-modal")?.addEventListener("click", (ev) => {
-    if (ev.target === ev.currentTarget) closeAcceptModal();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (ev.key !== "Escape") return;
-    const modal = document.getElementById("ideas-accept-modal");
-    if (modal && !modal.classList.contains("hidden")) closeAcceptModal();
-  });
+  // Flowbite handles backdrop click and Escape key natively via data-modal-hide.
 }
 
 function thesisBadgeHtml(flags: ThesisAttentionFlag[] | undefined): string {

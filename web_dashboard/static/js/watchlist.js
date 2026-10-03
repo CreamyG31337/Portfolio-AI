@@ -1,0 +1,364 @@
+import { getCsrfHeaders } from "./csrf.js";
+import { setupTickerSearch } from "./ticker_search.js";
+import { sentimentBadgeClasses } from "./sentiment_badges.js";
+import { helpTip, getGlossary, initTooltips } from "./glossary.js";
+function el(id) {
+    return document.getElementById(id);
+}
+function getSelectedFund() {
+    const fromUi = window.ui?.getSelectedFund?.();
+    if (fromUi)
+        return fromUi;
+    const sel = document.getElementById("global-fund-select");
+    const v = (sel?.value || "").trim();
+    if (!v || v.toLowerCase() === "all")
+        return null;
+    return v;
+}
+function formatShortDate(raw) {
+    if (!raw)
+        return "";
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) {
+        return String(raw).slice(0, 10);
+    }
+    return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+    });
+}
+function escapeHtml(s) {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+function tickerLabel(ticker, companyName) {
+    const t = escapeHtml(ticker || "");
+    const name = String(companyName || "").trim();
+    if (!name)
+        return t;
+    return `${t} <span class="text-xs font-normal text-text-secondary truncate inline-block max-w-[140px] sm:max-w-[200px] align-bottom">${escapeHtml(name)}</span>`;
+}
+function formatWatchlistSource(source) {
+    if (!source)
+        return '<span class="text-xs text-text-secondary">—</span>';
+    const glossaryKey = `source_${source}`;
+    const entry = getGlossary()[glossaryKey];
+    if (entry) {
+        return `<span class="inline-flex items-center gap-1 text-xs text-text-secondary">${escapeHtml(entry.label)} ${helpTip(glossaryKey, "p-1 min-w-[24px] min-h-[24px]")}</span>`;
+    }
+    return `<span class="text-xs text-text-secondary">${escapeHtml(source)}</span>`;
+}
+function setMsg(id, text, ok) {
+    const node = el(id);
+    if (!node)
+        return;
+    node.textContent = text;
+    node.classList.remove("hidden", "text-theme-error-text", "text-green-600");
+    node.classList.add(ok ? "text-green-600" : "text-theme-error-text");
+}
+function setAddMsg(text, ok) {
+    setMsg("watchlist-add-msg", text, ok);
+}
+function analysisBadge(r) {
+    if (r.queue_status === "leased") {
+        return '<span class="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100">running</span>';
+    }
+    if (r.queue_status === "pending") {
+        return '<span class="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100">queued</span>';
+    }
+    if (r.analyzed) {
+        const when = formatShortDate(r.analysis_date || r.analysis_updated_at);
+        const stance = r.stance || r.sentiment || "";
+        const stanceHtml = stance
+            ? ` <span class="inline-flex items-center gap-1"><span class="${sentimentBadgeClasses(stance)}">${escapeHtml(stance)}</span>${helpTip("stance", "p-1 min-w-[24px] min-h-[24px]")}</span>`
+            : "";
+        return `<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">analyzed</span>
+      <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>${stanceHtml}`;
+    }
+    return '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">not analyzed</span>';
+}
+function metaBadge(r) {
+    if (!r.has_meta) {
+        return '<span class="text-xs text-text-secondary">—</span>';
+    }
+    const when = formatShortDate(r.meta_updated_at);
+    const conv = r.meta_conviction || "meta";
+    return `<span class="inline-flex items-center gap-1"><span class="text-xs px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-900 dark:bg-indigo-900 dark:text-indigo-100">${escapeHtml(conv)}</span>${helpTip("conviction", "p-1 min-w-[24px] min-h-[24px]")}</span>
+    <span class="text-xs text-text-secondary ml-1">${escapeHtml(when)}</span>`;
+}
+async function patchItem(fund, ticker, patch) {
+    const resp = await fetch("/api/watchlist/item", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ fund, ticker, ...patch }),
+    });
+    if (!resp.ok) {
+        const body = (await resp.json().catch(() => ({})));
+        alert(body.error || `HTTP ${resp.status}`);
+        return false;
+    }
+    return true;
+}
+async function enqueueAnalyze(fund, tickers) {
+    const resp = await fetch("/api/watchlist/analyze", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+        body: JSON.stringify({ fund, tickers, include_meta: true }),
+    });
+    const body = (await resp.json().catch(() => ({})));
+    if (!resp.ok) {
+        setMsg("watchlist-analyze-msg", body.error || `HTTP ${resp.status}`, false);
+        return false;
+    }
+    setMsg("watchlist-analyze-msg", `Queued ${body.enqueued ?? tickers.length} ticker(s). Refresh in a few minutes; open dossier to read results.`, true);
+    return true;
+}
+async function addTicker(symbol) {
+    const fund = getSelectedFund();
+    if (!fund) {
+        setAddMsg("Select a fund first.", false);
+        return;
+    }
+    const ticker = symbol.trim().toUpperCase();
+    if (!ticker)
+        return;
+    const tierSel = el("watchlist-add-tier");
+    // NOTE: server upsert overwrites watched_tickers_v2.source — re-adding a ticker
+    // that came from Ideas Accept will replace ideas_inbox with watchlist_search.
+    try {
+        const resp = await fetch("/api/watchlist", {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json", ...getCsrfHeaders() },
+            body: JSON.stringify({
+                fund,
+                tickers: [ticker],
+                priority_tier: tierSel?.value || "B",
+                source: "watchlist_search",
+            }),
+        });
+        const body = (await resp.json().catch(() => ({})));
+        if (!resp.ok) {
+            setAddMsg(body.error || `HTTP ${resp.status}`, false);
+            return;
+        }
+        const failed = body.failed_tickers || [];
+        if (failed.length) {
+            setAddMsg(`Could not add ${failed.join(", ")}`, false);
+        }
+        else {
+            setAddMsg(`Added ${ticker}.`, true);
+        }
+        await loadList();
+    }
+    catch (e) {
+        setAddMsg(e instanceof Error ? e.message : String(e), false);
+    }
+}
+function renderRows(fund, rows) {
+    const tbody = el("watchlist-tbody");
+    const wrap = el("watchlist-table-wrap");
+    const empty = el("watchlist-empty");
+    const count = el("watchlist-count");
+    if (!tbody || !wrap || !empty)
+        return;
+    const provFund = el("watchlist-provenance-fund");
+    if (provFund)
+        provFund.textContent = fund || "—";
+    const provUpdated = el("watchlist-provenance-updated");
+    if (provUpdated) {
+        let latestTs = null;
+        for (const r of rows) {
+            for (const ts of [r.meta_updated_at, r.analysis_updated_at, r.analysis_date, r.created_at]) {
+                if (ts && (!latestTs || ts > latestTs)) {
+                    latestTs = ts;
+                }
+            }
+        }
+        provUpdated.textContent = latestTs ? ` · updated ${formatShortDate(latestTs)}` : "";
+    }
+    const activeCount = rows.filter((r) => r.is_active).length;
+    if (count)
+        count.textContent = `(${activeCount} active)`;
+    if (!rows.length) {
+        wrap.classList.add("hidden");
+        empty.classList.remove("hidden");
+        tbody.innerHTML = "";
+        initTooltips();
+        return;
+    }
+    empty.classList.add("hidden");
+    wrap.classList.remove("hidden");
+    tbody.innerHTML = rows
+        .map((r) => {
+        const tier = r.priority_tier || "B";
+        const active = !!r.is_active;
+        const href = r.dossier_url || `/ticker?ticker=${encodeURIComponent(r.ticker)}`;
+        const preview = r.summary_snippet
+            ? `<span class="text-xs text-text-secondary line-clamp-2 max-w-xs inline-block">${escapeHtml(r.summary_snippet)}</span>`
+            : '<span class="text-xs text-text-secondary">—</span>';
+        return `<tr class="border-b border-border last:border-0 align-top" data-ticker="${r.ticker}">
+        <td class="py-2 pr-3">
+          <a href="${href}" class="text-accent hover:underline">${tickerLabel(r.ticker, r.company_name)}</a>
+          <div class="mt-0.5">${formatWatchlistSource(r.source)}</div>
+        </td>
+        <td class="py-2 pr-3">
+          <div class="inline-flex items-center gap-1">
+            <select data-action="tier" data-ticker="${r.ticker}"
+              class="rounded border border-border bg-dashboard-background text-sm px-1 py-0.5">
+              ${["A", "B", "C"]
+            .map((t) => `<option value="${t}" ${t === tier ? "selected" : ""}>${t}</option>`)
+            .join("")}
+            </select>
+            ${helpTip("tier_" + tier, "p-1 min-w-[24px] min-h-[24px]")}
+          </div>
+        </td>
+        <td class="py-2 pr-3">${analysisBadge(r)}</td>
+        <td class="py-2 pr-3">${metaBadge(r)}</td>
+        <td class="py-2 pr-3">${preview}</td>
+        <td class="py-2 pr-3">${active
+            ? '<span class="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">active</span>'
+            : '<span class="text-xs px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200">inactive</span>'}</td>
+        <td class="py-2 pr-3 whitespace-nowrap">
+          <a href="${href}" class="text-xs text-accent hover:underline mr-2">Open dossier</a>
+          <button type="button" data-action="analyze" data-ticker="${r.ticker}"
+            class="text-xs text-accent hover:underline mr-2">Analyze</button>
+          <button type="button" data-action="${active ? "deactivate" : "activate"}" data-ticker="${r.ticker}"
+            class="text-xs text-text-secondary hover:underline">${active ? "Remove" : "Reactivate"}</button>
+        </td>
+      </tr>`;
+    })
+        .join("");
+    initTooltips();
+    tbody.querySelectorAll("[data-action]").forEach((node) => {
+        const btn = node;
+        const action = btn.getAttribute("data-action");
+        const ticker = btn.getAttribute("data-ticker") || "";
+        if (action === "tier" && btn instanceof HTMLSelectElement) {
+            btn.addEventListener("change", async () => {
+                const ok = await patchItem(fund, ticker, { priority_tier: btn.value });
+                if (ok)
+                    void loadList();
+            });
+            return;
+        }
+        btn.addEventListener("click", async () => {
+            if (action === "deactivate") {
+                const ok = await patchItem(fund, ticker, { is_active: false });
+                if (ok)
+                    void loadList();
+            }
+            else if (action === "activate") {
+                const ok = await patchItem(fund, ticker, { is_active: true });
+                if (ok)
+                    void loadList();
+            }
+            else if (action === "analyze") {
+                const ok = await enqueueAnalyze(fund, [ticker]);
+                if (ok)
+                    void loadList();
+            }
+        });
+    });
+}
+async function loadList() {
+    const fund = getSelectedFund();
+    const fundLabel = el("watchlist-fund-label");
+    const provFund = el("watchlist-provenance-fund");
+    const loading = el("watchlist-loading");
+    const err = el("watchlist-error");
+    if (fundLabel)
+        fundLabel.textContent = fund || "(select a fund)";
+    if (provFund)
+        provFund.textContent = fund || "—";
+    if (!fund) {
+        if (loading)
+            loading.classList.add("hidden");
+        if (err) {
+            err.textContent = "Select a fund in the sidebar to manage its watchlist.";
+            err.classList.remove("hidden");
+        }
+        return;
+    }
+    if (err)
+        err.classList.add("hidden");
+    if (loading) {
+        loading.textContent = "Loading…";
+        loading.classList.remove("hidden");
+    }
+    const showInactive = el("watchlist-show-inactive")?.checked;
+    try {
+        const qs = new URLSearchParams({
+            fund,
+            include_inactive: showInactive ? "1" : "0",
+        });
+        const resp = await fetch(`/api/watchlist?${qs}`, { credentials: "include" });
+        if (!resp.ok)
+            throw new Error(`HTTP ${resp.status}`);
+        const body = (await resp.json());
+        if (loading)
+            loading.classList.add("hidden");
+        renderRows(fund, body.data || []);
+    }
+    catch (e) {
+        if (loading)
+            loading.classList.add("hidden");
+        if (err) {
+            err.textContent = e instanceof Error ? e.message : String(e);
+            err.classList.remove("hidden");
+        }
+    }
+}
+async function analyzeAllActive() {
+    const fund = getSelectedFund();
+    if (!fund) {
+        setMsg("watchlist-analyze-msg", "Select a fund first.", false);
+        return;
+    }
+    const tickers = Array.from(document.querySelectorAll("#watchlist-tbody tr[data-ticker]"))
+        .map((n) => n.getAttribute("data-ticker") || "")
+        .filter(Boolean);
+    if (!tickers.length) {
+        setMsg("watchlist-analyze-msg", "No tickers to analyze.", false);
+        return;
+    }
+    const btn = el("watchlist-analyze-all");
+    if (btn)
+        btn.disabled = true;
+    try {
+        const ok = await enqueueAnalyze(fund, tickers);
+        if (ok)
+            await loadList();
+    }
+    finally {
+        if (btn)
+            btn.disabled = false;
+    }
+}
+function init() {
+    setupTickerSearch({
+        inputId: "watchlist-search-input",
+        resultsId: "watchlist-search-results",
+        spinnerId: "watchlist-search-spinner",
+        clearInputOnSelect: true,
+        onSelect: (symbol) => void addTicker(symbol),
+    });
+    el("watchlist-show-inactive")?.addEventListener("change", () => void loadList());
+    el("watchlist-analyze-all")?.addEventListener("click", () => void analyzeAllActive());
+    window.addEventListener("fundChanged", () => void loadList());
+    initTooltips();
+    void loadList();
+}
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+}
+else {
+    init();
+}
+//# sourceMappingURL=watchlist.js.map
