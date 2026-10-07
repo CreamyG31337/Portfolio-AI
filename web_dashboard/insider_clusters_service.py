@@ -11,38 +11,26 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from supabase_pagination import fetch_all_rows
+
 logger = logging.getLogger(__name__)
 
 # Scraped Form-4 rows occasionally carry placeholder tickers.
 _JUNK_TICKERS = {"", "-", "N/A", "NONE", "NULL"}
-
-# Supabase REST returns at most 1000 rows per request regardless of .limit().
-_PAGE_SIZE = 1000
-
 
 def fetch_recent_insider_buys(
     supabase_client: Any, *, days: int = 30
 ) -> list[dict[str, Any]]:
     """All Purchase rows in the window, paginated past the 1000-row cap."""
     cutoff = (date.today() - timedelta(days=days)).isoformat()
-    rows: list[dict[str, Any]] = []
-    offset = 0
-    while True:
-        page = (
-            supabase_client.supabase.table("insider_trades")
-            .select("ticker,insider_name,insider_title,transaction_date,shares,value")
-            .eq("type", "Purchase")
-            .gte("transaction_date", cutoff)
-            .order("transaction_date", desc=True)
-            .range(offset, offset + _PAGE_SIZE - 1)
-            .execute()
-        )
-        data = page.data or []
-        rows.extend(data)
-        if len(data) < _PAGE_SIZE:
-            break
-        offset += _PAGE_SIZE
-    return rows
+    return fetch_all_rows(
+        supabase_client,
+        "insider_trades",
+        "ticker,insider_name,insider_title,transaction_date,shares,value",
+        filters=[("type", "eq", "Purchase"), ("transaction_date", "gte", cutoff)],
+        order="transaction_date",
+        order_desc=True,
+    )
 
 
 def detect_cluster_buys(
