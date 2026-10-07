@@ -883,7 +883,7 @@ use their BTC Market Radar as a micro-cap BUY/CASH gate.
   `rss_feed_ingest_job` (skip extract/summarize on match); `corroboration_count` /
   `corroboration_sources` on `research_articles`; relevance boost via
   `calculate_relevance_score`. Flag: `STORY_DEDUP_ENABLED` (default on). Migration:
-  `database/migrations/2026-07_add_story_corroboration.sql` —
+  `database/schema/supabase/migrations/2026-07_add_story_corroboration.sql` —
   `python web_dashboard/scripts/apply_story_corroboration_migration.py --apply`.
   Shipped 2026-07-29.
   **Follow-on (later):** widen candidates beyond Market News and attach newsletters /
@@ -1068,7 +1068,7 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   can rank an IR channel apart from a macro pundit). Collector facts (`video_id`,
   `channel_id`, `duration_s`, `caption_lang`, `caption_kind`) live in the new additive
   `research_articles.source_metadata` JSONB (migration
-  `database/migrations/2026-07_add_article_source_metadata.sql`) — not `claims`, which the
+  `database/schema/supabase/migrations/2026-07_add_article_source_metadata.sql`) — not `claims`, which the
   summarizer overwrites. Summarize + ticker extraction reuse the
   `symbol_article_scraper_job` path, queue-managed via new AI-task-queue job
   `youtube_transcript_summary` when enabled (falls back to inline). Transcript summarizer

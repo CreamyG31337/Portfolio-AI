@@ -49,7 +49,7 @@ everything already built without a single new LLM call.
 
 - **No autonomous trading.** Outputs are advisory artifacts a human reads. Ever.
 - **Additive schema only.** New tables/columns with fallbacks; never repurpose existing
-  UPSERT semantics. Match the migration style in `database/migrations/`.
+  UPSERT semantics. Match the migration style in `database/schema/supabase/migrations/`.
 - **Holdings-scoped jobs must filter funds by `funds.is_production = true`.** The test suite
   writes TEST_* funds with fixture positions into prod Supabase (see ROADMAP "Post-ship
   verification 2026-06-11"). Any job that enumerates positions without this filter will burn

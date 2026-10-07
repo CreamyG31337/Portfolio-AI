@@ -23,8 +23,8 @@ This project steals research **governance** from [AQuA](https://arxiv.org/abs/26
 
 Migrations:
 
-- `database/migrations/2026-08_add_research_articles_available_at.sql`
-- `database/migrations/2026-08_add_social_available_at.sql`
+- `database/schema/supabase/migrations/2026-08_add_research_articles_available_at.sql`
+- `database/schema/supabase/migrations/2026-08_add_social_available_at.sql`
 
 Apply:
 
@@ -103,7 +103,7 @@ mismatch as destroyed skill.
 `directional` otherwise; `after_cost_coverage` reports how many scored rows predate
 the cost columns. Pre-cost aggregates are never published under an after-cost label.
 
-Migration: `database/migrations/2026-08_add_stance_outcomes_cost_belief.sql`
+Migration: `database/schema/supabase/migrations/2026-08_add_stance_outcomes_cost_belief.sql`
 
 ```powershell
 python web_dashboard/scripts/apply_stance_outcomes_cost_belief_migration.py --apply
