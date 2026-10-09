@@ -11,6 +11,8 @@ import logging
 from datetime import date, timedelta
 from typing import Any
 
+from supabase_pagination import fetch_all_rows
+
 from stance_history import record_stance_safe
 
 logger = logging.getLogger(__name__)
@@ -131,18 +133,16 @@ def build_congress_herd_buys(
     held: set[str] = set()
     watched: set[str] = set()
     try:
-        pos_query = supabase_client.supabase.table("latest_positions").select("ticker")
+        filters = []
         if fund:
-            pos_query = pos_query.eq("fund", fund)
-        pos = pos_query.execute()
-        held = {str(r["ticker"]).upper() for r in (pos.data or []) if r.get("ticker")}
-        wl = (
-            supabase_client.supabase.table("watched_tickers_v2")
-            .select("ticker")
-            .eq("is_active", True)
-            .execute()
+            filters.append(("fund", "eq", fund))
+        pos_data = fetch_all_rows(supabase_client, "latest_positions", "ticker", filters=filters)
+        held = {str(r["ticker"]).upper() for r in pos_data if r.get("ticker")}
+
+        wl_data = fetch_all_rows(
+            supabase_client, "watched_tickers_v2", "ticker", filters=[("is_active", "eq", True)]
         )
-        watched = {str(r["ticker"]).upper() for r in (wl.data or []) if r.get("ticker")}
+        watched = {str(r["ticker"]).upper() for r in wl_data if r.get("ticker")}
     except Exception as exc:
         logger.warning("congress herd: held/watchlist lookup failed: %s", exc)
 

@@ -6,6 +6,8 @@ import logging
 from datetime import date, datetime
 from typing import Any
 
+from supabase_pagination import fetch_all_rows
+
 from flask_cache_utils import cache_data
 
 logger = logging.getLogger(__name__)
@@ -66,20 +68,14 @@ def earnings_for_fund(supabase_client: Any, fund: str | None) -> list[dict[str, 
     tickers: list[str] = []
     try:
         if fund:
-            pos = (
-                supabase_client.supabase.table("latest_positions")
-                .select("ticker")
-                .eq("fund", fund)
-                .execute()
+            pos_data = fetch_all_rows(
+                supabase_client, "latest_positions", "ticker", filters=[("fund", "eq", fund)]
             )
-            tickers.extend(str(r["ticker"]).upper() for r in (pos.data or []) if r.get("ticker"))
-        wl = (
-            supabase_client.supabase.table("watched_tickers_v2")
-            .select("ticker")
-            .eq("is_active", True)
-            .execute()
+            tickers.extend(str(r["ticker"]).upper() for r in pos_data if r.get("ticker"))
+        wl_data = fetch_all_rows(
+            supabase_client, "watched_tickers_v2", "ticker", filters=[("is_active", "eq", True)]
         )
-        tickers.extend(str(r["ticker"]).upper() for r in (wl.data or []) if r.get("ticker"))
+        tickers.extend(str(r["ticker"]).upper() for r in wl_data if r.get("ticker"))
     except Exception as exc:
         logger.warning("earnings_for_fund ticker load failed: %s", exc)
     unique = tuple(sorted(set(tickers)))

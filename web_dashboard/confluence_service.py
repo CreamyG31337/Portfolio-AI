@@ -12,6 +12,7 @@ import statistics
 from collections import defaultdict
 from datetime import date, datetime, timedelta, UTC
 from typing import Any
+from supabase_pagination import fetch_all_rows
 
 from stance_history import record_stance_safe
 
@@ -93,38 +94,30 @@ def collect_scope_tickers(supabase_client: Any) -> list[str]:
     tickers: set[str] = set()
     production_funds = _production_fund_names(supabase_client)
     try:
-        offset = 0
-        while True:
-            holdings_query = supabase_client.supabase.table("latest_positions").select(
-                "ticker,fund"
-            )
+        def filter_production(query):
             if production_funds:
-                holdings_query = holdings_query.in_("fund", production_funds)
-            pos = holdings_query.range(offset, offset + _PAGE_SIZE - 1).execute()
-            page = pos.data or []
-            for row in page:
-                if row.get("ticker"):
-                    tickers.add(str(row["ticker"]).upper())
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
+                return query.in_("fund", production_funds)
+            return query
 
-        offset = 0
-        while True:
-            wl = (
-                supabase_client.supabase.table("watched_tickers_v2")
-                .select("ticker")
-                .eq("is_active", True)
-                .range(offset, offset + _PAGE_SIZE - 1)
-                .execute()
-            )
-            page = wl.data or []
-            for row in page:
-                if row.get("ticker"):
-                    tickers.add(str(row["ticker"]).upper())
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
+        page = fetch_all_rows(
+            supabase_client,
+            "latest_positions",
+            "ticker,fund",
+            apply_query=filter_production
+        )
+        for row in page:
+            if row.get("ticker"):
+                tickers.add(str(row["ticker"]).upper())
+
+        page2 = fetch_all_rows(
+            supabase_client,
+            "watched_tickers_v2",
+            "ticker",
+            filters=[("is_active", "eq", True)]
+        )
+        for row in page2:
+            if row.get("ticker"):
+                tickers.add(str(row["ticker"]).upper())
     except Exception as exc:
         logger.warning("confluence ticker load failed: %s", exc)
     return sorted(tickers)
