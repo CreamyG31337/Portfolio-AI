@@ -225,6 +225,8 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             const allItem = document.createElement('div');
             allItem.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary';
             allItem.dataset.ticker = 'All';
+            allItem.setAttribute('role', 'option');
+            allItem.id = 'ticker-option-all';
             allItem.textContent = 'All Tickers';
             allItem.addEventListener('mousedown', (e) => {
                 e.preventDefault();
@@ -237,6 +239,8 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             const item = document.createElement('div');
             item.className = 'px-4 py-2 cursor-pointer hover:bg-dashboard-background text-text-primary flex items-center justify-between gap-2';
             item.dataset.ticker = ticker;
+            item.setAttribute('role', 'option');
+            item.id = `ticker-option-${ticker}`;
 
             const tickerSpan = document.createElement('span');
             tickerSpan.className = 'font-semibold';
@@ -259,10 +263,13 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
             dropdown.appendChild(item);
         });
         dropdown.classList.remove('hidden');
+        input.setAttribute('aria-expanded', 'true');
     }
 
     function hideAutocomplete(): void {
         dropdown.classList.add('hidden');
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
         selectedIndex = -1;
     }
 
@@ -270,8 +277,13 @@ export function setupTickerAutocomplete(config: TickerAutocompleteConfig): void 
         items.forEach((item, idx) => {
             if (idx === selectedIndex) {
                 item.classList.add('bg-dashboard-background');
+                item.setAttribute('aria-selected', 'true');
+                if (item.id) {
+                    input.setAttribute('aria-activedescendant', item.id);
+                }
             } else {
                 item.classList.remove('bg-dashboard-background');
+                item.setAttribute('aria-selected', 'false');
             }
         });
         // Scroll into view

@@ -1,0 +1,1736 @@
+/**
+ * Jobs Scheduler Dashboard
+ * Handles status updates, job list rendering, and job actions
+ *
+ * ⚠️ IMPORTANT: This is a TypeScript SOURCE file.
+ * - Edit this file: web_dashboard/src/js/jobs.ts
+ * - Compiled output: web_dashboard/static/js/jobs.js (auto-generated)
+ * - DO NOT edit the compiled .js file - it will be overwritten on build
+ * - Run `npm run build:ts` to compile changes
+ */
+import { getCsrfHeaders } from './csrf.js';
+import { initCollapsesIn, setCollapsed } from './collapse.js';
+console.log('[Jobs] jobs.ts file loaded and executing...');
+// State
+let isSchedulerRunning = false;
+let jobs = [];
+let refreshInterval = null;
+let autoRefresh = true;
+let consecutiveErrors = 0;
+let maxBackoffDelay = 10000; // Max 10 seconds between retries
+let currentBackoffDelay = 5000; // Start with 5 seconds
+let isRecovering = false;
+let errorToastId = null; // Track persistent error toast
+const AI_ACTIVITY_WINDOWS = {
+    '1h': { hours: 1, limit: 60, label: 'Last 1 hour' },
+    '24h': { hours: 24, limit: 100, label: 'Last 24 hours' },
+    '7d': { hours: 24 * 7, limit: 300, label: 'Last 7 days' },
+    '30d': { hours: 24 * 30, limit: 500, label: 'Last 30 days' },
+    all: { hours: 0, limit: 500, label: 'All recent (max 500)' },
+};
+let aiActivityWindow = '24h';
+let aiActivityPaused = false;
+let lastAiActivitySig = '';
+let lastAiActivityRecent = [];
+// DOM Elements - Note: These may be null if called before DOM is ready
+const elements = {
+    statusContainer: null, // Will be set in DOMContentLoaded
+    errorContainer: null,
+    runningContainer: null,
+    infoText: null,
+    statusText: null,
+    statusIndicator: null,
+    startBtn: null,
+    refreshBtn: null,
+    jobsList: null,
+    jobsLoading: null,
+    noJobs: null,
+    errorMsg: null,
+    errorText: null,
+    autoRefreshCheckbox: null,
+    timelineContainer: null,
+    frequentJobsContainer: null,
+    manualJobsContainer: null,
+    currentTimeDisplay: null,
+    nextJobInfo: null,
+    statScheduled: null,
+    statCompleted: null,
+    statRemaining: null
+};
+// Initialize DOM elements when DOM is ready
+function initializeDOMElements() {
+    elements.statusContainer = document.getElementById('scheduler-status-container');
+    elements.errorContainer = document.getElementById('scheduler-error');
+    elements.runningContainer = document.getElementById('scheduler-running');
+    elements.infoText = document.getElementById('info-text');
+    elements.statusText = document.getElementById('status-text');
+    elements.statusIndicator = document.getElementById('status-indicator');
+    elements.startBtn = document.getElementById('start-scheduler-btn');
+    elements.refreshBtn = document.getElementById('refresh-jobs-btn');
+    elements.jobsList = document.getElementById('jobs-container'); // Template uses 'jobs-container'
+    elements.jobsLoading = document.getElementById('jobs-loading'); // Will add this to template
+    elements.noJobs = document.getElementById('jobs-empty'); // Will add this to template
+    elements.errorMsg = document.getElementById('error-message');
+    elements.errorText = document.getElementById('error-text');
+    elements.autoRefreshCheckbox = document.getElementById('auto-refresh');
+    elements.timelineContainer = document.getElementById('timeline-container');
+    elements.frequentJobsContainer = document.getElementById('frequent-jobs-container');
+    elements.manualJobsContainer = document.getElementById('manual-jobs-container');
+    elements.currentTimeDisplay = document.getElementById('current-time-display');
+    elements.nextJobInfo = document.getElementById('next-job-info');
+    elements.statScheduled = document.getElementById('stat-scheduled');
+    elements.statCompleted = document.getElementById('stat-completed');
+    elements.statRemaining = document.getElementById('stat-remaining');
+    console.log('[Jobs] DOM elements initialized:', {
+        statusContainer: !!elements.statusContainer,
+        errorContainer: !!elements.errorContainer,
+        runningContainer: !!elements.runningContainer,
+        startBtn: !!elements.startBtn,
+        refreshBtn: !!elements.refreshBtn,
+        jobsList: !!elements.jobsList,
+        autoRefreshCheckbox: !!elements.autoRefreshCheckbox,
+        timelineContainer: !!elements.timelineContainer,
+        frequentJobsContainer: !!elements.frequentJobsContainer
+    });
+}
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('[Jobs] DOMContentLoaded event fired, initializing jobs page...');
+    // Initialize DOM elements
+    initializeDOMElements();
+    fetchStatus();
+    startAutoRefresh();
+    // Event Listeners
+    if (elements.startBtn) {
+        elements.startBtn.addEventListener('click', startScheduler);
+        console.log('[Jobs] Start scheduler button listener attached');
+    }
+    if (elements.refreshBtn) {
+        elements.refreshBtn.addEventListener('click', () => {
+            // Manual refresh - reset error counter to get immediate retry
+            consecutiveErrors = 0;
+            currentBackoffDelay = 5000;
+            isRecovering = false;
+            // Visual feedback
+            const icon = elements.refreshBtn?.querySelector('svg');
+            if (icon)
+                icon.classList.add('animate-spin');
+            fetchStatus().finally(() => {
+                if (icon)
+                    icon.classList.remove('animate-spin');
+            });
+        });
+        console.log('[Jobs] Refresh button listener attached');
+    }
+    if (elements.autoRefreshCheckbox) {
+        elements.autoRefreshCheckbox.addEventListener('change', (e) => {
+            const target = e.target;
+            autoRefresh = target.checked;
+            console.log('[Jobs] Auto-refresh toggled:', autoRefresh);
+            if (autoRefresh) {
+                startAutoRefresh();
+            }
+            else {
+                stopAutoRefresh();
+            }
+        });
+        console.log('[Jobs] Auto-refresh checkbox listener attached');
+    }
+    // Expose refreshJobs globally for onclick handlers
+    if (typeof window !== 'undefined') {
+        window.refreshJobs = fetchStatus;
+        console.log('[Jobs] refreshJobs function exposed globally for onclick handlers');
+    }
+    // ⚡ Bolt Optimization: Resume polling when tab becomes visible
+    // This prevents unnecessary API calls when the user is not looking at the page
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && autoRefresh) {
+            console.log('[Jobs] Tab visible, resuming auto-refresh');
+            // Fetch immediately to give user fresh data, then restart the loop
+            fetchStatus().finally(() => {
+                startAutoRefresh();
+            });
+        }
+    });
+});
+function startAutoRefresh() {
+    console.log('[Jobs] Starting auto-refresh with adaptive backoff');
+    if (refreshInterval) {
+        clearTimeout(refreshInterval);
+    }
+    // Use a function that adjusts delay based on errors
+    const scheduleNextRefresh = () => {
+        if (refreshInterval) {
+            clearTimeout(refreshInterval);
+        }
+        if (!autoRefresh) {
+            return;
+        }
+        // ⚡ Bolt Optimization: Pause polling when hidden
+        // This saves server resources and client battery/CPU
+        if (document.hidden) {
+            console.log('[Jobs] Tab hidden, pausing auto-refresh');
+            return;
+        }
+        const delay = consecutiveErrors > 0 ? currentBackoffDelay : 5000;
+        console.log(`[Jobs] Scheduling next refresh in ${delay}ms (errors: ${consecutiveErrors})`);
+        refreshInterval = setTimeout(() => {
+            // Check autoRefresh and visibility again before firing
+            if (autoRefresh && !document.hidden) {
+                console.log('[Jobs] Auto-refresh triggered');
+                fetchStatus().finally(() => {
+                    // Schedule next refresh after this one completes
+                    scheduleNextRefresh();
+                });
+            }
+            else if (document.hidden) {
+                console.log('[Jobs] Tab hidden during timeout, pausing');
+            }
+        }, delay);
+    };
+    // Start the first refresh
+    scheduleNextRefresh();
+}
+function stopAutoRefresh() {
+    console.log('[Jobs] Stopping auto-refresh');
+    if (refreshInterval) {
+        clearTimeout(refreshInterval);
+        refreshInterval = null;
+    }
+}
+function escapeHtml(s) {
+    const d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+}
+function formatTs(val) {
+    if (val == null || val === '') {
+        return '—';
+    }
+    const d = new Date(String(val));
+    if (Number.isNaN(d.getTime())) {
+        return escapeHtml(String(val));
+    }
+    return escapeHtml(d.toLocaleString());
+}
+function buildAiActivityTsv(rows) {
+    const header = ['Job', 'Status', 'Started', 'Completed', 'Duration ms', 'Message'].join('\t');
+    const lines = rows.map((row) => {
+        const cell = (v) => {
+            if (v == null || v === '')
+                return '';
+            return String(v).replace(/[\t\r\n]+/g, ' ').trim();
+        };
+        return [
+            cell(row.job_name),
+            cell(row.status),
+            cell(row.started_at),
+            cell(row.completed_at),
+            cell(row.duration_ms),
+            cell(row.error_message),
+        ].join('\t');
+    });
+    return [header, ...lines].join('\n');
+}
+async function copyTextToClipboard(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        // Fallback for non-HTTPS / older browsers
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.classList.add('sr-only');
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    }
+    catch (e) {
+        console.error('[Jobs] Clipboard copy failed:', e);
+        return false;
+    }
+}
+function flashButtonText(btn, transient, restore, ms = 1500) {
+    btn.textContent = transient;
+    window.setTimeout(() => {
+        btn.textContent = restore;
+    }, ms);
+}
+function flashButtonHtml(btn, transientHtml, restoreHtml, ms = 1500) {
+    btn.innerHTML = transientHtml;
+    window.setTimeout(() => {
+        btn.innerHTML = restoreHtml;
+    }, ms);
+}
+/** Plain-text dump of a job's name + recent run messages (for clipboard). */
+function buildJobLogText(job) {
+    const name = job.name || job.id;
+    const lines = [
+        `Job: ${name}`,
+        `ID: ${job.id}`,
+        `Status: ${getJobStatusLabel(job)}`,
+    ];
+    if (job.last_error) {
+        lines.push(`Last error: ${job.last_error}`);
+    }
+    if (job.is_running && job.running_since) {
+        lines.push(`Running since: ${job.running_since}`);
+    }
+    if (job.is_running && job.live_steps && job.live_steps.length > 0) {
+        lines.push('', 'Live steps (oldest → newest):');
+        const stepsAsc = [...job.live_steps].reverse();
+        for (const step of stepsAsc) {
+            const ts = step.created_at ? new Date(step.created_at).toLocaleString() : '';
+            lines.push(`[${ts}] ${step.status}: ${step.message}`);
+        }
+    }
+    if (job.recent_logs && job.recent_logs.length > 0) {
+        lines.push('', 'Recent runs:');
+        for (const log of job.recent_logs) {
+            const ts = log.timestamp ? new Date(log.timestamp).toLocaleString() : '';
+            const level = (log.level || 'INFO').toUpperCase();
+            const duration = log.duration_ms != null && !Number.isNaN(Number(log.duration_ms))
+                ? ` (${log.duration_ms} ms)`
+                : '';
+            lines.push(`[${ts}] ${level}: ${log.message}${duration}`);
+        }
+    }
+    else {
+        lines.push('', 'Recent runs: (none)');
+    }
+    return lines.join('\n');
+}
+async function handleCopyJobLog(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.currentTarget;
+    const jobId = btn.getAttribute('data-job-id');
+    if (!jobId) {
+        return;
+    }
+    const job = jobs.find((j) => j.id === jobId);
+    if (!job) {
+        showJobsError('Could not find job data to copy');
+        return;
+    }
+    const text = buildJobLogText(job);
+    const ok = await copyTextToClipboard(text);
+    const restoreHtml = btn.innerHTML;
+    flashButtonHtml(btn, ok
+        ? '<i class="fas fa-check text-theme-success-text"></i>'
+        : '<i class="fas fa-times text-theme-error-text"></i>', restoreHtml);
+    if (!ok) {
+        showJobsError('Failed to copy job log to clipboard');
+    }
+}
+function wireAiActivityControls() {
+    const sel = document.getElementById('ai-activity-window');
+    if (sel) {
+        sel.value = aiActivityWindow;
+        sel.addEventListener('change', () => {
+            const next = sel.value;
+            if (next in AI_ACTIVITY_WINDOWS) {
+                aiActivityWindow = next;
+                lastAiActivitySig = ''; // force re-render with new window
+                void fetchAiActivity();
+            }
+        });
+    }
+    const pauseBtn = document.getElementById('ai-activity-pause-btn');
+    if (pauseBtn) {
+        pauseBtn.addEventListener('click', () => {
+            aiActivityPaused = !aiActivityPaused;
+            pauseBtn.dataset.paused = String(aiActivityPaused);
+            pauseBtn.textContent = aiActivityPaused ? 'Resume refresh' : 'Pause refresh';
+            pauseBtn.classList.toggle('bg-theme-warning-bg', aiActivityPaused);
+            pauseBtn.classList.toggle('text-theme-warning-text', aiActivityPaused);
+            if (!aiActivityPaused) {
+                void fetchAiActivity();
+            }
+        });
+    }
+    const copyBtn = document.getElementById('ai-activity-copy-btn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+            const tsv = buildAiActivityTsv(lastAiActivityRecent);
+            const ok = await copyTextToClipboard(tsv);
+            flashButtonText(copyBtn, ok ? `Copied ${lastAiActivityRecent.length} row(s)` : 'Copy failed', 'Copy table');
+        });
+    }
+}
+async function fetchAiActivity() {
+    const root = document.getElementById('ai-activity-root');
+    if (!root) {
+        return;
+    }
+    if (aiActivityPaused) {
+        // Frozen: do not refetch / re-render while user is copying.
+        return;
+    }
+    try {
+        const windowSpec = AI_ACTIVITY_WINDOWS[aiActivityWindow];
+        const params = new URLSearchParams({ limit: String(windowSpec.limit) });
+        if (windowSpec.hours > 0) {
+            params.set('hours', String(windowSpec.hours));
+        }
+        const r = await fetch(`/api/admin/scheduler/ai-activity?${params.toString()}`, {
+            credentials: 'include',
+        });
+        const data = (await r.json());
+        if (!r.ok || !data.success) {
+            root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(data.error || `HTTP ${r.status}`)}</div>`;
+            lastAiActivitySig = '';
+            return;
+        }
+        const recent = data.recent_executions || [];
+        lastAiActivityRecent = recent;
+        const lock = data.global_ai_lock_job
+            ? `<span class="text-amber-600 dark:text-amber-400 font-medium">${escapeHtml(data.global_ai_lock_job)}</span> — other AI jobs will skip or retry until this finishes or the lock is cleared.`
+            : '<span class="text-emerald-600 dark:text-emerald-400 font-medium">Clear</span> — no active global AI lock.';
+        const running = (data.running_ai || []).length
+            ? `<ul class="list-disc list-inside text-sm text-text-primary space-y-1">${(data.running_ai || [])
+                .map((row) => {
+                const jn = escapeHtml(String(row.job_name ?? ''));
+                const st = formatTs(row.started_at);
+                return `<li><code class="text-xs">${jn}</code> since ${st}</li>`;
+            })
+                .join('')}</ul>`
+            : '<p class="text-sm text-text-secondary">None.</p>';
+        const rowsHtml = recent
+            .map((row) => {
+            const status = escapeHtml(String(row.status ?? ''));
+            const jn = escapeHtml(String(row.job_name ?? ''));
+            const st = formatTs(row.started_at);
+            const comp = formatTs(row.completed_at);
+            const dur = row.duration_ms != null && row.duration_ms !== ''
+                ? escapeHtml(String(row.duration_ms))
+                : '—';
+            const err = row.error_message
+                ? `<span class="text-red-600 dark:text-red-400 text-xs">${escapeHtml(String(row.error_message))}</span>`
+                : '—';
+            return `<tr class="border-b border-border">
+                    <td class="py-2 pr-3"><code class="text-xs">${jn}</code></td>
+                    <td class="py-2 pr-3"><span class="text-xs">${status}</span></td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary whitespace-nowrap">${st}</td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary whitespace-nowrap">${comp}</td>
+                    <td class="py-2 pr-3 text-xs text-text-secondary">${dur}</td>
+                    <td class="py-2 text-xs max-w-md">${err}</td>
+                </tr>`;
+        })
+            .join('');
+        const nTracked = (data.tracked_ai_job_names || []).length;
+        const windowOptions = Object.keys(AI_ACTIVITY_WINDOWS)
+            .map((key) => `<option value="${key}"${key === aiActivityWindow ? ' selected' : ''}>${escapeHtml(AI_ACTIVITY_WINDOWS[key].label)}</option>`)
+            .join('');
+        const pauseLabel = aiActivityPaused ? 'Resume refresh' : 'Pause refresh';
+        const pauseClasses = aiActivityPaused
+            ? 'bg-theme-warning-bg text-theme-warning-text'
+            : 'bg-transparent text-text-secondary';
+        const html = `
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <h3 class="text-base font-bold text-text-primary mb-2"><i class="fas fa-lock mr-2 text-accent"></i>Global AI lock</h3>
+                <p class="text-sm text-text-primary">${lock}</p>
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4">
+                <h3 class="text-base font-bold text-text-primary mb-2"><i class="fas fa-play-circle mr-2 text-accent"></i>Running AI jobs</h3>
+                ${running}
+            </div>
+            <div class="bg-dashboard-surface rounded-lg border border-border p-4 overflow-x-auto">
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                    <h3 class="text-base font-bold text-text-primary"><i class="fas fa-history mr-2 text-accent"></i>Recent runs (newest first)</h3>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="text-xs text-text-secondary" for="ai-activity-window">Range</label>
+                        <select id="ai-activity-window"
+                            class="text-xs bg-dashboard-bg border border-border rounded-md px-2 py-1 text-text-primary focus:ring-2 focus:ring-accent/30">
+                            ${windowOptions}
+                        </select>
+                        <button id="ai-activity-pause-btn" type="button"
+                            data-paused="${aiActivityPaused ? 'true' : 'false'}"
+                            class="text-xs px-3 py-1 border border-border rounded-md hover:bg-accent/10 transition-colors ${pauseClasses}">
+                            ${escapeHtml(pauseLabel)}
+                        </button>
+                        <button id="ai-activity-copy-btn" type="button"
+                            class="text-xs px-3 py-1 border border-accent text-accent rounded-md hover:bg-accent/10 transition-colors">
+                            Copy table
+                        </button>
+                    </div>
+                </div>
+                <p class="text-xs text-text-secondary mb-2">Showing ${recent.length} row(s).${aiActivityPaused ? ' <span class="text-theme-warning-text">Auto-refresh paused.</span>' : ''}</p>
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b border-border text-text-secondary text-xs">
+                            <th class="pb-2 pr-3">Job</th>
+                            <th class="pb-2 pr-3">Status</th>
+                            <th class="pb-2 pr-3">Started</th>
+                            <th class="pb-2 pr-3">Completed</th>
+                            <th class="pb-2 pr-3">Duration ms</th>
+                            <th class="pb-2">Message</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rowsHtml ||
+            '<tr><td colspan="6" class="py-4 text-text-secondary">No rows in this window.</td></tr>'}</tbody>
+                </table>
+            </div>
+            <p class="text-xs text-text-secondary">${nTracked} job names classified as AI-heavy in <code class="text-xs">utils/job_tracking.py</code> (<code class="text-xs">AI_JOB_NAMES</code>).</p>
+        `;
+        // Render only when content changes so text selection survives 5s polling.
+        const sig = `${aiActivityWindow}|${aiActivityPaused}|${html.length}|${html}`;
+        if (sig === lastAiActivitySig) {
+            return;
+        }
+        lastAiActivitySig = sig;
+        root.innerHTML = html;
+        wireAiActivityControls();
+    }
+    catch (e) {
+        root.innerHTML = `<div class="rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">${escapeHtml(e instanceof Error ? e.message : String(e))}</div>`;
+        lastAiActivitySig = '';
+    }
+}
+// Fetch Status
+async function fetchStatus() {
+    const startTime = performance.now();
+    console.log('[Jobs] fetchStatus() called, fetching scheduler status...');
+    try {
+        const url = '/api/admin/scheduler/status';
+        console.log('[Jobs] Making API request to:', url);
+        const response = await fetch(url, { credentials: 'include' });
+        const duration = performance.now() - startTime;
+        console.log('[Jobs] API response received:', {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            duration: `${duration.toFixed(2)}ms`,
+            url: url
+        });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+            console.error('[Jobs] API error response:', {
+                status: response.status,
+                statusText: response.statusText,
+                errorData: errorData,
+                url: url,
+                duration: `${duration.toFixed(2)}ms`
+            });
+            throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        }
+        const data = await response.json();
+        console.log('[Jobs] Status data received:', {
+            scheduler_running: data.scheduler_running,
+            jobs_count: data.jobs ? data.jobs.length : 0,
+            has_error: !!data.error,
+            error: data.error,
+            duration: `${duration.toFixed(2)}ms`,
+            raw_data_keys: Object.keys(data),
+            jobs_sample: data.jobs && data.jobs.length > 0 ? data.jobs[0] : null
+        });
+        // Log full response for debugging (truncated)
+        if (data.jobs && data.jobs.length > 0) {
+            console.log('[Jobs] First job sample:', JSON.stringify(data.jobs[0], null, 2));
+        }
+        else {
+            console.warn('[Jobs] No jobs in response. Full response:', JSON.stringify(data, null, 2).substring(0, 1000));
+        }
+        // Check for job errors before updating UI
+        const jobs = data.jobs || [];
+        const hasRunningJob = jobs.some((job) => job.is_running === true);
+        const hasErrors = !hasRunningJob && jobs.some((job) => {
+            // Check for last_error or recent ERROR logs
+            if (job.last_error)
+                return true;
+            if (job.recent_logs && Array.isArray(job.recent_logs)) {
+                return job.recent_logs.some((log) => log.level === 'ERROR' || log.level === 'error');
+            }
+            return false;
+        });
+        // Show persistent error toast if errors exist and no jobs running
+        // Only show alert to admins (is_admin is true since endpoint is protected by @require_admin)
+        if (hasErrors && data.is_admin !== false) {
+            showSchedulerToast('One or more jobs failed on their last run. Open Jobs Scheduler to review.', 'error', true // persistent
+            );
+        }
+        else {
+            // Dismiss error toast if errors are resolved or user is not admin
+            dismissErrorToast();
+        }
+        updateStatusUI(data.scheduler_running, jobs);
+        renderJobs(data.jobs);
+        void fetchAiActivity();
+        // Success - reset error tracking
+        if (consecutiveErrors > 0) {
+            console.log('[Jobs] Connection recovered after', consecutiveErrors, 'errors');
+            consecutiveErrors = 0;
+            currentBackoffDelay = 5000; // Reset to initial delay
+            isRecovering = false;
+            // Hide any recovery message
+            if (elements.infoText) {
+                elements.infoText.classList.remove('text-theme-warning-text');
+            }
+        }
+        console.log('[Jobs] fetchStatus() completed successfully');
+    }
+    catch (error) {
+        const duration = performance.now() - startTime;
+        consecutiveErrors++;
+        // Simple backoff: 5s on first error, then 10s max
+        currentBackoffDelay = consecutiveErrors === 1 ? 5000 : maxBackoffDelay;
+        console.error('[Jobs] Error fetching status:', {
+            error: error,
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            duration: `${duration.toFixed(2)}ms`,
+            consecutiveErrors: consecutiveErrors,
+            nextRetryIn: `${currentBackoffDelay}ms`
+        });
+        // Show error with retry information
+        const errorMsg = consecutiveErrors === 1
+            ? 'Failed to fetch scheduler status. Retrying...'
+            : `Connection lost (${consecutiveErrors} attempts). Retrying in ${Math.round(currentBackoffDelay / 1000)}s...`;
+        showJobsError(errorMsg);
+        // Show recovery indicator
+        if (!isRecovering) {
+            isRecovering = true;
+            if (elements.infoText) {
+                elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors})`;
+                elements.infoText.classList.add('text-theme-warning-text');
+            }
+        }
+        else if (elements.infoText) {
+            elements.infoText.textContent = `⚠️ Reconnecting... (attempt ${consecutiveErrors}, retry in ${Math.round(currentBackoffDelay / 1000)}s)`;
+        }
+        // Restart auto-refresh with new backoff delay
+        if (autoRefresh) {
+            startAutoRefresh();
+        }
+    }
+}
+// Update Status UI
+function updateStatusUI(running, jobsData = []) {
+    console.log('[Jobs] updateStatusUI called:', { running, isSchedulerRunning, jobsCount: jobsData.length });
+    isSchedulerRunning = running;
+    // Determine state: running job, errors, idle, or stopped
+    const hasRunningJob = jobsData.some((job) => job.is_running === true);
+    const hasErrors = !hasRunningJob && jobsData.some((job) => {
+        if (job.last_error)
+            return true;
+        if (job.recent_logs && Array.isArray(job.recent_logs)) {
+            return job.recent_logs.some((log) => log.level === 'ERROR' || log.level === 'error');
+        }
+        return false;
+    });
+    if (running) {
+        if (hasRunningJob) {
+            // Job is running - show pulsing indicator
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Scheduler running – job in progress';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-amber-500 animate-pulse';
+            }
+        }
+        else if (hasErrors) {
+            // Errors exist but no jobs running
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Last run had errors';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-error-text';
+            }
+        }
+        else {
+            // Idle - scheduler running, no jobs running, no errors
+            if (elements.statusText) {
+                elements.statusText.textContent = 'Scheduler running – all jobs idle';
+            }
+            if (elements.statusIndicator) {
+                elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-success-text';
+            }
+        }
+        // Hide/show containers
+        if (elements.errorContainer) {
+            elements.errorContainer.classList.add('hidden');
+        }
+        if (elements.runningContainer) {
+            elements.runningContainer.classList.remove('hidden');
+        }
+        if (elements.infoText) {
+            const recoveryMsg = isRecovering ? ' • Connection recovered!' : '';
+            elements.infoText.textContent = `Last updated: ${new Date().toLocaleString()}${recoveryMsg}`;
+            elements.infoText.classList.remove('text-theme-warning-text');
+        }
+        // Hide start button when running
+        if (elements.startBtn) {
+            elements.startBtn.classList.add('hidden');
+        }
+        console.log('[Jobs] Status UI updated: scheduler is running', { hasRunningJob, hasErrors });
+    }
+    else {
+        // Update status text and indicator
+        if (elements.statusText) {
+            elements.statusText.textContent = 'Scheduler stopped';
+        }
+        if (elements.statusIndicator) {
+            elements.statusIndicator.className = 'w-4 h-4 rounded-full bg-theme-error-text';
+        }
+        // Hide/show containers
+        if (elements.runningContainer) {
+            elements.runningContainer.classList.add('hidden');
+        }
+        if (elements.errorContainer) {
+            elements.errorContainer.classList.remove('hidden');
+        }
+        // Show start button when stopped
+        if (elements.startBtn) {
+            elements.startBtn.classList.remove('hidden');
+        }
+        console.log('[Jobs] Status UI updated: scheduler is stopped');
+    }
+}
+// Render Jobs
+function renderJobs(jobsData) {
+    console.log('[Jobs] renderJobs called:', {
+        jobs_count: jobsData ? jobsData.length : 0,
+        has_jobsList: !!elements.jobsList,
+        jobsList_id: elements.jobsList?.id,
+        jobsList_element: elements.jobsList
+    });
+    jobs = jobsData || [];
+    if (elements.jobsLoading) {
+        elements.jobsLoading.classList.add('hidden');
+        console.log('[Jobs] Hidden loading indicator');
+    }
+    if (jobs.length === 0) {
+        console.log('[Jobs] No jobs to render');
+        if (elements.jobsList) {
+            elements.jobsList.innerHTML = '<div class="text-center py-8 text-text-secondary">No jobs available</div>';
+        }
+        if (elements.noJobs) {
+            elements.noJobs.classList.remove('hidden');
+        }
+        return;
+    }
+    // Before re-rendering, save which parameter forms are currently open
+    const openParamForms = [];
+    if (elements.jobsList) {
+        const paramForms = elements.jobsList.querySelectorAll('.parameter-form');
+        paramForms.forEach((form) => {
+            if (!form.classList.contains('hidden')) {
+                // Extract job ID from the form ID (format: params-{jobId})
+                const formId = form.id;
+                if (formId.startsWith('params-')) {
+                    const jobId = formId.substring(7); // Remove 'params-' prefix
+                    openParamForms.push(jobId);
+                }
+            }
+        });
+    }
+    if (elements.noJobs) {
+        elements.noJobs.classList.add('hidden');
+    }
+    if (elements.jobsList) {
+        const jobCards = jobs.map(job => createJobCard(job));
+        elements.jobsList.innerHTML = jobCards.join('');
+        console.log('[Jobs] Rendered', jobs.length, 'job cards to element:', elements.jobsList.id);
+        // Cards are rebuilt on every refresh, long after Flowbite's one-time
+        // auto-init, so bind the collapse toggles on the new subtree.
+        initCollapsesIn(elements.jobsList);
+        // Restore open parameter forms after re-rendering
+        openParamForms.forEach(jobId => {
+            const paramForm = document.getElementById(`params-${jobId}`);
+            if (paramForm) {
+                setCollapsed(`params-${jobId}`, false);
+                console.log('[Jobs] Restored open parameter form for job:', jobId);
+            }
+        });
+    }
+    else {
+        console.error('[Jobs] jobsList element not found! Cannot render jobs.', {
+            available_ids: Array.from(document.querySelectorAll('[id*="job"]')).map(el => el.id),
+            jobs_container: document.getElementById('jobs-container'),
+            all_elements: Object.keys(elements).map(key => ({ key, found: !!elements[key] }))
+        });
+    }
+    // Auto-scroll live step panels to bottom (most recent step)
+    const stepPanels = document.querySelectorAll('[id^="steps-scroll-"]');
+    stepPanels.forEach(panel => {
+        panel.scrollTop = panel.scrollHeight;
+    });
+    // Attach event listeners to new buttons
+    const actionButtons = document.querySelectorAll('.job-action-btn');
+    console.log('[Jobs] Attaching event listeners to', actionButtons.length, 'action buttons');
+    actionButtons.forEach(btn => {
+        btn.addEventListener('click', handleJobAction);
+    });
+    const copyLogButtons = document.querySelectorAll('.job-copy-log-btn');
+    copyLogButtons.forEach((btn) => {
+        btn.addEventListener('click', handleCopyJobLog);
+    });
+    renderTimelineView(jobs);
+}
+function createJobCard(job) {
+    const statusClass = getStatusClass(job);
+    // Show schedule info if scheduler is stopped and job has a schedule, otherwise show next_run or "Not scheduled"
+    let nextRun;
+    if (job.next_run) {
+        nextRun = new Date(job.next_run).toLocaleString();
+    }
+    else if (job.scheduler_stopped && job.has_schedule && job.trigger && job.trigger !== 'Manual') {
+        // Scheduler is stopped but job has a schedule - show the schedule instead of "Not scheduled"
+        nextRun = `Scheduled: ${escapeHtmlForJobs(job.trigger || '')}`;
+    }
+    else {
+        nextRun = 'Not scheduled';
+    }
+    // Recent logs HTML
+    let logsHtml = '';
+    if (job.recent_logs && job.recent_logs.length > 0) {
+        logsHtml = `
+            <div class="mt-4 bg-dashboard-background rounded border border-border overflow-hidden">
+                <div class="px-3 py-1 bg-dashboard-surface text-xs font-semibold text-text-secondary border-b border-border flex items-center justify-between gap-2">
+                    <span>Recent Logs</span>
+                    <button type="button" class="job-copy-log-btn text-xs font-medium text-accent hover:text-accent-hover px-2 py-0.5 border border-accent/40 rounded hover:bg-accent/10 transition-colors"
+                        data-job-id="${escapeAttribute(job.id)}" title="Copy job name and recent run logs" aria-label="Copy recent logs">
+                        <i class="fas fa-copy mr-1"></i>Copy log
+                    </button>
+                </div>
+                <div class="max-h-32 overflow-y-auto">
+                    ${job.recent_logs.map(log => `
+                        <div class="log-entry ${getLogClass(log.level || '')}">
+                            <span class="text-text-secondary/70 font-mono text-xs mr-2">[${new Date(log.timestamp).toLocaleString()}]</span>
+                            <span class="${getLogLevelColor(log.level || '')} font-bold mr-1">${log.level || 'INFO'}</span>:
+                            <span class="text-text-primary text-sm">${escapeHtmlForJobs(log.message)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    }
+    // Live Steps HTML (shown only for running jobs with step data)
+    let stepsHtml = '';
+    if (job.is_running && job.live_steps && job.live_steps.length > 0) {
+        // Steps come from API in desc order; reverse so oldest is first (top-down timeline)
+        const stepsAsc = [...job.live_steps].reverse();
+        stepsHtml = `
+            <div class="mt-4 bg-dashboard-background rounded border border-amber-500/30 overflow-hidden">
+                <div class="px-3 py-1.5 bg-amber-500/10 text-xs font-semibold text-amber-300 border-b border-amber-500/20 flex items-center gap-2">
+                    <i class="fas fa-stream text-xs"></i> Live Steps
+                    <span class="ml-auto text-[10px] text-text-secondary font-normal">${stepsAsc.length} step${stepsAsc.length !== 1 ? 's' : ''}</span>
+                </div>
+                <div class="max-h-48 overflow-y-auto" id="steps-scroll-${escapeAttribute(job.id)}">
+                    ${stepsAsc.map(step => {
+            const statusIcon = step.status === 'success' ? '<i class="fas fa-check-circle text-theme-success-text"></i>'
+                : step.status === 'failed' ? '<i class="fas fa-times-circle text-theme-error-text"></i>'
+                    : step.status === 'skipped' ? '<i class="fas fa-forward text-text-secondary"></i>'
+                        : '<i class="fas fa-spinner fa-spin text-amber-400"></i>';
+            const bgClass = step.status === 'failed' ? 'bg-theme-error-bg/30' : '';
+            const time = new Date(step.created_at).toLocaleTimeString();
+            return `
+                            <div class="flex items-start gap-2 px-3 py-1.5 border-b border-border/20 last:border-0 text-xs ${bgClass}">
+                                <span class="mt-0.5 shrink-0">${statusIcon}</span>
+                                <span class="text-text-secondary/60 font-mono shrink-0">${time}</span>
+                                <span class="text-text-primary break-all">${escapeHtmlForJobs(step.message)}</span>
+                            </div>
+                        `;
+        }).join('')}
+                </div>
+            </div>
+        `;
+    }
+    // Parameters HTML
+    let paramsHtml = '';
+    if (job.parameters && Object.keys(job.parameters).length > 0) {
+        const params = job.parameters;
+        // Safe ID for JS event handlers in parameter form
+        const safeJsJobId = escapeJsString(job.id);
+        // Define helpers within closure to generate HTML
+        const renderInput = (key, p) => {
+            const label = p.description || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const defaultValue = p.default ?? '';
+            const safeKey = escapeAttribute(key);
+            const safeLabel = escapeHtmlForJobs(label);
+            const safeDefault = escapeAttribute(defaultValue);
+            const safeJobId = escapeAttribute(job.id);
+            if (p.type === 'boolean') {
+                const isChecked = defaultValue === true ? 'checked' : '';
+                return `
+                    <div class="flex items-center mt-4 mb-2">
+                        <input type="checkbox" id="param-${safeJobId}-${safeKey}" data-param="${safeKey}"
+                               class="h-4 w-4 text-accent focus:ring-accent border-border rounded" ${isChecked}>
+                        <label for="param-${safeJobId}-${safeKey}" class="ml-2 block text-sm text-text-primary leading-none">
+                            ${safeLabel}
+                        </label>
+                    </div>
+                `;
+            }
+            else if (p.type === 'date') {
+                // Default to today if no default provided for date inputs
+                let val = defaultValue;
+                if (val === null || val === undefined || val === 'null' || val === 'None') {
+                    val = '';
+                }
+                if (typeof val === 'string' && val.includes('T')) {
+                    const parsedDate = new Date(val);
+                    if (!Number.isNaN(parsedDate.getTime())) {
+                        val = parsedDate.toISOString().split('T')[0];
+                    }
+                }
+                if (!val && !p.optional) {
+                    val = new Date().toISOString().split('T')[0];
+                }
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="date" data-param="${safeKey}" value="${escapeAttribute(val)}"
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
+                    </div>
+                `;
+            }
+            else if (p.type === 'number') {
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="number" data-param="${safeKey}" value="${safeDefault}"
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
+                    </div>
+                `;
+            }
+            else {
+                return `
+                    <div>
+                        <label class="block text-xs font-medium text-text-primary mb-1">${safeLabel}</label>
+                        <input type="text" data-param="${safeKey}" placeholder="${safeDefault}" value="${safeDefault}"
+                            class="w-full text-sm bg-dashboard-surface border-border rounded-md focus:ring-accent focus:border-accent text-text-primary p-1">
+                    </div>
+                `;
+            }
+        };
+        // Special handling for use_date_range logic
+        const hasDateRange = 'use_date_range' in params;
+        let fieldsHtml = '';
+        const safeJobId = escapeAttribute(job.id);
+        if (hasDateRange) {
+            // Render use_date_range checkbox
+            fieldsHtml += `
+                <div class="col-span-full mb-2">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="param-${safeJobId}-use_date_range" data-param="use_date_range"
+                               onchange="toggleDateRange('${safeJsJobId}', this)"
+                               class="h-4 w-4 text-accent focus:ring-accent border-border rounded">
+                        <label for="param-${safeJobId}-use_date_range" class="ml-2 block text-sm font-medium text-text-primary">
+                            Use Date Range
+                        </label>
+                    </div>
+                    <p class="text-xs text-text-secondary ml-6 mt-0.5">Process data for a range of dates instead of a single day</p>
+                </div>
+            `;
+            // Render Single Date Group (Target Date)
+            fieldsHtml += '<div class="col-span-full param-group-single-date">';
+            if (params['target_date']) {
+                fieldsHtml += renderInput('target_date', params['target_date']);
+            }
+            fieldsHtml += '</div>';
+            // Render Date Range Group (From/To) - Hidden by default
+            fieldsHtml += '<div class="col-span-full grid grid-cols-2 gap-3 param-group-date-range hidden">';
+            if (params['from_date']) {
+                fieldsHtml += renderInput('from_date', params['from_date']);
+            }
+            if (params['to_date']) {
+                fieldsHtml += renderInput('to_date', params['to_date']);
+            }
+            fieldsHtml += '</div>';
+            // Render other params
+            Object.entries(params).forEach(([key, p]) => {
+                if (key !== 'use_date_range' && key !== 'target_date' && key !== 'from_date' && key !== 'to_date') {
+                    fieldsHtml += renderInput(key, p);
+                }
+            });
+        }
+        else {
+            // standard rendering
+            Object.entries(params).forEach(([key, p]) => {
+                fieldsHtml += renderInput(key, p);
+            });
+        }
+        paramsHtml = `
+            <div class="mt-4 parameter-form hidden bg-dashboard-background p-4 rounded-md border border-border" id="params-${safeJobId}">
+                <div class="flex justify-between items-center mb-3">
+                    <h4 class="text-sm font-bold text-text-primary">⚙️ Job Parameters</h4>
+                    <button class="text-xs text-text-secondary hover:text-text-primary" data-collapse-toggle="params-${safeJobId}" aria-expanded="true" aria-controls="params-${safeJobId}" aria-label="Close parameters">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    ${fieldsHtml}
+                </div>
+
+                <div class="mt-4 flex justify-end border-t border-border pt-3">
+                     <button class="text-sm text-text-secondary mr-3 hover:text-text-primary px-3 py-1.5" data-collapse-toggle="params-${safeJobId}" aria-expanded="true" aria-controls="params-${safeJobId}">Cancel</button>
+                     <button class="text-accent bg-transparent border border-accent hover:bg-accent/10 focus:ring-4 focus:ring-accent/30 font-medium rounded-lg text-sm px-4 py-1.5 focus:outline-hidden transition-colors duration-200 flex items-center run-btn"
+                        onclick="runJobWithParams('${safeJsJobId}', '${escapeJsString(job.actual_job_id || job.id)}')">
+                        <i class="fas fa-play mr-1.5 text-xs"></i> Run Now
+                     </button>
+                </div>
+            </div>
+        `;
+    }
+    const safeJobId = escapeAttribute(job.id);
+    const safeActualId = escapeAttribute(job.actual_job_id || job.id);
+    const safeJobName = escapeHtmlForJobs(job.name || job.id);
+    const safeScheduleText = escapeHtmlForJobs(getScheduleText(job.trigger || ''));
+    // Safe ID for onclick handlers
+    const safeJsJobId = escapeJsString(job.id);
+    return `
+        <div class="job-card bg-dashboard-surface rounded-lg shadow-xs p-6 border-l-4 ${getStatusBorderColor(job)} relative border-border">
+            <div class="flex justify-between items-start">
+                <div>
+                    <div class="flex items-center space-x-3">
+                        <h3 class="text-lg font-bold text-text-primary">${safeJobName}</h3>
+                        ${getJobStatusBadgeHtml(job)}
+                    </div>
+                    <p class="text-xs text-text-secondary mt-1 font-mono">${safeJobId}</p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3 text-sm">
+                        <div>
+                            <span class="text-text-secondary">Next Run:</span>
+                            <span class="font-medium ${!job.next_run ? 'text-theme-warning-text' : 'text-text-primary'}">${nextRun}</span>
+                        </div>
+                        <div>
+                            <span class="text-text-secondary">Schedule:</span>
+                            <span class="font-medium text-text-primary">${safeScheduleText}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex space-x-2">
+                    <button type="button" class="job-copy-log-btn text-text-secondary hover:text-accent p-2"
+                        data-job-id="${safeJobId}" title="Copy job name and recent run logs" aria-label="Copy job log">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                    ${job.next_run
+        ? `<button class="job-action-btn text-theme-warning-text hover:text-theme-warning-text/80 p-2"
+                                data-action="pause" data-id="${safeActualId}" title="Pause Job" aria-label="Pause Job">
+                                <i class="fas fa-pause"></i>
+                           </button>`
+        : `<button class="job-action-btn text-theme-success-text hover:text-theme-success-text/80 p-2"
+                                data-action="resume" data-id="${safeActualId}" title="Resume Job" aria-label="Resume Job">
+                                <i class="fas fa-play"></i>
+                           </button>`}
+
+                    ${Object.keys(job.parameters || {}).length > 0
+        ? `<button class="text-accent hover:text-accent-hover p-2"
+                                data-collapse-toggle="params-${safeJobId}" aria-expanded="false" aria-controls="params-${safeJobId}" title="Run with Parameters" aria-label="Run with Parameters">
+                                <i class="fas fa-cog"></i>
+                           </button>`
+        : `<button class="job-action-btn text-accent hover:text-accent-hover p-2"
+                                data-action="run" data-id="${safeActualId}" title="Run Now" aria-label="Run Now">
+                                <i class="fas fa-bolt"></i>
+                           </button>`}
+                </div>
+            </div>
+
+            ${paramsHtml}
+            ${stepsHtml}
+            ${logsHtml}
+        </div>
+    `;
+}
+// Persistent Toast Notification System for Scheduler Errors
+function showSchedulerToast(message, type = 'error', persistent = false) {
+    let container = document.getElementById('toast-container-scheduler');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container-scheduler';
+        container.className = 'fixed bottom-5 right-5 z-50 flex flex-col gap-2';
+        document.body.appendChild(container);
+    }
+    // For persistent toasts, check if one already exists
+    if (persistent && errorToastId) {
+        const existingToast = document.getElementById(errorToastId);
+        if (existingToast) {
+            // Update existing toast message if needed
+            const messageEl = existingToast.querySelector('.toast-message');
+            if (messageEl) {
+                messageEl.textContent = message;
+            }
+            return;
+        }
+        // Reset ID if toast was removed
+        errorToastId = null;
+    }
+    const toast = document.createElement('div');
+    const toastId = persistent ? `scheduler-error-toast-${Date.now()}` : `scheduler-toast-${Date.now()}`;
+    toast.id = toastId;
+    const borderColor = type === 'error' ? 'border-theme-error-text' :
+        type === 'warning' ? 'border-theme-warning-text' :
+            type === 'info' ? 'border-theme-info-text' :
+                'border-theme-success-text';
+    const icon = type === 'error' ? '<i class="fas fa-exclamation-circle"></i>' :
+        type === 'warning' ? '<i class="fas fa-triangle-exclamation"></i>' :
+            type === 'info' ? '<i class="fas fa-info-circle"></i>' :
+                '<i class="fas fa-check-circle"></i>';
+    toast.className = `flex items-center w-full max-w-xs p-4 text-text-secondary bg-dashboard-surface rounded-lg shadow-lg border-l-4 ${borderColor} transition-opacity duration-300 opacity-100 border border-border`;
+    toast.innerHTML = `
+        <div class="ms-3 text-sm font-normal flex items-center gap-2 toast-message">
+            <span class="text-lg">${icon}</span>
+            <span>${escapeHtmlForJobs(message)}</span>
+        </div>
+        <button type="button" class="ms-auto -mx-1.5 -my-1.5 bg-transparent text-text-secondary hover:text-text-primary rounded-lg focus:ring-2 focus:ring-accent p-1.5 hover:bg-dashboard-surface-alt inline-flex items-center justify-center h-8 w-8 toast-close-btn" aria-label="Close">
+            <span class="sr-only">Close</span>
+            <svg class="w-3 h-3" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 14">
+                <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"/>
+            </svg>
+        </button>
+    `;
+    const closeBtn = toast.querySelector('.toast-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
+            setTimeout(() => {
+                toast.remove();
+                if (errorToastId === toastId) {
+                    errorToastId = null;
+                }
+            }, 300);
+        });
+    }
+    container.appendChild(toast);
+    // For persistent toasts, track the ID and don't auto-dismiss
+    if (persistent) {
+        errorToastId = toastId;
+    }
+    else {
+        // Auto-dismiss non-persistent toasts after 4 seconds
+        setTimeout(() => {
+            if (toast.parentElement) {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+                setTimeout(() => {
+                    toast.remove();
+                }, 300);
+            }
+        }, 4000);
+    }
+}
+function dismissErrorToast() {
+    if (errorToastId) {
+        const toast = document.getElementById(errorToastId);
+        if (toast) {
+            toast.classList.remove('opacity-100');
+            toast.classList.add('opacity-0');
+            setTimeout(() => {
+                toast.remove();
+                errorToastId = null;
+            }, 300);
+        }
+        else {
+            errorToastId = null;
+        }
+    }
+}
+// Helper Functions
+function getStatusClass(job) {
+    if (job.is_paused || !job.next_run) {
+        return 'status-paused';
+    }
+    if (job.is_running) {
+        return 'status-running';
+    }
+    if (job.last_error) {
+        return 'status-failed';
+    }
+    return 'status-idle';
+}
+function getJobStatusLabel(job) {
+    if (job.is_paused || !job.next_run) {
+        return 'Paused';
+    }
+    if (job.is_running) {
+        return 'Running';
+    }
+    if (job.last_error) {
+        return 'Failed';
+    }
+    return 'Scheduled';
+}
+function getJobStatusBadgeHtml(job) {
+    const statusClass = getStatusClass(job);
+    const label = getJobStatusLabel(job);
+    let icon = '';
+    let badgeClasses = 'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full transition-all duration-200';
+    if (job.is_running) {
+        // Running - pulsing amber badge with spinner icon
+        icon = '<i class="fas fa-spinner fa-spin text-xs"></i>';
+        badgeClasses += ' bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 animate-pulse';
+    }
+    else if (job.last_error) {
+        // Failed - red badge with error icon
+        icon = '<i class="fas fa-exclamation-circle text-xs"></i>';
+        badgeClasses += ' bg-theme-error-bg text-theme-error-text';
+    }
+    else if (job.is_paused || !job.next_run) {
+        // Paused - yellow/gray badge with pause icon
+        icon = '<i class="fas fa-pause text-xs"></i>';
+        badgeClasses += ' bg-theme-warning-bg text-theme-warning-text';
+    }
+    else {
+        // Scheduled/Idle - green badge with check icon
+        icon = '<i class="fas fa-check-circle text-xs"></i>';
+        badgeClasses += ' bg-theme-success-bg text-theme-success-text';
+    }
+    return `<span class="status-badge ${statusClass} ${badgeClasses}">${icon}${label}</span>`;
+}
+function getStatusBorderColor(job) {
+    if (job.is_paused || !job.next_run) {
+        return 'border-theme-warning-text';
+    }
+    if (job.last_error) {
+        return 'border-theme-error-text';
+    }
+    if (job.is_running) {
+        return 'border-theme-info-text';
+    }
+    return 'border-theme-success-text';
+}
+function getScheduleText(trigger) {
+    if (!trigger || trigger === 'unknown') {
+        return 'Manual';
+    }
+    // Backend now formats triggers as readable strings, so just return as-is
+    // Keep old format handling for backward compatibility
+    return trigger.replace('cron[', '').replace(']', '').replace('interval[', 'Every ');
+}
+function renderTimelineView(jobsData) {
+    if (!elements.timelineContainer || !elements.frequentJobsContainer) {
+        return;
+    }
+    // Update current time display
+    updateCurrentTimeDisplay();
+    if (!jobsData || jobsData.length === 0) {
+        elements.timelineContainer.innerHTML = `
+            <div class="text-sm text-text-secondary py-8 text-center">No scheduled jobs available.</div>
+        `;
+        elements.frequentJobsContainer.innerHTML = `
+            <div class="text-sm text-text-secondary">None</div>
+        `;
+        if (elements.manualJobsContainer) {
+            elements.manualJobsContainer.innerHTML = `
+                <div class="text-sm text-text-secondary">None</div>
+            `;
+        }
+        return;
+    }
+    const timelineItems = [];
+    const frequentJobs = [];
+    const manualJobs = [];
+    // Current time in minutes for comparison
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    jobsData.forEach(job => {
+        const scheduleInfo = extractScheduleInfo(job);
+        if (scheduleInfo.kind === 'timeline' && scheduleInfo.timeLabel) {
+            const sortKey = scheduleInfo.sortKey ?? 9999;
+            timelineItems.push({
+                timeLabel: scheduleInfo.timeLabel,
+                sortKey,
+                job,
+                detail: scheduleInfo.detail,
+                badge: scheduleInfo.badge,
+                isPast: sortKey < currentMinutes,
+                isRunning: job.is_running || job.status === 'running'
+            });
+            return;
+        }
+        if (scheduleInfo.kind === 'manual') {
+            manualJobs.push(job);
+            return;
+        }
+        frequentJobs.push(job);
+    });
+    // Render timeline with period groupings
+    if (timelineItems.length === 0) {
+        elements.timelineContainer.innerHTML = `
+            <div class="text-sm text-text-secondary py-8 text-center">No fixed-time jobs found.</div>
+        `;
+    }
+    else {
+        timelineItems.sort((a, b) => a.sortKey - b.sortKey);
+        // Group by time period
+        const periods = [
+            { name: 'Early Morning', icon: '🌅', range: [0, 360], items: [] }, // 00:00-06:00
+            { name: 'Morning', icon: '☀️', range: [360, 720], items: [] }, // 06:00-12:00
+            { name: 'Afternoon', icon: '🌤️', range: [720, 1080], items: [] }, // 12:00-18:00
+            { name: 'Evening', icon: '🌙', range: [1080, 1440], items: [] } // 18:00-24:00
+        ];
+        timelineItems.forEach(item => {
+            for (const period of periods) {
+                if (item.sortKey >= period.range[0] && item.sortKey < period.range[1]) {
+                    period.items.push(item);
+                    break;
+                }
+            }
+        });
+        // Build HTML with period sections
+        let html = '';
+        for (const period of periods) {
+            if (period.items.length === 0)
+                continue;
+            const allPast = period.items.every(i => i.isPast);
+            const periodClass = allPast ? 'opacity-60' : '';
+            html += `
+                <div class="timeline-period ${periodClass}">
+                    <div class="flex items-center gap-2 mb-3 pb-2 border-b border-border/30">
+                        <span class="text-base">${period.icon}</span>
+                        <span class="text-xs font-semibold uppercase tracking-wider text-text-secondary">${period.name}</span>
+                        <span class="text-xs text-text-secondary/60">(${period.items.length} job${period.items.length !== 1 ? 's' : ''})</span>
+                    </div>
+                    <div class="relative pl-6 border-l-2 border-border/30 space-y-4">
+                        ${period.items.map(item => renderTimelineItem(item)).join('')}
+                    </div>
+                </div>
+            `;
+        }
+        elements.timelineContainer.innerHTML = html;
+    }
+    // Update stats
+    const completedCount = timelineItems.filter(i => i.isPast && !i.isRunning).length;
+    const runningCount = timelineItems.filter(i => i.isRunning).length;
+    const upcomingCount = timelineItems.filter(i => !i.isPast && !i.isRunning).length;
+    if (elements.statScheduled)
+        elements.statScheduled.textContent = String(timelineItems.length);
+    if (elements.statCompleted)
+        elements.statCompleted.textContent = String(completedCount);
+    if (elements.statRemaining)
+        elements.statRemaining.textContent = String(upcomingCount + runningCount);
+    // Find next upcoming job
+    const nextJob = timelineItems.find(i => !i.isPast && !i.isRunning);
+    if (elements.nextJobInfo && nextJob) {
+        const minutesUntil = nextJob.sortKey - currentMinutes;
+        const timeStr = minutesUntil < 60
+            ? `${minutesUntil} min`
+            : `${Math.floor(minutesUntil / 60)}h ${minutesUntil % 60}m`;
+        // Safe injection
+        const safeJobName = escapeHtmlForJobs(nextJob.job.name || nextJob.job.id);
+        elements.nextJobInfo.innerHTML = `
+            <span class="text-text-secondary">Next:</span>
+            <span class="text-text-primary font-medium">${safeJobName}</span>
+            <span class="text-text-secondary">in ${timeStr}</span>
+        `;
+    }
+    else if (elements.nextJobInfo) {
+        elements.nextJobInfo.innerHTML = `<span class="text-text-secondary">No more jobs scheduled today</span>`;
+    }
+    // Render interval jobs
+    if (elements.frequentJobsContainer) {
+        if (frequentJobs.length === 0) {
+            elements.frequentJobsContainer.innerHTML = `
+                <div class="text-xs text-text-secondary italic">None</div>
+            `;
+        }
+        else {
+            elements.frequentJobsContainer.innerHTML = frequentJobs.map(job => {
+                const scheduleText = escapeHtmlForJobs(getScheduleText(job.trigger || ''));
+                const jobName = escapeHtmlForJobs(job.name || job.id);
+                const isRunning = job.is_running || job.status === 'running';
+                const statusDot = isRunning
+                    ? '<span class="w-1.5 h-1.5 rounded-full bg-theme-warning-text animate-pulse"></span>'
+                    : '<span class="w-1.5 h-1.5 rounded-full bg-theme-success-text/50"></span>';
+                return `
+                    <div class="flex items-start gap-2 py-1.5 border-b border-border/20 last:border-0">
+                        <div class="mt-1.5">${statusDot}</div>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-medium text-text-primary truncate">${jobName}</div>
+                            <div class="text-xs text-text-secondary">${scheduleText || 'Recurring'}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+    // Manual Jobs
+    if (elements.manualJobsContainer) {
+        if (manualJobs.length === 0) {
+            elements.manualJobsContainer.innerHTML = `
+                <div class="text-xs text-text-secondary italic">None</div>
+            `;
+        }
+        else {
+            elements.manualJobsContainer.innerHTML = manualJobs.map(job => {
+                const jobName = escapeHtmlForJobs(job.name || job.id);
+                return `
+                    <div class="flex items-center gap-2 py-1.5 border-b border-border/20 last:border-0">
+                        <span class="w-1.5 h-1.5 rounded-full bg-text-secondary/30"></span>
+                        <span class="text-sm text-text-primary truncate">${jobName}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+}
+function renderTimelineItem(item) {
+    const jobName = escapeHtmlForJobs(item.job.name || item.job.id);
+    const detail = item.detail ? escapeHtmlForJobs(item.detail) : '';
+    // Determine dot color based on status
+    let dotClass = 'bg-accent'; // upcoming
+    if (item.isRunning) {
+        dotClass = 'bg-theme-warning-text animate-pulse';
+    }
+    else if (item.isPast) {
+        dotClass = 'bg-theme-success-text';
+    }
+    const opacityClass = item.isPast && !item.isRunning ? 'opacity-70' : '';
+    return `
+        <div class="relative ${opacityClass}">
+            <div class="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full ${dotClass} border-2 border-dashboard-surface"></div>
+            <div class="flex items-start gap-3">
+                <div class="w-14 text-sm font-mono text-text-secondary shrink-0">${item.timeLabel}</div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm font-medium text-text-primary truncate">${jobName}</span>
+                        ${item.isRunning ? '<span class="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-300 animate-pulse"><i class="fas fa-spinner fa-spin text-xs"></i>Running</span>' : ''}
+                        ${item.isPast && !item.isRunning ? '<span class="text-[10px] text-theme-success-text"><i class="fas fa-check-circle"></i></span>' : ''}
+                    </div>
+                    ${detail ? `<div class="text-xs text-text-secondary mt-0.5">${detail}</div>` : ''}
+                </div>
+                ${item.badge ? `<span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-border/50 text-text-secondary/70 shrink-0">${item.badge}</span>` : ''}
+            </div>
+        </div>
+    `;
+}
+// ... existing helper functions ...
+function escapeHtmlForJobs(text) {
+    if (text === null || text === undefined)
+        return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+function escapeAttribute(text) {
+    if (text === null || text === undefined)
+        return '';
+    return String(text).replace(/"/g, '&quot;');
+}
+function escapeJsString(text) {
+    if (!text)
+        return '';
+    // Escape single quotes for JS strings inside HTML attributes
+    // e.g. onclick="func('foo\'bar')"
+    // Also escape quotes for attribute safety, though usually unnecessary if we escape '
+    return String(text).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+// ... existing event handling functions ...
+function updateCurrentTimeDisplay() {
+    if (!elements.currentTimeDisplay)
+        return;
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    elements.currentTimeDisplay.textContent = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+}
+function extractScheduleInfo(job) {
+    const triggerDetails = job.trigger_details;
+    if (triggerDetails?.type === 'cron') {
+        const hour = triggerDetails.cron_params?.hour;
+        const minute = triggerDetails.cron_params?.minute;
+        const dayOfWeek = triggerDetails.cron_params?.day_of_week;
+        const timezone = triggerDetails.cron_params?.timezone;
+        if (isNumericString(hour) && isNumericString(minute)) {
+            const timeLabel = formatTimeLabel(Number(hour), Number(minute));
+            const sortKey = Number(hour) * 60 + Number(minute);
+            const detailParts = [];
+            if (dayOfWeek && dayOfWeek !== '*') {
+                detailParts.push(dayOfWeek);
+            }
+            if (timezone) {
+                detailParts.push(timezone);
+            }
+            return {
+                kind: 'timeline',
+                timeLabel,
+                sortKey,
+                detail: detailParts.length ? detailParts.join(' • ') : undefined,
+                badge: 'cron'
+            };
+        }
+        return { kind: 'frequent' };
+    }
+    if (triggerDetails?.type === 'interval') {
+        return { kind: 'frequent' };
+    }
+    if (triggerDetails?.type === 'date') {
+        const runDate = triggerDetails.run_date;
+        const timeInfo = runDate ? parseTimeFromIso(runDate) : null;
+        if (timeInfo) {
+            return {
+                kind: 'timeline',
+                timeLabel: timeInfo.timeLabel,
+                sortKey: timeInfo.sortKey,
+                detail: 'One-time',
+                badge: 'date'
+            };
+        }
+        return { kind: 'frequent' };
+    }
+    if (triggerDetails?.type === 'manual') {
+        return { kind: 'manual' };
+    }
+    const triggerText = job.trigger || '';
+    const timeMatch = triggerText.match(/(\d{1,2}):(\d{2})/);
+    if (triggerText.startsWith('At ') && timeMatch) {
+        const hour = Number(timeMatch[1]);
+        const minute = Number(timeMatch[2]);
+        return {
+            kind: 'timeline',
+            timeLabel: formatTimeLabel(hour, minute),
+            sortKey: hour * 60 + minute
+        };
+    }
+    if (triggerText.startsWith('Every ')) {
+        return { kind: 'frequent' };
+    }
+    if (job.next_run) {
+        const timeInfo = parseTimeFromIso(job.next_run);
+        if (timeInfo) {
+            return {
+                kind: 'timeline',
+                timeLabel: timeInfo.timeLabel,
+                sortKey: timeInfo.sortKey,
+                detail: 'Next run'
+            };
+        }
+    }
+    if (!triggerText || triggerText === 'Manual') {
+        return { kind: 'manual' };
+    }
+    return { kind: 'frequent' };
+}
+function parseTimeFromIso(iso) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    return {
+        timeLabel: formatTimeLabel(hour, minute),
+        sortKey: hour * 60 + minute
+    };
+}
+function formatTimeLabel(hour, minute) {
+    const hh = hour.toString().padStart(2, '0');
+    const mm = minute.toString().padStart(2, '0');
+    return `${hh}:${mm}`;
+}
+function isNumericString(value) {
+    return value !== undefined && value !== null && /^\d+$/.test(value);
+}
+function getLogClass(level) {
+    return level === 'ERROR' ? 'bg-theme-error-bg text-theme-error-text' : 'text-text-primary';
+}
+function getLogLevelColor(level) {
+    if (level === 'ERROR') {
+        return 'text-theme-error-text';
+    }
+    if (level === 'WARNING') {
+        return 'text-theme-warning-text';
+    }
+    return 'text-theme-info-text';
+}
+function showJobsError(msg) {
+    if (elements.errorMsg) {
+        elements.errorMsg.classList.remove('hidden');
+    }
+    if (elements.errorText) {
+        elements.errorText.textContent = msg;
+    }
+    setTimeout(() => {
+        if (elements.errorMsg) {
+            elements.errorMsg.classList.add('hidden');
+        }
+    }, 5000);
+}
+// Job Actions
+async function handleJobAction(e) {
+    const btn = e.currentTarget;
+    const action = btn.getAttribute('data-action');
+    const jobId = btn.getAttribute('data-id');
+    if (!action || !jobId) {
+        return;
+    }
+    // Visual feedback
+    const originalIcon = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.setAttribute('disabled', 'true');
+    try {
+        const response = await fetch(`/api/admin/scheduler/jobs/${jobId}/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify({}),
+            credentials: 'include'
+        });
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        let data;
+        if (isJson) {
+            data = await response.json();
+        }
+        else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
+        if (!response.ok) {
+            throw new Error(data.error || `Action failed (${response.status})`);
+        }
+        // Refresh immediately
+        fetchStatus();
+    }
+    catch (error) {
+        console.error('Job action error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        showJobsError(errorMessage);
+    }
+    finally {
+        btn.innerHTML = originalIcon;
+        btn.removeAttribute('disabled');
+    }
+}
+async function startScheduler() {
+    try {
+        const response = await fetch('/api/admin/scheduler/start', {
+            method: 'POST',
+            headers: { ...getCsrfHeaders() },
+            credentials: 'include'
+        });
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        let data;
+        if (isJson) {
+            data = await response.json();
+        }
+        else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
+        if (!response.ok) {
+            throw new Error(data.error || `Failed to start scheduler (${response.status})`);
+        }
+        fetchStatus();
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        showJobsError(errorMessage);
+    }
+}
+// Global functions for inline onclick handlers
+function toggleDateRange(jobId, checkbox) {
+    const container = document.getElementById(`params-${jobId}`);
+    if (!container)
+        return;
+    const singleDateGroup = container.querySelector('.param-group-single-date');
+    const dateRangeGroup = container.querySelector('.param-group-date-range');
+    if (checkbox.checked) {
+        singleDateGroup?.classList.add('hidden');
+        dateRangeGroup?.classList.remove('hidden');
+    }
+    else {
+        singleDateGroup?.classList.remove('hidden');
+        dateRangeGroup?.classList.add('hidden');
+    }
+}
+async function runJobWithParams(id, actualJobId) {
+    const container = document.getElementById(`params-${id}`);
+    if (!container) {
+        return;
+    }
+    const inputs = container.querySelectorAll('input, select');
+    const params = {};
+    // Check for date range mode
+    const useDateRangeInfo = container.querySelector('input[data-param="use_date_range"]');
+    const isDateRangeMode = useDateRangeInfo && useDateRangeInfo.checked;
+    inputs.forEach(input => {
+        const paramKey = input.getAttribute('data-param');
+        if (!paramKey)
+            return;
+        // Skip fields that are hidden due to date range logic
+        if (paramKey === 'target_date' && isDateRangeMode)
+            return;
+        if ((paramKey === 'from_date' || paramKey === 'to_date') && !isDateRangeMode)
+            return;
+        if (input.type === 'checkbox') {
+            params[paramKey] = input.checked;
+        }
+        else if (input.type === 'number') {
+            const val = parseFloat(input.value);
+            if (!isNaN(val)) {
+                params[paramKey] = val;
+            }
+        }
+        else if (input.value.trim() !== '') {
+            params[paramKey] = input.value.trim();
+        }
+    });
+    try {
+        const btn = container.querySelector('button.run-btn');
+        const originalContent = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...';
+            btn.disabled = true;
+        }
+        const response = await fetch(`/api/admin/scheduler/jobs/${actualJobId}/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            body: JSON.stringify(params),
+            credentials: 'include'
+        });
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get('content-type');
+        const isJson = contentType && contentType.includes('application/json');
+        let data;
+        if (isJson) {
+            data = await response.json();
+        }
+        else {
+            // If not JSON, try to get text for error message
+            const text = await response.text();
+            throw new Error(`Server error (${response.status}): ${text.substring(0, 200)}`);
+        }
+        if (!response.ok) {
+            throw new Error(data.error || `Failed to run job (${response.status})`);
+        }
+        // Hide params and refresh
+        setCollapsed(`params-${id}`, true);
+        fetchStatus();
+        // Show success toast/message
+        // You might want to implement a toast notification here
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        showJobsError(errorMessage);
+    }
+    finally {
+        const btn = container.querySelector('button.run-btn');
+        if (btn) {
+            btn.innerHTML = 'Run Now';
+            btn.disabled = false;
+        }
+    }
+}
+// Make functions available globally for inline onclick handlers
+// Assign to window for inline handlers - must be done immediately, not in DOMContentLoaded
+if (typeof window !== 'undefined') {
+    window.refreshJobs = fetchStatus;
+    window.toggleDateRange = toggleDateRange;
+    window.runJobWithParams = runJobWithParams;
+    console.log('[Jobs] Global functions exposed: refreshJobs, toggleDateRange, runJobWithParams');
+}
+//# sourceMappingURL=jobs.js.map

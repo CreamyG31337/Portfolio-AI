@@ -174,6 +174,8 @@ function renderContributorDropdown(filter: string): void {
     
     dropdown.innerHTML = filtered.map(c => `
         <div class="contributor-option p-3 hover:bg-dashboard-hover cursor-pointer border-b border-border last:border-b-0"
+             role="option"
+             id="contributor-option-${escapeHtmlForContributions(c.id)}"
              data-id="${escapeHtmlForContributions(c.id)}"
              data-name="${escapeHtmlForContributions(c.name)}"
              data-email="${escapeHtmlForContributions(c.email || '')}">
@@ -217,6 +219,11 @@ function selectContributor(id: string, name: string, email: string): void {
     // Hide dropdown
     if (dropdown) {
         dropdown.classList.add('hidden');
+        const contributorInput = document.getElementById('contributor') as HTMLInputElement | null;
+        if (contributorInput) {
+            contributorInput.setAttribute('aria-expanded', 'false');
+            contributorInput.removeAttribute('aria-activedescendant');
+        }
     }
 }
 
@@ -241,12 +248,18 @@ function setupContributorAutoFill(): void {
         // Show dropdown with filtered results
         renderContributorDropdown(value);
         dropdown.classList.remove('hidden');
+        if (contributorInput) {
+            contributorInput.setAttribute('aria-expanded', 'true');
+        }
     });
     
     // Show dropdown on focus
     contributorInput.addEventListener('focus', () => {
         renderContributorDropdown(contributorInput.value);
         dropdown.classList.remove('hidden');
+        if (contributorInput) {
+            contributorInput.setAttribute('aria-expanded', 'true');
+        }
     });
     
     // Hide dropdown when clicking outside
@@ -254,6 +267,10 @@ function setupContributorAutoFill(): void {
         const target = e.target as Node;
         if (!contributorInput.contains(target) && !dropdown.contains(target)) {
             dropdown.classList.add('hidden');
+            if (contributorInput) {
+                contributorInput.setAttribute('aria-expanded', 'false');
+                contributorInput.removeAttribute('aria-activedescendant');
+            }
         }
     });
     
@@ -261,11 +278,60 @@ function setupContributorAutoFill(): void {
     contributorInput.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             dropdown.classList.add('hidden');
+            contributorInput.setAttribute('aria-expanded', 'false');
+            contributorInput.removeAttribute('aria-activedescendant');
         } else if (e.key === 'ArrowDown') {
-            const firstOption = dropdown.querySelector('.contributor-option') as HTMLElement | null;
-            if (firstOption) {
+            const options = Array.from(dropdown.querySelectorAll('.contributor-option')) as HTMLElement[];
+            if (options.length > 0) {
                 e.preventDefault();
-                firstOption.focus();
+                const currentIndex = options.findIndex(opt => opt.id === contributorInput.getAttribute('aria-activedescendant'));
+                const nextIndex = currentIndex + 1 < options.length ? currentIndex + 1 : 0;
+
+                // Clear all
+                options.forEach(opt => {
+                    opt.classList.remove('bg-dashboard-background');
+                    opt.setAttribute('aria-selected', 'false');
+                });
+
+                // Set active
+                const activeOption = options[nextIndex];
+                activeOption.classList.add('bg-dashboard-background');
+                activeOption.setAttribute('aria-selected', 'true');
+                if (activeOption.id) {
+                    contributorInput.setAttribute('aria-activedescendant', activeOption.id);
+                }
+                activeOption.scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'ArrowUp') {
+            const options = Array.from(dropdown.querySelectorAll('.contributor-option')) as HTMLElement[];
+            if (options.length > 0) {
+                e.preventDefault();
+                const currentIndex = options.findIndex(opt => opt.id === contributorInput.getAttribute('aria-activedescendant'));
+                const nextIndex = currentIndex - 1 >= 0 ? currentIndex - 1 : options.length - 1;
+
+                // Clear all
+                options.forEach(opt => {
+                    opt.classList.remove('bg-dashboard-background');
+                    opt.setAttribute('aria-selected', 'false');
+                });
+
+                // Set active
+                const activeOption = options[nextIndex];
+                activeOption.classList.add('bg-dashboard-background');
+                activeOption.setAttribute('aria-selected', 'true');
+                if (activeOption.id) {
+                    contributorInput.setAttribute('aria-activedescendant', activeOption.id);
+                }
+                activeOption.scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'Enter') {
+            const activeId = contributorInput.getAttribute('aria-activedescendant');
+            if (activeId) {
+                const activeOption = document.getElementById(activeId);
+                if (activeOption) {
+                    e.preventDefault();
+                    activeOption.click();
+                }
             }
         }
     });

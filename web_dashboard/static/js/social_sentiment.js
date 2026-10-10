@@ -1,0 +1,741 @@
+/**
+ * Social Sentiment TypeScript
+ * Handles AgGrid initialization, data fetching, and interactions
+ */
+// Global grid APIs
+let watchlistGridApi = null;
+let sentimentGridApi = null;
+// Global cache of tickers that don't have logos (to avoid repeated 404s)
+const failedLogoCache = new Set();
+// Ticker cell renderer - makes ticker clickable with logo
+class TickerCellRenderer {
+    init(params) {
+        this.eGui = document.createElement('div');
+        this.eGui.className = 'flex items-center gap-1.5';
+        if (params.value && params.value !== 'N/A') {
+            const ticker = params.value;
+            const logoUrl = params.data?._logo_url;
+            // Check cache first - skip if we know this ticker doesn't have a logo
+            const cleanTicker = ticker.replace(/\s+/g, '').replace(/\.(TO|V|CN|TSX|TSXV|NE|NEO)$/i, '');
+            const cacheKey = cleanTicker.toUpperCase();
+            // Always add logo image (or transparent placeholder) for consistent alignment
+            const img = document.createElement('img');
+            img.className = 'w-6 h-6 object-contain rounded shrink-0';
+            if (failedLogoCache.has(cacheKey) || !logoUrl) {
+                // Use transparent placeholder for consistent spacing
+                img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                img.alt = '';
+            }
+            else {
+                // Try to load logo
+                img.src = logoUrl;
+                img.alt = ticker;
+                // Handle image load errors gracefully - try fallback
+                let fallbackAttempted = false;
+                img.onerror = function () {
+                    if (fallbackAttempted) {
+                        failedLogoCache.add(cacheKey);
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
+                        img.onerror = null;
+                        return;
+                    }
+                    fallbackAttempted = true;
+                    const yahooUrl = `https://s.yimg.com/cv/apiv2/default/images/logos/${cleanTicker}.png`;
+                    if (img.src !== yahooUrl) {
+                        img.src = yahooUrl;
+                    }
+                    else {
+                        failedLogoCache.add(cacheKey);
+                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="24" height="24"%3E%3C/svg%3E';
+                        img.alt = '';
+                        img.onerror = null;
+                    }
+                };
+            }
+            this.eGui.appendChild(img);
+            // Add ticker text
+            const tickerSpan = document.createElement('span');
+            tickerSpan.innerText = ticker;
+            tickerSpan.className = 'text-accent font-bold underline cursor-pointer';
+            tickerSpan.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (ticker && ticker !== 'N/A') {
+                    window.location.href = `/ticker?ticker=${encodeURIComponent(ticker)}`;
+                }
+            });
+            this.eGui.appendChild(tickerSpan);
+        }
+        else {
+            this.eGui.innerText = params.value || 'N/A';
+        }
+    }
+    getGui() {
+        return this.eGui;
+    }
+}
+// Sentiment color cell renderer
+class SentimentCellRenderer {
+    init(params) {
+        this.eGui = document.createElement('span');
+        const value = params.value || '';
+        this.eGui.innerText = value;
+        // Apply color based on sentiment
+        if (value.includes('EUPHORIC')) {
+            this.eGui.className = 'text-theme-success-text font-bold';
+        }
+        else if (value.includes('FEARFUL')) {
+            this.eGui.className = 'text-theme-error-text font-bold';
+        }
+        else if (value.includes('BULLISH')) {
+            this.eGui.className = 'text-theme-success-text';
+        }
+        else if (value.includes('BEARISH')) {
+            this.eGui.className = 'text-theme-error-text';
+        }
+    }
+    getGui() {
+        return this.eGui;
+    }
+}
+function autoSizeGridColumns(gridApi) {
+    if (!gridApi) {
+        return;
+    }
+    const api = gridApi;
+    if (typeof api.autoSizeAllColumns === 'function') {
+        api.autoSizeAllColumns(false);
+    }
+    else if (typeof api.sizeColumnsToFit === 'function') {
+        api.sizeColumnsToFit();
+    }
+}
+// Initialize watchlist grid
+function initializeWatchlistGrid(data) {
+    const gridDiv = document.querySelector('#watchlist-grid');
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    }
+    else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    }
+    else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
+    }
+    if (!gridDiv) {
+        console.error('Watchlist grid container not found');
+        return;
+    }
+    if (!window.agGrid) {
+        console.error('AgGrid not loaded');
+        return;
+    }
+    const columnDefs = [
+        {
+            field: 'ticker',
+            headerName: 'Ticker',
+            width: 100,
+            pinned: 'left',
+            cellRenderer: TickerCellRenderer,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: 'priority_tier',
+            headerName: 'Priority',
+            width: 80,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: 'sources',
+            headerName: 'Sources',
+            width: 200,
+            sortable: true,
+            filter: true,
+            valueGetter: (params) => {
+                return params.data?.sources?.join(', ') || '';
+            }
+        },
+        {
+            field: 'source_count',
+            headerName: 'Source Count',
+            width: 120,
+            sortable: true,
+            filter: true
+        }
+    ];
+    const gridOptions = {
+        columnDefs: columnDefs,
+        rowData: data,
+        defaultColDef: {
+            editable: false,
+            sortable: true,
+            filter: true,
+            resizable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true
+        },
+        pagination: true,
+        paginationPageSize: 50,
+        paginationPageSizeSelector: [25, 50, 100],
+        animateRows: true
+    };
+    const agGrid = window.agGrid;
+    watchlistGridApi = agGrid.createGrid(gridDiv, gridOptions);
+    setTimeout(() => {
+        autoSizeGridColumns(watchlistGridApi);
+    }, 100);
+}
+// Initialize sentiment grid
+function initializeSentimentGrid(data) {
+    const gridDiv = document.querySelector('#sentiment-grid');
+    if (!gridDiv) {
+        console.error('Sentiment grid container not found');
+        return;
+    }
+    if (!window.agGrid) {
+        console.error('AgGrid not loaded');
+        return;
+    }
+    // Detect theme and apply appropriate AgGrid theme
+    const htmlElement = document.documentElement;
+    const theme = htmlElement.getAttribute('data-theme') || 'system';
+    let isDark = false;
+    if (theme === 'dark' || theme === 'midnight-tokyo' || theme === 'abyss') {
+        isDark = true;
+    }
+    else if (theme === 'system') {
+        // Check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+    // Update grid container class based on theme
+    if (isDark) {
+        gridDiv.classList.remove('ag-theme-alpine');
+        gridDiv.classList.add('ag-theme-alpine-dark');
+    }
+    else {
+        gridDiv.classList.remove('ag-theme-alpine-dark');
+        gridDiv.classList.add('ag-theme-alpine');
+    }
+    const columnDefs = [
+        {
+            field: 'Ticker',
+            headerName: 'Ticker',
+            width: 100,
+            pinned: 'left',
+            cellRenderer: TickerCellRenderer,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: 'Company',
+            headerName: 'Company',
+            width: 200,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: 'In Watchlist',
+            headerName: 'In Watchlist',
+            width: 120,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '🤖 AI Status',
+            headerName: 'AI Status',
+            width: 120,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '🤖 AI Sentiment',
+            headerName: 'AI Sentiment',
+            width: 120,
+            sortable: true,
+            filter: true,
+            cellRenderer: SentimentCellRenderer
+        },
+        {
+            field: '🤖 AI Confidence',
+            headerName: 'AI Confidence',
+            width: 120,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '💬 Stocktwits Sentiment',
+            headerName: 'Stocktwits Sentiment',
+            width: 180,
+            sortable: true,
+            filter: true,
+            cellRenderer: SentimentCellRenderer
+        },
+        {
+            field: '💬 Stocktwits Volume',
+            headerName: 'Stocktwits Volume',
+            width: 150,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '💬 Stocktwits Score',
+            headerName: 'Stocktwits Score',
+            width: 130,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '💬 Bull/Bear Ratio',
+            headerName: 'Bull/Bear Ratio',
+            width: 130,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '👽 Reddit Sentiment',
+            headerName: 'Reddit Sentiment',
+            width: 150,
+            sortable: true,
+            filter: true,
+            cellRenderer: SentimentCellRenderer
+        },
+        {
+            field: '👽 Reddit Volume',
+            headerName: 'Reddit Volume',
+            width: 130,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: '👽 Reddit Score',
+            headerName: 'Reddit Score',
+            width: 120,
+            sortable: true,
+            filter: true
+        },
+        {
+            field: 'Last Updated',
+            headerName: 'Last Updated',
+            width: 180,
+            sortable: true,
+            filter: true
+        }
+    ];
+    const gridOptions = {
+        columnDefs: columnDefs,
+        rowData: data,
+        defaultColDef: {
+            editable: false,
+            sortable: true,
+            filter: true,
+            resizable: true,
+            wrapHeaderText: true,
+            autoHeaderHeight: true
+        },
+        pagination: true,
+        paginationPageSize: 100,
+        paginationPageSizeSelector: [50, 100, 250, 500],
+        animateRows: true
+    };
+    const agGrid = window.agGrid;
+    sentimentGridApi = agGrid.createGrid(gridDiv, gridOptions);
+    setTimeout(() => {
+        autoSizeGridColumns(sentimentGridApi);
+    }, 100);
+}
+// Load watchlist data
+async function loadWatchlistData(refreshKey) {
+    try {
+        const response = await fetch(`/api/social_sentiment/watchlist?refresh_key=${refreshKey}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            // Update summary metrics
+            document.getElementById('watchlist-total').textContent = data.length.toString();
+            document.getElementById('watchlist-tier-a').textContent =
+                data.filter(t => t.priority_tier === 'A').length.toString();
+            document.getElementById('watchlist-tier-b').textContent =
+                data.filter(t => t.priority_tier === 'B').length.toString();
+            document.getElementById('watchlist-tier-c').textContent =
+                data.filter(t => t.priority_tier === 'C').length.toString();
+            // Initialize grid
+            if (data.length > 0) {
+                document.getElementById('watchlist-loading').classList.add('hidden');
+                document.getElementById('watchlist-empty').classList.add('hidden');
+                document.getElementById('watchlist-content').classList.remove('hidden');
+                initializeWatchlistGrid(data);
+            }
+            else {
+                document.getElementById('watchlist-loading').classList.add('hidden');
+                document.getElementById('watchlist-content').classList.add('hidden');
+                document.getElementById('watchlist-empty').classList.remove('hidden');
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error loading watchlist:', error);
+        document.getElementById('watchlist-loading').classList.add('hidden');
+        document.getElementById('watchlist-content').classList.add('hidden');
+        document.getElementById('watchlist-empty').classList.remove('hidden');
+    }
+}
+// Load alerts data
+async function loadAlertsData(refreshKey) {
+    try {
+        const response = await fetch(`/api/social_sentiment/alerts?refresh_key=${refreshKey}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const alerts = result.data;
+            const alertsList = document.getElementById('alerts-list');
+            alertsList.innerHTML = '';
+            if (alerts.length > 0) {
+                document.getElementById('alerts-loading').classList.add('hidden');
+                document.getElementById('alerts-empty').classList.add('hidden');
+                document.getElementById('alerts-content').classList.remove('hidden');
+                alerts.forEach((alert, idx) => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'mb-4 p-4 rounded-lg border';
+                    alertDiv.classList.add(alert.sentiment_label === 'EUPHORIC'
+                        ? 'bg-theme-success-bg/20 border-theme-success-text/30'
+                        : 'bg-theme-error-bg/20 border-theme-error-text/30');
+                    alertDiv.innerHTML = `
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <span class="font-bold text-lg text-text-primary">${alert.ticker}</span>
+                                <span class="ml-2 text-sm text-text-secondary">(${alert.platform.toUpperCase()})</span>
+                                <span class="ml-2 font-semibold text-text-primary">${alert.sentiment_label}</span>
+                                <span class="ml-2 text-sm text-text-tertiary">Score: ${alert.sentiment_score.toFixed(1)}</span>
+                            </div>
+                            <div class="text-sm text-text-secondary">${alert.created_at}</div>
+                        </div>
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="loadAlertPosts(${alert.id}, ${alert.analysis_session_id || 'null'}, ${idx})"
+                                    class="btn-outline-sm">
+                                View Source Posts
+                            </button>
+                            <button onclick="window.location.href='/ticker?ticker=${encodeURIComponent(alert.ticker)}'"
+                                    class="btn-outline-sm">
+                                View Ticker Details
+                            </button>
+                        </div>
+                        <div id="alert-posts-${idx}" class="hidden mt-4"></div>
+                    `;
+                    alertsList.appendChild(alertDiv);
+                });
+            }
+            else {
+                document.getElementById('alerts-loading').classList.add('hidden');
+                document.getElementById('alerts-content').classList.add('hidden');
+                document.getElementById('alerts-empty').classList.remove('hidden');
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error loading alerts:', error);
+        document.getElementById('alerts-loading').classList.add('hidden');
+        document.getElementById('alerts-content').classList.add('hidden');
+        document.getElementById('alerts-empty').classList.remove('hidden');
+    }
+}
+// Load alert posts
+async function loadAlertPosts(metricId, sessionId, alertIdx) {
+    const postsDiv = document.getElementById(`alert-posts-${alertIdx}`);
+    if (!postsDiv.classList.contains('hidden')) {
+        postsDiv.classList.add('hidden');
+        return;
+    }
+    try {
+        let response;
+        if (sessionId) {
+            response = await fetch(`/api/social_sentiment/posts/session/${sessionId}`);
+        }
+        else {
+            response = await fetch(`/api/social_sentiment/posts/${metricId}`);
+        }
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const posts = result.data;
+            postsDiv.innerHTML = '<h4 class="font-semibold mb-2 text-text-primary">Source Posts:</h4>';
+            if (posts.length > 0) {
+                posts.forEach((post) => {
+                    const postDiv = document.createElement('div');
+                    postDiv.className = 'mb-3 p-3 bg-dashboard-surface rounded border border-border';
+                    postDiv.innerHTML = `
+                        <div class="flex justify-between mb-1">
+                            <span class="font-semibold text-text-primary">${post.author || 'Unknown'}</span>
+                            <span class="text-sm text-text-secondary">${post.posted_at}</span>
+                        </div>
+                        <p class="text-sm mb-2 text-text-primary">${post.content || ''}</p>
+                        <div class="flex justify-between text-xs text-text-secondary">
+                            <span>👍 ${post.engagement_score || 0} engagement</span>
+                            ${post.url ? `<a href="${post.url}" target="_blank" class="text-accent hover:underline">View Original Post</a>` : ''}
+                        </div>
+                    `;
+                    postsDiv.appendChild(postDiv);
+                });
+            }
+            else {
+                postsDiv.innerHTML += '<p class="text-sm text-gray-600 dark:text-gray-400">No posts found for this alert.</p>';
+            }
+            postsDiv.classList.remove('hidden');
+        }
+    }
+    catch (error) {
+        console.error('Error loading alert posts:', error);
+        postsDiv.innerHTML = '<p class="text-sm text-theme-error-text">Error loading posts.</p>';
+        postsDiv.classList.remove('hidden');
+    }
+}
+// Load AI analyses data
+async function loadAIAnalysesData(refreshKey) {
+    try {
+        const response = await fetch(`/api/social_sentiment/ai_analyses?refresh_key=${refreshKey}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const analyses = result.data;
+            const analysesList = document.getElementById('ai-analyses-list');
+            analysesList.innerHTML = '';
+            // Update summary metrics
+            document.getElementById('ai-total').textContent = analyses.length.toString();
+            const avgConfidence = analyses.length > 0
+                ? (analyses.reduce((sum, a) => sum + a.confidence_score, 0) / analyses.length * 100).toFixed(1)
+                : '0';
+            document.getElementById('ai-avg-confidence').textContent = `${avgConfidence}%`;
+            document.getElementById('ai-euphoric').textContent =
+                analyses.filter(a => a.sentiment_label === 'EUPHORIC').length.toString();
+            document.getElementById('ai-fearful').textContent =
+                analyses.filter(a => a.sentiment_label === 'FEARFUL').length.toString();
+            if (analyses.length > 0) {
+                document.getElementById('ai-loading').classList.add('hidden');
+                document.getElementById('ai-empty').classList.add('hidden');
+                document.getElementById('ai-content').classList.remove('hidden');
+                analyses.forEach((analysis) => {
+                    const analysisDiv = document.createElement('div');
+                    analysisDiv.className = 'mb-4 p-4 bg-dashboard-surface-alt rounded-lg border border-border';
+                    analysisDiv.innerHTML = `
+                        <div class="flex items-center justify-between mb-2">
+                            <div>
+                                <span class="font-bold text-text-primary">${analysis.ticker}</span>
+                                <span class="ml-2 text-sm text-text-secondary">${analysis.platform.toUpperCase()}</span>
+                                <span class="ml-2 font-semibold ${analysis.sentiment_label === 'EUPHORIC' ? 'text-theme-success-text' : analysis.sentiment_label === 'FEARFUL' ? 'text-theme-error-text' : ''}">
+                                    ${analysis.sentiment_label}
+                                </span>
+                            </div>
+                            <div class="text-sm text-text-secondary">${analysis.analyzed_at}</div>
+                        </div>
+                        <div class="grid grid-cols-4 gap-4 text-sm mb-2 text-text-primary">
+                            <div>Score: ${analysis.sentiment_score.toFixed(1)}</div>
+                            <div>Confidence: ${(analysis.confidence_score * 100).toFixed(1)}%</div>
+                            <div>Posts: ${analysis.post_count}</div>
+                            <div>Engagement: ${analysis.total_engagement}</div>
+                        </div>
+                        <button onclick="loadAIDetails(${analysis.id}, ${analysis.session_id})"
+                                class="btn-outline-sm">
+                            View Details
+                        </button>
+                        <div id="ai-details-${analysis.id}" class="hidden mt-4"></div>
+                    `;
+                    analysesList.appendChild(analysisDiv);
+                });
+            }
+            else {
+                document.getElementById('ai-loading').classList.add('hidden');
+                document.getElementById('ai-content').classList.add('hidden');
+                document.getElementById('ai-empty').classList.remove('hidden');
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error loading AI analyses:', error);
+        document.getElementById('ai-loading').classList.add('hidden');
+        document.getElementById('ai-content').classList.add('hidden');
+        document.getElementById('ai-empty').classList.remove('hidden');
+    }
+}
+// Load AI analysis details
+async function loadAIDetails(analysisId, sessionId) {
+    const detailsDiv = document.getElementById(`ai-details-${analysisId}`);
+    if (!detailsDiv.classList.contains('hidden')) {
+        detailsDiv.classList.add('hidden');
+        return;
+    }
+    try {
+        const response = await fetch(`/api/social_sentiment/ai_details/${analysisId}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            const analysis = data.analysis;
+            const extractedTickers = data.extracted_tickers || [];
+            const posts = data.posts || [];
+            detailsDiv.innerHTML = `
+                <div class="bg-dashboard-surface p-4 rounded border border-border">
+                    <h4 class="font-semibold mb-2 text-text-primary">Analysis Summary</h4>
+                    <p class="text-sm mb-4 text-text-secondary">${analysis.summary || 'No summary available'}</p>
+
+                    <h4 class="font-semibold mb-2 text-text-primary">Key Themes</h4>
+                    <ul class="list-disc list-inside text-sm mb-4 text-text-secondary">
+                        ${analysis.key_themes && analysis.key_themes.length > 0
+                ? analysis.key_themes.map((theme) => `<li>${theme}</li>`).join('')
+                : '<li>No themes identified</li>'}
+                    </ul>
+
+                    <h4 class="font-semibold mb-2 text-text-primary">Detailed Reasoning</h4>
+                    <p class="text-sm mb-4 text-text-secondary">${analysis.reasoning || 'No reasoning provided'}</p>
+
+                    ${extractedTickers.length > 0 ? `
+                        <h4 class="font-semibold mb-2 text-text-primary">Extracted Tickers</h4>
+                        <div class="text-sm mb-4 text-text-secondary">
+                            ${extractedTickers.map((t) => `
+                                <div class="mb-1">
+                                    <strong>${t.ticker}</strong> (${(t.confidence * 100).toFixed(1)}%) - ${t.company_name || 'Unknown'}
+                                    ${t.is_primary ? ' <span class="text-theme-success-text">Primary</span>' : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    ` : ''}
+
+                    ${posts.length > 0 ? `
+                        <h4 class="font-semibold mb-2 text-text-primary">Sample Posts</h4>
+                        ${posts.map((post) => `
+                            <div class="mb-3 p-2 bg-dashboard-surface-alt rounded border border-border">
+                                <div class="flex justify-between mb-1">
+                                    <span class="font-semibold text-sm text-text-primary">${post.author || 'Unknown'}</span>
+                                    <span class="text-xs text-text-secondary">${post.posted_at}</span>
+                                </div>
+                                <p class="text-sm text-text-primary">${post.content ? (post.content.length > 300 ? post.content.substring(0, 300) + '...' : post.content) : ''}</p>
+                                <div class="flex justify-between text-xs text-text-secondary mt-1">
+                                    <span>👍 ${post.engagement_score || 0} engagement</span>
+                                    ${post.url ? `<a href="${post.url}" target="_blank" class="text-accent hover:underline">View Original</a>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    ` : ''}
+                </div>
+            `;
+            detailsDiv.classList.remove('hidden');
+        }
+    }
+    catch (error) {
+        console.error('Error loading AI details:', error);
+        detailsDiv.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">Error loading details.</p>';
+        detailsDiv.classList.remove('hidden');
+    }
+}
+// Load sentiment data
+export async function loadSentimentData(refreshKey, showOnlyWatchlist = true) {
+    try {
+        const response = await fetch(`/api/social_sentiment/latest_sentiment?refresh_key=${refreshKey}&show_only_watchlist=${showOnlyWatchlist}`);
+        if (!response.ok)
+            throw new Error(`HTTP error! status: ${response.status}`);
+        const result = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            // Calculate summary statistics
+            const uniqueTickers = new Set(data.map(row => row.Ticker));
+            const sentimentColumns = ['💬 Stocktwits Sentiment', '👽 Reddit Sentiment'];
+            let euphoricCount = 0;
+            let fearfulCount = 0;
+            data.forEach(row => {
+                sentimentColumns.forEach(col => {
+                    const value = row[col];
+                    if (value && value.includes('EUPHORIC'))
+                        euphoricCount++;
+                    if (value && value.includes('FEARFUL'))
+                        fearfulCount++;
+                });
+            });
+            document.getElementById('stats-unique-tickers').textContent = uniqueTickers.size.toString();
+            document.getElementById('stats-total-metrics').textContent = data.length.toString();
+            document.getElementById('stats-euphoric').textContent = euphoricCount.toString();
+            document.getElementById('stats-fearful').textContent = fearfulCount.toString();
+            if (data.length > 0) {
+                document.getElementById('sentiment-loading').classList.add('hidden');
+                document.getElementById('sentiment-empty').classList.add('hidden');
+                document.getElementById('sentiment-content').classList.remove('hidden');
+                // Destroy existing grid if it exists
+                if (sentimentGridApi) {
+                    sentimentGridApi.setGridOption('rowData', []);
+                }
+                initializeSentimentGrid(data);
+            }
+            else {
+                document.getElementById('sentiment-loading').classList.add('hidden');
+                document.getElementById('sentiment-content').classList.add('hidden');
+                document.getElementById('sentiment-empty').classList.remove('hidden');
+            }
+        }
+    }
+    catch (error) {
+        console.error('Error loading sentiment data:', error);
+        document.getElementById('sentiment-loading').classList.add('hidden');
+        document.getElementById('sentiment-content').classList.add('hidden');
+        document.getElementById('sentiment-empty').classList.remove('hidden');
+    }
+}
+// Initialize page
+export function initializeSocialSentimentPage(refreshKey) {
+    loadWatchlistData(refreshKey);
+    loadAlertsData(refreshKey);
+    loadAIAnalysesData(refreshKey);
+    loadSentimentData(refreshKey, true);
+}
+// Make functions available globally
+window.loadAlertPosts = loadAlertPosts;
+window.loadAIDetails = loadAIDetails;
+window.loadSentimentData = loadSentimentData;
+window.initializeSocialSentimentPage = initializeSocialSentimentPage;
+window.refreshData = function () {
+    const currentUrl = new URL(window.location.href);
+    const currentRefreshKey = parseInt(currentUrl.searchParams.get('refresh_key') || '0');
+    currentUrl.searchParams.set('refresh_key', (currentRefreshKey + 1).toString());
+    window.location.href = currentUrl.toString();
+};
+// Auto-initialize if config is present
+document.addEventListener('DOMContentLoaded', () => {
+    const configElement = document.getElementById('social-sentiment-config');
+    if (configElement) {
+        try {
+            const config = JSON.parse(configElement.textContent || '{}');
+            const refreshKey = config.refreshKey || 0;
+            initializeSocialSentimentPage(refreshKey);
+            // Handle watchlist filter checkbox if it exists
+            const watchlistFilter = document.getElementById('show-only-watchlist');
+            if (watchlistFilter) {
+                watchlistFilter.addEventListener('change', function () {
+                    loadSentimentData(refreshKey, this.checked);
+                });
+            }
+        }
+        catch (err) {
+            console.error('[SocialSentiment] Failed to auto-init:', err);
+        }
+    }
+});
+//# sourceMappingURL=social_sentiment.js.map
