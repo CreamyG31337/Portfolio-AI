@@ -501,20 +501,9 @@ def update_portfolio_prices_job(
                         check_date = latest_date + timedelta(days=1)
                         while check_date < target_date:
                             if market_holidays.is_trading_day(check_date, market="any"):
-                                # Verify data doesn't exist for this date for THIS fund
-                                start_of_day = datetime.combine(check_date, dt_time(0, 0, 0)).isoformat()
-                                end_of_day = datetime.combine(check_date, dt_time(23, 59, 59, 999999)).isoformat()
-                                
-                                data_check = client.supabase.table("portfolio_positions")\
-                                    .select("id", count='exact')\
-                                    .eq("fund", fund_name)\
-                                    .gte("date", start_of_day)\
-                                    .lt("date", end_of_day)\
-                                    .limit(1)\
-                                    .execute()
-                                
-                                if not (data_check.count and data_check.count > 0):
-                                    missing_days.append(check_date)
+                                # Since check_date > latest_date, data logically cannot exist.
+                                # Safe to skip the N+1 per-day DB check.
+                                missing_days.append(check_date)
                             check_date += timedelta(days=1)
                         
                         if missing_days:
@@ -540,19 +529,9 @@ def update_portfolio_prices_job(
                             check_date = earliest_trade
                             while check_date < target_date:
                                 if market_holidays.is_trading_day(check_date, market="any"):
-                                    start_of_day = datetime.combine(check_date, dt_time(0, 0, 0)).isoformat()
-                                    end_of_day = datetime.combine(check_date, dt_time(23, 59, 59, 999999)).isoformat()
-                                    
-                                    data_check = client.supabase.table("portfolio_positions")\
-                                        .select("id", count='exact')\
-                                        .eq("fund", fund_name)\
-                                        .gte("date", start_of_day)\
-                                        .lt("date", end_of_day)\
-                                        .limit(1)\
-                                        .execute()
-                                    
-                                    if not (data_check.count and data_check.count > 0):
-                                        missing_days.append(check_date)
+                                    # Since there is no data at all for this fund, data logically cannot exist.
+                                    # Safe to skip the N+1 per-day DB check.
+                                    missing_days.append(check_date)
                                 check_date += timedelta(days=1)
                             
                             if missing_days:
