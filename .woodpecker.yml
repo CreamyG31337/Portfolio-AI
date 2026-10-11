@@ -160,6 +160,10 @@ steps:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /home/lance/ai-trading-www:/deploy_target
+      # The Flask deploy command sources this host file; without the mount the [ -f ] check
+      # silently skipped it and OLLAMA_BASE_URL_2 fell back to the stale Woodpecker secret.
+      # Create it on the host (it may hold only comments) or the step fails to start.
+      - /home/lance/trading-dashboard-optional.env:/home/lance/trading-dashboard-optional.env:ro
     environment:
       TZ: America/Vancouver
       SUPABASE_URL:
