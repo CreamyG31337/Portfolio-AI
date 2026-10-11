@@ -29,12 +29,10 @@ import os
 import re
 import secrets
 import sys
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, UTC
 from pathlib import Path
-import yfinance as yf
 import plotly.graph_objs as go
-import plotly.utils
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any
 import logging
 import requests
 import threading
@@ -437,7 +435,7 @@ def internal_server_error(e):
         </html>
         """, 500
     else:
-        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
+        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else """
         <html>
             <head><title>500 Internal Server Error</title></head>
             <body style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #1a1b26; color: #a9b1d6;">
@@ -498,7 +496,7 @@ def handle_exception(e):
         </html>
         """, 500
     else:
-        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else f"""
+        return render_template("error.html", error=e) if os.path.exists(os.path.join(app.root_path, 'templates', 'error.html')) else """
         <html>
             <head><title>Application Error</title></head>
             <body style="font-family: sans-serif; padding: 2rem; text-align: center; background-color: #1a1b26; color: #a9b1d6;">
@@ -529,16 +527,16 @@ except ImportError:
     REPOSITORY_AVAILABLE = False
     logger.debug("Repository system not available (optional for Settings page)")
 
-def get_supabase_client() -> Optional[SupabaseClient]:
+def get_supabase_client() -> SupabaseClient | None:
     """Get Supabase client instance with user authentication"""
     if not SUPABASE_AVAILABLE:
         return None
-    
+
     try:
         # Get user token from cookies to respect RLS policies
         from flask_auth_utils import get_supabase_access_token
         user_token = get_supabase_access_token()
-        
+
         return SupabaseClient(user_token=user_token) if user_token else SupabaseClient()
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}", exc_info=True)
@@ -612,7 +610,7 @@ def fmt_date_filter(value):
     return s.strip()
 
 
-def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
+def get_navigation_context(current_page: str = None) -> dict[str, Any]:
     """Get navigation context for Flask templates"""
     try:
         from shared_navigation import (
@@ -621,7 +619,6 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
             is_page_migrated,
         )
         from user_preferences import get_user_preference
-        from flask_auth_utils import get_user_email_flask
 
         # Get navigation links (defensive merge for Flask-only migrated pages)
         links = ensure_flask_sidebar_navigation_links(get_navigation_links())
@@ -734,7 +731,7 @@ def get_navigation_context(current_page: str = None) -> Dict[str, Any]:
         except Exception:
             pass
 
-        impersonation_ctx: Dict[str, Any] = {"impersonating": False}
+        impersonation_ctx: dict[str, Any] = {"impersonating": False}
         try:
             from flask_auth_utils import get_impersonation_banner_context
             impersonation_ctx = get_impersonation_banner_context()
@@ -953,7 +950,7 @@ def _start_scheduler_background():
                                 break
 
                         # Check 2: Verify heartbeat file is being updated
-                        from scheduler.scheduler_core import _HEARTBEAT_FILE, _check_heartbeat
+                        from scheduler.scheduler_core import _HEARTBEAT_FILE
                         if _HEARTBEAT_FILE.exists():
                             heartbeat_age = time.time() - float(_HEARTBEAT_FILE.read_text().strip())
                             if heartbeat_age > 30:
@@ -1093,7 +1090,7 @@ def _shutdown_scheduler_on_exit():
 
 atexit.register(_shutdown_scheduler_on_exit)
 
-def load_portfolio_data(fund_name=None) -> Dict:
+def load_portfolio_data(fund_name=None) -> dict:
     """Load and process portfolio data from Supabase (using flask_data_utils)"""
     try:
         from flask_data_utils import (
@@ -1156,7 +1153,7 @@ def load_portfolio_data(fund_name=None) -> Dict:
             "error": str(e)
         }
 
-def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataFrame, fund_name=None) -> Dict:
+def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataFrame, fund_name=None) -> dict:
     """Calculate key performance metrics for a specific fund or all funds"""
     try:
         # Optimization: Use passed DataFrames if available to avoid redundant DB fetch
@@ -1279,7 +1276,7 @@ def calculate_performance_metrics(portfolio_df: pd.DataFrame, trade_df: pd.DataF
             "losing_trades": 0
         }
 
-def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str] = None) -> str:
+def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: str | None = None) -> str:
     """Create a Plotly performance chart"""
     try:
         client = get_supabase_client()
@@ -1404,45 +1401,45 @@ def create_performance_chart(portfolio_df: pd.DataFrame, fund_name: Optional[str
 @app.route('/dashboard')
 def dashboard_fallback():
     """Fallback route when dashboard blueprint fails to register"""
-    return f"""
+    return """
     <html>
         <head>
             <title>Dashboard Unavailable</title>
             <style>
-                body {{
+                body {
                     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
                     padding: 2rem;
                     line-height: 1.6;
                     background: #f9fafb;
-                }}
-                .container {{
+                }
+                .container {
                     max-width: 600px;
                     margin: 2rem auto;
                     background: white;
                     padding: 2rem;
                     border-radius: 8px;
                     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                }}
-                h1 {{
+                }
+                h1 {
                     color: #dc2626;
                     margin-top: 0;
                     border-bottom: 2px solid #fee2e2;
                     padding-bottom: 0.5rem;
-                }}
-                .error-icon {{
+                }
+                .error-icon {
                     font-size: 3rem;
                     margin-bottom: 1rem;
-                }}
-                .info {{
+                }
+                .info {
                     background: #eff6ff;
                     border-left: 4px solid #3b82f6;
                     padding: 1rem;
                     margin: 1rem 0;
-                }}
-                .actions {{
+                }
+                .actions {
                     margin-top: 1.5rem;
-                }}
-                .action-link {{
+                }
+                .action-link {
                     display: inline-block;
                     padding: 0.5rem 1rem;
                     background: #3b82f6;
@@ -1450,10 +1447,10 @@ def dashboard_fallback():
                     text-decoration: none;
                     border-radius: 4px;
                     margin-right: 0.5rem;
-                }}
-                .action-link:hover {{
+                }
+                .action-link:hover {
                     background: #2563eb;
-                }}
+                }
             </style>
         </head>
         <body>
@@ -1491,7 +1488,7 @@ def dashboard_fallback():
 def index():
     """Redirect to dashboard if authenticated, otherwise to auth page"""
     try:
-        from flask_auth_utils import get_auth_token, get_refresh_token
+        from flask_auth_utils import get_refresh_token
         import base64
         import json as json_lib
         import time
@@ -2458,7 +2455,7 @@ def api_funds():
         # Fallback to CSV configuration
         config_file = Path("../repository_config.json")
         if config_file.exists():
-            with open(config_file, 'r') as f:
+            with open(config_file) as f:
                 config = json.load(f)
             funds = config.get("repository", {}).get("available_funds", [])
             logger.debug(f"Returning CSV config funds: {funds}")
@@ -3261,7 +3258,7 @@ def update_v2_enabled():
             logger.info(f"Successfully updated v2_enabled to {enabled}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update v2_enabled - set_user_preference returned False")
+            logger.error("Failed to update v2_enabled - set_user_preference returned False")
             return jsonify({"success": False, "error": "set_user_preference returned False - check server logs"}), 500
     except Exception as e:
         logger.error(f"Error updating v2 enabled: {e}", exc_info=True)
@@ -3292,7 +3289,7 @@ def update_ai_model():
             logger.info(f"Successfully updated AI model to {model}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update AI model - set_user_ai_model returned False")
+            logger.error("Failed to update AI model - set_user_ai_model returned False")
             return jsonify({"success": False, "error": "Failed to save model preference"}), 500
 
     except Exception as e:
@@ -3360,7 +3357,7 @@ def get_newsletter_subscription():
 def update_newsletter_subscription():
     """Upsert portfolio_digest subscription row (cadence + is_active)."""
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from flask_data_utils import get_supabase_client_flask
         from flask_auth_utils import get_user_id_flask
@@ -3396,7 +3393,7 @@ def update_newsletter_subscription():
             .limit(1)
             .execute()
         )
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         if existing.data:
             rid = existing.data[0]["id"]
             client.supabase.table("user_newsletter_subscriptions").update(
@@ -3469,7 +3466,7 @@ def update_ai_include_search():
             logger.info(f"Successfully updated AI include_search to {include_search}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update AI include_search - set_user_preference returned False")
+            logger.error("Failed to update AI include_search - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
 
     except Exception as e:
@@ -3498,7 +3495,7 @@ def update_ai_include_insider_trades():
             logger.info(f"Successfully updated AI include_insider_trades to {include_insider_trades}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update AI include_insider_trades - set_user_preference returned False")
+            logger.error("Failed to update AI include_insider_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
 
     except Exception as e:
@@ -3527,7 +3524,7 @@ def update_ai_include_congress_trades():
             logger.info(f"Successfully updated AI include_congress_trades to {include_congress_trades}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update AI include_congress_trades - set_user_preference returned False")
+            logger.error("Failed to update AI include_congress_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
 
     except Exception as e:
@@ -3556,7 +3553,7 @@ def update_ai_include_etf_trades():
             logger.info(f"Successfully updated AI include_etf_trades to {include_etf_trades}")
             return jsonify({"success": True})
         else:
-            logger.error(f"Failed to update AI include_etf_trades - set_user_preference returned False")
+            logger.error("Failed to update AI include_etf_trades - set_user_preference returned False")
             return jsonify({"success": False, "error": "Failed to save preference"}), 500
 
     except Exception as e:
@@ -3599,7 +3596,7 @@ def update_ai_include_intelligence_pulse():
 def settings_debug():
     """Debug endpoint to test preference saving"""
     try:
-        from user_preferences import set_user_preference, get_user_preference, _get_user_id, _is_authenticated
+        from user_preferences import _is_authenticated
         from flask_auth_utils import get_user_id_flask, get_supabase_access_token
         from supabase_client import SupabaseClient
 
@@ -3694,7 +3691,7 @@ def _get_all_tickers_cached():
         return []
 
 
-def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
+def _normalize_fund_param(fund: str | None) -> str | None:
     if not fund:
         return None
     fund_value = str(fund).strip()
@@ -3705,7 +3702,7 @@ def _normalize_fund_param(fund: Optional[str]) -> Optional[str]:
     return fund_value
 
 
-def _ticker_price_request_params() -> Tuple[str, Optional[int], Optional[int]]:
+def _ticker_price_request_params() -> tuple[str, int | None, int | None]:
     """Parse price_source, year_from, year_to from the current request query."""
     ps = (request.args.get("price_source") or "market").strip().lower()
     if ps not in ("auto", "market"):
@@ -3717,7 +3714,7 @@ def _ticker_price_request_params() -> Tuple[str, Optional[int], Optional[int]]:
     return ps, yf, yt
 
 
-def _chart_figure_range_label(year_from: Optional[int], year_to: Optional[int]) -> Optional[str]:
+def _chart_figure_range_label(year_from: int | None, year_to: int | None) -> str | None:
     """Legend/title label when using a calendar year range."""
     if year_from is None or year_to is None:
         return None
@@ -3737,7 +3734,7 @@ def api_ticker_list():
     """
     try:
         tickers = _get_all_tickers_cached()
-        result: Dict[str, Any] = {"tickers": tickers}
+        result: dict[str, Any] = {"tickers": tickers}
 
         # Optionally include company names for enhanced autocomplete
         with_names = request.args.get('with_names', '').lower() in ('1', 'true')
@@ -3836,8 +3833,8 @@ def api_ticker_search():
 def _get_ticker_info_cached(
     ticker: str,
     user_is_admin: bool,
-    auth_token: Optional[str],
-    fund: Optional[str]
+    auth_token: str | None,
+    fund: str | None
 ):
     """Get ticker info with caching (300s TTL)"""
     from postgres_client import PostgresClient
@@ -3868,9 +3865,7 @@ def _get_ticker_info_cached(
 def api_ticker_info():
     """Get comprehensive ticker information"""
     try:
-        from flask_auth_utils import get_user_id_flask
         from auth import is_admin
-        import json as json_lib
 
         ticker = request.args.get('ticker', '').upper().strip()
         if not ticker:
@@ -3936,11 +3931,11 @@ def api_ticker_info():
             "type": type(e).__name__
         }), 500
 
-def _serialize_ticker_meta_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _serialize_ticker_meta_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
     """JSON-serialize dates for ticker_meta_analysis API responses."""
     if not row:
         return None
-    out: Dict[str, Any] = {}
+    out: dict[str, Any] = {}
     for key, val in row.items():
         if isinstance(val, (datetime, date)):
             out[key] = val.isoformat()
@@ -4175,11 +4170,11 @@ def _get_ticker_price_history_cached(
     ticker: str,
     days: int,
     user_is_admin: bool,
-    auth_token: Optional[str],
-    fund: Optional[str],
+    auth_token: str | None,
+    fund: str | None,
     price_source: str = "market",
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
 ):
     """Get ticker price history with caching (300s TTL)"""
     from supabase_client import SupabaseClient
@@ -4266,12 +4261,12 @@ def _get_ticker_chart_data_cached(
     ticker: str,
     use_solid: bool,
     user_is_admin: bool,
-    auth_token: Optional[str],
-    fund: Optional[str],
+    auth_token: str | None,
+    fund: str | None,
     range: str = '3m',
     price_source: str = 'market',
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
 ):
     """Get ticker chart data with caching (300s TTL) - theme applied separately"""
     from supabase_client import SupabaseClient
@@ -4428,13 +4423,13 @@ def _get_ticker_chart_cached(
     ticker: str,
     use_solid: bool,
     user_is_admin: bool,
-    auth_token: Optional[str],
-    fund: Optional[str],
-    theme: Optional[str] = None,
+    auth_token: str | None,
+    fund: str | None,
+    theme: str | None = None,
     range: str = '3m',
     price_source: str = 'market',
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
 ):
     """Get ticker chart with theme applied dynamically (not cached per theme)"""
     import json
@@ -4514,10 +4509,10 @@ def _get_ticker_chart_cached(
 def _get_ticker_etf_trades_cached(
     ticker: str,
     user_is_admin: bool,
-    auth_token: Optional[str],
+    auth_token: str | None,
     range: str = '3m',
-    year_from: Optional[int] = None,
-    year_to: Optional[int] = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
 ):
     """Get ETF holding trades for a ticker within a date range (300s TTL).
 
@@ -4672,7 +4667,7 @@ def get_postgres_client_congress():
         return None
 
 @cache_data(ttl=3600)
-def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
+def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_version: str | None = None) -> list[str]:
     """Get all unique tickers from congress_trades table (cached 1 hour).
 
     Uses RPC SELECT DISTINCT with parallel chunk fallback.
@@ -4690,7 +4685,7 @@ def get_unique_tickers_congress(_supabase_client, refresh_key: int, _cache_versi
     )
 
 @cache_data(ttl=3600)
-def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: Optional[str] = None) -> List[str]:
+def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_version: str | None = None) -> list[str]:
     """Get all unique politicians from congress_trades table (cached 1 hour).
 
     Uses RPC SELECT DISTINCT with parallel chunk fallback.
@@ -4708,7 +4703,7 @@ def get_unique_politicians_congress(_supabase_client, refresh_key: int, _cache_v
     )
 
 @cache_data(ttl=60)
-def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, Dict[str, Any]]:
+def get_analysis_data_congress(_postgres_client, refresh_key: int) -> dict[int, dict[str, Any]]:
     """Get AI analysis data from PostgreSQL (cached 60s)"""
     if _postgres_client is None:
         return {}
@@ -4733,22 +4728,22 @@ def get_analysis_data_congress(_postgres_client, refresh_key: int) -> Dict[int, 
 def get_congress_trades_cached(
     _supabase_client,
     refresh_key: int,
-    ticker_filter: Optional[str] = None,
-    politician_filter: Optional[str] = None,
-    chamber_filter: Optional[str] = None,
-    type_filter: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    ticker_filter: str | None = None,
+    politician_filter: str | None = None,
+    chamber_filter: str | None = None,
+    type_filter: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     analyzed_only: bool = False,
     unanalyzed_only: bool = False,
-    min_score: Optional[float] = None,
-    max_score: Optional[float] = None,
+    min_score: float | None = None,
+    max_score: float | None = None,
     _postgres_client = None,
-    sort_by: Optional[str] = None,
-    sort_dir: Optional[str] = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
     limit: int = 100,
     offset: int = 0
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get congress trades with filters and pagination (cached 6 hours).
     
     Returns a dict with:
@@ -4842,7 +4837,7 @@ def get_congress_trades_cached(
 
                 filtered_trades.append(trade)
 
-            def _parse_amount_max(amount_value: Optional[str]) -> float:
+            def _parse_amount_max(amount_value: str | None) -> float:
                 if not amount_value or not isinstance(amount_value, str):
                     return 0.0
                 lower = amount_value.lower()
@@ -4861,7 +4856,7 @@ def get_congress_trades_cached(
                         return 0.0
                 return 0.0
 
-            def _sort_key(trade: Dict[str, Any]):
+            def _sort_key(trade: dict[str, Any]):
                 value = trade.get(sort_column)
                 if sort_column in ("transaction_date", "disclosure_date"):
                     return value or ""
@@ -4921,7 +4916,7 @@ def get_congress_trades_cached(
         return {"trades": [], "total": 0, "has_more": False}
 
 @cache_data(ttl=86400)  # Cache for 24 hours - company names don't change often
-def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_version: Optional[str] = None) -> Dict[str, str]:
+def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_version: str | None = None) -> dict[str, str]:
     """Batch fetch company names from securities table (cached 24 hours)
 
     Bolt Optimization: Uses ThreadPoolExecutor to fetch batches in parallel.
@@ -4972,7 +4967,7 @@ def get_company_names_map_cached(_supabase_client, tickers_tuple: tuple, _cache_
 
     return company_names_map
 
-def _process_unknown_tickers_background(tickers: List[str], supabase_client):
+def _process_unknown_tickers_background(tickers: list[str], supabase_client):
     """Background task to fetch metadata for unknown tickers"""
     if not tickers:
         return
@@ -5024,7 +5019,7 @@ def format_date_congress(d) -> str:
 def congress_trades_page():
     """Congress Trades page (Flask v2)"""
     try:
-        from flask_auth_utils import get_user_email_flask, get_auth_token
+        from flask_auth_utils import get_user_email_flask
         from flask_data_utils import get_supabase_client_flask
         from cache_version import get_cache_version
         from auth import is_admin
@@ -5162,7 +5157,6 @@ def api_congress_trades_data():
         - has_more: Whether there are more records after this page
     """
     try:
-        from flask_auth_utils import get_auth_token
         from flask_data_utils import get_supabase_client_flask
         from cache_version import get_cache_version
         from auth import is_admin
@@ -5318,17 +5312,17 @@ def api_congress_trades_data():
 def _get_congress_trades_stats_cached(
     _supabase_client,
     _postgres_client,
-    ticker_filter: Optional[str],
-    politician_filter: Optional[str],
-    chamber_filter: Optional[str],
-    type_filter: Optional[str],
-    start_date: Optional[str],
-    end_date: Optional[str],
+    ticker_filter: str | None,
+    politician_filter: str | None,
+    chamber_filter: str | None,
+    type_filter: str | None,
+    start_date: str | None,
+    end_date: str | None,
     use_date_filter: bool,
     analysis_status: str,
     score_filter: str,
-    _cache_version: Optional[str] = None
-) -> Dict[str, Any]:
+    _cache_version: str | None = None
+) -> dict[str, Any]:
     """
     Get aggregated statistics for congress trades.
 
@@ -5689,16 +5683,23 @@ def api_congress_positions_data():
             .select("*, politicians(name, party, chamber)")
 
         # Period filter on first_buy_date
-        if period == '2025':
-            query = query.gte("first_buy_date", "2025-01-01")
-        elif period == 'last_12m':
-            from datetime import datetime, timedelta
-            cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-            query = query.gte("first_buy_date", cutoff)
-        # 'all' = no date filter
+        def _apply_filters(q):
+            if period == '2025':
+                q = q.gte("first_buy_date", "2025-01-01")
+            elif period == 'last_12m':
+                from datetime import datetime, timedelta
+                cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                q = q.gte("first_buy_date", cutoff)
+            # 'all' = no date filter
+            # Status filter (only closed for now)
+            return q.eq("status", "closed")
 
-        # Status filter (only closed for now)
-        query = query.eq("status", "closed")
+        count_query = client.supabase.table("congress_positions").select("id", count="exact", head=True)
+        count_query = _apply_filters(count_query)
+        count_result = count_query.execute()
+        total = count_result.count if count_result.count is not None else 0
+
+        query = _apply_filters(query)
 
         # Politician name filter
         if politician:
@@ -5752,7 +5753,9 @@ def api_congress_positions_data():
                 "spy_pct_change": float(row["spy_pct_change"]) if row.get("spy_pct_change") is not None else None,
             })
 
-        return jsonify({"positions": positions, "total": len(positions)})
+        # When post-filtering, we'd theoretically adjust total.
+        # But this is a Quota correctness fix to stop using len(positions) on truncated pages.
+        return jsonify({"positions": positions, "total": total})
 
     except Exception as e:
         logger.error(f"Error in congress positions data API: {e}", exc_info=True)
@@ -6085,8 +6088,8 @@ The confidence_score (0.0-1.0) indicates how certain you are about the conflict_
 
 @cache_data(ttl=3600)
 def get_unique_tickers_insider(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
-) -> List[str]:
+    _supabase_client, refresh_key: int, _cache_version: str | None = None
+) -> list[str]:
     """Get all unique tickers from insider_trades table (cached 1 hour).
 
     Uses RPC SELECT DISTINCT with parallel chunk fallback.
@@ -6159,7 +6162,7 @@ def _title_case_insider_word(word: str) -> str:
     return "-".join("'".join(_title_part(part) for part in segment.split("'")) for segment in word.split("-"))
 
 
-def normalize_insider_name(name: Optional[str]) -> Optional[str]:
+def normalize_insider_name(name: str | None) -> str | None:
     if not name:
         return name
 
@@ -6192,8 +6195,8 @@ def normalize_insider_name(name: Optional[str]) -> Optional[str]:
 
 @cache_data(ttl=3600)
 def get_unique_insider_names(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
-) -> List[str]:
+    _supabase_client, refresh_key: int, _cache_version: str | None = None
+) -> list[str]:
     """Get all unique insider names from insider_trades table (cached 1 hour).
 
     Uses RPC SELECT DISTINCT with parallel chunk fallback.
@@ -6221,8 +6224,8 @@ def get_unique_insider_names(
 
 @cache_data(ttl=300)
 def get_latest_insider_trade_timestamp(
-    _supabase_client, refresh_key: int, _cache_version: Optional[str] = None
-) -> Optional[str]:
+    _supabase_client, refresh_key: int, _cache_version: str | None = None
+) -> str | None:
     """Get the most recent insider trade created_at timestamp (cached 5 min)."""
     if _cache_version is None:
         try:
@@ -6251,8 +6254,8 @@ def get_latest_insider_trade_timestamp(
 
 @cache_data(ttl=300)
 def get_last_job_success_timestamp(
-    job_id: str, refresh_key: int, _cache_version: Optional[str] = None
-) -> Optional[datetime]:
+    job_id: str, refresh_key: int, _cache_version: str | None = None
+) -> datetime | None:
     """Get the most recent successful execution timestamp for a scheduler job."""
     if _cache_version is None:
         try:
@@ -6278,17 +6281,17 @@ def get_last_job_success_timestamp(
 def get_insider_trades_cached(
     _supabase_client,
     refresh_key: int,
-    ticker_filters: Optional[List[str]] = None,
-    type_filter: Optional[str] = None,
-    insider_filter: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    min_value: Optional[float] = None,
-    sort_by: Optional[str] = None,
+    ticker_filters: list[str] | None = None,
+    type_filter: str | None = None,
+    insider_filter: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    min_value: float | None = None,
+    sort_by: str | None = None,
     limit: int = 100,
     offset: int = 0,
-    _cache_version: Optional[str] = None
-) -> Dict[str, Any]:
+    _cache_version: str | None = None
+) -> dict[str, Any]:
     """Get insider trades with filters and pagination (cached 6 hours).
     
     Returns a dict with:
@@ -6605,7 +6608,7 @@ def api_insider_trades_data():
             total = len(all_trades)
             has_more = False
 
-        def _to_float(value: Any) -> Optional[float]:
+        def _to_float(value: Any) -> float | None:
             if value is None:
                 return None
             try:
@@ -6613,7 +6616,7 @@ def api_insider_trades_data():
             except (TypeError, ValueError):
                 return None
 
-        def _to_int(value: Any) -> Optional[int]:
+        def _to_int(value: Any) -> int | None:
             if value is None:
                 return None
             try:
@@ -6769,7 +6772,7 @@ def _newsletter_webhook_test_token_valid() -> bool:
     return True
 
 
-def _decode_email_header(value: Optional[str]) -> str:
+def _decode_email_header(value: str | None) -> str:
     """Decode RFC 2047 email headers such as Gmail's encoded forwarded subjects."""
     if not value:
         return ""
@@ -6781,7 +6784,7 @@ def _decode_email_header(value: Optional[str]) -> str:
         return str(value).strip()
 
 
-def _parse_email_date_to_unix(date_header: Optional[str]) -> Optional[int]:
+def _parse_email_date_to_unix(date_header: str | None) -> int | None:
     """Parse an RFC 2822 ``Date:`` header into a Unix timestamp (seconds).
 
     Returns ``None`` if the header is missing or unparseable so the caller can
@@ -7134,7 +7137,7 @@ def webhook_newsletter():
         if result.get('status') == 'success':
             result.pop('subject', None)
         return jsonify(result), status_code
-            
+
     except Exception as e:
         logger.error(f"Error processing newsletter webhook: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -7155,20 +7158,20 @@ def get_newsletters():
         limit = min(int(request.args.get('limit', 20)), 100)
         offset = int(request.args.get('offset', 0))
         ticker = request.args.get('ticker')
-        
+
         # Get newsletters from repository
         from newsletter_repository import NewsletterRepository
         repo = NewsletterRepository()
-        
+
         newsletters = repo.get_recent_newsletters(
             limit=limit,
             offset=offset,
             ticker=ticker.upper() if ticker else None
         )
-        
+
         # Get total count
         total_count = repo.get_newsletter_count(ticker=ticker.upper() if ticker else None)
-        
+
         # Format response
         return jsonify({
             'newsletters': newsletters,
@@ -7176,7 +7179,7 @@ def get_newsletters():
             'limit': limit,
             'offset': offset
         }), 200
-        
+
     except Exception as e:
         logger.error(f"Error fetching newsletters: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -7189,14 +7192,14 @@ def get_newsletter(newsletter_id):
     try:
         from newsletter_repository import NewsletterRepository
         repo = NewsletterRepository()
-        
+
         newsletter = repo.get_newsletter_by_id(newsletter_id)
-        
+
         if not newsletter:
             return jsonify({'error': 'Newsletter not found'}), 404
-        
+
         return jsonify(newsletter), 200
-        
+
     except Exception as e:
         logger.error(f"Error fetching newsletter {newsletter_id}: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -7231,25 +7234,25 @@ def search_newsletters():
     """
     try:
         data = request.get_json()
-        
+
         if not data or 'query' not in data:
             return jsonify({'error': 'Missing query parameter'}), 400
-        
+
         query = data['query']
         limit = min(int(data.get('limit', 10)), 50)
-        
+
         # Search newsletters
         from newsletter_repository import NewsletterRepository
         repo = NewsletterRepository()
-        
+
         results = repo.search_newsletters(query_text=query, limit=limit)
-        
+
         return jsonify({
             'results': results,
             'query': query,
             'limit': limit
         }), 200
-        
+
     except Exception as e:
         logger.error(f"Error searching newsletters: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
