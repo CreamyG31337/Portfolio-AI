@@ -25,9 +25,9 @@ def test_get_summary_model_chain_glm_primary_only(monkeypatch):
 def test_get_summary_model_chain_skip_glm_fallback_strips_tail_glms(monkeypatch):
     """SUMMARY_SKIP_GLM_FALLBACK removes glm-* from chain tail (defaults append glm fallbacks)."""
     monkeypatch.setenv("SUMMARY_SKIP_GLM_FALLBACK", "1")
-    chain = ollama_client._get_summary_model_chain("qwen3.5:4b")
+    chain = ollama_client._get_summary_model_chain("qwen3.5:9b-q8_0")
     assert chain
-    assert chain[0] == "qwen3.5:4b"
+    assert chain[0] == "qwen3.5:9b-q8_0"
     assert not any(str(m).startswith("glm-") for m in chain[1:]), chain
 
 
