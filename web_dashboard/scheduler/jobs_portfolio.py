@@ -497,24 +497,12 @@ def update_portfolio_prices_job(
                             latest_date = datetime.strptime(latest_date_str, '%Y-%m-%d').date()
                         
                         # Check if there are missing trading days between latest_date and target_date
+                        # ⚡ Bolt: Removed redundant N+1 queries. Since check_date > latest_date, data is guaranteed to not exist.
                         missing_days = []
                         check_date = latest_date + timedelta(days=1)
                         while check_date < target_date:
                             if market_holidays.is_trading_day(check_date, market="any"):
-                                # Verify data doesn't exist for this date for THIS fund
-                                start_of_day = datetime.combine(check_date, dt_time(0, 0, 0)).isoformat()
-                                end_of_day = datetime.combine(check_date, dt_time(23, 59, 59, 999999)).isoformat()
-                                
-                                data_check = client.supabase.table("portfolio_positions")\
-                                    .select("id", count='exact')\
-                                    .eq("fund", fund_name)\
-                                    .gte("date", start_of_day)\
-                                    .lt("date", end_of_day)\
-                                    .limit(1)\
-                                    .execute()
-                                
-                                if not (data_check.count and data_check.count > 0):
-                                    missing_days.append(check_date)
+                                missing_days.append(check_date)
                             check_date += timedelta(days=1)
                         
                         if missing_days:
@@ -536,23 +524,12 @@ def update_portfolio_prices_job(
                                 earliest_trade = datetime.strptime(earliest_trade_str, '%Y-%m-%d').date()
                             
                             # Find all missing trading days from earliest trade to target_date
+                            # ⚡ Bolt: Removed redundant N+1 queries. Since there is no data for this fund, data is guaranteed to not exist.
                             missing_days = []
                             check_date = earliest_trade
                             while check_date < target_date:
                                 if market_holidays.is_trading_day(check_date, market="any"):
-                                    start_of_day = datetime.combine(check_date, dt_time(0, 0, 0)).isoformat()
-                                    end_of_day = datetime.combine(check_date, dt_time(23, 59, 59, 999999)).isoformat()
-                                    
-                                    data_check = client.supabase.table("portfolio_positions")\
-                                        .select("id", count='exact')\
-                                        .eq("fund", fund_name)\
-                                        .gte("date", start_of_day)\
-                                        .lt("date", end_of_day)\
-                                        .limit(1)\
-                                        .execute()
-                                    
-                                    if not (data_check.count and data_check.count > 0):
-                                        missing_days.append(check_date)
+                                    missing_days.append(check_date)
                                 check_date += timedelta(days=1)
                             
                             if missing_days:
