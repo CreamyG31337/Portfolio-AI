@@ -52,6 +52,18 @@ def _get_exchange_rate_for_date(date_obj, from_curr, to_curr):
         logger.error(f"Failed to import exchange_rates_utils: {e}")
         return None
 
+
+def _is_canadian_listing(ticker: str, currency: Optional[str]) -> bool:
+    """Whether a holding trades on a Canadian exchange (and so follows the Canadian holiday calendar).
+
+    The suffix is checked first. A CAD-priced holding without one (e.g. TECK.B) is Canadian too:
+    anything quoted in CAD trades in Canada, while USD-quoted TSX units still carry a suffix.
+    """
+    if ticker.upper().endswith(('.TO', '.V', '.CN')):
+        return True
+    return (currency or '').strip().upper() == 'CAD'
+
+
 # Thread-safe lock to prevent concurrent execution
 # A simple boolean was causing race conditions when backfill and scheduled jobs ran simultaneously
 _update_prices_lock = threading.Lock()
@@ -690,17 +702,13 @@ def update_portfolio_prices_job(
                     
                     logger.info(f"  Market status for {target_date}: US={'OPEN' if us_market_open else 'CLOSED'}, Canada={'OPEN' if canadian_market_open else 'CLOSED'}")
                     
-                    # Helper to detect market from ticker suffix (more reliable than currency)
-                    def is_canadian_ticker(ticker: str) -> bool:
-                        return ticker.endswith(('.TO', '.V', '.CN'))
-                    
                     # Categorize tickers by market status - but DON'T remove closed-market tickers!
                     # We'll fetch prices for open-market tickers and use cached/previous prices for closed ones
                     tickers_to_fetch = []  # Tickers whose market is open - fetch fresh prices
                     tickers_to_carry_forward = []  # Tickers whose market is closed - use previous close
-                    
+
                     for ticker, holding in current_holdings.items():
-                        is_canadian = is_canadian_ticker(ticker)
+                        is_canadian = _is_canadian_listing(ticker, holding.get('currency'))
                         ticker_market_open = (canadian_market_open if is_canadian else us_market_open)
                         
                         if ticker_market_open:
@@ -1299,7 +1307,7 @@ def backfill_portfolio_prices_range(
                     for trade in trades_with_dates:
                         ticker = trade['ticker']
                         all_tickers.add(ticker)
-                        # Store currency for reference (used for base currency conversion, not market detection)
+                        # Store currency for reference (base currency conversion, and market detection for suffix-less CAD tickers)
                         currency = trade.get('currency', 'USD')
                         if currency and isinstance(currency, str):
                             currency_upper = currency.strip().upper()
@@ -1317,11 +1325,7 @@ def backfill_portfolio_prices_range(
                     for ticker, currency in ticker_currencies.items():
                         market_fetcher._portfolio_currency_cache[ticker.upper()] = currency.upper()
                     
-                    # Helper to detect market from ticker suffix (more reliable than currency)
-                    def is_canadian_ticker(ticker: str) -> bool:
-                        return ticker.endswith(('.TO', '.V', '.CN'))
-                    
-                    # CRITICAL: Build per-day market-aware ticker list using TICKER SUFFIX (not currency)
+                    # CRITICAL: Build per-day market-aware ticker list (suffix first, CAD as fallback)
                     # For each trading day, only fetch prices for tickers whose market is open
                     # Closed-market tickers will get forward-filled prices later
                     tickers_per_day = {}  # {date: [tickers]} - tickers whose market is open that day
@@ -1333,7 +1337,7 @@ def backfill_portfolio_prices_range(
                         
                         day_tickers = []
                         for ticker in all_tickers:
-                            is_canadian = is_canadian_ticker(ticker)
+                            is_canadian = _is_canadian_listing(ticker, ticker_currencies.get(ticker))
                             ticker_market_open = canada_open if is_canadian else us_open
                             
                             if ticker_market_open:
