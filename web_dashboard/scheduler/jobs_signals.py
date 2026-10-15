@@ -7,6 +7,7 @@ Jobs for calculating and storing technical signals for watchlist tickers.
 
 import logging
 import math
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -419,14 +420,153 @@ _FUNDAMENTAL_INDICATOR_COLS = [
 ]
 
 
+# Max yfinance calls per fundamentals refresh run (~1s each).  Remaining gaps
+# are deferred and picked up by later runs.
+_FUNDAMENTALS_MAX_PER_RUN = 400
+
+# ETF holding tickers must look like plain US-listed symbols; this skips cash
+# rows and foreign codes like "7203 JP".
+_ETF_HOLDING_TICKER_RE = re.compile(r'^[A-Z][A-Z0-9.\-]{0,9}$')
+
+
+def _fetch_etf_holding_candidates() -> dict[str, dict[str, Any]]:
+    """Top holdings of every tracked ETF, as fundamentals-refresh candidates.
+
+    One window-function query over etf_holdings_log (Research DB): for each
+    ETF's latest snapshot, take holdings in weight_percent desc order until
+    the cumulative weight reaches 80% of that ETF's total, capped at 100
+    holdings per ETF.
+
+    Returns:
+        {holding_ticker: {'max_weight': float, 'holding_name': str | None}}
+        where max_weight is the ticker's highest weight in any ETF.
+    """
+    from postgres_client import PostgresClient
+
+    pc = PostgresClient()
+    rows = pc.execute_query(
+        """
+        WITH latest_per_etf AS (
+            SELECT etf_ticker, MAX(date) AS latest_date
+            FROM etf_holdings_log
+            GROUP BY etf_ticker
+        ),
+        per_holding AS (
+            SELECT
+                h.etf_ticker,
+                h.holding_ticker,
+                MAX(h.holding_name) AS holding_name,
+                SUM(h.weight_percent) AS weight_percent
+            FROM etf_holdings_log h
+            JOIN latest_per_etf l
+              ON l.etf_ticker = h.etf_ticker
+             AND l.latest_date = h.date
+            WHERE h.shares_held > 0
+              AND h.holding_ticker IS NOT NULL
+            GROUP BY h.etf_ticker, h.holding_ticker
+        ),
+        cumulative AS (
+            SELECT
+                etf_ticker,
+                holding_ticker,
+                holding_name,
+                weight_percent,
+                SUM(weight_percent) OVER w AS cum_weight,
+                SUM(weight_percent) OVER (PARTITION BY etf_ticker) AS total_weight,
+                ROW_NUMBER() OVER w AS rn
+            FROM per_holding
+            WINDOW w AS (PARTITION BY etf_ticker ORDER BY weight_percent DESC, holding_ticker ASC)
+        )
+        SELECT etf_ticker, holding_ticker, holding_name, weight_percent
+        FROM cumulative
+        WHERE rn <= 100
+          AND cum_weight - weight_percent < 0.8 * total_weight
+        """
+    )
+
+    candidates: dict[str, dict[str, Any]] = {}
+    for row in rows or []:
+        raw_ticker = row.get('holding_ticker')
+        if not raw_ticker or not isinstance(raw_ticker, str):
+            continue
+        ticker_clean = raw_ticker.strip()
+        if not _ETF_HOLDING_TICKER_RE.match(ticker_clean):
+            logger.debug(f"Skipping non-US ETF holding ticker: {raw_ticker!r}")
+            continue
+        ticker = ticker_clean.upper()
+        try:
+            weight = float(row.get('weight_percent') or 0.0)
+        except (TypeError, ValueError):
+            weight = 0.0
+        existing = candidates.get(ticker)
+        if existing is None or weight > existing['max_weight']:
+            candidates[ticker] = {
+                'max_weight': weight,
+                'holding_name': row.get('holding_name'),
+            }
+    return candidates
+
+
+def _find_fundamental_gaps(
+    supabase_client, tickers: list[str]
+) -> tuple[set[str], set[str]]:
+    """Batch-check which tickers are missing key fundamental columns.
+
+    Returns:
+        (gaps, missing): tickers that have a securities row with no indicator
+        columns populated, and tickers with no securities row at all.
+    """
+    gaps: set[str] = set()
+    missing: set[str] = set()
+    chunk_size = 50
+    for i in range(0, len(tickers), chunk_size):
+        chunk = tickers[i:i + chunk_size]
+        try:
+            # Only select the columns we need to check
+            select_cols = "ticker," + ",".join(_FUNDAMENTAL_INDICATOR_COLS)
+            result = supabase_client.supabase.table("securities") \
+                .select(select_cols) \
+                .in_("ticker", chunk) \
+                .execute()
+
+            existing_map = {}
+            if result.data:
+                for row in result.data:
+                    existing_map[row.get('ticker', '').upper()] = row
+
+            for t in chunk:
+                row = existing_map.get(t)
+                if not row:
+                    missing.add(t)
+                    continue
+
+                # Check if any indicator column is populated
+                has_fundamentals = any(
+                    row.get(col) is not None
+                    for col in _FUNDAMENTAL_INDICATOR_COLS
+                )
+                if not has_fundamentals:
+                    gaps.add(t)
+        except Exception as e:
+            logger.warning(f"Error checking fundamental gaps for chunk: {e}")
+            # If we can't check, add the whole chunk to be safe
+            gaps.update(chunk)
+    return gaps, missing
+
+
 def fundamentals_refresh_job() -> None:
     """Backfill / refresh fundamental columns in the securities table.
 
     This job:
     1. Gets watchlist tickers from the shared watchlist function
-    2. Identifies tickers that are missing key fundamental columns
-    3. Fetches fresh data from yfinance and updates the securities table
-    4. Processes in batches with rate-limiting to stay under yfinance limits
+    2. Adds the top holdings of tracked ETFs (Research DB etf_holdings_log)
+       so ETF look-through fundamentals have enough coverage
+    3. Identifies tickers that are missing key fundamental columns
+    4. Fetches fresh data from yfinance and updates the securities table
+       (ETF holdings with no securities row are inserted when yfinance
+       confirms quoteType == EQUITY; watchlist tickers stay skipped)
+    5. Processes in batches with rate-limiting to stay under yfinance limits,
+       capped at _FUNDAMENTALS_MAX_PER_RUN yfinance calls per run
 
     Designed to run once daily.  Fundamentals change at most quarterly, so
     we skip tickers whose fundamentals were refreshed within the last 7 days.
@@ -462,9 +602,51 @@ def fundamentals_refresh_job() -> None:
         supabase_client = SupabaseClient(use_service_role=True)
         watchlist = get_active_watchlist_rows(supabase_client)
 
-        if not watchlist:
+        watchlist_tickers = sorted({
+            t.get('ticker', '').upper() for t in (watchlist or []) if t.get('ticker')
+        })
+        logger.info(f"Checking fundamentals for {len(watchlist_tickers)} watchlist tickers...")
+
+        # Watchlist gaps first (priority)
+        watchlist_gaps, _watchlist_missing = _find_fundamental_gaps(
+            supabase_client, watchlist_tickers
+        )
+        # Watchlist tickers with no securities row stay skipped: the metadata
+        # refresh job or ensure_ticker will create them.
+
+        # ETF holding gaps: candidates from the Research DB, excluding any
+        # ticker already handled (or deliberately skipped) via the watchlist.
+        try:
+            etf_candidates = _fetch_etf_holding_candidates()
+            logger.info(
+                f"ETF look-through: {len(etf_candidates)} distinct holding tickers "
+                f"from tracked ETFs"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not load ETF holdings from Research DB, continuing with "
+                f"watchlist only: {e}"
+            )
+            etf_candidates = {}
+
+        watchlist_set = set(watchlist_tickers)
+        etf_tickers = [t for t in etf_candidates if t not in watchlist_set]
+        etf_gaps, etf_missing = _find_fundamental_gaps(supabase_client, etf_tickers)
+
+        # Order ETF holding gaps by their highest weight in any ETF
+        etf_ordered = sorted(
+            list(etf_gaps) + list(etf_missing),
+            key=lambda t: etf_candidates[t]['max_weight'],
+            reverse=True,
+        )
+
+        total_gaps = len(watchlist_gaps) + len(etf_ordered)
+        if not total_gaps:
             duration_ms = int((time.time() - start_time) * 1000)
-            msg = "No watchlist tickers to process"
+            msg = (
+                f"No fundamentals gaps: {len(watchlist_tickers)} watchlist tickers "
+                f"and {len(etf_candidates)} ETF holding tickers checked"
+            )
             try:
                 log_job_execution(job_id, True, msg, duration_ms)
                 mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
@@ -473,71 +655,30 @@ def fundamentals_refresh_job() -> None:
             logger.info(f"✅ {msg}")
             return
 
-        tickers = sorted({t.get('ticker', '').upper() for t in watchlist if t.get('ticker')})
-        logger.info(f"Checking fundamentals for {len(tickers)} watchlist tickers...")
+        logger.info(
+            f"📊 {total_gaps} tickers need fundamental data "
+            f"({len(watchlist_gaps)} watchlist, {len(etf_ordered)} ETF holdings)"
+        )
 
-        # Batch-fetch current securities data to find gaps
-        needs_refresh: list[str] = []
-        chunk_size = 50
-        for i in range(0, len(tickers), chunk_size):
-            chunk = tickers[i:i + chunk_size]
-            try:
-                # Only select the columns we need to check
-                select_cols = "ticker," + ",".join(_FUNDAMENTAL_INDICATOR_COLS)
-                result = supabase_client.supabase.table("securities") \
-                    .select(select_cols) \
-                    .in_("ticker", chunk) \
-                    .execute()
+        # Work list: watchlist gaps first, then ETF holding gaps by weight.
+        # Cap total yfinance calls per run; the rest is deferred.
+        work: list[tuple[str, bool]] = [(t, False) for t in sorted(watchlist_gaps)]
+        work += [(t, True) for t in etf_ordered]
+        deferred = max(0, len(work) - _FUNDAMENTALS_MAX_PER_RUN)
+        work = work[:_FUNDAMENTALS_MAX_PER_RUN]
 
-                existing_map = {}
-                if result.data:
-                    for row in result.data:
-                        existing_map[row.get('ticker', '').upper()] = row
+        wl_counts = {'updated': 0, 'skipped': 0, 'errors': 0}
+        etf_counts = {'updated': 0, 'inserted': 0, 'skipped': 0, 'errors': 0}
 
-                for t in chunk:
-                    row = existing_map.get(t)
-                    if not row:
-                        # Ticker not in securities table at all -- skip, the
-                        # metadata refresh job or ensure_ticker will create it
-                        continue
-
-                    # Check if any indicator column is populated
-                    has_fundamentals = any(
-                        row.get(col) is not None
-                        for col in _FUNDAMENTAL_INDICATOR_COLS
-                    )
-                    if not has_fundamentals:
-                        needs_refresh.append(t)
-            except Exception as e:
-                logger.warning(f"Error checking fundamental gaps for chunk: {e}")
-                # If we can't check, add the whole chunk to be safe
-                needs_refresh.extend(chunk)
-
-        if not needs_refresh:
-            duration_ms = int((time.time() - start_time) * 1000)
-            msg = f"All {len(tickers)} tickers have fundamental data"
-            try:
-                log_job_execution(job_id, True, msg, duration_ms)
-                mark_job_completed(job_id, target_date, None, [], duration_ms=duration_ms, message=msg)
-            except Exception:
-                pass
-            logger.info(f"✅ {msg}")
-            return
-
-        logger.info(f"📊 {len(needs_refresh)} tickers need fundamental data (out of {len(tickers)} watchlist)")
-
-        updated = 0
-        skipped = 0
-        errors = 0
-
-        for ticker in needs_refresh:
+        for ticker, is_etf in work:
+            counts = etf_counts if is_etf else wl_counts
             try:
                 ticker_obj = yf.Ticker(ticker)
                 info = ticker_obj.info or {}
 
                 if not info or info.get('quoteType') is None:
                     logger.debug(f"No yfinance info for {ticker}, skipping")
-                    skipped += 1
+                    counts['skipped'] += 1
                     time.sleep(0.3)
                     continue
 
@@ -553,29 +694,59 @@ def fundamentals_refresh_job() -> None:
                         except (TypeError, ValueError):
                             pass
 
-                if updates:
+                if is_etf and ticker in etf_missing:
+                    # No securities row: insert only when yfinance confirms an
+                    # equity (skips ETFs, warrants, and other non-equity types).
+                    if info.get('quoteType') != 'EQUITY':
+                        counts['skipped'] += 1
+                        logger.debug(
+                            f"ETF holding {ticker} is {info.get('quoteType')}, not inserting"
+                        )
+                        time.sleep(1.0)
+                        continue
+
+                    row: dict[str, Any] = {'ticker': ticker}
+                    company_name = (
+                        info.get('longName')
+                        or info.get('shortName')
+                        or etf_candidates.get(ticker, {}).get('holding_name')
+                    )
+                    if company_name:
+                        row['company_name'] = company_name
+                    row.update(updates)
+                    supabase_client.supabase.table("securities") \
+                        .upsert(row) \
+                        .execute()
+                    etf_counts['inserted'] += 1
+                    logger.debug(f"✅ Inserted securities row for ETF holding {ticker}")
+                elif updates:
                     supabase_client.supabase.table("securities") \
                         .update(updates) \
                         .eq("ticker", ticker) \
                         .execute()
-                    updated += 1
+                    counts['updated'] += 1
                     logger.debug(f"✅ Updated {len(updates)} fundamental fields for {ticker}")
                 else:
-                    skipped += 1
+                    counts['skipped'] += 1
                     logger.debug(f"No fundamental data available from yfinance for {ticker}")
 
                 # Rate-limit: ~1 second between yfinance calls
                 time.sleep(1.0)
 
             except Exception as e:
-                errors += 1
+                counts['errors'] += 1
                 logger.warning(f"Error fetching fundamentals for {ticker}: {e}")
                 time.sleep(0.5)
 
         duration_ms = int((time.time() - start_time) * 1000)
         msg = (
-            f"Fundamentals refresh: {updated} updated, {skipped} skipped "
-            f"(no data), {errors} errors, out of {len(needs_refresh)} candidates"
+            f"Fundamentals refresh: watchlist {wl_counts['updated']} updated, "
+            f"{wl_counts['skipped']} skipped, {wl_counts['errors']} errors "
+            f"(of {len(watchlist_gaps)} gaps); "
+            f"ETF holdings {etf_counts['updated']} updated, {etf_counts['inserted']} inserted, "
+            f"{etf_counts['skipped']} skipped, {etf_counts['errors']} errors "
+            f"(of {len(etf_ordered)} gaps); "
+            f"{deferred} deferred by per-run cap"
         )
         try:
             log_job_execution(job_id, True, msg, duration_ms)
