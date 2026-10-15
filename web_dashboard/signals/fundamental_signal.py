@@ -164,10 +164,19 @@ class FundamentalSignal:
             return self._empty_result("No fundamental data provided")
 
         try:
-            profitability = _score_category(fundamentals, PROFITABILITY_THRESHOLDS)
-            growth = _score_category(fundamentals, GROWTH_THRESHOLDS)
-            health = _score_category(fundamentals, HEALTH_THRESHOLDS)
-            valuation = _score_category(fundamentals, VALUATION_THRESHOLDS)
+            lookthrough_meta = fundamentals.get("_lookthrough")
+            is_lookthrough = isinstance(lookthrough_meta, dict)
+            # Score metrics only; _lookthrough is metadata for the API contract.
+            score_input = (
+                {k: v for k, v in fundamentals.items() if k != "_lookthrough"}
+                if is_lookthrough
+                else fundamentals
+            )
+
+            profitability = _score_category(score_input, PROFITABILITY_THRESHOLDS)
+            growth = _score_category(score_input, GROWTH_THRESHOLDS)
+            health = _score_category(score_input, HEALTH_THRESHOLDS)
+            valuation = _score_category(score_input, VALUATION_THRESHOLDS)
 
             total_available = (
                 profitability["metrics_available"]
@@ -176,7 +185,9 @@ class FundamentalSignal:
                 + valuation["metrics_available"]
             )
 
-            if total_available == 0:
+            # Look-through with zero scored metrics still uses the insufficient path
+            # so callers get method/lookthrough meta (not a bare empty error).
+            if total_available == 0 and not is_lookthrough:
                 return self._empty_result("No fundamental metrics available")
 
             # Weight categories equally (adjust if you want valuation to matter more)
@@ -185,21 +196,29 @@ class FundamentalSignal:
                 if cat["metrics_available"] > 0:
                     category_scores.append(cat["score"])
 
-            is_etf = _looks_like_etf(fundamentals)
-            if (
-                is_etf
-                or total_available < MIN_METRICS_FOR_RATING
+            # Look-through payloads have no company_name; skip the ETF name gate.
+            is_etf = True if is_lookthrough else _looks_like_etf(fundamentals)
+            insufficient = (
+                total_available < MIN_METRICS_FOR_RATING
                 or len(category_scores) < MIN_CATEGORIES_FOR_RATING
-            ):
+            )
+            if not is_lookthrough and is_etf:
+                insufficient = True
+
+            if insufficient:
                 # Keep the raw metric values for display, but don't rate.
                 # Neutral 0.5 so the signal engine's blend is unaffected.
-                reason = (
-                    "ETF: company fundamentals do not apply"
-                    if is_etf
-                    else f"Only {total_available} metric(s) in {len(category_scores)} "
-                         f"categor{'y' if len(category_scores) == 1 else 'ies'} available"
-                )
-                return {
+                if is_lookthrough:
+                    pct = float(lookthrough_meta.get("weight_with_fundamentals") or 0.0) * 100.0
+                    reason = f"Holdings data covers only {pct:.0f}% of fund weight"
+                elif is_etf:
+                    reason = "ETF: company fundamentals do not apply"
+                else:
+                    reason = (
+                        f"Only {total_available} metric(s) in {len(category_scores)} "
+                        f"categor{'y' if len(category_scores) == 1 else 'ies'} available"
+                    )
+                result: Dict[str, Any] = {
                     "profitability": profitability,
                     "growth": growth,
                     "health": health,
@@ -211,6 +230,7 @@ class FundamentalSignal:
                     "is_etf": is_etf,
                     "reason": reason,
                 }
+                return self._attach_lookthrough(result, lookthrough_meta, score_input)
 
             composite = sum(category_scores) / len(category_scores)
 
@@ -223,7 +243,7 @@ class FundamentalSignal:
             else:
                 quality = "WEAK"
 
-            return {
+            result = {
                 "profitability": profitability,
                 "growth": growth,
                 "health": health,
@@ -232,10 +252,38 @@ class FundamentalSignal:
                 "quality": quality,
                 "metrics_available": total_available,
             }
+            return self._attach_lookthrough(result, lookthrough_meta, score_input)
 
         except Exception as e:
             logger.error(f"Error evaluating fundamental signal: {e}", exc_info=True)
             return self._empty_result(str(e))
+
+    @staticmethod
+    def _attach_lookthrough(
+        result: Dict[str, Any],
+        lookthrough_meta: Optional[Dict[str, Any]],
+        score_input: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Attach look-through contract fields when present; no-op otherwise."""
+        if not isinstance(lookthrough_meta, dict):
+            return result
+        result["method"] = "lookthrough"
+        result["is_etf"] = True
+        result["lookthrough"] = {
+            "etf_ticker": str(lookthrough_meta.get("etf_ticker") or ""),
+            "as_of": str(lookthrough_meta.get("as_of") or ""),
+            "holdings_total": int(lookthrough_meta.get("holdings_total") or 0),
+            "holdings_with_fundamentals": int(
+                lookthrough_meta.get("holdings_with_fundamentals") or 0
+            ),
+            "weight_with_fundamentals": float(
+                lookthrough_meta.get("weight_with_fundamentals") or 0.0
+            ),
+        }
+        fcf_w = score_input.get("fcf_positive_weight")
+        if fcf_w is not None:
+            result.setdefault("health", {})["fcf_positive_weight"] = fcf_w
+        return result
 
     @staticmethod
     def _empty_result(reason: str = "") -> Dict[str, Any]:

@@ -128,6 +128,7 @@ def compute_lookthrough_fundamentals(
             - coverage: Dict mapping metric_key to fraction of total weight with data (0..1).
             - holdings_total: Total count of valid holdings.
             - holdings_with_fundamentals: Count of valid holdings with available fundamental data.
+            - weight_with_fundamentals: Fraction (0..1) of total holding weight with scored data.
             - method: "lookthrough"
     """
     if holdings is None:
@@ -160,12 +161,18 @@ def compute_lookthrough_fundamentals(
     holdings_total = len(valid_holdings)
     total_weight = sum(h["weight_percent"] for h in valid_holdings)
 
-    # 2. Track holdings with fundamentals
+    # 2. Track holdings with fundamentals (count + weight fraction)
     holdings_with_fundamentals = 0
+    weight_covered = 0.0
     for h in valid_holdings:
         fund_data = _get_ticker_fundamentals(fundamentals_by_ticker, h["ticker"])
         if _holding_has_fundamentals(fund_data):
             holdings_with_fundamentals += 1
+            weight_covered += h["weight_percent"]
+
+    weight_with_fundamentals = (
+        round(weight_covered / total_weight, 4) if total_weight > 0.0 else 0.0
+    )
 
     # Initialize results
     metrics: Dict[str, Optional[float]] = {}
@@ -184,6 +191,7 @@ def compute_lookthrough_fundamentals(
             "coverage": coverage,
             "holdings_total": holdings_total,
             "holdings_with_fundamentals": holdings_with_fundamentals,
+            "weight_with_fundamentals": weight_with_fundamentals,
             "method": "lookthrough",
         }
 
@@ -245,5 +253,6 @@ def compute_lookthrough_fundamentals(
         "coverage": coverage,
         "holdings_total": holdings_total,
         "holdings_with_fundamentals": holdings_with_fundamentals,
+        "weight_with_fundamentals": weight_with_fundamentals,
         "method": "lookthrough",
     }

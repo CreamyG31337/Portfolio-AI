@@ -36,11 +36,14 @@ def _evaluate(ticker: str):
     fundamentals = None
     try:
         from supabase_client import SupabaseClient
+        from web_dashboard.signals.etf_lookthrough_loader import resolve_signal_fundamentals
 
-        sb = SupabaseClient(use_service_role=True).supabase
+        sb_wrapper = SupabaseClient(use_service_role=True)
+        sb = sb_wrapper.supabase
         resp = sb.table("securities").select("*").eq("ticker", ticker).limit(1).execute()
         if resp.data:
             fundamentals = resp.data[0]
+        fundamentals = resolve_signal_fundamentals(ticker, fundamentals, sb_wrapper)
     except Exception as exc:
         print(f"securities fetch skipped: {exc}")
 

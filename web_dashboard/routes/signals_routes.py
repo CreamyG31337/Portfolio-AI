@@ -174,6 +174,14 @@ def get_cached_watchlist_signals(
                                     .execute()
                                 if sec_row.data:
                                     fly_fundamentals = sec_row.data[0]
+                                from web_dashboard.signals.etf_lookthrough_loader import (
+                                    resolve_signal_fundamentals,
+                                )
+                                fly_fundamentals = resolve_signal_fundamentals(
+                                    ticker.upper(),
+                                    fly_fundamentals,
+                                    _supabase_client,
+                                )
                             except Exception:
                                 pass
                         signals = signal_engine.evaluate(
@@ -379,7 +387,7 @@ def api_analyze_ticker(ticker: str):
                 'error': f'No price data available for {ticker}'
             }), 404
         
-        # Fetch fundamentals for this ticker (if available)
+        # Fetch fundamentals for this ticker (if available); ETF → look-through
         fundamentals = None
         if supabase_client:
             try:
@@ -389,6 +397,12 @@ def api_analyze_ticker(ticker: str):
                     .execute()
                 if sec_result.data:
                     fundamentals = sec_result.data[0]
+                from web_dashboard.signals.etf_lookthrough_loader import (
+                    resolve_signal_fundamentals,
+                )
+                fundamentals = resolve_signal_fundamentals(
+                    ticker, fundamentals, supabase_client
+                )
             except Exception as fund_err:
                 logger.debug(f"No fundamentals for {ticker}: {fund_err}")
 

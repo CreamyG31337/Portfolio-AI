@@ -467,11 +467,26 @@ class TestEdgeCases:
         res = compute_lookthrough_fundamentals(None, None)
         assert res["holdings_total"] == 0
         assert res["holdings_with_fundamentals"] == 0
+        assert res["weight_with_fundamentals"] == 0.0
         assert res["method"] == "lookthrough"
         for k in res["metrics"]:
             assert res["metrics"][k] is None
         for k in res["coverage"]:
             assert res["coverage"][k] == 0.0
+
+    def test_weight_with_fundamentals_fraction(self) -> None:
+        """weight_with_fundamentals is the share of total weight with scored data."""
+        holdings = [
+            {"ticker": "A", "weight_percent": 60.0},
+            {"ticker": "B", "weight_percent": 40.0},
+        ]
+        fundamentals = {
+            "A": {"return_on_equity": 0.2},
+            "B": {"fifty_two_week_high": 10.0},  # price-only — not scored
+        }
+        res = compute_lookthrough_fundamentals(holdings, fundamentals)
+        assert res["holdings_with_fundamentals"] == 1
+        assert res["weight_with_fundamentals"] == 0.6
 
     def test_case_insensitive_ticker_lookup(self) -> None:
         """Holdings with lowercase ticker matched to uppercase fundamentals dict."""
