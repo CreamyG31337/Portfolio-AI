@@ -575,7 +575,7 @@ def _standout_fundamentals(
 
         de = _get("debt_to_equity", "health")
         if de is not None:
-            highlights.append(f"D/E {de:.1f}")
+            highlights.append(f"D/E {de / 100:.2f}x")  # stored as a percent
 
         margin = _get("net_margin", "profitability")
         if margin is not None:

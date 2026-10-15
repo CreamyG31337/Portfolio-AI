@@ -214,13 +214,13 @@ def test_standout_fundamentals_operating_company_standard() -> None:
         "forward_pe": 18.0,
         "return_on_equity": 0.22,
         "revenue_growth": 0.15,
-        "debt_to_equity": 0.4,
+        "debt_to_equity": 40.0,
     }
     res = _standout_fundamentals(raw_company)
     assert "P/E 18.0" in res
     assert "ROE 22%" in res
     assert "RevGrowth 15%" in res
-    assert "D/E 0.4" in res
+    assert "D/E 0.40x" in res
     assert "fund-level" not in res
 
 

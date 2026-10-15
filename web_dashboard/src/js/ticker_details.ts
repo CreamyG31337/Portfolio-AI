@@ -2852,7 +2852,8 @@ function renderFundamentalSignal(fundamental: any): void {
     const healthCrEl = document.getElementById('fund-health-cr');
     if (healthCrEl) healthCrEl.textContent = fmtDec(health.current_ratio);
     const healthDeEl = document.getElementById('fund-health-de');
-    if (healthDeEl) healthDeEl.textContent = fmtDec(health.debt_to_equity);
+    // Stored as a percent (yfinance); show the ratio, e.g. 116.8 -> 1.17
+    if (healthDeEl) healthDeEl.textContent = fmtDec(health.debt_to_equity != null ? health.debt_to_equity / 100 : null);
     const healthFcfEl = document.getElementById('fund-health-fcf');
     if (healthFcfEl) {
         const fcf = health.free_cash_flow;

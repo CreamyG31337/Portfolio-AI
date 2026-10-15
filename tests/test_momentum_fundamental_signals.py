@@ -43,7 +43,7 @@ def strong_fundamentals() -> dict:
         "revenue_growth": 0.15,
         "earnings_growth": 0.20,
         "current_ratio": 2.5,
-        "debt_to_equity": 0.3,
+        "debt_to_equity": 30.0,
         "free_cash_flow": 500_000_000,
         "trailing_pe": 18.0,
         "forward_pe": 15.0,
@@ -63,7 +63,7 @@ def weak_fundamentals() -> dict:
         "revenue_growth": -0.05,
         "earnings_growth": -0.10,
         "current_ratio": 0.8,
-        "debt_to_equity": 2.0,
+        "debt_to_equity": 200.0,
         "free_cash_flow": -100_000,
         "trailing_pe": 60.0,
         "forward_pe": 50.0,
@@ -346,3 +346,16 @@ class TestSignalEngineIntegration:
         result = engine.evaluate("BADTICKER", pd.DataFrame())
         assert result["overall_signal"] == "HOLD"
         assert result["confidence"] == 0.0
+
+
+def test_debt_to_equity_scored_as_percent() -> None:
+    """yfinance stores D/E as a percent: 25 means 0.25x and should score well."""
+    signal = FundamentalSignal()
+    low_debt = signal.evaluate(
+        {"debt_to_equity": 25.0, "current_ratio": 1.5, "trailing_pe": 20.0}
+    )
+    assert low_debt["health"]["score"] > 0.5
+    high_debt = signal.evaluate(
+        {"debt_to_equity": 250.0, "current_ratio": 1.5, "trailing_pe": 20.0}
+    )
+    assert high_debt["health"]["score"] < low_debt["health"]["score"]

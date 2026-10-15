@@ -49,7 +49,7 @@ GROWTH_THRESHOLDS = [
 
 HEALTH_THRESHOLDS = [
     ("current_ratio", 1.5, "above"),         # Current Ratio > 1.5
-    ("debt_to_equity", 0.5, "below"),        # Debt/Equity < 0.5
+    ("debt_to_equity", 50.0, "below"),       # Debt/Equity < 0.5x; yfinance reports it as a percent (AAPL ~100)
     ("free_cash_flow", 0.0, "above"),        # FCF > 0
 ]
 
