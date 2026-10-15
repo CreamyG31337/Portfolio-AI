@@ -174,6 +174,8 @@ function renderContributorDropdown(filter: string): void {
     
     dropdown.innerHTML = filtered.map(c => `
         <div class="contributor-option p-3 hover:bg-dashboard-hover cursor-pointer border-b border-border last:border-b-0"
+             role="option"
+             id="contributor-option-${escapeHtmlForContributions(c.id)}"
              data-id="${escapeHtmlForContributions(c.id)}"
              data-name="${escapeHtmlForContributions(c.name)}"
              data-email="${escapeHtmlForContributions(c.email || '')}">
@@ -217,6 +219,11 @@ function selectContributor(id: string, name: string, email: string): void {
     // Hide dropdown
     if (dropdown) {
         dropdown.classList.add('hidden');
+        const contributorInput = document.getElementById('contributor') as HTMLInputElement | null;
+        if (contributorInput) {
+            contributorInput.setAttribute('aria-expanded', 'false');
+            contributorInput.removeAttribute('aria-activedescendant');
+        }
     }
 }
 
@@ -241,12 +248,18 @@ function setupContributorAutoFill(): void {
         // Show dropdown with filtered results
         renderContributorDropdown(value);
         dropdown.classList.remove('hidden');
+        contributorInput.setAttribute('aria-expanded', 'true');
+        // Re-rendering replaced the options, so any active id is stale.
+        contributorInput.removeAttribute('aria-activedescendant');
     });
     
     // Show dropdown on focus
     contributorInput.addEventListener('focus', () => {
         renderContributorDropdown(contributorInput.value);
         dropdown.classList.remove('hidden');
+        contributorInput.setAttribute('aria-expanded', 'true');
+        // Re-rendering replaced the options, so any active id is stale.
+        contributorInput.removeAttribute('aria-activedescendant');
     });
     
     // Hide dropdown when clicking outside
@@ -254,6 +267,8 @@ function setupContributorAutoFill(): void {
         const target = e.target as Node;
         if (!contributorInput.contains(target) && !dropdown.contains(target)) {
             dropdown.classList.add('hidden');
+            contributorInput.setAttribute('aria-expanded', 'false');
+            contributorInput.removeAttribute('aria-activedescendant');
         }
     });
     
@@ -261,11 +276,36 @@ function setupContributorAutoFill(): void {
     contributorInput.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             dropdown.classList.add('hidden');
-        } else if (e.key === 'ArrowDown') {
-            const firstOption = dropdown.querySelector('.contributor-option') as HTMLElement | null;
-            if (firstOption) {
+            contributorInput.setAttribute('aria-expanded', 'false');
+            contributorInput.removeAttribute('aria-activedescendant');
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            const options = Array.from(dropdown.querySelectorAll('.contributor-option')) as HTMLElement[];
+            if (options.length > 0) {
                 e.preventDefault();
-                firstOption.focus();
+                const currentIndex = options.findIndex(opt => opt.id === contributorInput.getAttribute('aria-activedescendant'));
+                const step = e.key === 'ArrowDown' ? 1 : -1;
+                // From no selection, ArrowDown lands on the first option and ArrowUp on the last.
+                const start = currentIndex === -1 && step === -1 ? options.length : currentIndex;
+                const nextIndex = (start + step + options.length) % options.length;
+
+                options.forEach((opt, idx) => {
+                    const active = idx === nextIndex;
+                    opt.classList.toggle('bg-dashboard-background', active);
+                    opt.setAttribute('aria-selected', active ? 'true' : 'false');
+                });
+
+                const activeOption = options[nextIndex];
+                contributorInput.setAttribute('aria-activedescendant', activeOption.id);
+                activeOption.scrollIntoView({ block: 'nearest' });
+            }
+        } else if (e.key === 'Enter') {
+            const activeId = contributorInput.getAttribute('aria-activedescendant');
+            if (activeId) {
+                const activeOption = document.getElementById(activeId);
+                if (activeOption) {
+                    e.preventDefault();
+                    activeOption.click();
+                }
             }
         }
     });
