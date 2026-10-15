@@ -21,6 +21,9 @@ def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("META_ANALYSIS_PHASE_H2", "false")
     # Freshness predicate probes column types; covered in test_article_publish_freshness.
     monkeypatch.setenv("ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS", "0")
+    import pit_time
+    pit_time._column_cache["research_articles"] = (False, None)
+
 
 from meta_analysis_service import (  # noqa: E402
     TickerMetaAnalysisService,
@@ -273,7 +276,7 @@ def test_build_artifact_bundle_includes_signal_snapshot() -> None:
                 "timing_signal": {"timing": "EARLY"},
                 "fear_risk_signal": {"fear_level": "LOW"},
                 "momentum_signal": {"bias": "BULLISH", "composite_score": 0.73},
-                "fundamental_signal": {"bias": "NEUTRAL", "composite_score": 0.51},
+                "fundamental_signal": {"quality": "GOOD", "composite_score": 0.51},
             }
         ]
     )
@@ -281,6 +284,69 @@ def test_build_artifact_bundle_includes_signal_snapshot() -> None:
     bundle, _ = svc.build_artifact_bundle("ABC")
     assert "Technical signal snapshot (latest)" in bundle
     assert "overall_signal: BUY" in bundle
+    assert "- fundamental_quality: GOOD | fundamental_score: 0.51" in bundle
+
+
+def test_build_artifact_bundle_signal_snapshot_fundamental_insufficient() -> None:
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    sb.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[
+            {
+                "analysis_date": "2026-04-02T10:00:00+00:00",
+                "overall_signal": "HOLD",
+                "confidence_score": 0.5,
+                "structure_signal": {},
+                "timing_signal": {},
+                "fear_risk_signal": {},
+                "momentum_signal": {"bias": "NEUTRAL", "composite_score": 0.5},
+                "fundamental_signal": {
+                    "quality": "UNKNOWN",
+                    "composite_score": 0.5,
+                    "insufficient_data": True,
+                    "reason": "ETF: company fundamentals do not apply",
+                },
+            }
+        ]
+    )
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("SPY")
+    assert "- fundamental_quality: not rated (ETF: company fundamentals do not apply)" in bundle
+    assert "fundamental_score: 0.5" not in bundle
+
+
+def test_build_artifact_bundle_signal_snapshot_fundamental_lookthrough() -> None:
+    pg = MagicMock()
+    pg.execute_query.side_effect = [[_STD_ROW], [], [], []]
+    sb = MagicMock()
+    _congress_empty_supabase(sb)
+    sb.supabase.table.return_value.select.return_value.eq.return_value.order.return_value.limit.return_value.execute.return_value = MagicMock(
+        data=[
+            {
+                "analysis_date": "2026-04-02T10:00:00+00:00",
+                "overall_signal": "BUY",
+                "confidence_score": 0.75,
+                "structure_signal": {},
+                "timing_signal": {},
+                "fear_risk_signal": {},
+                "momentum_signal": {"bias": "BULLISH", "composite_score": 0.7},
+                "fundamental_signal": {
+                    "quality": "STRONG",
+                    "composite_score": 0.82,
+                    "method": "lookthrough",
+                    "lookthrough": {
+                        "weight_with_fundamentals": 0.78,
+                    },
+                },
+            }
+        ]
+    )
+    svc = _svc(pg, sb)
+    bundle, _ = svc.build_artifact_bundle("QQQ")
+    assert "- fundamental_quality: STRONG | fundamental_score: 0.82, holdings-weighted, 78% of weight covered" in bundle
+
 
 
 def test_build_artifact_bundle_includes_normalized_market_regime() -> None:
