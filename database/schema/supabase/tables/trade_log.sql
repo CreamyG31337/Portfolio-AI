@@ -7,7 +7,7 @@ CREATE TABLE trade_log (
     date TIMESTAMP NOT NULL,
     ticker VARCHAR(20) NOT NULL,
     shares NUMERIC(15, 6) NOT NULL,
-    price NUMERIC(10, 2) NOT NULL,
+    price NUMERIC(12, 4) NOT NULL,
     cost_basis NUMERIC(10, 2) NOT NULL,
     pnl NUMERIC(10, 2) NOT NULL DEFAULT 0,
     reason TEXT NOT NULL,

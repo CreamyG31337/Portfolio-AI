@@ -81,6 +81,16 @@ function toEstTimeString(dt: Date): string {
 }
 
 // Utility functions (scoped to trade_entry.ts to avoid conflicts)
+// Prices can carry up to 4 decimals (sub-dollar micro-caps): show at least 2,
+// and the 3rd/4th only when present, so 0.1234 isn't displayed as 0.12.
+function formatTradePrice(price: number): string {
+    return price.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+        useGrouping: false,
+    });
+}
+
 function escapeHtmlForTradeEntry(text: string | undefined | null): string {
     if (!text) return '';
     const div = document.createElement('div');
@@ -406,7 +416,7 @@ async function handleEmailParse(): Promise<void> {
         }
 
         if (previewShares) previewShares.textContent = result.trade.shares.toString();
-        if (previewPrice) previewPrice.textContent = '$' + result.trade.price.toFixed(2);
+        if (previewPrice) previewPrice.textContent = '$' + formatTradePrice(result.trade.price);
         if (previewTotal) previewTotal.textContent = '$' + (result.trade.shares * result.trade.price).toFixed(2);
         if (previewDate) previewDate.textContent = new Date(result.trade.timestamp).toLocaleString('en-US', { timeZone: TZ_EST }) + ' EST';
         if (parsedResult) parsedResult.classList.remove('hidden');
@@ -562,7 +572,7 @@ async function fetchRecentTrades(page: number = 0): Promise<void> {
                     <td class="px-6 py-4">${actionBadge}</td>
                     <td class="px-6 py-4 font-bold text-text-primary">${escapeHtmlForTradeEntry(trade.ticker)}</td>
                     <td class="px-6 py-4 text-right">${trade.shares}</td>
-                    <td class="px-6 py-4 text-right">$${trade.price.toFixed(2)}</td>
+                    <td class="px-6 py-4 text-right">$${formatTradePrice(trade.price)}</td>
                     <td class="px-6 py-4 text-right">$${total.toFixed(2)}</td>
                     <td class="px-6 py-4 text-sm min-w-[14rem] max-w-2xl align-top">${reasonCell}</td>
                     <td class="px-6 py-4 text-center whitespace-nowrap">
@@ -788,7 +798,7 @@ function openDeleteModal(trade: Trade): void {
     if (summary) {
         const action = inferAction(trade);
         const dateStr = new Date(trade.date).toLocaleDateString('en-US', { timeZone: TZ_EST });
-        summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${trade.price.toFixed(2)} on ${dateStr}`;
+        summary.textContent = `${action} ${trade.shares} ${trade.ticker} @ $${formatTradePrice(trade.price)} on ${dateStr}`;
     }
 
     document.getElementById('delete-trade-modal-trigger')?.click();
