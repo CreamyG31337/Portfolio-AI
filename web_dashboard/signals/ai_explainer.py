@@ -48,25 +48,34 @@ def build_signal_explanation_prompt(
 
     # Adjust bullet count and requirements based on available data
     has_momentum = bool(momentum and momentum.get("bias"))
-    has_fundamental = bool(fundamental and fundamental.get("quality"))
+
+    is_etf = bool(fundamental.get("is_etf"))
+    is_insufficient = bool(fundamental.get("insufficient_data"))
+    is_lookthrough = fundamental.get("method") == "lookthrough" or bool(fundamental.get("lookthrough"))
+
+    fundamental_reqs: list[str] = []
+    if is_etf:
+        if is_lookthrough:
+            fundamental_reqs.append("- Note that this is a fund and that metrics are holdings-weighted")
+        else:
+            fundamental_reqs.append("- Note that this is a fund")
+    elif not is_insufficient and bool(fundamental and fundamental.get("quality")):
+        fundamental_reqs.append("- Comment on fundamental quality and any standout metrics")
+
     has_state = bool(ticker_state and (
         ticker_state.get("social") or ticker_state.get("congress")
         or ticker_state.get("insider") or ticker_state.get("conflicts")
     ))
+
     bullet_count = 3
     extra_requirements = ""
-    if has_momentum and has_fundamental:
-        bullet_count = 5
-        extra_requirements = (
-            "- Comment on momentum bias and what the composite score implies\n"
-            "- Comment on fundamental quality and any standout metrics\n"
-        )
-    elif has_momentum:
-        bullet_count = 4
-        extra_requirements = "- Comment on momentum bias and what the composite score implies\n"
-    elif has_fundamental:
-        bullet_count = 4
-        extra_requirements = "- Comment on fundamental quality and any standout metrics\n"
+    if has_momentum:
+        bullet_count += 1
+        extra_requirements += "- Comment on momentum bias and what the composite score implies\n"
+    if fundamental_reqs:
+        bullet_count += len(fundamental_reqs)
+        for req in fundamental_reqs:
+            extra_requirements += f"{req}\n"
 
     # If full state is available, increase bullet count and add requirements
     if has_state:
@@ -80,7 +89,10 @@ def build_signal_explanation_prompt(
     state_context = ""
     if ticker_state:
         try:
-            from ticker_state import summarize_ticker_state
+            try:
+                from ticker_state import summarize_ticker_state
+            except ImportError:
+                from web_dashboard.ticker_state import summarize_ticker_state
             summary = summarize_ticker_state(ticker_state)
             if summary and summary.strip():
                 state_context = f"\n\nCross-source context:\n{summary}"

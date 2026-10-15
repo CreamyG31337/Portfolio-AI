@@ -445,10 +445,28 @@ class TickerMetaAnalysisService:
                 parts.append(
                     f"- momentum_bias: {momentum.get('bias')} | momentum_score: {momentum.get('composite_score')}"
                 )
-                parts.append(
-                    f"- fundamental_bias: {fundamental.get('bias')} | "
-                    f"fundamental_score: {fundamental.get('composite_score')}"
-                )
+                is_insufficient = bool(fundamental.get("insufficient_data"))
+                is_lookthrough = fundamental.get("method") == "lookthrough" or bool(fundamental.get("lookthrough"))
+                lt = fundamental.get("lookthrough") if isinstance(fundamental.get("lookthrough"), dict) else {}
+                lt_cov = lt.get("weight_with_fundamentals") if lt else fundamental.get("weight_with_fundamentals")
+
+                lt_suffix = ""
+                if is_lookthrough:
+                    try:
+                        w = float(lt_cov)
+                        cov_str = f"{w:.0f}%" if w > 1.0 else f"{w * 100:.0f}%"
+                    except (TypeError, ValueError):
+                        cov_str = "0%"
+                    lt_suffix = f", holdings-weighted, {cov_str} of weight covered"
+
+                if is_insufficient:
+                    reason = fundamental.get("reason") or "insufficient data"
+                    parts.append(f"- fundamental_quality: not rated ({reason}){lt_suffix}")
+                else:
+                    parts.append(
+                        f"- fundamental_quality: {fundamental.get('quality')} | "
+                        f"fundamental_score: {fundamental.get('composite_score')}{lt_suffix}"
+                    )
                 parts.append("")
             else:
                 parts.append("### Technical signal snapshot (latest)")

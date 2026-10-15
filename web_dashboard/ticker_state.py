@@ -18,10 +18,21 @@ Data sources (Research DB / Postgres):
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+_ETF_NAME_RE = re.compile(r"\b(ETF|ETN)\b", re.IGNORECASE)
+
+
+def _looks_like_etf(fundamentals: Dict[str, Any]) -> bool:
+    """True if the securities row names an ETF/ETN rather than an operating company."""
+    if not isinstance(fundamentals, dict):
+        return False
+    return bool(_ETF_NAME_RE.search(fundamentals.get("company_name") or ""))
+
 
 # ---------------------------------------------------------------------------
 # Fundamental columns we care about from the securities table
@@ -128,13 +139,29 @@ def summarize_ticker_state(state: Dict[str, Any]) -> str:
     fun = sig.get("fundamental", {})
     mom_bias = mom.get("bias", "N/A")
     mom_score = mom.get("composite_score", 0)
-    fun_quality = fun.get("quality", "N/A")
-    fun_score = fun.get("composite_score", 0)
-    fun_metrics = fun.get("metrics_available", 0)
-    line2 = (
-        f"Momentum: {mom_bias} {_pct(mom_score)} | "
-        f"Fundamentals: {fun_quality} {_pct(fun_score)} ({fun_metrics} metrics)"
-    )
+
+    is_insufficient = bool(fun.get("insufficient_data"))
+    is_lookthrough = fun.get("method") == "lookthrough" or bool(fun.get("lookthrough"))
+    lt = fun.get("lookthrough") if isinstance(fun.get("lookthrough"), dict) else {}
+    lt_cov = lt.get("weight_with_fundamentals") if lt else fun.get("weight_with_fundamentals")
+
+    lt_suffix = ""
+    if is_lookthrough:
+        cov_str = _pct(lt_cov) if lt_cov is not None else "0%"
+        if cov_str == "N/A":
+            cov_str = "0%"
+        lt_suffix = f", holdings-weighted, {cov_str} of weight covered"
+
+    if is_insufficient:
+        reason = fun.get("reason") or "insufficient data"
+        fun_desc = f"Fundamentals: not rated ({reason}){lt_suffix}"
+    else:
+        fun_quality = fun.get("quality", "N/A")
+        fun_score = fun.get("composite_score", 0)
+        fun_metrics = fun.get("metrics_available", 0)
+        fun_desc = f"Fundamentals: {fun_quality} {_pct(fun_score)} ({fun_metrics} metrics){lt_suffix}"
+
+    line2 = f"Momentum: {mom_bias} {_pct(mom_score)} | {fun_desc}"
 
     # Line 3: fear + risk + key timing
     fr = sig.get("fear_risk", {})
@@ -171,7 +198,13 @@ def summarize_ticker_state(state: Dict[str, Any]) -> str:
     line5 = " | ".join(parts5) if parts5 else ""
 
     # Line 6: standout fundamentals (if any)
-    standout = _standout_fundamentals(fund)
+    is_etf = bool(
+        fun.get("is_etf")
+        or fund.get("is_etf")
+        or _looks_like_etf(fund)
+        or _looks_like_etf(fun)
+    )
+    standout = _standout_fundamentals(fund, is_etf=is_etf, signal_fund=fun)
     line6 = f"Key metrics: {standout}" if standout else ""
 
     lines = [line1, line2, line3, line4]
@@ -410,9 +443,13 @@ def _detect_conflicts(state: Dict[str, Any]) -> List[str]:
     # 1. Momentum vs. fundamental divergence
     mom_bias = mom.get("bias", "NEUTRAL")
     fund_quality = fund.get("quality", "UNKNOWN")
-    if mom_bias == "BULLISH" and fund_quality in ("WEAK", "UNKNOWN"):
-        conflicts.append("Bullish momentum with weak/unknown fundamentals — possible speculative run")
-    elif mom_bias == "BEARISH" and fund_quality in ("STRONG", "GOOD"):
+    raw_fund = state.get("fundamentals", {})
+    is_etf = bool(fund.get("is_etf") or raw_fund.get("is_etf") or _looks_like_etf(raw_fund) or _looks_like_etf(fund))
+    insufficient = bool(fund.get("insufficient_data"))
+    if not is_etf and not insufficient:
+        if mom_bias == "BULLISH" and fund_quality in ("WEAK", "UNKNOWN"):
+            conflicts.append("Bullish momentum with weak/unknown fundamentals — possible speculative run")
+    if mom_bias == "BEARISH" and fund_quality in ("STRONG", "GOOD"):
         conflicts.append("Bearish momentum despite strong fundamentals — possible value opportunity")
 
     # 2. Signal vs. insider activity
@@ -444,7 +481,10 @@ def _detect_conflicts(state: Dict[str, Any]) -> List[str]:
 def _pct(value: Any) -> str:
     """Format a 0-1 float as a percentage string."""
     try:
-        return f"{float(value) * 100:.0f}%"
+        val = float(value)
+        if val > 1.0:
+            return f"{val:.0f}%"
+        return f"{val * 100:.0f}%"
     except (TypeError, ValueError):
         return "N/A"
 
@@ -472,28 +512,94 @@ def _insider_net_direction(trades: List[Dict[str, Any]]) -> str:
     return "mixed"
 
 
-def _standout_fundamentals(fund: Dict[str, Any]) -> str:
-    """Pick 3-4 standout metrics from raw fundamentals for the summary."""
+def _standout_fundamentals(
+    fund: Dict[str, Any],
+    is_etf: bool = False,
+    signal_fund: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Pick 3-4 standout metrics from fundamentals for the summary.
+
+    Works with either raw securities row or fundamental signal dict,
+    and formats ETF metrics with fund-level labeling rather than company metrics.
+    """
+    if not fund and not signal_fund:
+        return ""
+
+    if not is_etf:
+        is_etf = bool(
+            fund.get("is_etf")
+            or _looks_like_etf(fund)
+            or (signal_fund and (signal_fund.get("is_etf") or _looks_like_etf(signal_fund)))
+        )
+
+    def _get(key: str, category: Optional[str] = None) -> Optional[float]:
+        # 1. Try fund top-level (raw securities row format)
+        val = fund.get(key)
+        # 2. Try inside category of fund (fundamental signal format)
+        if val is None and category:
+            cat_dict = fund.get(category)
+            if isinstance(cat_dict, dict):
+                val = cat_dict.get(key)
+        # 3. Try signal_fund if provided
+        if val is None and signal_fund:
+            val = signal_fund.get(key)
+            if val is None and category:
+                cat_dict = signal_fund.get(category)
+                if isinstance(cat_dict, dict):
+                    val = cat_dict.get(key)
+        if val is None:
+            return None
+        try:
+            f = float(val)
+            import math
+            if math.isnan(f) or math.isinf(f):
+                return None
+            return f
+        except (TypeError, ValueError):
+            return None
+
     highlights: list[str] = []
 
-    pe = fund.get("forward_pe") or fund.get("trailing_pe")
+    pe = _get("forward_pe", "valuation") or _get("trailing_pe", "valuation")
     if pe is not None:
-        highlights.append(f"P/E {pe:.1f}")
+        if is_etf:
+            highlights.append(f"fund-level P/E {pe:.1f}")
+        else:
+            highlights.append(f"P/E {pe:.1f}")
 
-    roe = fund.get("return_on_equity")
-    if roe is not None:
-        highlights.append(f"ROE {roe * 100:.0f}%")
+    if not is_etf:
+        roe = _get("return_on_equity", "profitability")
+        if roe is not None:
+            highlights.append(f"ROE {roe * 100:.0f}%")
 
-    rev_g = fund.get("revenue_growth")
-    if rev_g is not None:
-        highlights.append(f"RevGrowth {rev_g * 100:.0f}%")
+        rev_g = _get("revenue_growth", "growth")
+        if rev_g is not None:
+            highlights.append(f"RevGrowth {rev_g * 100:.0f}%")
 
-    de = fund.get("debt_to_equity")
-    if de is not None:
-        highlights.append(f"D/E {de:.1f}")
+        de = _get("debt_to_equity", "health")
+        if de is not None:
+            highlights.append(f"D/E {de:.1f}")
 
-    margin = fund.get("net_margin")
-    if margin is not None:
-        highlights.append(f"Margin {margin * 100:.0f}%")
+        margin = _get("net_margin", "profitability")
+        if margin is not None:
+            highlights.append(f"Margin {margin * 100:.0f}%")
+    else:
+        # For ETFs, check if look-through metrics or dividend yield are available
+        div_yield = _get("dividend_yield")
+        if div_yield is not None:
+            highlights.append(f"Yield {div_yield * 100:.1f}%")
+
+        is_lookthrough = (
+            fund.get("method") == "lookthrough"
+            or bool(fund.get("lookthrough"))
+            or (signal_fund and (signal_fund.get("method") == "lookthrough" or bool(signal_fund.get("lookthrough"))))
+        )
+        if is_lookthrough:
+            roe = _get("return_on_equity", "profitability")
+            if roe is not None:
+                highlights.append(f"ROE {roe * 100:.0f}%")
+            rev_g = _get("revenue_growth", "growth")
+            if rev_g is not None:
+                highlights.append(f"RevGrowth {rev_g * 100:.0f}%")
 
     return ", ".join(highlights[:4]) if highlights else ""
