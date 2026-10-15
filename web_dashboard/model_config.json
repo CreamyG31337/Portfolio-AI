@@ -71,6 +71,16 @@
             "think": false,
             "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). No failover host. ctx 24576 MEASURED 2026-08-31: 13.06 GB resident on the 16 GB RX 6800, leaving room for bge-m3. Was 39000, which measured 15.47 GB and starved bge-m3 down to 16% GPU (embeddings ran on CPU). The old 'hybrid-Mamba => low KV growth' note was wrong: KV+state costs ~157 KB/token here."
         },
+        "qwen3.5:9b-q8_0": {
+            "num_ctx": 65536,
+            "num_predict": 8192,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "Default NVIDIA-host model on the MSI laptop (RTX 3080 Laptop 16 GB). Measured 2026-10-10: 10.3 GB, 100% GPU at num_ctx 65536, ~41 tok/s. Also the local fallback when Z.AI is down."
+        },
         "qwen3.5:4b": {
             "num_ctx": 65536,
             "num_predict": 8192,
@@ -79,7 +89,8 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Default NVIDIA-host model. Measured 100% GPU at num_ctx 65536. Soft client budget ~28k under the prompt half."
+            "hidden": true,
+            "desc": "Hidden; remapped to qwen3.5:9b-q8_0 in model_registry. Was the NVIDIA-host default while that host was ts-cr-desktop's 10 GB 3080."
         },
         "qwen3.8:27b-mtp-q4_K_M": {
             "num_ctx": 65536,
@@ -90,7 +101,7 @@
             "think": false,
             "streaming_timeout": 600,
             "hidden": true,
-            "desc": "Hidden; remapped to qwen3.5:4b in model_registry. Default NVIDIA 27B (stock Ollama library Qwen3.8, MTP draft tensors, vision+tools+thinking). Sticky num_ctx 65536 — model no longer bakes ctx in GGUF so without options.num_ctx it inherits OLLAMA_CONTEXT_LENGTH=32768 (~16k usable prompt). Soft client budget ~28k under prompt half. Never 20000/32768 on a shared runner (reload thrash). Requires Ollama >= 0.32.12."
+            "desc": "Hidden; remapped to qwen3.5:9b-q8_0 in model_registry. Default NVIDIA 27B (stock Ollama library Qwen3.8, MTP draft tensors, vision+tools+thinking). Sticky num_ctx 65536 — model no longer bakes ctx in GGUF so without options.num_ctx it inherits OLLAMA_CONTEXT_LENGTH=32768 (~16k usable prompt). Soft client budget ~28k under prompt half. Never 20000/32768 on a shared runner (reload thrash). Requires Ollama >= 0.32.12."
         },
         "batiai/qwen3.6-27b:iq3": {
             "num_ctx": 32768,

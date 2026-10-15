@@ -30,9 +30,9 @@ from model_registry import (  # noqa: E402
         ("glm-5.2", ["glm-5.2", "glm-5.1"], "glm-5.2"),
         (None, ["granite4.1:8b"], "granite4.1:8b"),
         ("qwen3.6:27b-heretic", None, OLLAMA_NVIDIA_DEFAULT),
-        ("qwen3.6:27b-heretic-agentic", ["qwen3.5:4b"], OLLAMA_NVIDIA_DEFAULT),
+        ("qwen3.6:27b-heretic-agentic", ["qwen3.5:9b-q8_0"], OLLAMA_NVIDIA_DEFAULT),
 
-        (OLLAMA_QWEN38_STOCK, ["qwen3.5:4b", "glm-5.2"], OLLAMA_NVIDIA_DEFAULT),
+        (OLLAMA_QWEN38_STOCK, ["qwen3.5:9b-q8_0", "glm-5.2"], OLLAMA_NVIDIA_DEFAULT),
     ],
 )
 def test_resolve_ai_model_preference(

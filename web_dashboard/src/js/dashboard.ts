@@ -18,6 +18,11 @@
 export { };
 
 import { FormatterCache } from './formatters.js';
+import {
+    DASHBOARD_FRESHNESS_POLL_MS,
+    dashboardRefreshReason,
+    portfolioFreshnessToken,
+} from './dashboard_refresh.js';
 
 // Global types are declared in globals.d.ts
 
@@ -310,6 +315,14 @@ const state = {
 
 const chartResizeObservers = new Map<string, ResizeObserver>();
 
+/** Write time of the portfolio rows last applied to this page. */
+let portfolioDataToken: string | null = null;
+/** When the dashboard last started a full reload. Starts at page load. */
+let lastFullRefreshAt = Date.now();
+let refreshInFlight: Promise<void> | null = null;
+/** Background reloads update numbers in place without covering charts. */
+let suppressRefreshSpinners = false;
+
 function setAiModelFootnote(el: HTMLElement | null, model: string | null | undefined): void {
     if (!el) return;
     const m = (model ?? '').trim();
@@ -520,10 +533,8 @@ document.addEventListener('DOMContentLoaded', (): void => {
     initThemeSync(); // Initialize theme synchronization
 
     // Fetch Data
-    refreshDashboard();
-
-    // Auto-refresh every 60s (optional)
-    // setInterval(refreshDashboard, 60000);
+    void refreshDashboard();
+    startDashboardAutoRefresh();
 });
 
 // --- Initialization Functions ---
@@ -603,22 +614,39 @@ function formatMarketBriefAsOfLine(
     return "";
 }
 
+interface LatestTimestampResponse {
+    timestamp?: string | null;
+    updated_at?: string | null;
+}
+
+/** Snapshot date plus the row write time used to detect intraday price updates. */
+async function fetchLatestTimestamp(): Promise<LatestTimestampResponse | null> {
+    const fund = state.currentFund || '';
+    const response = await fetch(
+        `/api/dashboard/latest-timestamp?fund=${encodeURIComponent(fund)}`,
+        { credentials: 'include' }
+    );
+    if (!response.ok) return null;
+    return await response.json() as LatestTimestampResponse;
+}
+
 async function initTimeDisplay(): Promise<void> {
     const el = document.getElementById('last-updated-text');
     if (!el) return;
 
     try {
-        // Fetch latest timestamp from API (same as Streamlit)
-        const fund = state.currentFund || '';
-        const response = await fetch(`/api/dashboard/latest-timestamp?fund=${encodeURIComponent(fund)}`);
-
-        if (response.ok) {
-            const data = await response.json();
-            if (data.timestamp) {
-                // Use browser locale and include timezone for an unambiguous timestamp.
-                const timestamp = new Date(data.timestamp);
-                const formatted = formatTimestampForDisplay(timestamp);
-                el.textContent = `Last updated: ${formatted}`;
+        const data = await fetchLatestTimestamp();
+        const token = portfolioFreshnessToken(data);
+        if (token) {
+            portfolioDataToken = token;
+        }
+        // Prefer the row write time so "Last updated" moves when prices refresh.
+        // The snapshot `date` stays at 4pm ET for the whole session.
+        const displaySource = (data?.updated_at || "").trim() || data?.timestamp;
+        if (displaySource) {
+            const timestamp = new Date(displaySource);
+            if (!Number.isNaN(timestamp.getTime())) {
+                el.textContent = `Last updated: ${formatTimestampForDisplay(timestamp)}`;
                 return;
             }
         }
@@ -1235,16 +1263,31 @@ function initGrid(): void {
     });
 }
 
-async function refreshDashboard(): Promise<void> {
+async function refreshDashboard(options?: { background?: boolean }): Promise<void> {
+    if (refreshInFlight) {
+        return refreshInFlight;
+    }
+    const run = executeDashboardRefresh(options?.background === true);
+    refreshInFlight = run.finally(() => {
+        refreshInFlight = null;
+    });
+    return refreshInFlight;
+}
+
+async function executeDashboardRefresh(background: boolean): Promise<void> {
+    suppressRefreshSpinners = background;
+    lastFullRefreshAt = Date.now();
     console.log('[Dashboard] Starting dashboard refresh...', {
         fund: state.currentFund,
         timeRange: state.timeRange,
+        background,
         timestamp: new Date().toISOString()
     });
 
-    // Hide any previous errors
+    // Hide any previous errors on a user-started reload. A background reload
+    // keeps the last good page up if this pass fails.
     const errorContainer = document.getElementById('dashboard-error-container');
-    if (errorContainer) {
+    if (!background && errorContainer) {
         errorContainer.classList.add('hidden');
     }
 
@@ -1296,8 +1339,53 @@ async function refreshDashboard(): Promise<void> {
             duration: `${duration.toFixed(2)}ms`,
             timestamp: new Date().toISOString()
         });
-        showDashboardError(error, traceback);
+        if (!background) {
+            showDashboardError(error, traceback);
+        }
+    } finally {
+        suppressRefreshSpinners = false;
     }
+}
+
+function startDashboardAutoRefresh(): void {
+    window.setInterval(() => {
+        void maybeAutoRefreshDashboard();
+    }, DASHBOARD_FRESHNESS_POLL_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            void maybeAutoRefreshDashboard();
+        }
+    });
+}
+
+/** Poll a cheap timestamp, then reload when portfolio rows change or an hour has passed. */
+async function maybeAutoRefreshDashboard(): Promise<void> {
+    if (document.hidden || refreshInFlight) return;
+
+    let nextToken: string | null = null;
+    try {
+        nextToken = portfolioFreshnessToken(await fetchLatestTimestamp());
+    } catch (error) {
+        console.warn('[Dashboard] Freshness check failed:', error);
+    }
+
+    const reason = dashboardRefreshReason({
+        hidden: document.hidden,
+        refreshInFlight: refreshInFlight != null,
+        nowMs: Date.now(),
+        lastRefreshAtMs: lastFullRefreshAt,
+        previousToken: portfolioDataToken,
+        nextToken,
+    });
+    if (!reason) {
+        if (nextToken && !portfolioDataToken) {
+            portfolioDataToken = nextToken;
+        }
+        return;
+    }
+
+    console.log('[Dashboard] Auto-refresh:', reason);
+    await refreshDashboard({ background: true });
 }
 
 /**
@@ -1328,6 +1416,7 @@ function showDashboardError(error: unknown, traceback?: string): void {
 // --- Spinner Helpers ---
 
 function showSpinner(spinnerId: string): void {
+    if (suppressRefreshSpinners) return;
     let spinner = document.getElementById(spinnerId);
     if (!spinner) {
         // Spinner doesn't exist (might have been removed by Plotly), create it

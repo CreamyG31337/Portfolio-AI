@@ -57,7 +57,7 @@ else:
 try:
     from model_registry import OLLAMA_SUMMARIZING_DEFAULT
 except ImportError:
-    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.5:4b"
+    OLLAMA_SUMMARIZING_DEFAULT = "qwen3.5:9b-q8_0"
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
 OLLAMA_ENABLED = os.getenv("OLLAMA_ENABLED", "true").lower() == "true"
 # Z.AI / GLM HTTP read timeout (seconds). Article summarization uses this; see docs/GLM_ZAI_SUMMARY_TIMING.md.
@@ -1020,7 +1020,7 @@ class OllamaClient:
         """List available Ollama model names from the primary host and optional secondary.
 
         Secondary is ``OLLAMA_BASE_URL_2`` / NVIDIA when set, so desktop-only models
-        (e.g. ``qwen3.5:4b`` on the NVIDIA host) appear in the AI Assistant picker
+        (e.g. ``qwen3.5:9b-q8_0`` on the NVIDIA host) appear in the AI Assistant picker
         even when the default URL is the Ubuntu host.
         """
         if not self.enabled:

@@ -91,7 +91,7 @@ def _ollama_models_to_probe() -> list[str]:
             OLLAMA_QUEUE_SECONDARY_DEFAULT,
         }
     except ImportError:
-        names = {"granite4.1:8b", "qwen3.5:4b"}
+        names = {"granite4.1:8b", "qwen3.5:9b-q8_0"}
     try:
         from settings import get_summarizing_model
 

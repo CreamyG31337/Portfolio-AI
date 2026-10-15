@@ -254,7 +254,7 @@ def model_for_backend(backend: str) -> str:
 
             return get_ollama_queue_secondary_model()
         except ImportError:
-            return "qwen3.5:4b"
+            return "qwen3.5:9b-q8_0"
     try:
         from model_registry import get_ollama_queue_primary_model
 

@@ -1,7 +1,7 @@
 """Ollama context-window helpers: sticky num_ctx, unload, telemetry, budget scaffold.
 
 Context is fixed at model *load* (``llama-server -c N``), not per request.
-The NVIDIA default is ``qwen3.5:4b``; the Qwen3.8 27B notes below are bench-only.
+The NVIDIA default is ``qwen3.5:9b-q8_0``; the Qwen3.8 27B notes below are bench-only.
 
 **Verified Ollama split:** roughly half of ``num_ctx`` is for the prompt, half for
 generation. So ``num_ctx=65536`` → ~32k usable prompt (Goose budgets ~28k under

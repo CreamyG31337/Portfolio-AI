@@ -70,7 +70,7 @@ def test_amd_only_models_never_fail_over_to_nvidia(monkeypatch: pytest.MonkeyPat
     client = ollama_client.OllamaClient(base_url="http://amd-test:11434")
     for model in ("granite4.1:8b", "batiai/qwen3.6-27b:iq3"):
         assert client._resolve_urls(model) == ("http://amd-test:11434", None)
-    assert client._resolve_urls("qwen3.5:4b") == ("http://rtx-test:11434", "http://amd-test:11434")
+    assert client._resolve_urls("qwen3.5:9b-q8_0") == ("http://rtx-test:11434", "http://amd-test:11434")
 
 
 def test_ollama_semantic_host_env_aliases_fallback_to_legacy_pair(
@@ -392,14 +392,14 @@ def test_default_summarizer_and_fallbacks_when_settings_empty(monkeypatch: pytes
     )
     monkeypatch.delenv("OLLAMA_SUMMARIZING_MODEL", raising=False)
     monkeypatch.delenv("OLLAMA_SUMMARIZING_FALLBACK_MODELS", raising=False)
-    assert settings_module.get_summarizing_model() == "qwen3.5:4b"
+    assert settings_module.get_summarizing_model() == "qwen3.5:9b-q8_0"
     assert settings_module.get_summarizing_fallback_models() == [
         "granite4.1:8b",
-        "qwen3.5:4b",
+        "qwen3.5:9b-q8_0",
         "glm-5.2",
     ]
     chain = ollama_client._get_summary_model_chain(None)
-    assert chain[0] == "qwen3.5:4b"
+    assert chain[0] == "qwen3.5:9b-q8_0"
     assert chain[1] == "granite4.1:8b"
     assert chain[2] == "glm-5.2"
     assert len(chain) == 3

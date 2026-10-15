@@ -101,3 +101,6 @@
 ## 2026-09-29 - Keep PRs to the change
 **Learning:** PRs #581 and #591 shipped scratch files (`replace.py`, `plan.md`, `debug.py`), and #581 mixed a real fix with whole-file reformatting and typing churn, which made review harder and got it rejected.
 **Action:** Delete scratch scripts before committing, and never reformat lines you didn't need to touch.
+## 2024-05-18 - Database Pattern (fetch_all_rows Filtering)
+**Learning:** When using the `fetch_all_rows` PostgREST pagination helper, the `filters` argument must be a sequence of 3-element tuples formatted exactly as `(column_name, operator, value)` (e.g., `filters=[("fund", "eq", fund_name)]`). Providing a 2-element tuple will cause a sequence unpacking error.
+**Action:** Always provide the operator string (like `"eq"`, `"gte"`, etc.) explicitly as the middle element when passing `filters` to `fetch_all_rows`.
