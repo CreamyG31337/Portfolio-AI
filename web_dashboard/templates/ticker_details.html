@@ -928,6 +928,22 @@
                 </div>
             </div>
 
+            <!-- ETF Top Holdings (shown only for ETFs tracked in etf_holdings_log) -->
+            <div id="etf-holdings-section" class="mt-6 hidden">
+                <div class="flex items-center gap-3 mb-3 flex-wrap">
+                    <h3 class="text-lg font-semibold text-text-primary">Top Holdings</h3>
+                    <span id="etf-holdings-as-of" class="text-xs text-text-tertiary"></span>
+                    <a id="etf-holdings-full-link" href="#"
+                        class="ml-auto text-sm font-medium text-accent hover:underline">View full ETF holdings
+                        &rarr;</a>
+                </div>
+                <div id="etf-holdings-list"
+                    class="bg-dashboard-background rounded-lg border border-border divide-y divide-border">
+                </div>
+                <button id="etf-holdings-toggle" type="button"
+                    class="mt-2 text-sm font-medium text-accent hover:underline hidden"></button>
+            </div>
+
             <!-- AI Explanation -->
             <div class="mt-6">
                 <h3 class="text-lg font-semibold mb-3 text-text-primary">AI Insight</h3>
