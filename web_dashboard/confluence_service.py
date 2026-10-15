@@ -31,7 +31,6 @@ FAMILY_SIGNALS = "signals"
 BULLISH_FLIP_STANCES = frozenset({"BULLISH", "BUY", "VERY_BULLISH"})
 BEARISH_FLIP_STANCES = frozenset({"BEARISH", "SELL", "VERY_BEARISH", "AVOID"})
 
-_PAGE_SIZE = 1000
 
 
 def _empty_hits() -> dict[str, Any]:

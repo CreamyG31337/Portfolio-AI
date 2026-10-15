@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 JOB_ID = "sec_filings"
 
 # Supabase REST returns at most 1000 rows per request regardless of .limit().
-_PAGE_SIZE = 1000
 
 # Re-scan a week each run: SEC filings only post on business days, the dedupe on
 # accession_no makes overlapping windows free, and a 7d window never misses a

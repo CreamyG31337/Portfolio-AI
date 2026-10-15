@@ -19,7 +19,6 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 JOB_ID = "yahoo_sedi_insiders"
-_PAGE_SIZE = 1000
 _UPSERT_CONFLICT = "ticker,insider_name,transaction_date,type,shares,price_per_share"
 
 
@@ -91,6 +90,7 @@ def collect_canadian_tickers(supabase_client) -> list[str]:
         # Only scan holdings with a concrete production-fund filter. An empty or
         # failed lookup must skip the scan rather than run unfiltered (which
         # would pull TEST_* tickers); the watchlist scan below runs regardless.
+        # Ordering makes range() pagination stable across pages.
         if production_funds:
             def filter_production(query):
                 return query.in_("fund", production_funds)
@@ -99,7 +99,9 @@ def collect_canadian_tickers(supabase_client) -> list[str]:
                 supabase_client,
                 "latest_positions",
                 "ticker,fund",
-                apply_query=filter_production
+                apply_query=filter_production,
+                order="fund",
+                order_secondary="ticker",
             )
             for row in page:
                 t = str(row.get("ticker") or "").upper().strip()
@@ -116,7 +118,9 @@ def collect_canadian_tickers(supabase_client) -> list[str]:
             supabase_client,
             "watched_tickers_v2",
             "ticker",
-            filters=[("is_active", "eq", True)]
+            filters=[("is_active", "eq", True)],
+            order="fund",
+            order_secondary="ticker",
         )
         for row in page2:
             t = str(row.get("ticker") or "").upper().strip()

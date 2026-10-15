@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 JOB_ID = "dilution_watch"
 
 # Supabase REST returns at most 1000 rows per request regardless of .limit().
-_PAGE_SIZE = 1000
 
 
 def _production_fund_names(supabase_client) -> list[str]:
