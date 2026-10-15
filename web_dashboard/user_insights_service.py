@@ -21,6 +21,7 @@ VALID_EVIDENCE_KINDS = frozenset({
     "ticker_meta_analysis",
     "confluence_event",
     "stance_history",
+    "grok_review",
 })
 VALID_RELATIONS = frozenset({"supports", "contradicts", "context"})
 

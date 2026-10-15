@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS thesis_evidence (
     evidence_kind VARCHAR(40) NOT NULL
         CHECK (evidence_kind IN (
             'user_url', 'research_article', 'ticker_analysis',
-            'ticker_meta_analysis', 'confluence_event', 'stance_history'
+            'ticker_meta_analysis', 'confluence_event', 'stance_history',
+            'grok_review'
         )),
     ref_id UUID,
     url TEXT,

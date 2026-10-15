@@ -1,4 +1,4 @@
-"""Token-auth Grok Bot ingest: watchlist queue + X-brief upsert."""
+"""Token-auth Grok Bot ingest: watchlist queue + X-brief upsert, thesis queue + review upsert."""
 
 from __future__ import annotations
 
@@ -19,6 +19,12 @@ from grok_bot_service import (
     upsert_briefs,
     verify_grok_bot_token,
     watchlist_ticker_funds,
+)
+from grok_thesis_service import (
+    THESIS_QUEUE_LIMIT,
+    build_thesis_queue,
+    parse_review_payloads,
+    store_reviews,
 )
 from postgres_client import PostgresClient
 from rate_limiter import rate_limit
@@ -114,3 +120,41 @@ def grok_briefs():
         logger.exception("Grok Bot brief upsert failed funds=%s", funds)
         return jsonify({"error": "failed to store briefs"}), 500
     return jsonify({"funds": funds, "data": stored})
+
+
+@grok_bp.route("/api/grok/thesis-queue", methods=["GET"])
+@rate_limit(limit=30, period=3600)
+def grok_thesis_queue():
+    failed = _auth_or_error()
+    if failed:
+        return failed
+    if _global_budget_exceeded():
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+    try:
+        items = build_thesis_queue(PostgresClient(), limit=THESIS_QUEUE_LIMIT)
+    except Exception:
+        logger.exception("Grok Bot thesis queue failed")
+        return jsonify({"error": "failed to build thesis queue"}), 500
+    return jsonify({"limit": THESIS_QUEUE_LIMIT, "data": items})
+
+
+@grok_bp.route("/api/grok/thesis-reviews", methods=["POST"])
+@rate_limit(limit=30, period=3600)
+def grok_thesis_reviews():
+    failed = _auth_or_error()
+    if failed:
+        return failed
+    oversized = _too_large()
+    if oversized:
+        return oversized
+    if _global_budget_exceeded():
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+    try:
+        reviews = parse_review_payloads(request.get_json(silent=True))
+        stored = store_reviews(PostgresClient(), reviews)
+    except GrokBotRequestError as exc:
+        return jsonify({"error": str(exc)}), exc.status_code
+    except Exception:
+        logger.exception("Grok Bot thesis review store failed")
+        return jsonify({"error": "failed to store reviews"}), 500
+    return jsonify({"data": stored})

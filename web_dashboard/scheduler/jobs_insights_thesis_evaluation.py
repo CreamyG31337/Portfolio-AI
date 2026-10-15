@@ -62,7 +62,9 @@ def _schedule_insights_eval_after_ai_lock(blocking_job: str) -> None:
         logger.warning("Could not schedule insights_thesis_evaluation lock retry: %s", exc)
 
 
-def _research_excerpt(postgres: Any, ticker: str) -> tuple[str, dict[str, Any]]:
+def _research_excerpt(
+    postgres: Any, ticker: str, thesis_id: str | None = None
+) -> tuple[str, dict[str, Any]]:
     """Build a compact read-only research excerpt; return (text, meta_ids)."""
     refs: dict[str, Any] = {}
     parts: list[str] = []
@@ -125,6 +127,19 @@ def _research_excerpt(postgres: Any, ticker: str) -> tuple[str, dict[str, Any]]:
             refs["grok_brief_ids"] = grok_ids
     except Exception as exc:
         logger.debug("thesis eval: grok brief fetch failed for %s: %s", ticker, exc)
+
+    # Grok Bot web-research review of this specific thesis (filings, news). Same
+    # untrusted wrapping and same refs trick as the X briefs above.
+    if thesis_id:
+        try:
+            from grok_thesis_service import review_excerpt_for_prompt
+
+            review_text, review_ids = review_excerpt_for_prompt(postgres, thesis_id)
+            if review_text:
+                parts.append(review_text)
+                refs["grok_review_ids"] = review_ids
+        except Exception as exc:
+            logger.debug("thesis eval: grok review fetch failed for %s: %s", thesis_id, exc)
 
     return ("\n".join(parts) if parts else "(no saved research)"), refs
 
@@ -225,7 +240,7 @@ def insights_thesis_evaluation_job() -> None:
                 prior_reviewed = detail.get("last_reviewed_at")
                 is_weak = bool(row.get("is_weak") or detail.get("is_weak"))
 
-                research, refs = _research_excerpt(postgres, ticker)
+                research, refs = _research_excerpt(postgres, ticker, thesis_id)
                 skip, digest, skip_reason = should_skip_thesis_eval(detail, refs)
                 if skip:
                     skipped_digest += 1
@@ -303,6 +318,13 @@ def insights_thesis_evaluation_job() -> None:
                         mark_briefs_evaluated(postgres, refs["grok_brief_ids"])
                     except Exception as exc:
                         logger.debug("thesis eval: marking grok briefs failed: %s", exc)
+                if refs.get("grok_review_ids"):
+                    try:
+                        from grok_thesis_service import mark_reviews_evaluated
+
+                        mark_reviews_evaluated(postgres, refs["grok_review_ids"])
+                    except Exception as exc:
+                        logger.debug("thesis eval: marking grok reviews failed: %s", exc)
 
                 # R3: optional Learn ledger — suggested (or current) disposition only.
                 # Never writes under ticker_meta / action_queue_ai_review sources.
