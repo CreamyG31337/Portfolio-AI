@@ -1,8 +1,8 @@
 # Supabase Production Database Schema
 
-**Generated:** 2026-07-13 14:11:58
+**Generated:** 2026-10-15 13:21:56
 
-**Total Tables:** 40
+**Total Tables:** 44
 
 ---
 
@@ -12,6 +12,7 @@
 - [_deprecated_ui_ai_summary_20260520](#-deprecated-ui-ai-summary-20260520)
 - [ai_analysis_queue](#ai-analysis-queue)
 - [ai_analysis_skip_list](#ai-analysis-skip-list)
+- [ai_assistant_chats](#ai-assistant-chats)
 - [ai_task_queue](#ai-task-queue)
 - [apscheduler_jobs](#apscheduler-jobs)
 - [benchmark_data](#benchmark-data)
@@ -21,6 +22,7 @@
 - [congress_positions](#congress-positions)
 - [congress_trade_returns](#congress-trade-returns)
 - [congress_trades](#congress-trades)
+- [congress_trades_backup_20260717_prescrape](#congress-trades-backup-20260717-prescrape)
 - [contributor_access](#contributor-access)
 - [contributors](#contributors)
 - [dividend_log](#dividend-log)
@@ -28,6 +30,7 @@
 - [fund_contributions](#fund-contributions)
 - [fund_thesis](#fund-thesis)
 - [fund_thesis_pillars](#fund-thesis-pillars)
+- [fundamentals_fetch_skips](#fundamentals-fetch-skips)
 - [funds](#funds)
 - [insider_trades](#insider-trades)
 - [job_executions](#job-executions)
@@ -43,6 +46,7 @@
 - [signal_analysis](#signal-analysis)
 - [system_settings](#system-settings)
 - [ticker_state_snapshots](#ticker-state-snapshots)
+- [ticker_symbol_aliases](#ticker-symbol-aliases)
 - [trade_log](#trade-log)
 - [user_funds](#user-funds)
 - [user_profiles](#user-profiles)
@@ -167,6 +171,37 @@
 | `ai_analysis_skip_list_ticker_key` | `ticker` | ✓ |
 | `idx_skip_list_last_failed` | `last_failed_at` | ✗ |
 | `idx_skip_list_ticker` | `ticker` | ✗ |
+
+---
+
+## ai_assistant_chats
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `user_id` | UUID | ✗ | - |
+| `fund` | TEXT | ✗ | - |
+| `messages` | JSONB | ✗ | '[]'::jsonb |
+| `model` | TEXT | ✓ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `user_id`, `fund`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `user_id` | `user_profiles`.`user_id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_ai_assistant_chats_updated` | `updated_at` | ✗ |
 
 ---
 
@@ -457,6 +492,10 @@
 | `owner` | VARCHAR(100) | ✗ | 'Unknown'::character varying |
 | `politician_id` | INTEGER | ✓ | - |
 | `asset_description` | TEXT | ✓ | - |
+| `quality_status` | TEXT | ✗ | 'ok'::text |
+| `quality_reason` | TEXT | ✓ | - |
+| `suggested_ticker` | TEXT | ✓ | - |
+| `replacement_trade_id` | INTEGER | ✓ | - |
 
 ### Primary Key
 
@@ -466,6 +505,7 @@
 
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
+| `replacement_trade_id` | `congress_trades`.`id` | NO ACTION | NO ACTION |
 | `politician_id` | `politicians`.`id` | NO ACTION | NO ACTION |
 
 ### Indexes
@@ -482,7 +522,54 @@
 | `idx_congress_ticker` | `ticker` | ✗ |
 | `idx_congress_ticker_date` | `ticker`, `transaction_date` | ✗ |
 | `idx_congress_trades_politician_id` | `politician_id` | ✗ |
+| `idx_congress_trades_quality_status` | `quality_status` | ✗ |
 | `idx_congress_transaction_date` | `transaction_date` | ✗ |
+
+---
+
+## congress_trades_backup_20260717_prescrape
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | INTEGER | ✗ | nextval('congress_trades_id_seq'::regclass) |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `chamber` | VARCHAR(20) | ✗ | - |
+| `transaction_date` | DATE | ✗ | - |
+| `disclosure_date` | DATE | ✗ | - |
+| `type` | VARCHAR(20) | ✗ | - |
+| `amount` | VARCHAR(100) | ✓ | - |
+| `asset_type` | VARCHAR(50) | ✓ | - |
+| `conflict_score` | DOUBLE PRECISION | ✓ | - |
+| `notes` | TEXT | ✓ | - |
+| `created_at` | TIMESTAMP | ✓ | now() |
+| `price` | NUMERIC(10, 2) | ✓ | NULL::numeric |
+| `party` | VARCHAR(50) | ✓ | - |
+| `state` | VARCHAR(2) | ✓ | - |
+| `owner` | VARCHAR(100) | ✗ | 'Unknown'::character varying |
+| `politician_id` | INTEGER | ✓ | - |
+| `asset_description` | TEXT | ✓ | - |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `congress_trades_backup_20260717_pre_ticker_transaction_date_idx` | `ticker`, `transaction_date` | ✗ |
+| `congress_trades_backup_20260717_prescrape_chamber_idx` | `chamber` | ✗ |
+| `congress_trades_backup_20260717_prescrape_conflict_score_idx` | `conflict_score` | ✗ |
+| `congress_trades_backup_20260717_prescrape_disclosure_date_idx` | `disclosure_date` | ✗ |
+| `congress_trades_backup_20260717_prescrape_owner_idx` | `owner` | ✗ |
+| `congress_trades_backup_20260717_prescrape_party_idx` | `party` | ✗ |
+| `congress_trades_backup_20260717_prescrape_politician_id_idx` | `politician_id` | ✗ |
+| `congress_trades_backup_20260717_prescrape_state_idx` | `state` | ✗ |
+| `congress_trades_backup_20260717_prescrape_ticker_idx` | `ticker` | ✗ |
+| `congress_trades_backup_20260717_prescrape_transaction_date_idx` | `transaction_date` | ✗ |
+| `congress_trades_backup_202607_politician_id_ticker_transact_key` | `politician_id`, `ticker`, `transaction_date`, `amount`, `type`, `owner` | ✓ |
 
 ---
 
@@ -733,6 +820,31 @@
 | Name | Columns | Unique |
 |------|---------|--------|
 | `idx_fund_thesis_pillars_thesis_id` | `thesis_id` | ✗ |
+
+---
+
+## fundamentals_fetch_skips
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `reason` | VARCHAR(40) | ✗ | - |
+| `failure_count` | INTEGER | ✗ | 1 |
+| `first_failed_at` | TIMESTAMP | ✗ | now() |
+| `last_failed_at` | TIMESTAMP | ✗ | now() |
+| `retry_after` | TIMESTAMP | ✗ | - |
+
+### Primary Key
+
+- `ticker`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_fundamentals_fetch_skips_retry_after` | `retry_after` | ✗ |
 
 ---
 
@@ -1259,6 +1371,23 @@
 
 ---
 
+## ticker_symbol_aliases
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `yahoo_symbol` | VARCHAR(20) | ✗ | - |
+| `source` | VARCHAR(20) | ✗ | 'refresh_job'::character varying |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `ticker`
+
+---
+
 ## trade_log
 
 ### Columns
@@ -1270,7 +1399,7 @@
 | `date` | TIMESTAMP | ✗ | - |
 | `ticker` | VARCHAR(20) | ✗ | - |
 | `shares` | NUMERIC(15, 6) | ✗ | - |
-| `price` | NUMERIC(10, 2) | ✗ | - |
+| `price` | NUMERIC(12, 4) | ✗ | - |
 | `cost_basis` | NUMERIC(10, 2) | ✗ | - |
 | `pnl` | NUMERIC(10, 2) | ✗ | 0 |
 | `reason` | TEXT | ✗ | - |

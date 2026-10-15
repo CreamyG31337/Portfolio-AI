@@ -1,8 +1,8 @@
 # Research Database Database Schema
 
-**Generated:** 2026-07-13 14:12:47
+**Generated:** 2026-10-15 13:23:33
 
-**Total Tables:** 31
+**Total Tables:** 35
 
 ---
 
@@ -16,7 +16,9 @@
 - [etf_holdings_log](#etf-holdings-log)
 - [extracted_tickers](#extracted-tickers)
 - [filing_events](#filing-events)
+- [grok_thesis_reviews](#grok-thesis-reviews)
 - [grok_x_briefs](#grok-x-briefs)
+- [grok_x_skips](#grok-x-skips)
 - [idea_triage](#idea-triage)
 - [market_daily_brief](#market-daily-brief)
 - [market_relationships](#market-relationships)
@@ -31,6 +33,7 @@
 - [social_posts](#social-posts)
 - [social_sentiment_analysis](#social-sentiment-analysis)
 - [stance_history](#stance-history)
+- [stance_outcome_attempts](#stance-outcome-attempts)
 - [stance_outcomes](#stance-outcomes)
 - [thesis_entries](#thesis-entries)
 - [thesis_evidence](#thesis-evidence)
@@ -39,6 +42,7 @@
 - [ticker_theses](#ticker-theses)
 - [ui_ai_rollup_fund](#ui-ai-rollup-fund)
 - [ui_ai_summary](#ui-ai-summary)
+- [youtube_sources](#youtube-sources)
 
 ---
 
@@ -267,6 +271,12 @@
 |--------|------------|-----------|------------|
 | `analysis_id` | `social_sentiment_analysis`.`id` | NO ACTION | NO ACTION |
 
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_extracted_tickers_analysis_id` | `analysis_id` | ✗ |
+
 ---
 
 ## filing_events
@@ -302,9 +312,44 @@
 
 ---
 
-## grok_x_briefs
+## grok_thesis_reviews
 
-Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a human Insights review. Schema: `database/schema/research/tables/grok_x_briefs.sql`.
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | UUID | ✗ | gen_random_uuid() |
+| `thesis_id` | UUID | ✗ | - |
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `review_date` | DATE | ✗ | - |
+| `verdict` | VARCHAR(20) | ✗ | - |
+| `summary` | TEXT | ✗ | - |
+| `sources` | JSONB | ✗ | '[]'::jsonb |
+| `status` | VARCHAR(20) | ✗ | 'ingested'::character varying |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `id`
+
+### Foreign Keys
+
+| Column | References | On Delete | On Update |
+|--------|------------|-----------|------------|
+| `thesis_id` | `ticker_theses`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `grok_thesis_reviews_thesis_id_review_date_key` | `thesis_id`, `review_date` | ✓ |
+| `idx_grok_thesis_reviews_date` | `review_date` | ✗ |
+| `idx_grok_thesis_reviews_thesis` | `thesis_id`, `review_date` | ✗ |
+
+---
+
+## grok_x_briefs
 
 ### Columns
 
@@ -315,13 +360,13 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `ticker` | VARCHAR(20) | ✗ | - |
 | `sweep_date` | DATE | ✗ | - |
 | `body` | TEXT | ✗ | - |
-| `themes` | TEXT[] | ✗ | `'{}'` |
-| `posts` | JSONB | ✗ | `'[]'::jsonb` |
+| `themes` | ARRAY | ✗ | '{}'::text[] |
+| `posts` | JSONB | ✗ | '[]'::jsonb |
 | `notable` | BOOLEAN | ✗ | false |
-| `cited_urls` | TEXT[] | ✗ | `'{}'` |
-| `status` | VARCHAR(20) | ✗ | `'ingested'` |
-| `created_at` | TIMESTAMPTZ | ✗ | now() |
-| `updated_at` | TIMESTAMPTZ | ✗ | now() |
+| `cited_urls` | ARRAY | ✗ | '{}'::text[] |
+| `status` | VARCHAR(20) | ✗ | 'ingested'::character varying |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
 
 ### Primary Key
 
@@ -333,8 +378,32 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 |------|---------|--------|
 | `grok_x_briefs_fund_ticker_day` | `fund`, `ticker`, `sweep_date` | ✓ |
 | `idx_grok_x_briefs_fund_date` | `fund`, `sweep_date` | ✗ |
-| `idx_grok_x_briefs_ticker` | `ticker`, `sweep_date` | ✗ |
 | `idx_grok_x_briefs_status` | `status`, `created_at` | ✗ |
+| `idx_grok_x_briefs_ticker` | `ticker`, `sweep_date` | ✗ |
+
+---
+
+## grok_x_skips
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `ticker` | VARCHAR(20) | ✗ | - |
+| `reason` | VARCHAR(200) | ✗ | - |
+| `source` | VARCHAR(10) | ✗ | 'manual'::character varying |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `ticker`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_grok_x_skips_source` | `source`, `created_at` | ✗ |
 
 ---
 
@@ -525,6 +594,11 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `archive_url` | TEXT | ✓ | - |
 | `ticker_sentiment` | JSONB | ✓ | - |
 | `ticker_validated_at` | TIMESTAMP | ✓ | - |
+| `corroboration_count` | INTEGER | ✗ | 1 |
+| `corroboration_sources` | ARRAY | ✗ | '{}'::text[] |
+| `source_metadata` | JSONB | ✓ | - |
+| `available_at` | TIMESTAMP | ✓ | now() |
+| `available_at_is_estimated` | BOOLEAN | ✗ | false |
 
 ### Primary Key
 
@@ -536,7 +610,10 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 |------|---------|--------|
 | `idx_research_articles_archive_submitted` | `archive_submitted_at` | ✗ |
 | `idx_research_articles_archive_url` | `archive_url` | ✗ |
+| `idx_research_articles_as_of` | `None` | ✗ |
+| `idx_research_articles_corroboration` | `corroboration_count` | ✗ |
 | `idx_research_articles_embedding` | `embedding` | ✗ |
+| `idx_research_articles_source_metadata` | `source_metadata` | ✗ |
 | `idx_research_articles_unvalidated` | `fetched_at` | ✗ |
 | `idx_research_claims` | `claims` | ✗ |
 | `idx_research_fetched` | `fetched_at` | ✗ |
@@ -565,6 +642,10 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `last_fetched_at` | TIMESTAMP | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
 | `updated_at` | TIMESTAMP | ✓ | now() |
+| `notes` | TEXT | ✓ | - |
+| `consecutive_failures` | INTEGER | ✗ | 0 |
+| `last_error` | TEXT | ✓ | - |
+| `last_success_at` | TIMESTAMP | ✓ | - |
 
 ### Primary Key
 
@@ -633,6 +714,11 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `description` | TEXT | ✓ | - |
 | `last_updated` | TIMESTAMP | ✓ | now() |
 | `first_detected_by` | VARCHAR(50) | ✓ | - |
+| `price_symbol` | TEXT | ✓ | - |
+| `price_symbol_set_at` | TIMESTAMP | ✓ | - |
+| `market_cap` | NUMERIC | ✓ | - |
+| `market_cap_set_at` | TIMESTAMP | ✓ | - |
+| `benchmark_override` | TEXT | ✓ | - |
 
 ### Primary Key
 
@@ -668,6 +754,13 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 
 - `id`
 
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_sentiment_sessions_pending` | `session_start` | ✗ |
+| `idx_sentiment_sessions_ticker_day` | `ticker`, `platform`, `session_start` | ✗ |
+
 ---
 
 ## social_metrics
@@ -693,6 +786,8 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `engagement_score` | DOUBLE PRECISION | ✓ | 0.0 |
 | `data_quality_score` | DOUBLE PRECISION | ✓ | 0.0 |
 | `collection_metadata` | JSONB | ✓ | - |
+| `posts_extracted_at` | TIMESTAMP | ✓ | - |
+| `available_at` | TIMESTAMP | ✓ | now() |
 
 ### Primary Key
 
@@ -703,6 +798,8 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | Name | Columns | Unique |
 |------|---------|--------|
 | `idx_social_created_at` | `created_at` | ✗ |
+| `idx_social_metrics_pending_extract` | `created_at` | ✗ |
+| `idx_social_metrics_ticker_as_of` | `ticker`, `None` | ✗ |
 | `idx_social_platform` | `platform` | ✗ |
 | `idx_social_ticker_platform` | `ticker`, `platform` | ✗ |
 | `idx_social_ticker_time` | `ticker`, `created_at` | ✗ |
@@ -718,7 +815,7 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `id` | INTEGER | ✗ | nextval('social_posts_id_seq'::regclass) |
 | `metric_id` | INTEGER | ✓ | - |
 | `platform` | VARCHAR(20) | ✗ | - |
-| `post_id` | VARCHAR(100) | ✓ | - |
+| `post_id` | VARCHAR(100) | ✗ | - |
 | `content` | TEXT | ✗ | - |
 | `author` | VARCHAR(100) | ✓ | - |
 | `posted_at` | TIMESTAMP | ✓ | - |
@@ -726,6 +823,8 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `url` | TEXT | ✓ | - |
 | `extracted_tickers` | ARRAY | ✓ | - |
 | `created_at` | TIMESTAMP | ✓ | now() |
+| `session_id` | INTEGER | ✓ | - |
+| `available_at` | TIMESTAMP | ✓ | now() |
 
 ### Primary Key
 
@@ -736,6 +835,17 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | Column | References | On Delete | On Update |
 |--------|------------|-----------|------------|
 | `metric_id` | `social_metrics`.`id` | NO ACTION | NO ACTION |
+| `session_id` | `sentiment_sessions`.`id` | NO ACTION | NO ACTION |
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_social_posts_available_at` | `available_at` | ✗ |
+| `idx_social_posts_metric_id` | `metric_id` | ✗ |
+| `idx_social_posts_session_id` | `session_id` | ✗ |
+| `idx_social_posts_unassigned` | `posted_at` | ✗ |
+| `uq_social_posts_platform_post_id` | `platform`, `post_id` | ✓ |
 
 ---
 
@@ -762,6 +872,13 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 ### Primary Key
 
 - `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_social_sentiment_analysis_analyzed_at` | `analyzed_at` | ✗ |
+| `uq_social_sentiment_analysis_session` | `session_id` | ✓ |
 
 ---
 
@@ -800,6 +917,30 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 
 ---
 
+## stance_outcome_attempts
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `stance_id` | UUID | ✗ | - |
+| `horizon_days` | SMALLINT | ✗ | - |
+| `attempts` | INTEGER | ✗ | 0 |
+| `last_reason` | TEXT | ✓ | - |
+| `last_attempt_at` | TIMESTAMP | ✓ | now() |
+
+### Primary Key
+
+- `stance_id`, `horizon_days`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_stance_outcome_attempts_reason` | `last_reason`, `attempts` | ✗ |
+
+---
+
 ## stance_outcomes
 
 ### Columns
@@ -815,6 +956,11 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `benchmark_return` | NUMERIC(10, 6) | ✓ | - |
 | `excess_return` | NUMERIC(10, 6) | ✓ | - |
 | `scored_at` | TIMESTAMP | ✓ | now() |
+| `benchmark_symbol` | TEXT | ✓ | - |
+| `scoring_version` | SMALLINT | ✓ | 1 |
+| `cost_bps` | SMALLINT | ✓ | - |
+| `excess_after_cost` | NUMERIC(10, 6) | ✓ | - |
+| `belief_status` | VARCHAR(20) | ✓ | - |
 
 ### Primary Key
 
@@ -830,6 +976,7 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 
 | Name | Columns | Unique |
 |------|---------|--------|
+| `idx_stance_outcomes_scoring_version` | `scoring_version`, `horizon_days` | ✗ |
 | `idx_stance_outcomes_stance` | `stance_id` | ✗ |
 | `stance_outcomes_unique` | `stance_id`, `horizon_days` | ✓ |
 
@@ -1090,6 +1237,52 @@ Grok Bot weekday X sweep briefs. Later LLM jobs consume `status=ingested`. Not a
 | `idx_ui_ai_summary_content_class` | `content_class`, `updated_at` | ✗ |
 | `idx_ui_ai_summary_scope_updated` | `scope`, `updated_at` | ✗ |
 | `ui_ai_summary_scope_key_unique` | `scope`, `scope_key` | ✓ |
+
+---
+
+## youtube_sources
+
+### Columns
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|----------|
+| `id` | INTEGER | ✗ | nextval('youtube_sources_id_seq'::regclass) |
+| `kind` | VARCHAR(20) | ✗ | 'channel'::character varying |
+| `channel_id` | VARCHAR(64) | ✓ | - |
+| `handle` | VARCHAR(120) | ✓ | - |
+| `query_text` | TEXT | ✓ | - |
+| `label` | VARCHAR(200) | ✗ | - |
+| `alpha_mechanism` | VARCHAR(20) | ✓ | - |
+| `confidence_weight` | NUMERIC(3, 2) | ✗ | 1.00 |
+| `expected_tickers` | ARRAY | ✗ | '{}'::text[] |
+| `enabled` | BOOLEAN | ✗ | true |
+| `max_videos_per_poll` | INTEGER | ✗ | 5 |
+| `min_duration_s` | INTEGER | ✗ | 120 |
+| `max_duration_s` | INTEGER | ✓ | - |
+| `last_video_id` | VARCHAR(16) | ✓ | - |
+| `last_seen_at` | TIMESTAMP | ✓ | - |
+| `last_polled_at` | TIMESTAMP | ✓ | - |
+| `last_success_at` | TIMESTAMP | ✓ | - |
+| `consecutive_failures` | INTEGER | ✗ | 0 |
+| `last_error_reason` | VARCHAR(32) | ✓ | - |
+| `captions_ok` | BOOLEAN | ✓ | - |
+| `notes` | TEXT | ✓ | - |
+| `added_by` | VARCHAR(200) | ✓ | - |
+| `source_of_recommendation` | VARCHAR(200) | ✓ | - |
+| `created_at` | TIMESTAMP | ✗ | now() |
+| `updated_at` | TIMESTAMP | ✗ | now() |
+
+### Primary Key
+
+- `id`
+
+### Indexes
+
+| Name | Columns | Unique |
+|------|---------|--------|
+| `idx_youtube_sources_channel` | `channel_id` | ✓ |
+| `idx_youtube_sources_enabled` | `enabled` | ✗ |
+| `idx_youtube_sources_query` | `query_text` | ✓ |
 
 ---
 
