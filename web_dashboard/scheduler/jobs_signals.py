@@ -9,7 +9,7 @@ import logging
 import math
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from typing import Any, Optional
@@ -443,6 +443,13 @@ _FUNDAMENTALS_MAX_PER_RUN = 400
 # rows and foreign codes like "7203 JP".
 _ETF_HOLDING_TICKER_RE = re.compile(r'^[A-Z][A-Z0-9.\-]{0,9}$')
 
+# Fetch-skip backoff: exponential retry delay for tickers yfinance can't
+# serve, so failed fundamentals fetches aren't retried every night.
+_FETCH_SKIP_BASE_DELAY_DAYS = 7
+_FETCH_SKIP_MAX_DELAY_DAYS = 90
+
+_FETCH_SKIP_REASONS = ('no_yfinance_info', 'not_equity', 'no_fundamentals')
+
 
 def _fetch_etf_holding_candidates() -> dict[str, dict[str, Any]]:
     """Top holdings of every tracked ETF, as fundamentals-refresh candidates.
@@ -569,6 +576,84 @@ def _find_fundamental_gaps(
     return gaps, missing
 
 
+def _fetch_skip_retry_after(failure_count: int, now: Optional[datetime] = None) -> datetime:
+    """Exponential backoff for repeated fundamentals-fetch failures:
+    7 days * 2**(failure_count - 1), capped at 90 days."""
+    if now is None:
+        now = datetime.now(timezone.utc)
+    count = max(1, int(failure_count))
+    delay_days = min(
+        _FETCH_SKIP_BASE_DELAY_DAYS * 2 ** (count - 1),
+        _FETCH_SKIP_MAX_DELAY_DAYS,
+    )
+    return now + timedelta(days=delay_days)
+
+
+def _parse_timestamptz(value: Any) -> Optional[datetime]:
+    """Parse a timestamptz from PostgREST (ISO string) or a datetime."""
+    if isinstance(value, datetime):
+        ts = value
+    elif isinstance(value, str) and value:
+        try:
+            ts = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return None
+    else:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
+def _load_fetch_skips(
+    supabase_client, tickers: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Existing fundamentals_fetch_skips rows for the given tickers, by ticker.
+
+    Best-effort: if the table is missing (migration not yet applied) or any
+    query fails, log a warning and return {} so the job runs without skips.
+    """
+    skips: dict[str, dict[str, Any]] = {}
+    chunk_size = 200  # PostgREST caps responses at 1000 rows
+    for i in range(0, len(tickers), chunk_size):
+        chunk = tickers[i:i + chunk_size]
+        try:
+            result = supabase_client.supabase.table("fundamentals_fetch_skips") \
+                .select("ticker,reason,failure_count,first_failed_at,retry_after") \
+                .in_("ticker", chunk) \
+                .execute()
+            for row in result.data or []:
+                ticker = (row.get('ticker') or '').upper()
+                if ticker:
+                    skips[ticker] = row
+        except Exception as e:
+            logger.warning(
+                f"Could not load fundamentals_fetch_skips, continuing without "
+                f"skips: {e}"
+            )
+            return {}
+    return skips
+
+
+def _flush_fetch_skip_writes(
+    supabase_client, upserts: list[dict[str, Any]], deletes: list[str]
+) -> None:
+    """Batch-write recorded fetch skips (best-effort; failures only log)."""
+    chunk_size = 200
+    try:
+        for i in range(0, len(upserts), chunk_size):
+            supabase_client.supabase.table("fundamentals_fetch_skips") \
+                .upsert(upserts[i:i + chunk_size]) \
+                .execute()
+        for i in range(0, len(deletes), chunk_size):
+            supabase_client.supabase.table("fundamentals_fetch_skips") \
+                .delete() \
+                .in_("ticker", deletes[i:i + chunk_size]) \
+                .execute()
+    except Exception as e:
+        logger.warning(f"Could not record fundamentals fetch skips: {e}")
+
+
 def fundamentals_refresh_job() -> None:
     """Backfill / refresh fundamental columns in the securities table.
 
@@ -676,14 +761,57 @@ def fundamentals_refresh_job() -> None:
         )
 
         # Work list: watchlist gaps first, then ETF holding gaps by weight.
-        # Cap total yfinance calls per run; the rest is deferred.
+        # Drop tickers suppressed by fetch-skip backoff BEFORE the per-run cap
+        # so they don't eat the yfinance budget, then cap the remaining work.
         work: list[tuple[str, bool]] = [(t, False) for t in sorted(watchlist_gaps)]
         work += [(t, True) for t in etf_ordered]
+
+        run_now = datetime.now(timezone.utc)
+        fetch_skip_rows = _load_fetch_skips(supabase_client, sorted({t for t, _ in work}))
+        active_skips = {
+            t for t, row in fetch_skip_rows.items()
+            if (ts := _parse_timestamptz(row.get('retry_after'))) is not None
+            and ts > run_now
+        }
+        suppressed = 0
+        if active_skips:
+            suppressed = len([t for t, _ in work if t in active_skips])
+            work = [(t, is_etf) for t, is_etf in work if t not in active_skips]
+            logger.info(
+                f"⏭️  {suppressed} tickers suppressed by fetch-skip backoff "
+                f"(of {len(fetch_skip_rows)} tracked)"
+            )
+
         deferred = max(0, len(work) - _FUNDAMENTALS_MAX_PER_RUN)
         work = work[:_FUNDAMENTALS_MAX_PER_RUN]
 
         wl_counts = {'updated': 0, 'skipped': 0, 'errors': 0}
         etf_counts = {'updated': 0, 'inserted': 0, 'skipped': 0, 'errors': 0}
+
+        # Batched fetch-skip writes (collected during the loop, flushed once)
+        skip_upserts: list[dict[str, Any]] = []
+        skip_deletes: list[str] = []
+        skip_reason_counts = {reason: 0 for reason in _FETCH_SKIP_REASONS}
+
+        def _record_skip(ticker: str, reason: str) -> None:
+            prev_row = fetch_skip_rows.get(ticker) or {}
+            try:
+                prev_count = int(prev_row.get('failure_count') or 0)
+            except (TypeError, ValueError):
+                prev_count = 0
+            count = prev_count + 1
+            first_failed = prev_row.get('first_failed_at') or run_now
+            if isinstance(first_failed, datetime):
+                first_failed = first_failed.isoformat()
+            skip_upserts.append({
+                'ticker': ticker,
+                'reason': reason,
+                'failure_count': count,
+                'first_failed_at': first_failed,
+                'last_failed_at': run_now.isoformat(),
+                'retry_after': _fetch_skip_retry_after(count, run_now).isoformat(),
+            })
+            skip_reason_counts[reason] += 1
 
         for ticker, is_etf in work:
             counts = etf_counts if is_etf else wl_counts
@@ -694,6 +822,7 @@ def fundamentals_refresh_job() -> None:
                 if not info or info.get('quoteType') is None:
                     logger.debug(f"No yfinance info for {ticker}, skipping")
                     counts['skipped'] += 1
+                    _record_skip(ticker, 'no_yfinance_info')
                     time.sleep(0.3)
                     continue
 
@@ -714,6 +843,7 @@ def fundamentals_refresh_job() -> None:
                     # equity (skips ETFs, warrants, and other non-equity types).
                     if info.get('quoteType') != 'EQUITY':
                         counts['skipped'] += 1
+                        _record_skip(ticker, 'not_equity')
                         logger.debug(
                             f"ETF holding {ticker} is {info.get('quoteType')}, not inserting"
                         )
@@ -745,13 +875,26 @@ def fundamentals_refresh_job() -> None:
                     counts['skipped'] += 1
                     logger.debug(f"No fundamental data available from yfinance for {ticker}")
 
+                # A fetch that fills at least one indicator column clears any
+                # previous skip; otherwise record one (still keeping whatever
+                # partial updates we got, e.g. trailing_pe).
+                if any(col in updates for col in _FUNDAMENTAL_INDICATOR_COLS):
+                    if ticker in fetch_skip_rows:
+                        skip_deletes.append(ticker)
+                else:
+                    _record_skip(ticker, 'no_fundamentals')
+
                 # Rate-limit: ~1 second between yfinance calls
                 time.sleep(1.0)
 
             except Exception as e:
+                # Transient (network etc.) errors are NOT recorded as skips
                 counts['errors'] += 1
                 logger.warning(f"Error fetching fundamentals for {ticker}: {e}")
                 time.sleep(0.5)
+
+        if skip_upserts or skip_deletes:
+            _flush_fetch_skip_writes(supabase_client, skip_upserts, skip_deletes)
 
         duration_ms = int((time.time() - start_time) * 1000)
         msg = (
@@ -761,7 +904,11 @@ def fundamentals_refresh_job() -> None:
             f"ETF holdings {etf_counts['updated']} updated, {etf_counts['inserted']} inserted, "
             f"{etf_counts['skipped']} skipped, {etf_counts['errors']} errors "
             f"(of {len(etf_ordered)} gaps); "
-            f"{deferred} deferred by per-run cap"
+            f"{deferred} deferred by per-run cap; "
+            f"{suppressed} suppressed by backoff; "
+            f"skips recorded: {skip_reason_counts['no_yfinance_info']} no_yfinance_info, "
+            f"{skip_reason_counts['not_equity']} not_equity, "
+            f"{skip_reason_counts['no_fundamentals']} no_fundamentals"
         )
         try:
             log_job_execution(job_id, True, msg, duration_ms)
