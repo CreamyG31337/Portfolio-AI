@@ -18,20 +18,20 @@ Data sources (Research DB / Postgres):
 from __future__ import annotations
 
 import logging
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+try:
+    from web_dashboard.signals.fundamental_signal import _looks_like_etf as _name_is_etf
+except ImportError:
+    from signals.fundamental_signal import _looks_like_etf as _name_is_etf
+
 logger = logging.getLogger(__name__)
 
-_ETF_NAME_RE = re.compile(r"\b(ETF|ETN)\b", re.IGNORECASE)
 
-
-def _looks_like_etf(fundamentals: Dict[str, Any]) -> bool:
+def _looks_like_etf(fundamentals: Any) -> bool:
     """True if the securities row names an ETF/ETN rather than an operating company."""
-    if not isinstance(fundamentals, dict):
-        return False
-    return bool(_ETF_NAME_RE.search(fundamentals.get("company_name") or ""))
+    return isinstance(fundamentals, dict) and _name_is_etf(fundamentals)
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +481,7 @@ def _detect_conflicts(state: Dict[str, Any]) -> List[str]:
 def _pct(value: Any) -> str:
     """Format a 0-1 float as a percentage string."""
     try:
-        val = float(value)
-        if val > 1.0:
-            return f"{val:.0f}%"
-        return f"{val * 100:.0f}%"
+        return f"{float(value) * 100:.0f}%"
     except (TypeError, ValueError):
         return "N/A"
 
@@ -587,7 +584,8 @@ def _standout_fundamentals(
         # For ETFs, check if look-through metrics or dividend yield are available
         div_yield = _get("dividend_yield")
         if div_yield is not None:
-            highlights.append(f"Yield {div_yield * 100:.1f}%")
+            # securities.dividend_yield is already a percent (JNJ stores 2.05)
+            highlights.append(f"Yield {div_yield:.2f}%")
 
         is_lookthrough = (
             fund.get("method") == "lookthrough"

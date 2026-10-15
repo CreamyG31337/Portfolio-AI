@@ -310,3 +310,15 @@ def test_ai_explainer_prompt_normal_company_asks_quality() -> None:
     }
     prompt = build_signal_explanation_prompt("AAPL", signals)
     assert "Comment on fundamental quality and any standout metrics" in prompt
+
+
+def test_standout_fundamentals_etf_yield_is_already_percent() -> None:
+    # securities.dividend_yield is stored as a percent (2.05 means 2.05%)
+    res = _standout_fundamentals({"company_name": "Some Dividend ETF", "dividend_yield": 2.05})
+    assert "Yield 2.05%" in res
+    assert "205" not in res
+
+
+def test_explainer_tolerates_null_fundamental() -> None:
+    prompt = build_signal_explanation_prompt("XYZ", {"fundamental": None})
+    assert "Comment on fundamental quality" not in prompt

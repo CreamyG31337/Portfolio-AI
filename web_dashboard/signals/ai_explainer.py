@@ -35,7 +35,7 @@ def build_signal_explanation_prompt(
     timing = signals.get("timing", {})
     fear_risk = signals.get("fear_risk", {})
     momentum = signals.get("momentum", {})
-    fundamental = signals.get("fundamental", {})
+    fundamental = signals.get("fundamental") or {}
     overall_signal = signals.get("overall_signal", "HOLD")
     confidence = signals.get("confidence", 0.0)
 
