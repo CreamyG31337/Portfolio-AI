@@ -221,11 +221,11 @@ def _fetch_newsletters_as_articles(
         # Backfill extracted URLs to the database so future page loads are instant
         if ids_to_backfill:
             try:
-                for nl_id, url in ids_to_backfill:
-                    repo.client.execute_update(
-                        "UPDATE newsletters SET article_url = %s WHERE id = %s AND article_url IS NULL",
-                        (url, nl_id),
-                    )
+                params_list = [(url, nl_id) for nl_id, url in ids_to_backfill]
+                repo.client.execute_many(
+                    "UPDATE newsletters SET article_url = %s WHERE id = %s AND article_url IS NULL",
+                    params_list,
+                )
                 logger.info(f"Backfilled article_url for {len(ids_to_backfill)} newsletter(s)")
             except Exception as e:
                 logger.warning(f"Failed to backfill newsletter article_url: {e}")

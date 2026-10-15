@@ -14,3 +14,8 @@
 ## 2026-09-29 - Ideas accept modal stays hand-rolled (PR #568 not merged)
 **Learning:** `ideas.html`'s accept modal handles Cancel and backdrop clicks in `ideas.ts`; the only real gap was ESC, fixed with a plain keydown listener. Converting it to a hidden Flowbite toggle button plus a MutationObserver added indirection for that one key.
 **Action:** Fix the specific missing behavior in place; only move a modal to Flowbite when that is the smaller change, and verify it in a browser.
+
+## 2026-10-10 - Custom Autocomplete ARIA Compliance
+**Issue:** Custom autocomplete dropdowns implemented manually (e.g., in `trade_entry.html`, `contributions.html`, and `ticker_autocomplete.ts`) lacked necessary ARIA roles, making them inaccessible to screen readers.
+**Learning:** Hand-rolled components like autocompletes require strict adherence to the ARIA combobox pattern (`role="combobox"`, `role="listbox"`, `role="option"`, `aria-expanded`, and dynamic updates to `aria-activedescendant` based on unique IDs during keyboard navigation).
+**Prevention:** When creating or fixing custom JS-driven dropdowns/autocompletes, ensure complete ARIA attributes are applied both statically in HTML and updated dynamically in TypeScript keyboard/focus handlers. Alternatively, use standard Flowbite/Tailwind components whenever possible.

@@ -134,51 +134,91 @@ def dashboard_page():
                              initial_fund=None,
                              **nav_context)
 
+def _as_utc_datetime(value: Any) -> Optional[datetime]:
+    """Parse a database timestamp into an aware UTC datetime."""
+    if value is None:
+        return None
+    from dateutil import parser
+
+    parsed: Any
+    if isinstance(value, str):
+        parsed = parser.parse(value)
+    elif hasattr(value, "to_pydatetime"):
+        parsed = value.to_pydatetime()
+    elif isinstance(value, pd.Timestamp):
+        parsed = value.to_pydatetime()
+    elif isinstance(value, datetime):
+        parsed = value
+    else:
+        return None
+    if not isinstance(parsed, datetime):
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 @dashboard_bp.route('/api/dashboard/latest-timestamp', methods=['GET'])
 @require_auth
 def get_latest_timestamp():
-    """Get the latest timestamp from portfolio_positions (same as Streamlit)"""
+    """Latest portfolio snapshot time, plus when those rows were last written.
+
+    ``timestamp`` is the position ``date`` (4pm ET snapshot). That value does not
+    move when the 15-minute price job rewrites today's rows. ``updated_at`` does,
+    and the dashboard uses it to decide when to reload.
+    """
     fund = request.args.get('fund')
     if not fund or fund.lower() == 'all':
         fund = None
-    
+
     try:
         from flask_data_utils import get_supabase_client_flask
         client = get_supabase_client_flask()
         if not client:
             return jsonify({"error": "Database client unavailable"}), 500
-        
-        # Query latest date from portfolio_positions (same as Streamlit)
-        query = client.supabase.table("portfolio_positions").select("date")
+
+        query = client.supabase.table("portfolio_positions").select("date,updated_at")
         if fund:
             query = query.eq("fund", fund)
-        
+
         result = query.order("date", desc=True).limit(1).execute()
-        
-        if result.data and result.data[0].get('date'):
-            from dateutil import parser
-            max_date = result.data[0]['date']
-            
-            # Parse and convert to datetime (same logic as Streamlit)
-            if isinstance(max_date, str):
-                latest_timestamp = parser.parse(max_date)
-            elif hasattr(max_date, 'to_pydatetime'):
-                latest_timestamp = max_date.to_pydatetime()
-            elif isinstance(max_date, pd.Timestamp):
-                latest_timestamp = max_date.to_pydatetime()
-            else:
-                latest_timestamp = max_date
-            
-            # Ensure timezone-aware (UTC)
-            if latest_timestamp.tzinfo is None:
-                latest_timestamp = latest_timestamp.replace(tzinfo=timezone.utc)
-            
-            return jsonify({
-                "timestamp": latest_timestamp.isoformat(),
-                "formatted": latest_timestamp.strftime("%Y-%m-%d %I:%M:%S %p")
-            })
-        else:
+
+        if not result.data or not result.data[0].get("date"):
             return jsonify({"error": "No data found"}), 404
+
+        row = result.data[0]
+        latest_timestamp = _as_utc_datetime(row.get("date"))
+        if latest_timestamp is None:
+            return jsonify({"error": "No data found"}), 404
+
+        updated_at = _as_utc_datetime(row.get("updated_at"))
+        # Rows for one session share the same snapshot ``date``. Ask for the
+        # newest write on that UTC day so a later ticker update is visible.
+        day_start = latest_timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        try:
+            fresh_query = client.supabase.table("portfolio_positions").select("updated_at")
+            if fund:
+                fresh_query = fresh_query.eq("fund", fund)
+            fresh = (
+                fresh_query.gte("date", day_start.isoformat())
+                .lt("date", day_end.isoformat())
+                .order("updated_at", desc=True, nullsfirst=False)
+                .limit(1)
+                .execute()
+            )
+            if fresh.data and fresh.data[0].get("updated_at"):
+                fresh_at = _as_utc_datetime(fresh.data[0]["updated_at"])
+                if fresh_at is not None:
+                    updated_at = fresh_at
+        except Exception as fresh_error:
+            logger.warning("latest-timestamp updated_at lookup failed: %s", fresh_error)
+
+        return jsonify({
+            "timestamp": latest_timestamp.isoformat(),
+            "updated_at": updated_at.isoformat() if updated_at else None,
+            "formatted": latest_timestamp.strftime("%Y-%m-%d %I:%M:%S %p"),
+        })
     except Exception as e:
         logger.error(f"Error fetching latest timestamp: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500

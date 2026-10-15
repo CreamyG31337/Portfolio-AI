@@ -4,7 +4,8 @@ Shared Z.AI / GLM HTTP transport (OpenAI-compatible chat/completions).
 
 All production glm-* HTTP paths should use this module so multi-base failover,
 retryable HTTP statuses (including 500), and optional cheap-model fallback stay
-consistent. Does not route WebAI or Ollama.
+consistent. Does not route WebAI. When every Z.AI attempt fails, the public entry
+points retry once on the local Ollama host (see ``_local_fallback_target``).
 """
 
 from __future__ import annotations
@@ -111,7 +112,7 @@ def _yield_cheap_fallback(
 
     cheap = (get_cheap_model() or "").strip()
     logger.warning("GLM failed for model=%s; retrying once with cheap model=%s", model, cheap)
-    yield from glm_chat_completion(
+    yield from _glm_chat_completion_zai(
         messages,
         model=cheap,
         stream=stream,
@@ -124,7 +125,7 @@ def _yield_cheap_fallback(
     )
 
 
-def glm_chat_completion(
+def _glm_chat_completion_zai(
     messages: List[Dict[str, Any]],
     *,
     model: str,
@@ -382,6 +383,169 @@ def glm_chat_completion(
     yield "GLM error: all configured Z.AI base URLs failed."
 
 
+def _local_fallback_target() -> Optional[tuple[str, str]]:
+    """``(openai_base_url, model)`` for the last-resort local fallback, or None when disabled.
+
+    Uses the NVIDIA/secondary Ollama host (``GLM_LOCAL_FALLBACK_BASE_URL``, else
+    ``OLLAMA_BASE_URL_NVIDIA``, else ``OLLAMA_BASE_URL_2``). Unset host = no fallback.
+    """
+    flag = os.getenv("GLM_FALLBACK_TO_LOCAL", "true").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return None
+    base = ""
+    for name in ("GLM_LOCAL_FALLBACK_BASE_URL", "OLLAMA_BASE_URL_NVIDIA", "OLLAMA_BASE_URL_2"):
+        base = os.getenv(name, "").strip().rstrip("/")
+        if base:
+            break
+    if not base:
+        return None
+    if not base.endswith("/v1"):
+        base = f"{base}/v1"
+    model = os.getenv("GLM_LOCAL_FALLBACK_MODEL", "").strip()
+    if not model:
+        from model_registry import OLLAMA_NVIDIA_DEFAULT
+
+        model = OLLAMA_NVIDIA_DEFAULT
+    return base, model
+
+
+def _local_fallback_post(
+    payload: Dict[str, Any], *, json_mode: bool, timeout: Optional[float]
+) -> Optional[Dict[str, Any]]:
+    """POST ``payload`` to the local OpenAI-compatible endpoint; parsed ``message`` or None."""
+    target = _local_fallback_target()
+    if target is None:
+        return None
+    base, local_model = target
+    body = dict(payload)
+    body["model"] = local_model
+    body["stream"] = False
+    # qwen3.5 thinks by default and can spend the whole max_tokens budget on reasoning,
+    # returning empty content; "none" still emits structured tool_calls (probed 2026-10-10).
+    body["reasoning_effort"] = os.getenv("GLM_LOCAL_FALLBACK_REASONING", "none").strip() or "none"
+    logger.warning("GLM unavailable; falling back to local model=%s at %s", local_model, base)
+    try:
+        response = requests.post(
+            f"{base}/chat/completions",
+            json=body,
+            timeout=_effective_timeout(json_mode=json_mode, timeout=timeout),
+        )
+        response.raise_for_status()
+        choice = (response.json().get("choices") or [{}])[0]
+        msg = dict(choice.get("message") or {})
+        msg["_finish_reason"] = choice.get("finish_reason")
+        msg["_model"] = local_model
+        return msg
+    except Exception as e:
+        logger.error("Local fallback model=%s at %s failed: %s", local_model, base, e)
+        return None
+
+
+def glm_chat_completion(
+    messages: List[Dict[str, Any]],
+    *,
+    model: str,
+    stream: bool = False,
+    json_mode: bool = False,
+    temperature: float,
+    max_tokens: int,
+    timeout: Optional[float] = None,
+    allow_cheap_fallback: bool = True,
+    _cheap_fallback_done: bool = False,
+) -> Generator[str, None, None]:
+    """POST /chat/completions to Z.AI; yield content chunks (stream or single non-stream body).
+
+    If Z.AI fails before producing any output, retries once on the local Ollama host and
+    yields its answer (non-streamed); the original GLM error is yielded if that fails too.
+    """
+    error_text: Optional[str] = None
+    produced = False
+    for chunk in _glm_chat_completion_zai(
+        messages,
+        model=model,
+        stream=stream,
+        json_mode=json_mode,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        allow_cheap_fallback=allow_cheap_fallback,
+        _cheap_fallback_done=_cheap_fallback_done,
+    ):
+        if not produced and error_text is None and glm_raw_indicates_transport_failure(chunk):
+            error_text = chunk
+            continue
+        if error_text is not None:
+            yield error_text
+            error_text = None
+        produced = True
+        yield chunk
+    if error_text is None:
+        return
+    payload: Dict[str, Any] = {
+        "messages": messages,
+        "max_tokens": max(int(max_tokens), 2048) if json_mode else int(max_tokens),
+        "temperature": float(temperature),
+    }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    msg = _local_fallback_post(payload, json_mode=json_mode, timeout=timeout)
+    content = str((msg or {}).get("content") or "").strip()
+    yield content if content else error_text
+
+
+def glm_chat_completion_message(
+    messages: List[Dict[str, Any]],
+    *,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    tools: Optional[List[Dict[str, Any]]] = None,
+    tool_choice: Optional[str | Dict[str, Any]] = None,
+    timeout: Optional[float] = None,
+    allow_cheap_fallback: bool = True,
+    _cheap_fallback_done: bool = False,
+) -> GlmMessageResult:
+    """Non-stream chat/completions supporting OpenAI-style tools / tool_calls.
+
+    Falls back once to the local Ollama host when every Z.AI attempt errors.
+    """
+    result = _glm_chat_completion_message_zai(
+        messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        tools=tools,
+        tool_choice=tool_choice,
+        timeout=timeout,
+        allow_cheap_fallback=allow_cheap_fallback,
+        _cheap_fallback_done=_cheap_fallback_done,
+    )
+    if not result.error:
+        return result
+    payload: Dict[str, Any] = {
+        "messages": messages,
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+    }
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
+    msg = _local_fallback_post(payload, json_mode=False, timeout=timeout)
+    if msg is None:
+        return result
+    content = str(msg.get("content") or "").strip()
+    tool_calls = _normalize_tool_calls(msg.get("tool_calls"))
+    if not content and not tool_calls:
+        return result
+    finish_reason = msg.get("_finish_reason")
+    return GlmMessageResult(
+        content=content,
+        tool_calls=tool_calls,
+        finish_reason=str(finish_reason) if finish_reason else None,
+        model_used=msg.get("_model"),
+    )
+
+
 def glm_chat_completion_text(
     messages: List[Dict[str, Any]],
     *,
@@ -439,7 +603,7 @@ def _normalize_tool_calls(raw_calls: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def glm_chat_completion_message(
+def _glm_chat_completion_message_zai(
     messages: List[Dict[str, Any]],
     *,
     model: str,
@@ -526,7 +690,7 @@ def glm_chat_completion_message(
                         model,
                         cheap,
                     )
-                    return glm_chat_completion_message(
+                    return _glm_chat_completion_message_zai(
                         messages,
                         model=cheap,
                         temperature=temperature,
@@ -588,7 +752,7 @@ def glm_chat_completion_message(
                 from model_registry import get_cheap_model
 
                 cheap = (get_cheap_model() or "").strip()
-                return glm_chat_completion_message(
+                return _glm_chat_completion_message_zai(
                     messages,
                     model=cheap,
                     temperature=temperature,
@@ -614,7 +778,7 @@ def glm_chat_completion_message(
         from model_registry import get_cheap_model
 
         cheap = (get_cheap_model() or "").strip()
-        return glm_chat_completion_message(
+        return _glm_chat_completion_message_zai(
             messages,
             model=cheap,
             temperature=temperature,

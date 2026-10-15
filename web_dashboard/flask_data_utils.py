@@ -13,6 +13,7 @@ import numpy as np
 from datetime import datetime, timezone, date, timedelta
 
 from supabase_client import SupabaseClient
+from supabase_pagination import fetch_all_rows
 from flask_auth_utils import get_effective_user_id_flask, get_flask_cache_scope_id
 from flask_cache_utils import cache_data, skip_cache_if_empty_dataframe
 from routes.fund_cash_balance_utils import cash_amount_from_row
@@ -123,32 +124,14 @@ def _get_current_positions_flask_cached(
     try:
         logger.info(f"Loading current positions (Flask) for fund: {fund}")
         
-        all_rows = []
-        batch_size = 1000
-        offset = 0
+        filters = [("fund", "eq", fund)] if fund else None
         
-        while True:
-            # Join with securities table to get sector, industry, market_cap, country for filtering
-            query = client.supabase.table("latest_positions").select(
-                "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)"
-            )
-            if fund:
-                query = query.eq("fund", fund)
-                
-            result = query.range(offset, offset + batch_size - 1).execute()
-            
-            if not result.data:
-                break
-                
-            all_rows.extend(result.data)
-            
-            if len(result.data) < batch_size:
-                break
-                
-            offset += batch_size
-            if offset > 50000:
-                logger.warning("Position fetch limit reached")
-                break
+        all_rows = fetch_all_rows(
+            client,
+            "latest_positions",
+            "*, securities(company_name, sector, industry, market_cap, country, trailing_pe, dividend_yield, fifty_two_week_high, fifty_two_week_low, last_updated)",
+            filters=filters,
+        )
                 
         if all_rows:
             df = pd.DataFrame(all_rows)
@@ -232,33 +215,16 @@ def _get_positions_as_of_date_flask_cached(
         latest_snapshot_date = latest_date_result.data[0]['date']
         logger.info(f"Found latest snapshot date: {latest_snapshot_date} (requested as of {as_of_str})")
 
-        all_rows = []
-        batch_size = 1000
-        offset = 0
+        filters = [("date", "eq", latest_snapshot_date)]
+        if fund:
+            filters.append(("fund", "eq", fund))
 
-        while True:
-            query = client.supabase.table("portfolio_positions").select(
-                "ticker, date, shares, price, cost_basis, pnl, total_value, currency, fund, securities(company_name, sector, industry, currency)"
-            )
-
-            if fund:
-                query = query.eq("fund", fund)
-
-            # Query specifically for this snapshot timestamp
-            query = query.eq("date", latest_snapshot_date)
-
-            result = query.range(offset, offset + batch_size - 1).execute()
-            if not result.data:
-                break
-
-            all_rows.extend(result.data)
-            if len(result.data) < batch_size:
-                break
-
-            offset += batch_size
-            if offset > 50000:
-                logger.warning("Snapshot positions fetch limit reached")
-                break
+        all_rows = fetch_all_rows(
+            client,
+            "portfolio_positions",
+            "ticker, date, shares, price, cost_basis, pnl, total_value, currency, fund, securities(company_name, sector, industry, currency)",
+            filters=filters,
+        )
 
         if not all_rows:
             return pd.DataFrame()
@@ -384,30 +350,14 @@ def _get_cash_balances_flask_cached(
         if fund:
             logger.info(f"Loading cash balances (Flask) for fund: {fund}")
         
-        all_rows = []
-        batch_size = 1000
-        offset = 0
+        filters = [("fund", "eq", fund)] if fund else None
         
-        while True:
-            query = client.supabase.table("cash_balances").select("*")
-            if fund:
-                query = query.eq("fund", fund)
-            
-            result = query.range(offset, offset + batch_size - 1).execute()
-            
-            if not result.data:
-                break
-            
-            all_rows.extend(result.data)
-            
-            if len(result.data) < batch_size:
-                break
-            
-            offset += batch_size
-            
-            if offset > 50000:
-                logger.warning("Cash balances fetch limit reached")
-                break
+        all_rows = fetch_all_rows(
+            client,
+            "cash_balances",
+            "*",
+            filters=filters,
+        )
         
         balances = {"CAD": 0.0, "USD": 0.0}
         if all_rows:
@@ -727,32 +677,20 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 base_daily_totals = base_daily_totals.loc[keep_mask].copy()
 
             all_rows = []
-            batch_size = 1000
-            offset = 0
-            while True:
-                query = client.supabase.table("portfolio_positions").select(
-                    "date, total_value, cost_basis, pnl, fund, currency, "
-                    "total_value_base, cost_basis_base, pnl_base, base_currency"
-                )
-                if fund and fund.lower() != "all":
-                    query = query.eq("fund", fund)
+            filters = []
+            if fund and fund.lower() != "all":
+                filters.append(("fund", "eq", fund))
+            filters.append(("date", "gte", f"{range_start}T00:00:00"))
+            filters.append(("date", "lt", f"{range_end}T23:59:59.999999"))
 
-                query = (
-                    query.gte("date", f"{range_start}T00:00:00")
-                    .lt("date", f"{range_end}T23:59:59.999999")
-                    .order("date")
-                    .order("id")
-                    .range(offset, offset + batch_size - 1)
-                )
-
-                result = query.execute()
-                rows = result.data or []
-                if not rows:
-                    break
-                all_rows.extend(rows)
-                if len(rows) < batch_size:
-                    break
-                offset += batch_size
+            all_rows = fetch_all_rows(
+                client,
+                "portfolio_positions",
+                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
+                filters=filters,
+                order="date",
+                order_secondary="id"
+            )
 
             if not all_rows:
                 return base_daily_totals
@@ -838,32 +776,20 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
         ) -> pd.DataFrame:
             """Aggregate portfolio_positions to one row per calendar date."""
             all_rows: list[dict] = []
-            batch_size = 1000
-            offset = 0
-            while True:
-                query = client.supabase.table("portfolio_positions").select(
-                    "date, total_value, cost_basis, pnl, fund, currency, "
-                    "total_value_base, cost_basis_base, pnl_base, base_currency"
-                )
-                if fund and fund.lower() != "all":
-                    query = query.eq("fund", fund)
+            filters = []
+            if fund and fund.lower() != "all":
+                filters.append(("fund", "eq", fund))
+            filters.append(("date", "gte", f"{range_start}T00:00:00"))
+            filters.append(("date", "lt", f"{range_end}T23:59:59.999999"))
 
-                query = (
-                    query.gte("date", f"{range_start}T00:00:00")
-                    .lt("date", f"{range_end}T23:59:59.999999")
-                    .order("date")
-                    .order("id")
-                    .range(offset, offset + batch_size - 1)
-                )
-
-                result = query.execute()
-                rows = result.data or []
-                if not rows:
-                    break
-                all_rows.extend(rows)
-                if len(rows) < batch_size:
-                    break
-                offset += batch_size
+            all_rows = fetch_all_rows(
+                client,
+                "portfolio_positions",
+                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
+                filters=filters,
+                order="date",
+                order_secondary="id"
+            )
 
             if not all_rows:
                 return pd.DataFrame(columns=["date", "value", "cost_basis", "pnl"])
@@ -1136,33 +1062,20 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
 
         if daily_totals is None:
             # Query with base columns (Original Logic)
-            all_rows = []
-            batch_size = 1000
-            offset = 0
-            
-            while True:
-                query = client.supabase.table("portfolio_positions").select(
-                    "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency"
-                )
+            filters = []
+            if fund and fund.lower() != 'all':
+                filters.append(("fund", "eq", fund))
+            if cutoff_date:
+                filters.append(("date", "gte", cutoff_date.strftime('%Y-%m-%dT%H:%M:%SZ')))
 
-                if fund and fund.lower() != 'all':
-                    query = query.eq("fund", fund)
-
-                if cutoff_date:
-                    query = query.gte("date", cutoff_date.strftime('%Y-%m-%dT%H:%M:%SZ'))
-
-                result = query.order("date").order("id").range(offset, offset + batch_size - 1).execute()
-
-                rows = result.data
-                if not rows:
-                    break
-
-                all_rows.extend(rows)
-                if len(rows) < batch_size:
-                    break
-                offset += batch_size
-                if offset > 50000:
-                    break
+            all_rows = fetch_all_rows(
+                client,
+                "portfolio_positions",
+                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
+                filters=filters,
+                order="date",
+                order_secondary="id"
+            )
 
             if not all_rows:
                 return pd.DataFrame()
@@ -1248,37 +1161,18 @@ def _fetch_dividend_log_flask_cached(days_lookback: int = 365, fund: Optional[st
         start_date = (datetime.now() - timedelta(days=days_lookback)).date().isoformat()
         
         # Include securities(company_name) join for consistency with trade_log
-        query = client.supabase.table('dividend_log')\
-            .select('*, securities(company_name)')\
-            .gte('pay_date', start_date)
-        
-        # Apply fund filter if provided
+        filters = [("pay_date", "gte", start_date)]
         if fund:
-            query = query.eq('fund', fund)
+            filters.append(("fund", "eq", fund))
             
-        query = query.order('pay_date', desc=True)
-            
-        # Paginate results
-        all_rows = []
-        batch_size = 1000
-        offset = 0
-
-        while True:
-            response = query.range(offset, offset + batch_size - 1).execute()
-
-            if not response.data:
-                break
-
-            all_rows.extend(response.data)
-
-            if len(response.data) < batch_size:
-                break
-
-            offset += batch_size
-
-            if offset > 50000:
-                logger.warning("Reached 50,000 row safety limit in _fetch_dividend_log_flask_cached pagination")
-                break
+        all_rows = fetch_all_rows(
+            client,
+            "dividend_log",
+            "*, securities(company_name)",
+            filters=filters,
+            order="pay_date",
+            order_desc=True
+        )
 
         return all_rows
     except Exception as e:
@@ -1337,40 +1231,19 @@ def get_individual_holdings_performance_flask(fund: str, days: int = 7) -> pd.Da
         else:
             cutoff_str = None  # All time
         
-        # Fetch position data with pagination - join with securities for sector/industry/currency
-        all_rows = []
-        batch_size = 1000
-        offset = 0
-        
-        while True:
-            # Optimization: Don't join securities here - fetching sector/industry for 36k+ rows is wasteful
-            # Fetch base data only, then batch fetch securities metadata once for unique tickers
-            query = client.supabase.table("portfolio_positions").select(
-                "ticker, date, shares, price, total_value, currency"
-            )
+        # Optimization: Don't join securities here - fetching sector/industry for 36k+ rows is wasteful
+        # Fetch base data only, then batch fetch securities metadata once for unique tickers
+        filters = [("fund", "eq", fund)]
+        if cutoff_str:
+            filters.append(("date", "gte", f"{cutoff_str}T00:00:00"))
             
-            query = query.eq("fund", fund)
-            
-            if cutoff_str:
-                query = query.gte("date", f"{cutoff_str}T00:00:00")
-            
-            result = query.order("date").range(offset, offset + batch_size - 1).execute()
-            
-            rows = result.data
-            if not rows:
-                break
-            
-            all_rows.extend(rows)
-            
-            if len(rows) < batch_size:
-                break
-            
-            offset += batch_size
-            
-            # Safety break
-            if offset > 50000:
-                logger.warning("Reached 50,000 row safety limit")
-                break
+        all_rows = fetch_all_rows(
+            client,
+            "portfolio_positions",
+            "ticker, date, shares, price, total_value, currency",
+            filters=filters,
+            order="date"
+        )
         
         if not all_rows:
             return pd.DataFrame()

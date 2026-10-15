@@ -5684,26 +5684,23 @@ def api_congress_positions_data():
         limit = min(int(request.args.get('limit', 500)), 2000)
         offset = int(request.args.get('offset', 0))
 
-        # Build query - join with politicians to get name
-        query = client.supabase.table("congress_positions") \
-            .select("*, politicians(name, party, chamber)")
-
         # Period filter on first_buy_date
+        cutoff = None
         if period == '2025':
-            query = query.gte("first_buy_date", "2025-01-01")
+            cutoff = "2025-01-01"
         elif period == 'last_12m':
             from datetime import datetime, timedelta
             cutoff = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-            query = query.gte("first_buy_date", cutoff)
         # 'all' = no date filter
 
-        # Status filter (only closed for now)
-        query = query.eq("status", "closed")
+        def _apply_filters(q):
+            if cutoff:
+                q = q.gte("first_buy_date", cutoff)
+            # Status filter (only closed for now)
+            return q.eq("status", "closed")
 
-        # Politician name filter
-        if politician:
-            # We can't filter on joined table easily, so we'll do it in post-processing
-            pass
+        # Politician name filter: we can't filter on the joined table easily,
+        # so it is applied in post-processing below.
 
         # Sorting
         allowed_sorts = {
@@ -5717,11 +5714,33 @@ def api_congress_positions_data():
         }
         sort_column = allowed_sorts.get(sort_by, 'est_pnl')
         is_desc = sort_dir.lower() == 'desc'
-        query = query.order(sort_column, desc=is_desc, nullsfirst=False)
 
-        query = query.range(offset, offset + limit - 1)
-        result = query.execute()
-        rows = result.data or []
+        # PostgREST caps each response at SUPABASE_MAX_ROWS, so a 2000-row
+        # request has to be fetched in pages. The id tie-breaker keeps range()
+        # paging stable when the sort column has duplicates or NULLs.
+        from supabase_pagination import SUPABASE_MAX_ROWS
+        rows = []
+        while len(rows) < limit:
+            start = offset + len(rows)
+            size = min(SUPABASE_MAX_ROWS, limit - len(rows))
+            page = (
+                _apply_filters(
+                    client.supabase.table("congress_positions")
+                    .select("*, politicians(name, party, chamber)")
+                )
+                .order(sort_column, desc=is_desc, nullsfirst=False)
+                .order("id")
+                .range(start, start + size - 1)
+                .execute()
+            ).data or []
+            rows.extend(page)
+            if len(page) < size:
+                break
+
+        count_result = _apply_filters(
+            client.supabase.table("congress_positions").select("id", count="exact", head=True)
+        ).execute()
+        total = count_result.count if count_result.count is not None else len(rows)
 
         # Format response
         positions = []
@@ -5752,7 +5771,8 @@ def api_congress_positions_data():
                 "spy_pct_change": float(row["spy_pct_change"]) if row.get("spy_pct_change") is not None else None,
             })
 
-        return jsonify({"positions": positions, "total": len(positions)})
+        # total counts every matching position before the politician post-filter.
+        return jsonify({"positions": positions, "total": total})
 
     except Exception as e:
         logger.error(f"Error in congress positions data API: {e}", exc_info=True)
