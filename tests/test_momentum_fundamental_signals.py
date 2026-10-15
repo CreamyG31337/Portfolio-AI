@@ -262,6 +262,60 @@ class TestFundamentalSignal:
             assert "metrics_available" in result[cat]
             assert "metrics_total" in result[cat]
 
+    def test_lookthrough_rated_pass_through(self, strong_fundamentals: dict) -> None:
+        """Look-through metrics with enough data are rated and carry the contract."""
+        signal = FundamentalSignal()
+        payload = {
+            **strong_fundamentals,
+            "fcf_positive_weight": 0.82,
+            "_lookthrough": {
+                "etf_ticker": "BUZZ",
+                "as_of": "2026-04-01",
+                "holdings_total": 40,
+                "holdings_with_fundamentals": 35,
+                "weight_with_fundamentals": 0.91,
+            },
+        }
+        result = signal.evaluate(payload)
+        assert result["quality"] in ("STRONG", "GOOD", "FAIR", "WEAK")
+        assert "insufficient_data" not in result
+        assert result["method"] == "lookthrough"
+        assert result["is_etf"] is True
+        assert result["lookthrough"]["etf_ticker"] == "BUZZ"
+        assert result["lookthrough"]["as_of"] == "2026-04-01"
+        assert result["lookthrough"]["holdings_total"] == 40
+        assert result["lookthrough"]["weight_with_fundamentals"] == 0.91
+        assert result["health"]["fcf_positive_weight"] == 0.82
+
+    def test_lookthrough_insufficient_pass_through(self) -> None:
+        """Sparse look-through uses coverage reason and still attaches meta."""
+        signal = FundamentalSignal()
+        payload = {
+            "trailing_pe": 12.0,
+            "fcf_positive_weight": 0.4,
+            "_lookthrough": {
+                "etf_ticker": "ARKK",
+                "as_of": "2026-03-15",
+                "holdings_total": 10,
+                "holdings_with_fundamentals": 2,
+                "weight_with_fundamentals": 0.35,
+            },
+        }
+        result = signal.evaluate(payload)
+        assert result["quality"] == "UNKNOWN"
+        assert result["insufficient_data"] is True
+        assert result["method"] == "lookthrough"
+        assert result["is_etf"] is True
+        assert result["reason"] == "Holdings data covers only 35% of fund weight"
+        assert result["lookthrough"]["weight_with_fundamentals"] == 0.35
+        assert result["health"]["fcf_positive_weight"] == 0.4
+
+    def test_non_lookthrough_has_no_method_key(self, strong_fundamentals: dict) -> None:
+        signal = FundamentalSignal()
+        result = signal.evaluate(strong_fundamentals)
+        assert "method" not in result
+        assert "lookthrough" not in result
+
 
 # ---------------------------------------------------------------------------
 # SignalEngine integration (backward compatibility)

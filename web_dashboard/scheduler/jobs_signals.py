@@ -217,6 +217,16 @@ def signal_scan_job() -> None:
             except Exception as batch_err:
                 logger.error(f"Failed to batch fetch fundamentals: {batch_err}")
 
+        # One Research DB client for ETF look-through across the whole scan
+        lookthrough_pg = None
+        try:
+            from postgres_client import PostgresClient
+            lookthrough_pg = PostgresClient()
+        except Exception as pg_err:
+            logger.debug(f"PostgresClient unavailable for ETF look-through: {pg_err}")
+
+        from web_dashboard.signals.etf_lookthrough_loader import resolve_signal_fundamentals
+
         # Process each ticker
         for ticker_data in watchlist:
             ticker = ticker_data.get('ticker')
@@ -232,8 +242,13 @@ def signal_scan_job() -> None:
                     errors += 1
                     continue
 
-                # Get fundamentals from pre-fetched map
-                fundamentals = fundamentals_map.get(ticker.upper())
+                # Get fundamentals from pre-fetched map; ETF → holdings look-through
+                fundamentals = resolve_signal_fundamentals(
+                    ticker.upper(),
+                    fundamentals_map.get(ticker.upper()),
+                    supabase_client,
+                    postgres_client=lookthrough_pg,
+                )
                 
                 # Generate signals (pass fundamentals if available)
                 signals = signal_engine.evaluate(
