@@ -435,13 +435,59 @@ _FUNDAMENTAL_INDICATOR_COLS = [
 ]
 
 
+def _fundamental_updates_from_info(info: dict[str, Any]) -> dict[str, float]:
+    """Map a yfinance info dict to {securities column: finite float}."""
+    updates: dict[str, float] = {}
+    for yf_key, db_col in _YFINANCE_FUNDAMENTAL_MAP.items():
+        raw = info.get(yf_key)
+        if raw is not None:
+            try:
+                val = float(raw)
+                # Skip inf/nan -- yfinance sometimes returns these
+                if math.isfinite(val):
+                    updates[db_col] = val
+            except (TypeError, ValueError):
+                pass
+    return updates
+
+
 # Max yfinance calls per fundamentals refresh run (~1s each).  Remaining gaps
 # are deferred and picked up by later runs.
 _FUNDAMENTALS_MAX_PER_RUN = 400
 
 # ETF holding tickers must look like plain US-listed symbols; this skips cash
-# rows and foreign codes like "7203 JP".
-_ETF_HOLDING_TICKER_RE = re.compile(r'^[A-Z][A-Z0-9.\-]{0,9}$')
+# rows and foreign codes like "7203 JP".  The slash is allowed for share-class
+# spellings like Global X / VanEck's "BF/B".
+_ETF_HOLDING_TICKER_RE = re.compile(r'^[A-Z][A-Z0-9.\-/]{0,9}$')
+
+# Share-class markers at the end of a holding name: "CLASS B", "CL B",
+# "-CL A", "CLASS-A", ... (case-insensitive), capturing the class letter.
+_SHARE_CLASS_NAME_RE = re.compile(r'(?:CLASS|CL)[ \-]?([A-Z])$', re.IGNORECASE)
+
+
+def _yfinance_symbol_alias(ticker: str, holding_name: str | None) -> str | None:
+    """yfinance-compatible alias for a share-class ticker spelling.
+
+    - Slash form (Global X / VanEck): ``BF/B`` -> ``BF-B``.
+    - Joined form (iShares): when the holding name ends in a share-class
+      marker naming the same letter the ticker ends with (and the ticker has
+      at least 2 characters before it), ``BRKB`` -> ``BRK-B``.
+
+    Returns None when no alias applies.  The alias is a *fallback*: callers
+    only fetch it after the as-written ticker yields no fundamentals, so a
+    real ticker like FOXA ("FOX CORP CLASS A") is never blindly rewritten.
+    """
+    if not ticker:
+        return None
+    if '/' in ticker:
+        return ticker.replace('/', '-')
+    if holding_name:
+        match = _SHARE_CLASS_NAME_RE.search(holding_name)
+        if match:
+            letter = match.group(1).upper()
+            if ticker.endswith(letter) and len(ticker) >= 3:
+                return ticker[:-1] + '-' + letter
+    return None
 
 # Fetch-skip backoff: exponential retry delay for tickers yfinance can't
 # serve, so failed fundamentals fetches aren't retried every night.
@@ -787,6 +833,7 @@ def fundamentals_refresh_job() -> None:
 
         wl_counts = {'updated': 0, 'skipped': 0, 'errors': 0}
         etf_counts = {'updated': 0, 'inserted': 0, 'skipped': 0, 'errors': 0}
+        alias_successes = 0
 
         # Batched fetch-skip writes (collected during the loop, flushed once)
         skip_upserts: list[dict[str, Any]] = []
@@ -816,8 +863,32 @@ def fundamentals_refresh_job() -> None:
         for ticker, is_etf in work:
             counts = etf_counts if is_etf else wl_counts
             try:
+                holding_name = (
+                    etf_candidates.get(ticker, {}).get('holding_name')
+                    if is_etf else None
+                )
+                alias = _yfinance_symbol_alias(ticker, holding_name)
+
                 ticker_obj = yf.Ticker(ticker)
                 info = ticker_obj.info or {}
+                updates = _fundamental_updates_from_info(info)
+
+                # Share-class fallback: ETF holdings files spell share-class
+                # tickers in ways yfinance won't serve (BRKB, BF/B).  When the
+                # as-written spelling fills none of the indicator columns,
+                # retry under the alias (BRK-B, BF-B); any write still lands
+                # on the holding's own spelling, which the look-through
+                # loader looks up by.
+                if alias and not any(col in updates for col in _FUNDAMENTAL_INDICATOR_COLS):
+                    time.sleep(1.0)  # extra yfinance call, extra rate-limit sleep
+                    alias_info = yf.Ticker(alias).info or {}
+                    alias_updates = _fundamental_updates_from_info(alias_info)
+                    if any(col in alias_updates for col in _FUNDAMENTAL_INDICATOR_COLS):
+                        info, updates = alias_info, alias_updates
+                        alias_successes += 1
+                        logger.info(
+                            f"ℹ️  {ticker}: fetched fundamentals via share-class alias {alias}"
+                        )
 
                 if not info or info.get('quoteType') is None:
                     logger.debug(f"No yfinance info for {ticker}, skipping")
@@ -825,18 +896,6 @@ def fundamentals_refresh_job() -> None:
                     _record_skip(ticker, 'no_yfinance_info')
                     time.sleep(0.3)
                     continue
-
-                updates: dict[str, float] = {}
-                for yf_key, db_col in _YFINANCE_FUNDAMENTAL_MAP.items():
-                    raw = info.get(yf_key)
-                    if raw is not None:
-                        try:
-                            val = float(raw)
-                            # Skip inf/nan -- yfinance sometimes returns these
-                            if math.isfinite(val):
-                                updates[db_col] = val
-                        except (TypeError, ValueError):
-                            pass
 
                 if is_etf and ticker in etf_missing:
                     # No securities row: insert only when yfinance confirms an
@@ -906,6 +965,7 @@ def fundamentals_refresh_job() -> None:
             f"(of {len(etf_ordered)} gaps); "
             f"{deferred} deferred by per-run cap; "
             f"{suppressed} suppressed by backoff; "
+            f"{alias_successes} via share-class alias; "
             f"skips recorded: {skip_reason_counts['no_yfinance_info']} no_yfinance_info, "
             f"{skip_reason_counts['not_equity']} not_equity, "
             f"{skip_reason_counts['no_fundamentals']} no_fundamentals"

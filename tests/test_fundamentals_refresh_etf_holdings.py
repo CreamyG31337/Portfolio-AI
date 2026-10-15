@@ -3,15 +3,18 @@
 Covers: watchlist gaps processed before ETF holdings, the per-run cap, the
 holding-ticker regex filter, insert-for-missing-row only for ETF holdings and
 only when yfinance reports quoteType == EQUITY, the Research DB failure
-fallback to watchlist-only, and the fundamentals_fetch_skips backoff table
-(suppression before the cap, per-reason recording, success clearing the row,
-growing retry_after, transient exceptions not recorded, skips-table failures
-tolerated).
+fallback to watchlist-only, share-class alias fallbacks (BRKB -> BRK-B,
+BF/B -> BF-B; writes land on the holding's own spelling), and the
+fundamentals_fetch_skips backoff table (suppression before the cap,
+per-reason recording, success clearing the row, growing retry_after,
+transient exceptions not recorded, skips-table failures tolerated).
 """
 
 from datetime import datetime, timedelta, timezone
 
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from web_dashboard.scheduler import jobs_signals
 
@@ -581,3 +584,223 @@ def test_skips_table_error_job_still_runs():
     assert '0 suppressed by backoff' in res.message
     assert res.failed.assert_not_called() is None
     assert res.log.call_args.args[1] is True
+
+
+# --- share-class aliases (BRKB -> BRK-B, BF/B -> BF-B) ---
+
+@pytest.mark.parametrize('ticker,holding_name,expected', [
+    # Joined form (iShares): name ends in a share-class marker naming the
+    # letter the ticker ends with
+    ('BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 'BRK-B'),
+    ('BFB', 'BROWN FORMAN CORP CLASS B', 'BF-B'),
+    ('MOGA', 'MOOG INC-CLASS A', 'MOG-A'),
+    ('GEFB', 'GREIF INC CLASS B', 'GEF-B'),
+    ('CRDA', 'CRANE CO CLASS A', 'CRD-A'),
+    ('LEVB', 'LEVY CORP CL B', 'LEV-B'),
+    ('BRKB', 'berkshire hathaway inc class b', 'BRK-B'),  # case-insensitive
+    # Slash form (Global X / VanEck): applies with or without a name
+    ('BF/B', 'Brown-Forman Corp', 'BF-B'),
+    ('BF/B', None, 'BF-B'),
+    ('MOG/A', 'MOOG INC-CLASS A', 'MOG-A'),
+    # Real tickers that must not be blindly rewritten -- returning an alias
+    # here is fine, the alias is only fetched when the as-written ticker has
+    # no fundamentals (RUSHB/FOXA/NWSA) or has no class marker (GOOGL)
+    ('RUSHB', 'RUSH ENTERPRISES INC CLASS B', 'RUSH-B'),
+    ('KELYA', 'KELLY SERVICES INC CLASS A', 'KELY-A'),
+    ('FOXA', 'FOX CORP CLASS A', 'FOX-A'),
+    ('NWSA', 'NEWS CORP CLASS A', 'NWS-A'),
+    ('GOOGL', 'Alphabet Inc.', None),
+    # No alias applies
+    ('BRKB', None, None),                       # joined form needs the name
+    ('BRKB', 'BERKSHIRE HATHAWAY INC', None),   # name has no class marker
+    ('BRKB', 'MOOG INC-CLASS A', None),         # ticker letter != name letter
+    ('XB', 'SHORT CO CLASS B', None),           # fewer than 2 chars before B
+    ('BRK.B', 'BERKSHIRE HATHAWAY INC', None),  # already yfinance-compatible
+    ('', 'ANY CO CLASS A', None),
+])
+def test_yfinance_symbol_alias_table(ticker, holding_name, expected):
+    """Every spelling from the verified yfinance table, plus edge cases."""
+    assert jobs_signals._yfinance_symbol_alias(ticker, holding_name) == expected
+
+
+def test_alias_used_when_as_written_has_no_fundamentals():
+    """BRKB's as-written info has no fundamentals; the BRK-B alias is fetched
+    and its data is written to the BRKB securities row (the key the
+    look-through loader uses)."""
+    holdings = [_holding('BUZZ', 'BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 5.0)]
+    securities = [_sec_row('BRKB')]
+    infos = {
+        'BRKB': {'quoteType': 'NONE', 'trailingPE': 1.2},  # no indicator col
+        'BRK-B': {'quoteType': 'EQUITY', 'returnOnEquity': 0.12},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['BRKB', 'BRK-B']
+    # Write lands on the holding's own spelling, not the alias
+    assert [t for t, _ in res.table.updates] == ['BRKB']
+    assert res.table.updates[0][1] == {'return_on_equity': 0.12}
+    assert res.table.upserts == []
+    assert 'ETF holdings 1 updated' in res.message
+    assert '1 via share-class alias' in res.message
+    # Alias success means no skip is recorded
+    assert res.skips.upserts == []
+    assert res.skips.deletes == []
+
+
+def test_alias_not_used_when_as_written_succeeds():
+    """RUSHB-style tickers that yfinance serves as written never pay the
+    extra alias call."""
+    holdings = [
+        _holding('BUZZ', 'RUSHB', 'RUSH ENTERPRISES INC CLASS B', 5.0),
+        _holding('BUZZ', 'FOXA', 'FOX CORP CLASS A', 4.0),
+    ]
+    securities = [_sec_row('RUSHB'), _sec_row('FOXA')]
+    infos = {
+        'RUSHB': {'quoteType': 'EQUITY', 'forwardPE': 10.0},
+        'FOXA': {'quoteType': 'EQUITY', 'priceToBook': 2.0},
+        'RUSH-B': {'quoteType': None},
+        'FOX-A': {'quoteType': None},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['RUSHB', 'FOXA']
+    assert [t for t, _ in res.table.updates] == ['RUSHB', 'FOXA']
+    assert '0 via share-class alias' in res.message
+
+
+def test_alias_insert_for_missing_row_uses_alias_info():
+    """An ETF holding with no securities row is inserted under its own
+    spelling, with the alias's EQUITY check and name, when the as-written
+    fetch has no fundamentals."""
+    holdings = [_holding('BUZZ', 'BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 5.0)]
+    infos = {
+        'BRKB': {'quoteType': 'NONE'},
+        'BRK-B': {
+            'quoteType': 'EQUITY',
+            'longName': 'Berkshire Hathaway Inc',
+            'returnOnEquity': 0.12,
+        },
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=[],  # no securities row anywhere
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['BRKB', 'BRK-B']
+    assert len(res.table.upserts) == 1
+    upsert = res.table.upserts[0]
+    assert upsert['ticker'] == 'BRKB'  # holding's spelling, not the alias
+    assert upsert['company_name'] == 'Berkshire Hathaway Inc'
+    assert upsert['return_on_equity'] == 0.12
+    assert 'ETF holdings 0 updated, 1 inserted' in res.message
+    assert '1 via share-class alias' in res.message
+
+
+def test_slash_ticker_is_candidate_and_fetches_via_alias():
+    """BF/B passes the holding-ticker regex (slash now allowed), fails
+    as-written, and is updated via the BF-B alias under its own spelling."""
+    holdings = [
+        _holding('GXL', 'BF/B', 'Brown-Forman Corp', 3.0),
+        _holding('GXL', '7203 JP', 'Toyota Motor', 9.0),  # still filtered out
+    ]
+    securities = [_sec_row('BF/B')]
+    infos = {
+        'BF/B': {},  # yfinance serves nothing for the slash spelling
+        'BF-B': {'quoteType': 'EQUITY', 'forwardPE': 21.0},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['BF/B', 'BF-B']
+    assert [t for t, _ in res.table.updates] == ['BF/B']
+    assert res.table.updates[0][1] == {'forward_pe': 21.0}
+    assert '1 via share-class alias' in res.message
+
+
+def test_watchlist_slash_ticker_uses_slash_rule_only():
+    """Watchlist tickers have no holding name, so only the slash rule
+    applies -- but it does apply."""
+    securities = [_sec_row('BF/B')]
+    infos = {
+        'BF/B': {},
+        'BF-B': {'quoteType': 'EQUITY', 'forwardPE': 21.0},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[{'ticker': 'bf/b'}],
+        securities_rows=securities,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['BF/B', 'BF-B']
+    assert [t for t, _ in res.table.updates] == ['BF/B']
+
+
+def test_skip_recorded_once_when_both_spelling_and_alias_fail():
+    """When neither the as-written ticker nor the alias yields anything, one
+    skip row is recorded (not two)."""
+    holdings = [_holding('BUZZ', 'GEFB', 'GREIF INC CLASS B', 5.0)]
+    securities = [_sec_row('GEFB')]
+    infos = {
+        'GEFB': {},    # no info at all
+        'GEF-B': {},   # alias serves nothing either
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['GEFB', 'GEF-B']
+    upserts = _flattened_upserts(res.skips)
+    assert list(upserts) == ['GEFB']
+    assert upserts['GEFB']['reason'] == 'no_yfinance_info'
+    assert upserts['GEFB']['failure_count'] == 1
+    assert '0 via share-class alias' in res.message
+
+
+def test_alias_success_clears_skip():
+    """A holding previously recorded as unfetchable whose alias now fills an
+    indicator column gets its skip row deleted."""
+    holdings = [_holding('BUZZ', 'BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 5.0)]
+    securities = [_sec_row('BRKB')]
+    infos = {
+        'BRKB': {'quoteType': 'NONE'},
+        'BRK-B': {'quoteType': 'EQUITY', 'returnOnEquity': 0.12},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+        skips_rows=[_skip_row('BRKB', failure_count=3, retry_in_days=-1)],
+    )
+
+    assert res.ticker_calls == ['BRKB', 'BRK-B']
+    assert [t for t, _ in res.table.updates] == ['BRKB']
+    assert res.skips.upserts == []
+    assert res.skips.deletes == [['BRKB']]
+    assert '1 via share-class alias' in res.message
