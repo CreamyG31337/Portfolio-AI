@@ -19,7 +19,6 @@ from scheduler.scheduler_core import log_job_execution
 logger = logging.getLogger(__name__)
 
 JOB_ID = "yahoo_sedi_insiders"
-_PAGE_SIZE = 1000
 _UPSERT_CONFLICT = "ticker,insider_name,transaction_date,type,shares,price_per_share"
 
 
@@ -83,6 +82,7 @@ def _dedup_key(record: dict) -> tuple:
 def collect_canadian_tickers(supabase_client) -> list[str]:
     """Production-fund holdings + active watchlist, Canadian suffixes only."""
     from yahoo_sedi_insider_service import is_canadian_ticker
+    from supabase_pagination import fetch_all_rows
 
     tickers: set[str] = set()
     production_funds = _production_fund_names(supabase_client)
@@ -90,27 +90,23 @@ def collect_canadian_tickers(supabase_client) -> list[str]:
         # Only scan holdings with a concrete production-fund filter. An empty or
         # failed lookup must skip the scan rather than run unfiltered (which
         # would pull TEST_* tickers); the watchlist scan below runs regardless.
-        # .order() makes range() pagination stable across pages.
+        # Ordering makes range() pagination stable across pages.
         if production_funds:
-            offset = 0
-            while True:
-                pos = (
-                    supabase_client.supabase.table("latest_positions")
-                    .select("ticker,fund")
-                    .in_("fund", production_funds)
-                    .order("fund")
-                    .order("ticker")
-                    .range(offset, offset + _PAGE_SIZE - 1)
-                    .execute()
-                )
-                page = pos.data or []
-                for row in page:
-                    t = str(row.get("ticker") or "").upper().strip()
-                    if t and is_canadian_ticker(t):
-                        tickers.add(t)
-                if len(page) < _PAGE_SIZE:
-                    break
-                offset += _PAGE_SIZE
+            def filter_production(query):
+                return query.in_("fund", production_funds)
+
+            page = fetch_all_rows(
+                supabase_client,
+                "latest_positions",
+                "ticker,fund",
+                apply_query=filter_production,
+                order="fund",
+                order_secondary="ticker",
+            )
+            for row in page:
+                t = str(row.get("ticker") or "").upper().strip()
+                if t and is_canadian_ticker(t):
+                    tickers.add(t)
         else:
             logger.warning(
                 "yahoo_sedi_insiders: no production funds resolved (%s); "
@@ -118,25 +114,18 @@ def collect_canadian_tickers(supabase_client) -> list[str]:
                 "lookup failed" if production_funds is None else "none flagged",
             )
 
-        offset = 0
-        while True:
-            wl = (
-                supabase_client.supabase.table("watched_tickers_v2")
-                .select("ticker")
-                .eq("is_active", True)
-                .order("fund")
-                .order("ticker")
-                .range(offset, offset + _PAGE_SIZE - 1)
-                .execute()
-            )
-            page = wl.data or []
-            for row in page:
-                t = str(row.get("ticker") or "").upper().strip()
-                if t and is_canadian_ticker(t):
-                    tickers.add(t)
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
+        page2 = fetch_all_rows(
+            supabase_client,
+            "watched_tickers_v2",
+            "ticker",
+            filters=[("is_active", "eq", True)],
+            order="fund",
+            order_secondary="ticker",
+        )
+        for row in page2:
+            t = str(row.get("ticker") or "").upper().strip()
+            if t and is_canadian_ticker(t):
+                tickers.add(t)
     except Exception as exc:
         logger.warning("yahoo_sedi_insiders ticker load failed: %s", exc)
     return sorted(tickers)

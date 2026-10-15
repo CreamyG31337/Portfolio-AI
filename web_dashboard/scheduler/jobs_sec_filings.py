@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 JOB_ID = "sec_filings"
 
 # Supabase REST returns at most 1000 rows per request regardless of .limit().
-_PAGE_SIZE = 1000
 
 # Re-scan a week each run: SEC filings only post on business days, the dedupe on
 # accession_no makes overlapping windows free, and a 7d window never misses a
@@ -62,41 +61,34 @@ def _collect_tickers(supabase_client) -> list[str]:
     the test suite leaves in prod Supabase. Falls back to all holdings if the
     funds lookup is empty (mirrors ticker_analysis_service / dilution_watch).
     """
+    from supabase_pagination import fetch_all_rows
     tickers: set[str] = set()
     production_funds = _production_fund_names(supabase_client)
     try:
-        offset = 0
-        while True:
-            holdings_query = supabase_client.supabase.table("latest_positions").select(
-                "ticker,fund"
-            )
+        def filter_production(query):
             if production_funds:
-                holdings_query = holdings_query.in_("fund", production_funds)
-            pos = holdings_query.range(offset, offset + _PAGE_SIZE - 1).execute()
-            page = pos.data or []
-            for row in page:
-                if row.get("ticker"):
-                    tickers.add(str(row["ticker"]).upper())
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
+                return query.in_("fund", production_funds)
+            return query
 
-        offset = 0
-        while True:
-            wl = (
-                supabase_client.supabase.table("watched_tickers_v2")
-                .select("ticker")
-                .eq("is_active", True)
-                .range(offset, offset + _PAGE_SIZE - 1)
-                .execute()
-            )
-            page = wl.data or []
-            for row in page:
-                if row.get("ticker"):
-                    tickers.add(str(row["ticker"]).upper())
-            if len(page) < _PAGE_SIZE:
-                break
-            offset += _PAGE_SIZE
+        page = fetch_all_rows(
+            supabase_client,
+            "latest_positions",
+            "ticker,fund",
+            apply_query=filter_production
+        )
+        for row in page:
+            if row.get("ticker"):
+                tickers.add(str(row["ticker"]).upper())
+
+        page2 = fetch_all_rows(
+            supabase_client,
+            "watched_tickers_v2",
+            "ticker",
+            filters=[("is_active", "eq", True)]
+        )
+        for row in page2:
+            if row.get("ticker"):
+                tickers.add(str(row["ticker"]).upper())
     except Exception as exc:
         logger.warning("sec_filings ticker load failed: %s", exc)
     return sorted(tickers)
