@@ -791,6 +791,125 @@ async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void>
     }
 }
 
+interface EtfHoldingRow {
+    ticker?: string | null;
+    name?: string | null;
+    weight_percent?: number | null;
+    shares?: number | null;
+}
+
+interface EtfHoldingsResponse {
+    success?: boolean;
+    is_tracked_etf?: boolean;
+    as_of?: string | null;
+    holding_count?: number;
+    holdings?: EtfHoldingRow[];
+}
+
+const ETF_HOLDINGS_PREVIEW_COUNT = 15;
+let etfHoldingsExpanded = false;
+let etfHoldingsCurrent: EtfHoldingRow[] = [];
+
+async function loadTickerEtfHoldings(ticker: string, seq?: number): Promise<void> {
+    const section = document.getElementById('etf-holdings-section');
+    if (!section) return;
+    try {
+        const resp = await fetch(`/api/ticker/${encodeURIComponent(ticker)}/etf-holdings`, {
+            credentials: 'include',
+        });
+        if (seq !== undefined && isStaleLoad(seq, ticker)) return;
+        if (!resp.ok) {
+            section.classList.add('hidden');
+            return;
+        }
+        const body = await resp.json() as EtfHoldingsResponse;
+        if (seq !== undefined && isStaleLoad(seq, ticker)) return;
+        if (!body.is_tracked_etf || !body.holdings?.length) {
+            section.classList.add('hidden');
+            return;
+        }
+        renderEtfHoldingsPanel(ticker, body);
+        section.classList.remove('hidden');
+    } catch {
+        section.classList.add('hidden');
+    }
+}
+
+function renderEtfHoldingsPanel(ticker: string, body: EtfHoldingsResponse): void {
+    const asOfEl = document.getElementById('etf-holdings-as-of');
+    if (asOfEl) {
+        asOfEl.textContent = body.as_of ? `(as of ${body.as_of})` : '';
+    }
+
+    const fullLink = document.getElementById('etf-holdings-full-link') as HTMLAnchorElement | null;
+    if (fullLink) {
+        fullLink.href = `/etf_holdings?etf=${encodeURIComponent(ticker)}`;
+    }
+
+    etfHoldingsCurrent = body.holdings || [];
+    etfHoldingsExpanded = false;
+
+    const toggle = document.getElementById('etf-holdings-toggle');
+    if (toggle) {
+        toggle.classList.toggle('hidden', etfHoldingsCurrent.length <= ETF_HOLDINGS_PREVIEW_COUNT);
+        toggle.onclick = () => {
+            etfHoldingsExpanded = !etfHoldingsExpanded;
+            renderEtfHoldingsRows();
+        };
+    }
+    renderEtfHoldingsRows();
+}
+
+function renderEtfHoldingsRows(): void {
+    const list = document.getElementById('etf-holdings-list');
+    if (!list) return;
+    list.replaceChildren();
+
+    const rows = etfHoldingsExpanded
+        ? etfHoldingsCurrent
+        : etfHoldingsCurrent.slice(0, ETF_HOLDINGS_PREVIEW_COUNT);
+    rows.forEach((holding) => list.appendChild(buildEtfHoldingRow(holding)));
+
+    const toggle = document.getElementById('etf-holdings-toggle');
+    if (toggle) {
+        if (etfHoldingsExpanded) {
+            toggle.textContent = `Show top ${ETF_HOLDINGS_PREVIEW_COUNT}`;
+        } else {
+            toggle.textContent = `Show all ${etfHoldingsCurrent.length}`;
+        }
+    }
+}
+
+function buildEtfHoldingRow(holding: EtfHoldingRow): HTMLDivElement {
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between gap-3 px-4 py-2';
+
+    const left = document.createElement('div');
+    left.className = 'min-w-0';
+
+    const link = document.createElement('a');
+    if (holding.ticker) {
+        link.href = `/ticker?ticker=${encodeURIComponent(holding.ticker)}`;
+        link.className = 'text-sm font-medium text-text-primary hover:text-accent';
+    }
+    link.textContent = holding.ticker || '—';
+    left.appendChild(link);
+
+    const name = document.createElement('div');
+    name.className = 'text-xs text-text-tertiary truncate';
+    name.textContent = holding.name || '';
+    left.appendChild(name);
+
+    const weight = document.createElement('span');
+    weight.className = 'text-sm font-semibold text-text-primary whitespace-nowrap';
+    weight.textContent = holding.weight_percent != null
+        ? `${holding.weight_percent.toFixed(2)}%`
+        : '—';
+
+    row.append(left, weight);
+    return row;
+}
+
 async function loadTickerData(ticker: string): Promise<void> {
     const seq = ++loadSeq;
     allCongressTrades = [];
@@ -862,6 +981,9 @@ async function loadTickerData(ticker: string): Promise<void> {
         if (isStaleLoad(seq, ticker)) return;
 
         await loadEvidenceTimeline(ticker, seq);
+        if (isStaleLoad(seq, ticker)) return;
+
+        await loadTickerEtfHoldings(ticker, seq);
         if (isStaleLoad(seq, ticker)) return;
 
         // Load and render chart
@@ -3550,6 +3672,7 @@ function hideAllSections(): void {
         'watchlist-section',
         'insights-section',
         'evidence-timeline-section',
+        'etf-holdings-section',
         'signals-section',
         'ai-analysis-section'
     ];

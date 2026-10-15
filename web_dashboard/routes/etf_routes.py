@@ -1135,6 +1135,77 @@ def etf_holdings():
     )
 
 
+@etf_bp.route('/api/ticker/<ticker>/etf-holdings', methods=['GET'])
+@require_auth
+def ticker_etf_holdings_api(ticker: str):
+    """Latest holdings snapshot for a tracked ETF (etf_holdings_log in the Research DB).
+
+    Used by the ticker details page. Untracked tickers are not an error:
+    the panel simply stays hidden when ``is_tracked_etf`` is false.
+    """
+    etf = (ticker or '').strip().upper()
+    if not etf:
+        return jsonify({"success": False, "error": "ticker is required"}), 400
+
+    try:
+        pc = _get_postgres_client()
+
+        latest_res = pc.execute_query(
+            "SELECT MAX(date) AS latest_date FROM etf_holdings_log WHERE etf_ticker = %s",
+            (etf,),
+        )
+        latest = latest_res[0].get('latest_date') if latest_res else None
+        if latest is None:
+            return jsonify({
+                "success": True,
+                "is_tracked_etf": False,
+                "as_of": None,
+                "holding_count": 0,
+                "holdings": [],
+            })
+
+        if isinstance(latest, str):
+            latest = datetime.strptime(latest, '%Y-%m-%d').date()
+        as_of_str = latest.isoformat()
+
+        rows = pc.execute_query(
+            """
+            SELECT holding_ticker, holding_name, shares_held, weight_percent
+            FROM etf_holdings_log
+            WHERE date = %s AND etf_ticker = %s AND shares_held > 0
+            ORDER BY weight_percent DESC, holding_ticker ASC
+            """,
+            (as_of_str, etf),
+        )
+
+        holdings = [
+            {
+                "ticker": row.get('holding_ticker'),
+                "name": row.get('holding_name'),
+                "weight_percent": (
+                    float(row['weight_percent'])
+                    if row.get('weight_percent') is not None else None
+                ),
+                "shares": (
+                    int(row['shares_held'])
+                    if row.get('shares_held') is not None else None
+                ),
+            }
+            for row in (rows or [])
+        ]
+
+        return jsonify({
+            "success": True,
+            "is_tracked_etf": True,
+            "as_of": as_of_str,
+            "holding_count": len(holdings),
+            "holdings": holdings,
+        })
+    except Exception as e:
+        logger.error(f"Error fetching ETF holdings for ticker {ticker}: {e}", exc_info=True)
+        return jsonify({"success": False, "error": "Failed to fetch ETF holdings"}), 500
+
+
 @etf_bp.route("/sector_insights", methods=["GET"])
 @require_auth
 def sector_insights():
