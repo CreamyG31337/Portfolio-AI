@@ -700,6 +700,22 @@ def _flush_fetch_skip_writes(
         logger.warning(f"Could not record fundamentals fetch skips: {e}")
 
 
+def _flush_symbol_alias_writes(
+    supabase_client, upserts: list[dict[str, Any]]
+) -> None:
+    """Record share-class aliases that fetched successfully (best-effort;
+    failures only log) so the ETF holdings panel can link holdings to the
+    Yahoo symbol."""
+    chunk_size = 200
+    try:
+        for i in range(0, len(upserts), chunk_size):
+            supabase_client.supabase.table("ticker_symbol_aliases") \
+                .upsert(upserts[i:i + chunk_size]) \
+                .execute()
+    except Exception as e:
+        logger.warning(f"Could not record ticker symbol aliases: {e}")
+
+
 def fundamentals_refresh_job() -> None:
     """Backfill / refresh fundamental columns in the securities table.
 
@@ -840,6 +856,10 @@ def fundamentals_refresh_job() -> None:
         skip_deletes: list[str] = []
         skip_reason_counts = {reason: 0 for reason in _FETCH_SKIP_REASONS}
 
+        # Successful share-class aliases, flushed to ticker_symbol_aliases
+        # once after the loop (BRKB -> BRK-B) for the holdings link fixup.
+        alias_upserts: list[dict[str, Any]] = []
+
         def _record_skip(ticker: str, reason: str) -> None:
             prev_row = fetch_skip_rows.get(ticker) or {}
             try:
@@ -890,6 +910,11 @@ def fundamentals_refresh_job() -> None:
                     if any(col in alias_updates for col in _FUNDAMENTAL_INDICATOR_COLS):
                         info, updates = alias_info, alias_updates
                         alias_successes += 1
+                        alias_upserts.append({
+                            'ticker': ticker,
+                            'yahoo_symbol': alias,
+                            'updated_at': run_now.isoformat(),
+                        })
                         logger.info(
                             f"ℹ️  {ticker}: fetched fundamentals via share-class alias {alias}"
                         )
@@ -958,6 +983,8 @@ def fundamentals_refresh_job() -> None:
 
         if skip_upserts or skip_deletes:
             _flush_fetch_skip_writes(supabase_client, skip_upserts, skip_deletes)
+        if alias_upserts:
+            _flush_symbol_alias_writes(supabase_client, alias_upserts)
 
         duration_ms = int((time.time() - start_time) * 1000)
         msg = (
