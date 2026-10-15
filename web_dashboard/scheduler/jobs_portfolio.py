@@ -1314,9 +1314,9 @@ def backfill_portfolio_prices_range(
                             if currency_upper and currency_upper not in ('NAN', 'NONE', 'NULL', ''):
                                 ticker_currencies[ticker] = currency_upper
                             else:
-                                ticker_currencies[ticker] = 'USD'  # Default
+                                ticker_currencies.setdefault(ticker, 'USD')  # Default
                         else:
-                            ticker_currencies[ticker] = 'USD'  # Default
+                            ticker_currencies.setdefault(ticker, 'USD')  # Default
                     
                     logger.info(f"  Found {len(all_tickers)} unique tickers across all trades")
                     
