@@ -794,6 +794,9 @@ async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void>
 interface EtfHoldingRow {
     ticker?: string | null;
     name?: string | null;
+    // Yahoo symbol to link to when the holdings spelling differs (BRKB -> BRK-B);
+    // the holdings spelling is still what gets displayed
+    link_ticker?: string | null;
     weight_percent?: number | null;
     shares?: number | null;
 }
@@ -888,8 +891,9 @@ function buildEtfHoldingRow(holding: EtfHoldingRow): HTMLDivElement {
     left.className = 'min-w-0';
 
     const link = document.createElement('a');
-    if (holding.ticker) {
-        link.href = `/ticker?ticker=${encodeURIComponent(holding.ticker)}`;
+    const linkTicker = holding.link_ticker || holding.ticker;
+    if (linkTicker) {
+        link.href = `/ticker?ticker=${encodeURIComponent(linkTicker)}`;
         link.className = 'text-sm font-medium text-text-primary hover:text-accent';
     }
     link.textContent = holding.ticker || '—';

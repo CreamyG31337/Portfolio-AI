@@ -7,7 +7,9 @@ fallback to watchlist-only, share-class alias fallbacks (BRKB -> BRK-B,
 BF/B -> BF-B; writes land on the holding's own spelling), and the
 fundamentals_fetch_skips backoff table (suppression before the cap,
 per-reason recording, success clearing the row, growing retry_after,
-transient exceptions not recorded, skips-table failures tolerated).
+transient exceptions not recorded, skips-table failures tolerated), and the
+ticker_symbol_aliases table (successful aliases recorded, failed ones not,
+alias-table write failures tolerated).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -131,10 +133,33 @@ class FakeSkipsTable:
         return MagicMock(data=[])
 
 
+class FakeAliasesTable:
+    """Fake supabase `.table("ticker_symbol_aliases")` supporting the batched
+    upserts the job records successful share-class aliases with."""
+
+    def __init__(self, error=None):
+        self.error = error
+        self.upserts = []  # list of payload batches (each a list of dicts)
+        self._pending_upsert = None
+
+    def upsert(self, payload):
+        if self.error:
+            raise self.error
+        self._pending_upsert = payload
+        return self
+
+    def execute(self):
+        if self._pending_upsert is not None:
+            self.upserts.append(self._pending_upsert)
+            self._pending_upsert = None
+        return MagicMock(data=[])
+
+
 class JobResult:
-    def __init__(self, table, skips, ticker_mock, log_mock, completed_mock, failed_mock, message):
+    def __init__(self, table, skips, aliases, ticker_mock, log_mock, completed_mock, failed_mock, message):
         self.table = table
         self.skips = skips
+        self.aliases = aliases
         self.ticker_calls = [c.args[0] for c in ticker_mock.call_args_list]
         self.log = log_mock
         self.completed = completed_mock
@@ -152,15 +177,19 @@ def run_refresh_job(
     skips_rows=None,
     skips_error=None,
     yf_raise=None,
+    aliases_error=None,
 ):
     table = FakeSecuritiesTable(securities_rows)
     skips = FakeSkipsTable(rows=skips_rows, error=skips_error)
+    aliases = FakeAliasesTable(error=aliases_error)
 
     def route(name):
         if name == 'securities':
             return table
         if name == 'fundamentals_fetch_skips':
             return skips
+        if name == 'ticker_symbol_aliases':
+            return aliases
         return MagicMock()
 
     sb = MagicMock()
@@ -199,7 +228,7 @@ def run_refresh_job(
     message = ''
     if completed_mock.call_args:
         message = completed_mock.call_args.kwargs.get('message', '')
-    return JobResult(table, skips, ticker_mock, log_mock, completed_mock, failed_mock, message)
+    return JobResult(table, skips, aliases, ticker_mock, log_mock, completed_mock, failed_mock, message)
 
 
 def test_watchlist_gaps_processed_before_etf_holdings():
@@ -804,3 +833,84 @@ def test_alias_success_clears_skip():
     assert res.skips.upserts == []
     assert res.skips.deletes == [['BRKB']]
     assert '1 via share-class alias' in res.message
+
+
+# --- ticker_symbol_aliases (holding links use the Yahoo symbol) ---
+
+def _alias_upserts(aliases) -> dict[str, dict]:
+    """{ticker: payload} across all alias upsert batches."""
+    return {row['ticker']: row for batch in aliases.upserts for row in batch}
+
+
+def test_alias_success_records_alias_row():
+    """A successful alias fetch records {ticker, yahoo_symbol} in
+    ticker_symbol_aliases so the holdings panel can link BRKB -> BRK-B."""
+    holdings = [
+        _holding('BUZZ', 'BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 5.0),
+        _holding('BUZZ', 'BF/B', 'Brown-Forman Corp', 4.0),
+    ]
+    securities = [_sec_row('BRKB'), _sec_row('BF/B')]
+    infos = {
+        'BRKB': {'quoteType': 'NONE'},
+        'BRK-B': {'quoteType': 'EQUITY', 'returnOnEquity': 0.12},
+        'BF-B': {'quoteType': 'EQUITY', 'forwardPE': 21.0},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    upserts = _alias_upserts(res.aliases)
+    assert list(upserts) == ['BRKB', 'BF/B']
+    assert {t: row['yahoo_symbol'] for t, row in upserts.items()} == {
+        'BRKB': 'BRK-B',
+        'BF/B': 'BF-B',
+    }
+    # updated_at is an ISO timestamp
+    datetime.fromisoformat(upserts['BRKB']['updated_at'])
+
+
+def test_failed_alias_records_no_alias_row():
+    """When neither spelling yields fundamentals, no alias row is recorded."""
+    holdings = [_holding('BUZZ', 'GEFB', 'GREIF INC CLASS B', 5.0)]
+    securities = [_sec_row('GEFB')]
+    infos = {'GEFB': {}, 'GEF-B': {}}
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+    )
+
+    assert res.ticker_calls == ['GEFB', 'GEF-B']
+    assert res.aliases.upserts == []
+    assert '0 via share-class alias' in res.message
+
+
+def test_alias_table_write_failure_does_not_break_job():
+    """A missing/unwritable ticker_symbol_aliases table (migration not applied)
+    only logs a warning; the job still completes."""
+    holdings = [_holding('BUZZ', 'BRKB', 'BERKSHIRE HATHAWAY INC CLASS B', 5.0)]
+    securities = [_sec_row('BRKB')]
+    infos = {
+        'BRKB': {'quoteType': 'NONE'},
+        'BRK-B': {'quoteType': 'EQUITY', 'returnOnEquity': 0.12},
+    }
+
+    res = run_refresh_job(
+        watchlist_rows=[],
+        securities_rows=securities,
+        holdings_rows=holdings,
+        yf_infos=infos,
+        aliases_error=RuntimeError('relation "ticker_symbol_aliases" does not exist'),
+    )
+
+    assert res.ticker_calls == ['BRKB', 'BRK-B']
+    assert [t for t, _ in res.table.updates] == ['BRKB']
+    assert '1 via share-class alias' in res.message
+    assert res.failed.assert_not_called() is None
+    assert res.log.call_args.args[1] is True

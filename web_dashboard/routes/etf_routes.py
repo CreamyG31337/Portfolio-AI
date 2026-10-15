@@ -58,6 +58,50 @@ def _get_postgres_client() -> PostgresClient:
         _postgres_client = PostgresClient()
     return _postgres_client
 
+
+def _load_symbol_aliases(tickers: List[Any]) -> Dict[str, str]:
+    """Yahoo symbols for holdings-file spellings, from ticker_symbol_aliases.
+
+    Best-effort: if the table is missing (migration not yet applied) or any
+    query fails, log a warning and return {} so callers fall back to the
+    deterministic slash rule.
+    """
+    aliases: Dict[str, str] = {}
+    unique = sorted({str(t).strip().upper() for t in tickers if t and str(t).strip()})
+    if not unique:
+        return aliases
+    chunk_size = 200  # PostgREST caps responses at 1000 rows
+    try:
+        # Service role like the other routes here: server-side, behind @require_auth
+        db_client = SupabaseClient(use_service_role=True)
+        for i in range(0, len(unique), chunk_size):
+            result = db_client.supabase.table("ticker_symbol_aliases") \
+                .select("ticker,yahoo_symbol") \
+                .in_("ticker", unique[i:i + chunk_size]) \
+                .execute()
+            for row in result.data or []:
+                key = (row.get('ticker') or '').strip().upper()
+                yahoo = (row.get('yahoo_symbol') or '').strip()
+                if key and yahoo:
+                    aliases[key] = yahoo
+    except Exception as e:
+        logger.warning(
+            f"Could not load ticker_symbol_aliases, falling back to the slash "
+            f"rule: {e}"
+        )
+    return aliases
+
+
+def _holding_link_ticker(ticker: Any, alias_map: Dict[str, str]) -> Optional[str]:
+    """Symbol to link a holding to: the recorded alias if any, else the slash
+    rule (yfinance never accepts a slash), else the holding's own spelling."""
+    if not ticker:
+        return None
+    key = str(ticker).strip().upper()
+    if key in alias_map:
+        return alias_map[key]
+    return str(ticker).replace('/', '-') if '/' in str(ticker) else ticker
+
 etf_bp = Blueprint('etf_bp', __name__)
 logger = logging.getLogger(__name__)
 
@@ -1178,10 +1222,17 @@ def ticker_etf_holdings_api(ticker: str):
             (as_of_str, etf),
         )
 
+        # Holdings files spell share classes in ways yfinance won't serve
+        # (BRKB, BF/B); link to the recorded Yahoo symbol when we have one,
+        # else apply the deterministic slash rule.  Never fail the endpoint
+        # over the alias lookup.
+        alias_map = _load_symbol_aliases([row.get('holding_ticker') for row in (rows or [])])
+
         holdings = [
             {
                 "ticker": row.get('holding_ticker'),
                 "name": row.get('holding_name'),
+                "link_ticker": _holding_link_ticker(row.get('holding_ticker'), alias_map),
                 "weight_percent": (
                     float(row['weight_percent'])
                     if row.get('weight_percent') is not None else None
