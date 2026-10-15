@@ -2810,7 +2810,16 @@ function renderFundamentalSignal(fundamental: any): void {
     const metricsEl = document.getElementById('fund-metrics-count');
     if (metricsEl) {
         const count = fundamental.metrics_available ?? 0;
-        if (fundamental.is_etf) {
+        const lt = fundamental.method === 'lookthrough' ? (fundamental.lookthrough || {}) : null;
+        if (lt) {
+            // ETF scored from its holdings' fundamentals, weighted by position size
+            const covPct = ((lt.weight_with_fundamentals ?? 0) * 100).toFixed(0);
+            const detail = `${lt.holdings_with_fundamentals ?? 0} of ${lt.holdings_total ?? 0} holdings, ${covPct}% of weight`;
+            const asOf = lt.as_of ? `, as of ${lt.as_of}` : '';
+            metricsEl.textContent = insufficient
+                ? `${fundamental.reason || 'Not enough holdings data'} (${detail}${asOf})`
+                : `Holdings-weighted: ${detail}${asOf}`;
+        } else if (fundamental.is_etf) {
             metricsEl.textContent = 'ETF: company fundamentals do not apply';
         } else if (insufficient) {
             metricsEl.textContent = `Not enough data to rate (${count} metric${count === 1 ? '' : 's'} available)`;
@@ -2847,7 +2856,10 @@ function renderFundamentalSignal(fundamental: any): void {
     const healthFcfEl = document.getElementById('fund-health-fcf');
     if (healthFcfEl) {
         const fcf = health.free_cash_flow;
-        if (fcf !== undefined && fcf !== null) {
+        if (health.fcf_positive_weight !== undefined && health.fcf_positive_weight !== null) {
+            // Look-through: dollar FCF can't be averaged, so show the share of weight with positive FCF
+            healthFcfEl.textContent = `${(health.fcf_positive_weight * 100).toFixed(0)}% of weight positive`;
+        } else if (fcf !== undefined && fcf !== null) {
             // Format large numbers (e.g. 1.2B, 340M)
             const abs = Math.abs(fcf);
             let formatted: string;
