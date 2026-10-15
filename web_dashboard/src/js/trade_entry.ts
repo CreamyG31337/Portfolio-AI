@@ -44,6 +44,7 @@ interface TradeSubmitResponse {
     success?: boolean;
     error?: string;
     rebuild_job_id?: string;
+    rebuild_reason?: 'backdated' | 'sell' | null;
 }
 
 interface EmailParseResponse {
@@ -78,6 +79,29 @@ function toEstTimeString(dt: Date): string {
     return dt.toLocaleTimeString('en-US', {
         timeZone: TZ_EST, hour12: false, hour: '2-digit', minute: '2-digit'
     });
+}
+
+// The date/time inputs are filled and labelled in EST, so read them back as
+// America/New_York. `new Date("YYYY-MM-DDTHH:MM")` would use the browser's zone:
+// from a Pacific browser, 14:11 EST became 14:11 PT, a trade 3 hours in the future.
+function estWallTimeToIso(date: string, time: string): string {
+    const [y, mo, d] = date.split('-').map(Number);
+    const [h, mi] = time.split(':').map(Number);
+    const wallAsUtc = Date.UTC(y, mo - 1, d, h, mi);
+    // Offset of New York from UTC at that instant (handles EST/EDT), found by
+    // formatting a guess in New York time and measuring the difference.
+    const nyOffsetAt = (utcMs: number): number => {
+        const p = new Intl.DateTimeFormat('en-US', {
+            timeZone: TZ_EST, hourCycle: 'h23',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit',
+        }).formatToParts(new Date(utcMs));
+        const get = (type: string) => Number(p.find(x => x.type === type)?.value);
+        return Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute')) - utcMs;
+    };
+    let utcMs = wallAsUtc - nyOffsetAt(wallAsUtc);
+    utcMs = wallAsUtc - nyOffsetAt(utcMs); // second pass settles DST-boundary guesses
+    return new Date(utcMs).toISOString();
 }
 
 // Utility functions (scoped to trade_entry.ts to avoid conflicts)
@@ -285,7 +309,7 @@ async function handleManualSubmit(e: Event): Promise<void> {
         const formData = new FormData(form);
         const date = formData.get('date') as string;
         const time = formData.get('time') as string;
-        const timestamp = new Date(`${date}T${time}`).toISOString();
+        const timestamp = estWallTimeToIso(date, time);
 
         const payload = {
             fund: fund,
@@ -337,7 +361,9 @@ async function handleManualSubmit(e: Event): Promise<void> {
         updateCompanyNameDisplay();
 
         if (result.rebuild_job_id) {
-            showToastForTradeEntry('⏳ Background rebuild started (backdated trade)', 'info');
+            // The server rebuilds on every SELL as well as on backdated trades
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
+            showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
         }
     } catch (error) {
         console.error('[Trade Entry] Error submitting trade:', error);
@@ -738,7 +764,7 @@ async function handleEditSubmit(e: Event): Promise<void> {
 
         const date = dateInput?.value || '';
         const time = timeInput?.value || '12:00';
-        const timestamp = new Date(`${date}T${time}`).toISOString();
+        const timestamp = estWallTimeToIso(date, time);
 
         const payload = {
             action,

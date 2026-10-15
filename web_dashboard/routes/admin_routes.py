@@ -2578,9 +2578,11 @@ def api_submit_trade():
                 logger.warning(f"Failed to recalc today's performance_metrics: {pm_e}")
 
         return jsonify({
-            "success": True, 
+            "success": True,
             "message": f"Verified: {action} {shares} {ticker}",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            # Lets the UI say why it rebuilt; sells rebuild even when dated today
+            "rebuild_reason": ("backdated" if is_backdated else "sell") if job_id else None,
         })
 
     except Exception as e:
