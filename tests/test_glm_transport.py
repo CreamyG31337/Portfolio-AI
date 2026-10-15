@@ -196,6 +196,57 @@ def test_streaming_yields_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "".join(parts) == "ab"
 
 
+def test_streaming_length_cutoff_is_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Reasoning spends max_tokens and the JSON is cut off; the log must say so by name."""
+    monkeypatch.setattr("glm_config.get_zhipu_api_key", lambda: "k")
+    monkeypatch.setattr("model_registry.get_glm_base_urls", lambda: ["https://only/v4"])
+    usage = {"completion_tokens": 4096, "completion_tokens_details": {"reasoning_tokens": 3042}}
+
+    def fake_post(url: str, **kwargs: object) -> MagicMock:
+        r = MagicMock()
+        r.status_code = 200
+        r.raise_for_status = lambda: None
+
+        first = {"choices": [{"delta": {"content": '{"a": '}}]}
+        last = {"choices": [{"delta": {}, "finish_reason": "length"}], "usage": usage}
+
+        def iter_lines(decode_unicode: bool = True):
+            yield f"data: {json.dumps(first)}"
+            yield f"data: {json.dumps(last)}"
+            yield "data: [DONE]"
+
+        r.iter_lines = iter_lines
+        return r
+
+    monkeypatch.setattr("glm_transport.requests.post", fake_post)
+
+    with caplog.at_level("WARNING", logger="glm_transport"):
+        parts = list(
+            glm_transport.glm_chat_completion(
+                [{"role": "user", "content": "x"}],
+                model="glm-5.2",
+                stream=True,
+                json_mode=True,
+                temperature=0.1,
+                max_tokens=4096,
+                timeout=30.0,
+                allow_cheap_fallback=False,
+            )
+        )
+    assert "".join(parts) == '{"a": '
+    assert "truncated at max_tokens=4096" in caplog.text
+    assert "reasoning_tokens=3042" in caplog.text
+
+
+def test_live_glm_models_have_room_to_reason() -> None:
+    """GLM-5.x reasoning alone used ~3k tokens on a real ticker prompt; 4096 truncated 60% of calls."""
+    cfg = json.loads((web_dashboard / "model_config.json").read_text(encoding="utf-8"))
+    for model in ("glm-5.2", "glm-5.1", "glm-5-turbo"):
+        assert cfg["models"][model]["max_tokens"] >= 16384, model
+
+
 def test_glm_raw_indicates_transport_failure_known_messages() -> None:
     assert glm_transport.glm_raw_indicates_transport_failure(
         "GLM request timed out. Please try again."

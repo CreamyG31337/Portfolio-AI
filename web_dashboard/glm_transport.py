@@ -44,6 +44,29 @@ class GlmMessageResult:
         return bool(self.tool_calls)
 
 
+def _warn_if_truncated(
+    *, model: str, finish_reason: Any, max_tokens: int, usage: Any = None
+) -> None:
+    """Name a ``finish_reason == "length"`` cut-off instead of letting it look like a bad answer.
+
+    GLM-5.x reasons before answering and the reasoning counts against ``max_tokens``, so a
+    small cap ends the reply mid-JSON. Downstream ``response_ok`` checks then reject it with
+    no hint why (2026-10: 60% of GLM calls, misread as quota exhaustion).
+    """
+    if finish_reason != "length":
+        return
+    reasoning = None
+    if isinstance(usage, dict):
+        reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+    logger.warning(
+        "GLM reply truncated at max_tokens=%s for model=%s (reasoning_tokens=%s); "
+        "raise max_tokens in model_config.json",
+        max_tokens,
+        model,
+        reasoning,
+    )
+
+
 def _effective_timeout(*, json_mode: bool, timeout: Optional[float]) -> float:
     if timeout is not None:
         return float(timeout)
@@ -194,6 +217,8 @@ def _glm_chat_completion_zai(
             response.raise_for_status()
 
             if stream:
+                stream_finish: Any = None
+                stream_usage: Any = None
                 for line in response.iter_lines(decode_unicode=True):
                     if not line or not line.strip():
                         continue
@@ -205,18 +230,30 @@ def _glm_chat_completion_zai(
                         break
                     try:
                         obj = json.loads(data)
+                        stream_usage = obj.get("usage") or stream_usage
                         for choice in (obj.get("choices") or [])[:1]:
                             delta = choice.get("delta") or {}
                             part = delta.get("content") or ""
                             if part:
                                 yield part
-                            if choice.get("finish_reason") == "stop":
+                            stream_finish = choice.get("finish_reason") or stream_finish
+                            if stream_finish == "stop":
                                 return
                     except json.JSONDecodeError:
                         continue
+                _warn_if_truncated(
+                    model=model, finish_reason=stream_finish, max_tokens=eff_max, usage=stream_usage
+                )
                 return
             data = response.json()
-            msg = ((data.get("choices") or [{}])[0].get("message") or {})
+            first_choice = (data.get("choices") or [{}])[0]
+            _warn_if_truncated(
+                model=model,
+                finish_reason=first_choice.get("finish_reason"),
+                max_tokens=eff_max,
+                usage=data.get("usage"),
+            )
+            msg = first_choice.get("message") or {}
             content = str(msg.get("content") or "").strip()
             if content:
                 yield content
@@ -676,6 +713,12 @@ def _glm_chat_completion_message_zai(
                 content = reasoning
             tool_calls = _normalize_tool_calls(msg.get("tool_calls"))
             finish_reason = choice.get("finish_reason")
+            _warn_if_truncated(
+                model=model,
+                finish_reason=finish_reason,
+                max_tokens=int(payload.get("max_tokens") or max_tokens),
+                usage=data.get("usage"),
+            )
             if not content and not tool_calls:
                 if allow_cheap_fallback and glm_should_try_cheap_fallback(
                     model=model,
