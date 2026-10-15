@@ -712,15 +712,15 @@ def test_alias_insert_for_missing_row_uses_alias_info():
 
 
 def test_slash_ticker_is_candidate_and_fetches_via_alias():
-    """BF/B passes the holding-ticker regex (slash now allowed), fails
-    as-written, and is updated via the BF-B alias under its own spelling."""
+    """BF/B passes the holding-ticker regex (slash now allowed), is never fetched
+    as written (yfinance raises on a slash) and is updated via the BF-B alias under its own spelling."""
     holdings = [
         _holding('GXL', 'BF/B', 'Brown-Forman Corp', 3.0),
         _holding('GXL', '7203 JP', 'Toyota Motor', 9.0),  # still filtered out
     ]
     securities = [_sec_row('BF/B')]
     infos = {
-        'BF/B': {},  # yfinance serves nothing for the slash spelling
+        # no 'BF/B' entry: yfinance raises on a slash, so it must never be called
         'BF-B': {'quoteType': 'EQUITY', 'forwardPE': 21.0},
     }
 
@@ -731,7 +731,7 @@ def test_slash_ticker_is_candidate_and_fetches_via_alias():
         yf_infos=infos,
     )
 
-    assert res.ticker_calls == ['BF/B', 'BF-B']
+    assert res.ticker_calls == ['BF-B']
     assert [t for t, _ in res.table.updates] == ['BF/B']
     assert res.table.updates[0][1] == {'forward_pe': 21.0}
     assert '1 via share-class alias' in res.message
@@ -742,7 +742,7 @@ def test_watchlist_slash_ticker_uses_slash_rule_only():
     applies -- but it does apply."""
     securities = [_sec_row('BF/B')]
     infos = {
-        'BF/B': {},
+        # no 'BF/B' entry: yfinance raises on a slash
         'BF-B': {'quoteType': 'EQUITY', 'forwardPE': 21.0},
     }
 
@@ -752,7 +752,7 @@ def test_watchlist_slash_ticker_uses_slash_rule_only():
         yf_infos=infos,
     )
 
-    assert res.ticker_calls == ['BF/B', 'BF-B']
+    assert res.ticker_calls == ['BF-B']
     assert [t for t, _ in res.table.updates] == ['BF/B']
 
 

@@ -869,8 +869,12 @@ def fundamentals_refresh_job() -> None:
                 )
                 alias = _yfinance_symbol_alias(ticker, holding_name)
 
-                ticker_obj = yf.Ticker(ticker)
-                info = ticker_obj.info or {}
+                if '/' in ticker:
+                    # yfinance raises on a slash ("BF/B" -> 404 YFException), so
+                    # skip the as-written call and let the alias fetch below run.
+                    info = {}
+                else:
+                    info = yf.Ticker(ticker).info or {}
                 updates = _fundamental_updates_from_info(info)
 
                 # Share-class fallback: ETF holdings files spell share-class
