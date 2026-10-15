@@ -245,6 +245,77 @@ def _parse_ai_audit_timestamp(timestamp: object) -> datetime:
         return datetime.min
 
 # Helper function for FIFO P&L calculation
+# Below this many shares a position counts as fully closed (trade_log.shares is NUMERIC(15, 6)).
+_CLOSED_POSITION_EPSILON = 0.000001
+
+
+def _net_shares_from_trades(trades: list) -> float:
+    """Net shares held from trade_log rows, counted like calculate_fifo_pnl:
+    BUY and DIVIDEND (DRIP) add shares, SELL removes them."""
+    net = 0.0
+    for t in trades:
+        act = str(t.get('action') or '').upper() or infer_trade_action(t.get('reason', ''), default='BUY')
+        try:
+            qty = float(t.get('shares') or 0)
+        except (TypeError, ValueError):
+            continue
+        if act in ('BUY', 'DIVIDEND'):
+            net += qty
+        elif act == 'SELL':
+            net -= qty
+    return net
+
+
+def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) -> list[str]:
+    """After a SELL, drop the ticker from the watchlist if the fund no longer holds any.
+
+    Deactivates (not deletes, matching the watchlist UI) the selling fund's row.
+    Other funds' rows are deactivated only when their source is TRADELOG (added
+    because of trade history, not on purpose) and that fund holds none either.
+    Best-effort: never raises, so a watchlist problem can't fail a saved trade.
+
+    Returns the funds whose watchlist row was deactivated.
+    """
+    try:
+        from watchlist_access import WATCHLIST_V2_TABLE, set_watchlist_active
+
+        rows = admin_client.supabase.table("trade_log") \
+            .select("fund, shares, reason, action") \
+            .eq("ticker", ticker) \
+            .execute().data or []
+        net_by_fund: dict[str, float] = {}
+        for f in {r.get('fund') for r in rows if r.get('fund')}:
+            net_by_fund[f] = _net_shares_from_trades([r for r in rows if r.get('fund') == f])
+
+        if abs(net_by_fund.get(fund, 0.0)) > _CLOSED_POSITION_EPSILON:
+            return []  # partial sell: still held in this fund
+
+        watch_rows = admin_client.supabase.table(WATCHLIST_V2_TABLE) \
+            .select("fund, source, is_active") \
+            .eq("ticker", ticker) \
+            .eq("is_active", True) \
+            .execute().data or []
+        removed: list[str] = []
+        for w in watch_rows:
+            w_fund = w.get('fund')
+            if not w_fund:
+                continue
+            if w_fund != fund:
+                if str(w.get('source') or '').upper() != 'TRADELOG':
+                    continue  # deliberately watched in another fund: leave it
+                if abs(net_by_fund.get(w_fund, 0.0)) > _CLOSED_POSITION_EPSILON:
+                    continue  # still held there
+            result = set_watchlist_active(admin_client, fund=w_fund, ticker=ticker, is_active=False)
+            if result.get('ok'):
+                removed.append(w_fund)
+        if removed:
+            logger.info(f"Closed position {ticker} in {fund}: removed from watchlist for {removed}")
+        return removed
+    except Exception as e:
+        logger.warning(f"Could not update watchlist after closing {ticker} in {fund}: {e}")
+        return []
+
+
 def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: float, existing_trades: list = None) -> float:
     """Calculate P&L for a sell using FIFO method.
     
@@ -2553,6 +2624,12 @@ def api_submit_trade():
                 "requires_rebuild": True
             }), 200
 
+        # A sell that closes the position takes the ticker off the watchlist, so
+        # it stops getting scanned and suggested after we've exited.
+        watchlist_removed: list[str] = []
+        if act == "SELL":
+            watchlist_removed = remove_closed_position_from_watchlist(admin_client, fund, ticker)
+
         # 6. Trigger rebuild on sells (closes can leave stale per-ticker snapshots) or
         # backdated trades; otherwise recalc today's metrics only.
         is_backdated = trade_dt.date() < datetime.now().date()
@@ -2583,6 +2660,7 @@ def api_submit_trade():
             "rebuild_job_id": job_id,
             # Lets the UI say why it rebuilt; sells rebuild even when dated today
             "rebuild_reason": ("backdated" if is_backdated else "sell") if job_id else None,
+            "watchlist_removed": watchlist_removed,
         })
 
     except Exception as e:

@@ -45,6 +45,7 @@ interface TradeSubmitResponse {
     error?: string;
     rebuild_job_id?: string;
     rebuild_reason?: 'backdated' | 'sell' | null;
+    watchlist_removed?: string[];
 }
 
 interface EmailParseResponse {
@@ -364,6 +365,12 @@ async function handleManualSubmit(e: Event): Promise<void> {
             // The server rebuilds on every SELL as well as on backdated trades
             const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
             showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
+        }
+        if (result.watchlist_removed && result.watchlist_removed.length > 0) {
+            showToastForTradeEntry(
+                `Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`,
+                'info'
+            );
         }
     } catch (error) {
         console.error('[Trade Entry] Error submitting trade:', error);
