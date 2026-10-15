@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import logging
 import math
 
-from web_dashboard.signals.fundamental_signal import (
+from .fundamental_signal import (
     GROWTH_THRESHOLDS,
     HEALTH_THRESHOLDS,
     PROFITABILITY_THRESHOLDS,
@@ -72,10 +72,35 @@ def _get_ticker_fundamentals(
 
 
 def _holding_has_fundamentals(fundamentals: Optional[Dict[str, Any]]) -> bool:
-    """Check if a fundamentals dictionary contains at least one finite numeric value."""
+    """Check if a fundamentals dictionary has a finite value for any scored metric.
+
+    Only scored metrics count: a securities row nearly always carries price fields
+    like fifty_two_week_high, which would make every holding look covered.
+    """
     if not fundamentals or not isinstance(fundamentals, dict):
         return False
-    return any(_extract_finite_float(v) is not None for v in fundamentals.values())
+    return any(
+        _extract_finite_float(fundamentals.get(k)) is not None
+        for k in ALL_THRESHOLD_METRICS
+    )
+
+
+def _metric_value(fund_data: Optional[Dict[str, Any]], metric_key: str) -> Optional[float]:
+    """A holding's value for one metric.
+
+    yfinance omits trailingPE for loss-making companies instead of making it
+    negative. Treat missing P/E with trailing EPS <= 0 as a loss (P/E 0, which
+    contributes zero earnings yield), or the losers silently drop out and bias
+    the aggregate P/E low.
+    """
+    if not fund_data:
+        return None
+    val = _extract_finite_float(fund_data.get(metric_key))
+    if val is None and metric_key == "trailing_pe":
+        eps = _extract_finite_float(fund_data.get("trailing_eps"))
+        if eps is not None and eps <= 0.0:
+            return 0.0
+    return val
 
 
 def compute_lookthrough_fundamentals(
@@ -166,7 +191,7 @@ def compute_lookthrough_fundamentals(
         covered_holdings: List[tuple[float, float]] = []
         for h in valid_holdings:
             fund_data = _get_ticker_fundamentals(fundamentals_by_ticker, h["ticker"])
-            val = _extract_finite_float(fund_data.get(metric_key)) if fund_data else None
+            val = _metric_value(fund_data, metric_key)
             if val is not None:
                 covered_holdings.append((h["weight_percent"], val))
 

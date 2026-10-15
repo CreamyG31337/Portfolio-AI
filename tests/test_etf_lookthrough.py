@@ -500,3 +500,43 @@ class TestEdgeCases:
         res = compute_lookthrough_fundamentals(holdings, fundamentals)
         assert res["holdings_total"] == 3
         assert res["holdings_with_fundamentals"] == 1
+
+
+class TestRealSecuritiesRowShapes:
+    def test_price_only_rows_do_not_count_as_fundamentals(self) -> None:
+        """A securities row with only 52-week prices has no scored fundamentals."""
+        holdings = [
+            {"ticker": "AAA", "weight_percent": 50.0},
+            {"ticker": "BBB", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "AAA": {"fifty_two_week_high": 41.2, "fifty_two_week_low": 26.9},
+            "BBB": {"return_on_equity": 0.2, "fifty_two_week_high": 10.0},
+        }
+        res = compute_lookthrough_fundamentals(holdings, fundamentals)
+        assert res["holdings_with_fundamentals"] == 1
+
+    def test_missing_pe_with_negative_eps_counts_as_loss(self) -> None:
+        """yfinance omits trailingPE for losers; negative EPS must still drag the P/E up."""
+        holdings = [
+            {"ticker": "WIN", "weight_percent": 50.0},
+            {"ticker": "LOSS", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "WIN": {"trailing_pe": 10.0, "trailing_eps": 2.0},
+            "LOSS": {"trailing_pe": None, "trailing_eps": -1.5},
+        }
+        res = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # Yield: 0.5 * 0.1 + 0.5 * 0 = 0.05 -> P/E 20, not 10
+        assert res["metrics"]["trailing_pe"] == pytest.approx(20.0)
+        assert res["coverage"]["trailing_pe"] == pytest.approx(1.0)
+
+    def test_missing_pe_without_eps_stays_missing(self) -> None:
+        holdings = [
+            {"ticker": "WIN", "weight_percent": 50.0},
+            {"ticker": "UNK", "weight_percent": 50.0},
+        ]
+        fundamentals = {"WIN": {"trailing_pe": 10.0}, "UNK": {"trailing_pe": None}}
+        res = compute_lookthrough_fundamentals(holdings, fundamentals)
+        assert res["metrics"]["trailing_pe"] == pytest.approx(10.0)
+        assert res["coverage"]["trailing_pe"] == pytest.approx(0.5)
