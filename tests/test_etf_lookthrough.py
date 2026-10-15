@@ -5,7 +5,10 @@ Tests for ETF look-through fundamentals calculation module.
 import math
 import pytest
 
-from web_dashboard.signals.etf_lookthrough import compute_lookthrough_fundamentals
+from web_dashboard.signals.etf_lookthrough import (
+    _METRIC_BOUNDS,
+    compute_lookthrough_fundamentals,
+)
 from web_dashboard.signals.fundamental_signal import FundamentalSignal
 
 
@@ -555,3 +558,222 @@ class TestRealSecuritiesRowShapes:
         res = compute_lookthrough_fundamentals(holdings, fundamentals)
         assert res["metrics"]["trailing_pe"] == pytest.approx(10.0)
         assert res["coverage"]["trailing_pe"] == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# Outlier Clamping (Winsorization) Tests
+# ---------------------------------------------------------------------------
+
+class TestOutlierClamping:
+    def test_metric_bounds_definitions(self) -> None:
+        """Verify _METRIC_BOUNDS matches specification exactly."""
+        assert _METRIC_BOUNDS == {
+            "return_on_equity": (-1.0, 1.0),
+            "net_margin": (-1.0, 1.0),
+            "operating_margin": (-1.0, 1.0),
+            "revenue_growth": (-1.0, 2.0),
+            "earnings_growth": (-1.0, 2.0),
+            "current_ratio": (0.0, 10.0),
+            "debt_to_equity": (0.0, 500.0),
+        }
+
+    def test_revenue_growth_extreme_outlier_clamped_to_two(self) -> None:
+        """A +2,627% (+26.27) revenue growth holding is clamped to 2.0."""
+        holdings = [
+            {"ticker": "ASTS", "weight_percent": 50.0},
+            {"ticker": "NORM", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "ASTS": {"revenue_growth": 26.27},
+            "NORM": {"revenue_growth": 0.10},
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # ASTS clamped to 2.0: (0.5 * 2.0 + 0.5 * 0.10) = 1.05
+        assert result["metrics"]["revenue_growth"] == 1.05
+        assert result["coverage"]["revenue_growth"] == 1.0
+        assert result["clipped"]["revenue_growth"] == 1
+
+    def test_values_inside_bounds_are_untouched(self) -> None:
+        """Constituents within bounds are not clamped; clipped count is empty."""
+        holdings = [
+            {"ticker": "A", "weight_percent": 50.0},
+            {"ticker": "B", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "A": {
+                "return_on_equity": 0.20,
+                "revenue_growth": 0.15,
+                "debt_to_equity": 40.0,
+                "net_margin": 0.10,
+                "current_ratio": 2.0,
+            },
+            "B": {
+                "return_on_equity": 0.10,
+                "revenue_growth": 0.25,
+                "debt_to_equity": 60.0,
+                "net_margin": 0.20,
+                "current_ratio": 3.0,
+            },
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        assert result["metrics"]["return_on_equity"] == 0.15
+        assert result["metrics"]["revenue_growth"] == 0.20
+        assert result["metrics"]["debt_to_equity"] == 50.0
+        assert result["metrics"]["net_margin"] == 0.15
+        assert result["metrics"]["current_ratio"] == 2.5
+        assert result["clipped"] == {}
+
+    def test_roe_extreme_negative_clamped_to_minus_one(self) -> None:
+        """ROE -12.12 (e.g. WULF) clamps to -1.0."""
+        holdings = [
+            {"ticker": "WULF", "weight_percent": 50.0},
+            {"ticker": "CIFR", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "WULF": {"return_on_equity": -12.12},
+            "CIFR": {"return_on_equity": 0.20},
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # WULF clamped to -1.0: (0.5 * -1.0 + 0.5 * 0.20) = -0.40
+        assert result["metrics"]["return_on_equity"] == -0.40
+        assert result["coverage"]["return_on_equity"] == 1.0
+        assert result["clipped"]["return_on_equity"] == 1
+
+    def test_debt_to_equity_outlier_clamped_to_five_hundred(self) -> None:
+        """D/E 3549.6 (e.g. WULF) clamps to 500.0."""
+        holdings = [
+            {"ticker": "WULF", "weight_percent": 50.0},
+            {"ticker": "CRWV", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "WULF": {"debt_to_equity": 3549.6},
+            "CRWV": {"debt_to_equity": 100.0},
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # WULF clamped to 500.0: (0.5 * 500.0 + 0.5 * 100.0) = 300.0
+        assert result["metrics"]["debt_to_equity"] == 300.0
+        assert result["coverage"]["debt_to_equity"] == 1.0
+        assert result["clipped"]["debt_to_equity"] == 1
+
+    def test_pe_ratio_not_clamped(self) -> None:
+        """Valuation metrics (e.g. trailing_pe) are not clamped by arithmetic bounds."""
+        holdings = [
+            {"ticker": "EXPENSIVE", "weight_percent": 50.0},
+            {"ticker": "NORMAL", "weight_percent": 50.0},
+        ]
+        fundamentals = {
+            "EXPENSIVE": {"trailing_pe": 1000.0, "forward_pe": 800.0, "price_to_book": 50.0, "price_to_sales": 100.0},
+            "NORMAL": {"trailing_pe": 50.0, "forward_pe": 40.0, "price_to_book": 5.0, "price_to_sales": 10.0},
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # Harmonic mean: 0.5 * (1/1000) + 0.5 * (1/50) = 0.0005 + 0.01 = 0.0105 -> 1/0.0105 = 95.2381
+        assert result["metrics"]["trailing_pe"] == pytest.approx(95.2381, abs=1e-4)
+        # None of the harmonic-mean valuation metrics should ever appear in clipped
+        assert "trailing_pe" not in result["clipped"]
+        assert "forward_pe" not in result["clipped"]
+        assert "price_to_book" not in result["clipped"]
+        assert "price_to_sales" not in result["clipped"]
+        assert result["clipped"] == {}
+
+    def test_clipped_counts_multiple_holdings_and_metrics(self) -> None:
+        """Multiple holdings clamped across different bounded metrics are tracked accurately."""
+        holdings = [
+            {"ticker": "ASTS", "weight_percent": 25.0},
+            {"ticker": "BMNR", "weight_percent": 25.0},
+            {"ticker": "WULF", "weight_percent": 25.0},
+            {"ticker": "SAFE", "weight_percent": 25.0},
+        ]
+        fundamentals = {
+            "ASTS": {"revenue_growth": 26.27, "current_ratio": 13.1},
+            "BMNR": {"revenue_growth": 21.68, "current_ratio": 36.7},
+            "WULF": {"debt_to_equity": 3549.6, "return_on_equity": -12.12},
+            "SAFE": {
+                "revenue_growth": 0.15,
+                "current_ratio": 2.0,
+                "debt_to_equity": 50.0,
+                "return_on_equity": 0.20,
+            },
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        # revenue_growth: ASTS (26.27 -> 2.0) and BMNR (21.68 -> 2.0) are clamped; SAFE (0.15) untouched.
+        # covered weight = 25+25+25 = 75 (ASTS, BMNR, SAFE)
+        # sum = 25*2.0 + 25*2.0 + 25*0.15 = 50 + 50 + 3.75 = 103.75 -> 103.75 / 75 = 1.3833
+        assert result["metrics"]["revenue_growth"] == pytest.approx(1.3833, abs=1e-4)
+        assert result["clipped"]["revenue_growth"] == 2
+
+        # current_ratio: ASTS (13.1 -> 10.0) and BMNR (36.7 -> 10.0) are clamped; SAFE (2.0) untouched.
+        # covered weight = 75
+        # sum = 25*10.0 + 25*10.0 + 25*2.0 = 250 + 250 + 50 = 550 -> 550 / 75 = 7.3333
+        assert result["metrics"]["current_ratio"] == pytest.approx(7.3333, abs=1e-4)
+        assert result["clipped"]["current_ratio"] == 2
+
+        # debt_to_equity: WULF (3549.6 -> 500.0) is clamped; SAFE (50.0) untouched.
+        # covered weight = 50
+        # sum = 25*500.0 + 25*50.0 = 12500 + 1250 = 13750 -> 13750 / 50 = 275.0
+        assert result["metrics"]["debt_to_equity"] == 275.0
+        assert result["clipped"]["debt_to_equity"] == 1
+
+        # return_on_equity: WULF (-12.12 -> -1.0) is clamped; SAFE (0.20) untouched.
+        # covered weight = 50
+        # sum = 25*(-1.0) + 25*(0.20) = -25 + 5 = -20 -> -20 / 50 = -0.40
+        assert result["metrics"]["return_on_equity"] == -0.40
+        assert result["clipped"]["return_on_equity"] == 1
+
+    def test_coverage_unchanged_by_clamping(self) -> None:
+        """Coverage and covered weights are calculated before clamping and unaffected by bounds."""
+        holdings = [
+            {"ticker": "ASTS", "weight_percent": 60.0},
+            {"ticker": "EMPTY", "weight_percent": 40.0},
+        ]
+        fundamentals = {
+            "ASTS": {"revenue_growth": 26.27},
+            "EMPTY": {},
+        }
+
+        result = compute_lookthrough_fundamentals(holdings, fundamentals)
+        assert result["coverage"]["revenue_growth"] == 0.6
+        assert result["holdings_with_fundamentals"] == 1
+        assert result["weight_with_fundamentals"] == 0.6
+        assert result["metrics"]["revenue_growth"] == 2.0
+        assert result["clipped"]["revenue_growth"] == 1
+
+    def test_empty_and_zero_holdings_clipped(self) -> None:
+        """Empty holdings inputs return empty clipped dict."""
+        res_empty = compute_lookthrough_fundamentals([], {})
+        assert res_empty["clipped"] == {}
+
+        res_none = compute_lookthrough_fundamentals(None, None)
+        assert res_none["clipped"] == {}
+
+    @pytest.mark.parametrize("metric_key,lower,upper", [
+        ("return_on_equity", -1.0, 1.0),
+        ("net_margin", -1.0, 1.0),
+        ("operating_margin", -1.0, 1.0),
+        ("revenue_growth", -1.0, 2.0),
+        ("earnings_growth", -1.0, 2.0),
+        ("current_ratio", 0.0, 10.0),
+        ("debt_to_equity", 0.0, 500.0),
+    ])
+    def test_each_bounded_metric_clamps_lower_and_upper(
+        self, metric_key: str, lower: float, upper: float
+    ) -> None:
+        """Verify each bounded metric clamps below lower bound and above upper bound."""
+        # Below lower bound
+        holdings_low = [{"ticker": "LOW", "weight_percent": 100.0}]
+        fundamentals_low = {"LOW": {metric_key: lower - 10.0}}
+        res_low = compute_lookthrough_fundamentals(holdings_low, fundamentals_low)
+        assert res_low["metrics"][metric_key] == lower
+        assert res_low["clipped"][metric_key] == 1
+
+        # Above upper bound
+        holdings_high = [{"ticker": "HIGH", "weight_percent": 100.0}]
+        fundamentals_high = {"HIGH": {metric_key: upper + 10.0}}
+        res_high = compute_lookthrough_fundamentals(holdings_high, fundamentals_high)
+        assert res_high["metrics"][metric_key] == upper
+        assert res_high["clipped"][metric_key] == 1

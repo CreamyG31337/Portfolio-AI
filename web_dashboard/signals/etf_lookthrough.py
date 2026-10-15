@@ -37,6 +37,22 @@ RATIO_OF_PRICE_METRICS: set[str] = {
     "price_to_sales",
 }
 
+# Fixed bounds (winsorization) applied to individual holding metrics before computing
+# the holdings-weighted arithmetic mean. A few extreme small-cap holdings (e.g. ASTS
+# revenue growth +2627%, WULF ROE -1212%, WULF D/E 3549%) would otherwise dominate
+# and distort the aggregate fund-level profile.
+# Note: debt_to_equity is in percent units as reported by yfinance (100 = 1.0x D/E),
+# so 500.0 corresponds to 5.0x leverage.
+_METRIC_BOUNDS: Dict[str, tuple[float, float]] = {
+    "return_on_equity": (-1.0, 1.0),
+    "net_margin": (-1.0, 1.0),
+    "operating_margin": (-1.0, 1.0),
+    "revenue_growth": (-1.0, 2.0),
+    "earnings_growth": (-1.0, 2.0),
+    "current_ratio": (0.0, 10.0),
+    "debt_to_equity": (0.0, 500.0),
+}
+
 
 def _extract_finite_float(val: Any) -> Optional[float]:
     """Convert input to float, rejecting None, NaN, and Inf."""
@@ -130,6 +146,8 @@ def compute_lookthrough_fundamentals(
             - holdings_with_fundamentals: Count of valid holdings with available fundamental data.
             - weight_with_fundamentals: Fraction (0..1) of total holding weight with scored data.
             - method: "lookthrough"
+            - clipped: Dict mapping metric_key to count of holdings clamped to bounds
+                       (only metrics with count > 0 are included; empty if none clamped).
     """
     if holdings is None:
         holdings = []
@@ -177,6 +195,7 @@ def compute_lookthrough_fundamentals(
     # Initialize results
     metrics: Dict[str, Optional[float]] = {}
     coverage: Dict[str, float] = {}
+    clipped: Dict[str, int] = {}
 
     for metric_key in ALL_THRESHOLD_METRICS:
         metrics[metric_key] = None
@@ -193,6 +212,7 @@ def compute_lookthrough_fundamentals(
             "holdings_with_fundamentals": holdings_with_fundamentals,
             "weight_with_fundamentals": weight_with_fundamentals,
             "method": "lookthrough",
+            "clipped": clipped,
         }
 
     for metric_key in ALL_THRESHOLD_METRICS:
@@ -244,7 +264,24 @@ def compute_lookthrough_fundamentals(
                 metrics[metric_key] = round(1.0 / agg_yield, 4)
         else:
             # Weighted arithmetic mean:
-            weighted_val_sum = sum(w * val for w, val in covered_holdings)
+            bounds = _METRIC_BOUNDS.get(metric_key)
+            if bounds is not None:
+                lower, upper = bounds
+                clamped_count = 0
+                weighted_val_sum = 0.0
+                for w, val in covered_holdings:
+                    if val < lower:
+                        weighted_val_sum += w * lower
+                        clamped_count += 1
+                    elif val > upper:
+                        weighted_val_sum += w * upper
+                        clamped_count += 1
+                    else:
+                        weighted_val_sum += w * val
+                if clamped_count > 0:
+                    clipped[metric_key] = clamped_count
+            else:
+                weighted_val_sum = sum(w * val for w, val in covered_holdings)
             agg_val = weighted_val_sum / covered_weight
             metrics[metric_key] = round(agg_val, 4)
 
@@ -255,4 +292,5 @@ def compute_lookthrough_fundamentals(
         "holdings_with_fundamentals": holdings_with_fundamentals,
         "weight_with_fundamentals": weight_with_fundamentals,
         "method": "lookthrough",
+        "clipped": clipped,
     }
