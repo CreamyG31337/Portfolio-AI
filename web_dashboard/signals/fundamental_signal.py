@@ -17,8 +17,21 @@ stocks where yfinance frequently returns None for many fields.
 from typing import Any, Dict, Optional
 import logging
 import math
+import re
 
 logger = logging.getLogger(__name__)
+
+# Below these, a composite score is mostly the 0.5 defaults and says nothing
+# (e.g. one P/E value alone rating an ETF "GOOD"), so report UNKNOWN instead.
+MIN_METRICS_FOR_RATING = 3
+MIN_CATEGORIES_FOR_RATING = 2
+
+_ETF_NAME_RE = re.compile(r"\b(ETF|ETN)\b", re.IGNORECASE)
+
+
+def _looks_like_etf(fundamentals: Dict[str, Any]) -> bool:
+    """True if the securities row names an ETF/ETN rather than an operating company."""
+    return bool(_ETF_NAME_RE.search(fundamentals.get("company_name") or ""))
 
 # Thresholds derived from ai-hedge-fund fundamentals.py
 # Each tuple: (metric_key, good_threshold, direction)
@@ -172,7 +185,34 @@ class FundamentalSignal:
                 if cat["metrics_available"] > 0:
                     category_scores.append(cat["score"])
 
-            composite = sum(category_scores) / len(category_scores) if category_scores else 0.5
+            is_etf = _looks_like_etf(fundamentals)
+            if (
+                is_etf
+                or total_available < MIN_METRICS_FOR_RATING
+                or len(category_scores) < MIN_CATEGORIES_FOR_RATING
+            ):
+                # Keep the raw metric values for display, but don't rate.
+                # Neutral 0.5 so the signal engine's blend is unaffected.
+                reason = (
+                    "ETF: company fundamentals do not apply"
+                    if is_etf
+                    else f"Only {total_available} metric(s) in {len(category_scores)} "
+                         f"categor{'y' if len(category_scores) == 1 else 'ies'} available"
+                )
+                return {
+                    "profitability": profitability,
+                    "growth": growth,
+                    "health": health,
+                    "valuation": valuation,
+                    "composite_score": 0.5,
+                    "quality": "UNKNOWN",
+                    "metrics_available": total_available,
+                    "insufficient_data": True,
+                    "is_etf": is_etf,
+                    "reason": reason,
+                }
+
+            composite = sum(category_scores) / len(category_scores)
 
             if composite >= 0.7:
                 quality = "STRONG"

@@ -200,13 +200,47 @@ class TestFundamentalSignal:
         assert result["composite_score"] < 0.4
         assert result["quality"] in ("FAIR", "WEAK")
 
-    def test_sparse_fundamentals_handled(self, sparse_fundamentals: dict) -> None:
+    def test_sparse_fundamentals_not_rated(self, sparse_fundamentals: dict) -> None:
         signal = FundamentalSignal()
         result = signal.evaluate(sparse_fundamentals)
-        # Should still produce a result with available metrics
-        assert result["metrics_available"] > 0
-        assert result["quality"] != "UNKNOWN"
+        # Two metrics are too few to rate: keep the values, report UNKNOWN at neutral 0.5
+        assert result["metrics_available"] == 2
+        assert result["quality"] == "UNKNOWN"
+        assert result["insufficient_data"] is True
+        assert result["composite_score"] == 0.5
+        assert result["valuation"]["trailing_pe"] == 12.0
         assert "error" not in result
+
+    def test_minimum_data_is_rated(self) -> None:
+        signal = FundamentalSignal()
+        result = signal.evaluate(
+            {"trailing_pe": 12.0, "price_to_book": 1.0, "revenue_growth": 0.30}
+        )
+        assert result["metrics_available"] == 3
+        assert result["quality"] != "UNKNOWN"
+        assert "insufficient_data" not in result
+
+    def test_three_metrics_in_one_category_not_rated(self) -> None:
+        signal = FundamentalSignal()
+        result = signal.evaluate(
+            {"trailing_pe": 12.0, "price_to_book": 1.0, "price_to_sales": 2.0}
+        )
+        assert result["quality"] == "UNKNOWN"
+        assert result["insufficient_data"] is True
+
+    def test_etf_not_rated(self, strong_fundamentals: dict) -> None:
+        signal = FundamentalSignal()
+        result = signal.evaluate(
+            {**strong_fundamentals, "company_name": "VanEck Social Sentiment ETF"}
+        )
+        assert result["quality"] == "UNKNOWN"
+        assert result["is_etf"] is True
+        assert result["composite_score"] == 0.5
+
+    def test_etf_name_match_is_whole_word(self, strong_fundamentals: dict) -> None:
+        signal = FundamentalSignal()
+        result = signal.evaluate({**strong_fundamentals, "company_name": "Netfoundry Inc"})
+        assert result["quality"] in ("STRONG", "GOOD")
 
     def test_none_fundamentals(self) -> None:
         signal = FundamentalSignal()

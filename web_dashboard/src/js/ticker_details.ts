@@ -2622,11 +2622,28 @@ function renderMomentumSignal(momentum: any): void {
     if (oscRocEl) oscRocEl.textContent = fmtPct(osc.roc);
 }
 
+// A category with no metrics has a placeholder 0.5 score; show a dash, not "50.0%".
+function renderCategoryScore(el: HTMLElement | null, cat: any): void {
+    if (!el) return;
+    if (!cat.metrics_available) {
+        el.textContent = '—';
+        el.classList.remove('text-theme-success-text', 'text-theme-warning-text', 'text-theme-error-text');
+        return;
+    }
+    const s = cat.score ?? 0;
+    el.textContent = fmtPct(s);
+    colorScoreEl(el, s);
+}
+
 function renderFundamentalSignal(fundamental: any): void {
+    // Older stored analyses lack insufficient_data; treat a lone metric the same way.
+    const insufficient = !!fundamental.insufficient_data || (fundamental.metrics_available ?? 0) < 3;
+
     // Quality badge
     const qualityBadge = document.getElementById('fund-quality-badge');
     if (qualityBadge) {
-        const quality = fundamental.quality || 'UNKNOWN';
+        let quality = fundamental.quality || 'UNKNOWN';
+        if (insufficient) quality = fundamental.is_etf ? 'ETF' : 'N/A';
         let badgeClass = 'px-2.5 py-0.5 rounded text-xs font-bold border ';
         switch (quality) {
             case 'STRONG':
@@ -2653,11 +2670,16 @@ function renderFundamentalSignal(fundamental: any): void {
     const compositeBar = document.getElementById('fund-composite-bar');
     const score = fundamental.composite_score ?? 0;
     if (compositeEl) {
-        compositeEl.textContent = `${(score * 100).toFixed(0)}%`;
-        colorScoreEl(compositeEl, score);
+        if (insufficient) {
+            compositeEl.textContent = '—';
+            compositeEl.classList.remove('text-theme-success-text', 'text-theme-warning-text', 'text-theme-error-text');
+        } else {
+            compositeEl.textContent = `${(score * 100).toFixed(0)}%`;
+            colorScoreEl(compositeEl, score);
+        }
     }
     if (compositeBar) {
-        compositeBar.style.width = `${(score * 100).toFixed(0)}%`;
+        compositeBar.style.width = insufficient ? '0%' : `${(score * 100).toFixed(0)}%`;
         compositeBar.classList.remove('bg-theme-success-bg', 'bg-theme-warning-bg', 'bg-theme-error-bg', 'bg-accent');
         compositeBar.classList.add(barColorClass(score));
     }
@@ -2666,17 +2688,18 @@ function renderFundamentalSignal(fundamental: any): void {
     const metricsEl = document.getElementById('fund-metrics-count');
     if (metricsEl) {
         const count = fundamental.metrics_available ?? 0;
-        metricsEl.textContent = `${count} metrics available`;
+        if (fundamental.is_etf) {
+            metricsEl.textContent = 'ETF: company fundamentals do not apply';
+        } else if (insufficient) {
+            metricsEl.textContent = `Not enough data to rate (${count} metric${count === 1 ? '' : 's'} available)`;
+        } else {
+            metricsEl.textContent = `${count} metrics available`;
+        }
     }
 
     // Profitability
     const profit = fundamental.profitability || {};
-    const profitScoreEl = document.getElementById('fund-profit-score');
-    if (profitScoreEl) {
-        const s = profit.score ?? 0;
-        profitScoreEl.textContent = fmtPct(s);
-        colorScoreEl(profitScoreEl, s);
-    }
+    renderCategoryScore(document.getElementById('fund-profit-score'), profit);
     const profitRoeEl = document.getElementById('fund-profit-roe');
     if (profitRoeEl) profitRoeEl.textContent = fmtPct(profit.return_on_equity);
     const profitMarginEl = document.getElementById('fund-profit-margin');
@@ -2686,12 +2709,7 @@ function renderFundamentalSignal(fundamental: any): void {
 
     // Growth
     const growth = fundamental.growth || {};
-    const growthScoreEl = document.getElementById('fund-growth-score');
-    if (growthScoreEl) {
-        const s = growth.score ?? 0;
-        growthScoreEl.textContent = fmtPct(s);
-        colorScoreEl(growthScoreEl, s);
-    }
+    renderCategoryScore(document.getElementById('fund-growth-score'), growth);
     const growthRevEl = document.getElementById('fund-growth-rev');
     if (growthRevEl) growthRevEl.textContent = fmtPct(growth.revenue_growth);
     const growthEarnEl = document.getElementById('fund-growth-earn');
@@ -2699,12 +2717,7 @@ function renderFundamentalSignal(fundamental: any): void {
 
     // Financial Health
     const health = fundamental.health || {};
-    const healthScoreEl = document.getElementById('fund-health-score');
-    if (healthScoreEl) {
-        const s = health.score ?? 0;
-        healthScoreEl.textContent = fmtPct(s);
-        colorScoreEl(healthScoreEl, s);
-    }
+    renderCategoryScore(document.getElementById('fund-health-score'), health);
     const healthCrEl = document.getElementById('fund-health-cr');
     if (healthCrEl) healthCrEl.textContent = fmtDec(health.current_ratio);
     const healthDeEl = document.getElementById('fund-health-de');
@@ -2728,12 +2741,7 @@ function renderFundamentalSignal(fundamental: any): void {
 
     // Valuation
     const val = fundamental.valuation || {};
-    const valScoreEl = document.getElementById('fund-val-score');
-    if (valScoreEl) {
-        const s = val.score ?? 0;
-        valScoreEl.textContent = fmtPct(s);
-        colorScoreEl(valScoreEl, s);
-    }
+    renderCategoryScore(document.getElementById('fund-val-score'), val);
     const valPeEl = document.getElementById('fund-val-pe');
     if (valPeEl) valPeEl.textContent = fmtDec(val.trailing_pe);
     const valPbEl = document.getElementById('fund-val-pb');
