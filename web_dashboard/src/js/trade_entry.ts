@@ -503,6 +503,15 @@ async function handleEmailConfirm(): Promise<void> {
         }
 
         showToastForTradeEntry('✅ Trade Saved');
+
+        if (result.rebuild_job_id) {
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
+            showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
+        }
+        if (result.watchlist_removed && result.watchlist_removed.length > 0) {
+            showToastForTradeEntry(`Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`, 'info');
+        }
+
         const parsedResult = document.getElementById('parsed-result');
         const emailText = document.getElementById('email-text') as HTMLTextAreaElement | null;
 
@@ -801,7 +810,11 @@ async function handleEditSubmit(e: Event): Promise<void> {
         fetchRecentTrades(currentPage);
 
         if (result.rebuild_job_id) {
-            showToastForTradeEntry('Background rebuild started', 'info');
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
+            showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
+        }
+        if (result.watchlist_removed && result.watchlist_removed.length > 0) {
+            showToastForTradeEntry(`Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`, 'info');
         }
     } catch (error) {
         console.error('[Trade Entry] Error updating trade:', error);
@@ -870,7 +883,11 @@ async function handleDeleteConfirm(): Promise<void> {
         fetchRecentTrades(currentPage);
 
         if (result.rebuild_job_id) {
-            showToastForTradeEntry('Background rebuild started', 'info');
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
+            showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
+        }
+        if (result.watchlist_removed && result.watchlist_removed.length > 0) {
+            showToastForTradeEntry(`Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`, 'info');
         }
     } catch (error) {
         console.error('[Trade Entry] Error deleting trade:', error);
