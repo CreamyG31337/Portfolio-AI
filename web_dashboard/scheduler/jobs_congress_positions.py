@@ -202,6 +202,7 @@ def compute_congress_positions_job() -> None:
                 .order("politician_id") \
                 .order("ticker") \
                 .order("transaction_date") \
+                .order("id") \
                 .range(offset, offset + page_size - 1) \
                 .execute()
             batch = resp.data or []
