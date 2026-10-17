@@ -2788,7 +2788,8 @@ def api_update_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": "backdated" if job_id else None
         })
     
     except Exception as e:
@@ -2846,7 +2847,8 @@ def api_delete_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} deleted",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": "backdated" if job_id else None
         })
     
     except Exception as e:
