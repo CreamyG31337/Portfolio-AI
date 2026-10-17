@@ -258,6 +258,7 @@ def get_pending_etf_analysis(
                 .eq("analysis_type", "etf_group")
                 .in_("status", ["pending", "failed"])
                 .order("created_at", desc=True)
+                .order("id")
                 .range(offset, offset + page_size - 1)
                 .execute()
             )
