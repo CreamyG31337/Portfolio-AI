@@ -287,7 +287,7 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
         for f in {r.get('fund') for r in rows if r.get('fund')}:
             net_by_fund[f] = _net_shares_from_trades([r for r in rows if r.get('fund') == f])
 
-        if abs(net_by_fund.get(fund, 0.0)) > _CLOSED_POSITION_EPSILON:
+        if net_by_fund.get(fund, 0.0) > _CLOSED_POSITION_EPSILON:
             return []  # partial sell: still held in this fund
 
         watch_rows = admin_client.supabase.table(WATCHLIST_V2_TABLE) \
@@ -303,7 +303,7 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
             if w_fund != fund:
                 if str(w.get('source') or '').upper() != 'TRADELOG':
                     continue  # deliberately watched in another fund: leave it
-                if abs(net_by_fund.get(w_fund, 0.0)) > _CLOSED_POSITION_EPSILON:
+                if net_by_fund.get(w_fund, 0.0) > _CLOSED_POSITION_EPSILON:
                     continue  # still held there
             result = set_watchlist_active(admin_client, fund=w_fund, ticker=ticker, is_active=False)
             if result.get('ok'):
@@ -2782,13 +2782,25 @@ def api_update_trade(trade_id):
         except Exception as rb_e:
             logger.error(f"Rebuild trigger error after trade update: {rb_e}")
         
+        # Check if the position was closed by this edit
+        watchlist_removed = remove_closed_position_from_watchlist(client, fund, ticker)
+
         # Bump cache version
         bump_cache_version()
         
+        from system_cache import get_current_est_time
+        try:
+            # earliest_date is already a datetime.date object
+            is_backdated = earliest_date < get_current_est_time().date()
+        except TypeError:
+            is_backdated = False
+
         return jsonify({
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": ("backdated" if is_backdated else "edit") if job_id else None,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:
@@ -2840,13 +2852,26 @@ def api_delete_trade(trade_id):
         except Exception as rb_e:
             logger.error(f"Rebuild trigger error after trade delete: {rb_e}")
         
+        # Check if the position was closed by this deletion (e.g. deleted a BUY)
+        ticker = old_trade.get('ticker')
+        watchlist_removed = remove_closed_position_from_watchlist(client, fund, ticker) if ticker else []
+
         # Bump cache version
         bump_cache_version()
         
+        from system_cache import get_current_est_time
+        try:
+            # trade_date is already a datetime.date object
+            is_backdated = trade_date < get_current_est_time().date()
+        except TypeError:
+            is_backdated = False
+
         return jsonify({
             "success": True,
             "message": f"Trade {tid} deleted",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": ("backdated" if is_backdated else "delete") if job_id else None,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:
