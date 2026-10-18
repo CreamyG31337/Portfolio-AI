@@ -192,6 +192,21 @@ _SEED: list[dict[str, Any]] = [
         "notes": 'CAD small-cap; 19% single-company titles; verify yield before trusting',
         "tier": 2,
     },
+    {
+        # User-supplied 2026-10-17. Value-investing commentary: 13F reads,
+        # Burry/Buffett/Pabrai positioning, bubble/valuation takes. Uploads run
+        # ~12-17 min with occasional ~65 min interviews; min_duration_s drops Shorts.
+        "label": "New Money",
+        "handle": "@NewMoneyYouTube",
+        "channel_id": 'UCvSXMi2LebwJEM1s4bz5IBA',
+        "kind": 'channel',
+        "alpha_mechanism": 'ANALYSIS',
+        "expected_tickers": [],
+        "min_duration_s": 300,
+        "max_duration_s": 4200,
+        "notes": 'value-investing / 13F commentary; mostly large-cap',
+        "tier": 1,
+    },
 ]
 
 
