@@ -2775,6 +2775,13 @@ def api_update_trade(trade_id):
         new_date = trade_dt.date()
         earliest_date = min(old_date, new_date)
         
+        # Check if the position was closed by this update
+        watchlist_removed = remove_closed_position_from_watchlist(client, fund, ticker)
+        old_ticker = old_trade.get('ticker', '').upper()
+        if ticker != old_ticker and old_ticker:
+            old_watchlist_removed = remove_closed_position_from_watchlist(client, fund, old_ticker)
+            watchlist_removed = list(set(watchlist_removed + old_watchlist_removed))
+
         # Trigger rebuild from the earliest affected date
         job_id = None
         try:
@@ -2788,7 +2795,9 @@ def api_update_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": "edit" if job_id else None,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:
@@ -2833,6 +2842,9 @@ def api_delete_trade(trade_id):
             .eq("id", tid) \
             .execute()
         
+        # Check if the position was closed by this deletion
+        watchlist_removed = remove_closed_position_from_watchlist(client, fund, old_trade.get('ticker', ''))
+
         # Trigger rebuild from the deleted trade's date
         job_id = None
         try:
@@ -2846,7 +2858,9 @@ def api_delete_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} deleted",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "rebuild_reason": "delete" if job_id else None,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:

@@ -15,3 +15,7 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+## 2026-10-20 - Fix missing watchlist removals on trade edits/deletes
+**Issue:** Modifying a trade (e.g. DELETE a trade or EDIT from BUY to SELL) to close a position failed to remove the ticker from the watchlist.
+**Learning:** Only new `POST` trade submissions triggered the watchlist cleanup helper (`remove_closed_position_from_watchlist`), while `PUT` and `DELETE` paths updated the DB but skipped the cleanup contract.
+**Prevention:** When adding side-effects to CRUD operations (like watchlist cleanup on position closure), apply them consistently across all endpoints (Create, Update, Delete) that can affect the underlying state.
