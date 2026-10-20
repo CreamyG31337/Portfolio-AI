@@ -127,6 +127,16 @@ function showToastForTradeEntry(message: string, type: 'success' | 'error' | 'in
     showToastBase(message, type);
 }
 
+// Submit, edit and delete can all close a position, which drops it from the watchlist
+function showWatchlistRemovedToast(result: TradeSubmitResponse): void {
+    if (result.watchlist_removed && result.watchlist_removed.length > 0) {
+        showToastForTradeEntry(
+            `Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`,
+            'info'
+        );
+    }
+}
+
 // Update the company name display below the ticker input
 function updateCompanyNameDisplay(companyName?: string): void {
     const el = document.getElementById('ticker-company-name');
@@ -366,12 +376,7 @@ async function handleManualSubmit(e: Event): Promise<void> {
             const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'sell recorded';
             showToastForTradeEntry(`⏳ Updating positions in the background (${why})`, 'info');
         }
-        if (result.watchlist_removed && result.watchlist_removed.length > 0) {
-            showToastForTradeEntry(
-                `Position closed: removed from the watchlist (${result.watchlist_removed.join(', ')})`,
-                'info'
-            );
-        }
+        showWatchlistRemovedToast(result);
     } catch (error) {
         console.error('[Trade Entry] Error submitting trade:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -803,6 +808,7 @@ async function handleEditSubmit(e: Event): Promise<void> {
         if (result.rebuild_job_id) {
             showToastForTradeEntry('Background rebuild started', 'info');
         }
+        showWatchlistRemovedToast(result);
     } catch (error) {
         console.error('[Trade Entry] Error updating trade:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -872,6 +878,7 @@ async function handleDeleteConfirm(): Promise<void> {
         if (result.rebuild_job_id) {
             showToastForTradeEntry('Background rebuild started', 'info');
         }
+        showWatchlistRemovedToast(result);
     } catch (error) {
         console.error('[Trade Entry] Error deleting trade:', error);
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';

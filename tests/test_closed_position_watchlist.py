@@ -105,3 +105,21 @@ def test_errors_never_raise() -> None:
             raise RuntimeError("db down")
 
     assert remove_closed_position_from_watchlist(_Broken(), "Chimera", "GLO.TO") == []
+
+
+def _trade(ticker: str, action: str, shares: float) -> dict[str, Any]:
+    return {"ticker": ticker, "action": action, "shares": shares, "reason": ""}
+
+
+def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
+    from routes.admin_routes import _tickers_with_fewer_shares as fewer
+
+    buy = _trade("GLO.TO", "BUY", 100)
+    assert fewer(buy) == ["GLO.TO"]                                    # delete a BUY
+    assert fewer(_trade("GLO.TO", "SELL", 100)) == []                  # delete a SELL adds shares back
+    assert fewer(buy, _trade("glo.to", "BUY", 40)) == ["GLO.TO"]       # BUY cut
+    assert fewer(buy, _trade("GLO.TO", "BUY", 150)) == []              # BUY raised
+    assert fewer(buy, _trade("GLO.TO", "SELL", 100)) == ["GLO.TO"]     # BUY flipped to SELL
+    assert fewer(buy, _trade("GLO.TO", "BUY", 100)) == []              # price/date-only edit
+    assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
+    assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]

@@ -316,6 +316,36 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
         return []
 
 
+def _tickers_with_fewer_shares(old_trade: dict, new_trade: dict | None = None) -> list[str]:
+    """Tickers whose net shares went down when old_trade became new_trade (None = deleted).
+
+    Only these can have just been closed by an edit or delete, so only these get the
+    watchlist check; an edit that adds shares never touches the watchlist.
+    """
+    def signed(t: dict) -> float:
+        try:
+            qty = float(t.get('shares') or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        return -qty if _trade_entry_display_action(t) == 'SELL' else qty
+
+    delta: dict[str, float] = {}
+    old_ticker = str(old_trade.get('ticker') or '').upper()
+    delta[old_ticker] = delta.get(old_ticker, 0.0) - signed(old_trade)
+    if new_trade is not None:
+        new_ticker = str(new_trade.get('ticker') or '').upper()
+        delta[new_ticker] = delta.get(new_ticker, 0.0) + signed(new_trade)
+    return [t for t, d in delta.items() if t and d < -_CLOSED_POSITION_EPSILON]
+
+
+def _remove_closed_after_change(admin_client, fund: str, old_trade: dict, new_trade: dict | None = None) -> list[str]:
+    """Watchlist cleanup for trade edits/deletes: same rule as a SELL closing a position."""
+    removed: set[str] = set()
+    for t in _tickers_with_fewer_shares(old_trade, new_trade):
+        removed.update(remove_closed_position_from_watchlist(admin_client, fund, t))
+    return sorted(removed)
+
+
 def calculate_fifo_pnl(fund: str, ticker: str, sell_shares: float, sell_price: float, existing_trades: list = None) -> float:
     """Calculate P&L for a sell using FIFO method.
     
@@ -2774,7 +2804,11 @@ def api_update_trade(trade_id):
         old_date = datetime.fromisoformat(old_trade['date']).date()
         new_date = trade_dt.date()
         earliest_date = min(old_date, new_date)
-        
+
+        # An edit can close a position (BUY shares cut, BUY flipped to SELL, ticker
+        # changed), so apply the same watchlist cleanup as a closing SELL.
+        watchlist_removed = _remove_closed_after_change(client, fund, old_trade, update_data)
+
         # Trigger rebuild from the earliest affected date
         job_id = None
         try:
@@ -2788,7 +2822,8 @@ def api_update_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:
@@ -2832,7 +2867,10 @@ def api_delete_trade(trade_id):
             .delete() \
             .eq("id", tid) \
             .execute()
-        
+
+        # Deleting a BUY can leave the fund holding none
+        watchlist_removed = _remove_closed_after_change(client, fund, old_trade)
+
         # Trigger rebuild from the deleted trade's date
         job_id = None
         try:
@@ -2846,7 +2884,8 @@ def api_delete_trade(trade_id):
         return jsonify({
             "success": True,
             "message": f"Trade {tid} deleted",
-            "rebuild_job_id": job_id
+            "rebuild_job_id": job_id,
+            "watchlist_removed": watchlist_removed,
         })
     
     except Exception as e:
