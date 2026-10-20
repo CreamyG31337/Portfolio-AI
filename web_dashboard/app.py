@@ -6363,7 +6363,7 @@ def get_insider_trades_cached(
             "type, shares, price_per_share, value, shares_held_after, percent_change"
         )
         query = apply_filters(query)
-        query = query.order(sort_column, desc=True)
+        query = query.order(sort_column, desc=True).order("id", desc=True)
         query = query.range(offset, offset + limit - 1)
 
         result = query.execute()
