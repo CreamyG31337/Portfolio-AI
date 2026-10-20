@@ -33,6 +33,12 @@ def test_analyze_congress_trades_queue_mode_enqueues_without_inline_scoring(monk
         def limit(self, *_a, **_k):
             return self
 
+        def neq(self, *_a, **_k):
+            return self
+
+        def in_(self, *_a, **_k):
+            return self
+
         def execute(self):
             return SimpleNamespace(data=[{"id": 11}, {"id": 22}])
 

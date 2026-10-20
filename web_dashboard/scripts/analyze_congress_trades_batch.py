@@ -404,6 +404,22 @@ def sync_supabase_conflict_score(
         {"conflict_score": conflict_score}
     ).eq("id", trade_id).execute()
 
+def sync_supabase_conflict_scores(
+    supabase: SupabaseClient,
+    trade_ids: list[int],
+    conflict_score: float,
+) -> None:
+    """Mirror analysis score to Supabase in bulk so the scheduler queue (conflict_score IS NULL) drains."""
+    if not trade_ids:
+        return
+    # Supabase allows chunked updates via in_
+    chunk_size = 500
+    for i in range(0, len(trade_ids), chunk_size):
+        chunk = trade_ids[i:i+chunk_size]
+        supabase.supabase.table("congress_trades").update(
+            {"conflict_score": conflict_score}
+        ).in_("id", chunk).execute()
+
 
 def fix_failed_scores(client: SupabaseClient):
     """Reset trades with 0.0 score and failure notes to NULL so they can be retried.
@@ -1016,15 +1032,19 @@ def analyze_session(
             )
             
             # Also save to each trade's analysis record
-            for trade in trades:
+            if trades:
                 try:
-                    postgres.execute_update(
+                    params_list = [
+                        (trade['id'], session_id, 0.0, 1.0, f"Auto-filtered: {skip_reason}", "ROUTINE", model, 1)
+                        for trade in trades
+                    ]
+                    postgres.execute_many(
                         """
-                        INSERT INTO congress_trades_analysis 
+                        INSERT INTO congress_trades_analysis
                             (trade_id, session_id, conflict_score, confidence_score, reasoning, risk_pattern, model_used, analysis_version)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (trade_id, model_used, analysis_version) 
-                        DO UPDATE SET 
+                        ON CONFLICT (trade_id, model_used, analysis_version)
+                        DO UPDATE SET
                             session_id = EXCLUDED.session_id,
                             conflict_score = EXCLUDED.conflict_score,
                             confidence_score = EXCLUDED.confidence_score,
@@ -1032,11 +1052,13 @@ def analyze_session(
                             risk_pattern = EXCLUDED.risk_pattern,
                             analyzed_at = NOW()
                         """,
-                        (trade['id'], session_id, 0.0, 1.0, f"Auto-filtered: {skip_reason}", "ROUTINE", model, 1)
+                        params_list
                     )
-                    sync_supabase_conflict_score(supabase, trade['id'], 0.0)
+
+                    trade_ids = [trade['id'] for trade in trades]
+                    sync_supabase_conflict_scores(supabase, trade_ids, 0.0)
                 except Exception as e:
-                    logger.error(f"Failed to save filtered analysis for trade {trade['id']}: {e}")
+                    logger.error(f"Failed to save filtered analysis for trades in session {session_id}: {e}")
             
             return True
         
@@ -1153,15 +1175,19 @@ def analyze_session(
         )
         
         # Save to each trade's analysis record
-        for trade in trades:
+        if trades:
             try:
-                postgres.execute_update(
+                params_list = [
+                    (trade['id'], session_id, conflict_score, confidence_score, reasoning, risk_pattern, model, 1)
+                    for trade in trades
+                ]
+                postgres.execute_many(
                     """
-                    INSERT INTO congress_trades_analysis 
+                    INSERT INTO congress_trades_analysis
                         (trade_id, session_id, conflict_score, confidence_score, reasoning, risk_pattern, model_used, analysis_version)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (trade_id, model_used, analysis_version) 
-                    DO UPDATE SET 
+                    ON CONFLICT (trade_id, model_used, analysis_version)
+                    DO UPDATE SET
                         session_id = EXCLUDED.session_id,
                         conflict_score = EXCLUDED.conflict_score,
                         confidence_score = EXCLUDED.confidence_score,
@@ -1169,11 +1195,13 @@ def analyze_session(
                         risk_pattern = EXCLUDED.risk_pattern,
                         analyzed_at = NOW()
                     """,
-                    (trade['id'], session_id, conflict_score, confidence_score, reasoning, risk_pattern, model, 1)
+                    params_list
                 )
-                sync_supabase_conflict_score(supabase, trade['id'], conflict_score)
+
+                trade_ids = [trade['id'] for trade in trades]
+                sync_supabase_conflict_scores(supabase, trade_ids, conflict_score)
             except Exception as e:
-                logger.error(f"Failed to save analysis for trade {trade['id']}: {e}")
+                logger.error(f"Failed to save analysis for trades in session {session_id}: {e}")
         
         logger.info(f"   [SESSION ANALYZED] Score: {conflict_score:.2f}, Confidence: {confidence_score:.2f}")
         
@@ -1413,16 +1441,15 @@ def main():
                         score = float(analysis['conflict_score'])
                         confidence = float(analysis.get('confidence_score', 0.75))  # Default to 0.75 if missing
                         reasoning = analysis.get('reasoning', 'No reasoning provided')
-                        
                         # Save to postgres analysis table (separate database to save Supabase costs)
                         try:
                             postgres.execute_update(
                                 """
-                                INSERT INTO congress_trades_analysis 
+                                INSERT INTO congress_trades_analysis
                                     (trade_id, conflict_score, confidence_score, reasoning, model_used, analysis_version)
                                 VALUES (%s, %s, %s, %s, %s, %s)
-                                ON CONFLICT (trade_id, model_used, analysis_version) 
-                                DO UPDATE SET 
+                                ON CONFLICT (trade_id, model_used, analysis_version)
+                                DO UPDATE SET
                                     conflict_score = EXCLUDED.conflict_score,
                                     confidence_score = EXCLUDED.confidence_score,
                                     reasoning = EXCLUDED.reasoning,

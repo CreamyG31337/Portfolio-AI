@@ -104,3 +104,7 @@
 ## 2024-05-18 - Database Pattern (fetch_all_rows Filtering)
 **Learning:** When using the `fetch_all_rows` PostgREST pagination helper, the `filters` argument must be a sequence of 3-element tuples formatted exactly as `(column_name, operator, value)` (e.g., `filters=[("fund", "eq", fund_name)]`). Providing a 2-element tuple will cause a sequence unpacking error.
 **Action:** Always provide the operator string (like `"eq"`, `"gte"`, etc.) explicitly as the middle element when passing `filters` to `fetch_all_rows`.
+
+## 2026-10-19 - [Batch N+1 Postgres and Supabase Updates]
+**Learning:** Found N+1 database queries in `analyze_congress_trades_batch.py` that were bottlenecking the background scheduler. Both local postgres (`execute_update`) and remote Supabase (`.execute()`) were being called individually for each trade in a session. Furthermore, when creating test mocks for Supabase `.update().in_().execute()`, missing methods on the mock like `.in_()` can crash unit tests.
+**Action:** Replaced per-row postgres updates with batched `execute_many` passing a list of tuples, and changed the Supabase sync helper to chunked `.in_("id", chunk).execute()` updates. Ensure any test mocks checking Supabase builder chains include the `.in_()` method.
