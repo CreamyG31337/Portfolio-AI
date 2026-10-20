@@ -79,14 +79,17 @@
         <div class="bg-dashboard-background p-4 rounded-lg">
             <div class="text-sm text-text-secondary flex items-center gap-1">
                 Trailing P/E
-                <div class="group relative inline-block">
-                    <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                    <div
-                        class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                        Price-to-Earnings Ratio. A valuation ratio of a company's current share price compared to its
+                <button type="button" data-tooltip-target="tip-249017"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-249017" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Price-to-Earnings Ratio. A valuation ratio of a company's current share price compared to its
                         per-share earnings.
-                    </div>
-                </div>
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
             </div>
             <div id="pe-ratio" class="text-xl font-semibold text-text-primary">N/A</div>
         </div>
@@ -634,41 +637,50 @@
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Trend
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <button type="button" data-tooltip-target="tip-605604"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-605604" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
                             Primary market direction (Bullish/Bearish). Determined by price action relative to moving
                             averages.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
-                    </div>
                 </div>
                 <div id="structure-trend" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Pullback
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <button type="button" data-tooltip-target="tip-344666"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-344666" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
                             Indicates if price has retreated from recent highs. Can signal a buying opportunity in
                             uptrends.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
-                    </div>
                 </div>
                 <div id="structure-pullback" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Breakout
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <button type="button" data-tooltip-target="tip-765037"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-765037" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
                             Detects if price is breaking key resistance levels, often creating momentum.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
-                    </div>
                 </div>
                 <div id="structure-breakout" class="text-xl font-semibold text-text-primary">-</div>
             </div>
@@ -682,24 +694,31 @@
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     Volume
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <button type="button" data-tooltip-target="tip-635653"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-635653" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
                             Total shares traded today relative to average. High relative volume confirms trends.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
-                    </div>
                 </div>
                 <div id="timing-volume" class="text-xl font-semibold text-text-primary">-</div>
             </div>
             <div class="bg-dashboard-background p-4 rounded-lg">
                 <div class="text-sm text-text-secondary flex items-center gap-1">
                     RSI
-                    <div class="group relative inline-block">
-                        <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                        <div
-                            class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                            Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator. </div>
+                    <button type="button" data-tooltip-target="tip-512368"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-512368" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Rel. Strength Index (0-100). >70 overbought, <30 oversold. Momentum indicator.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
                         </div>
                     </div>
                     <div id="timing-rsi" class="text-xl font-semibold text-text-primary">-</div>
@@ -707,13 +726,16 @@
                 <div class="bg-dashboard-background p-4 rounded-lg">
                     <div class="text-sm text-text-secondary flex items-center gap-1">
                         CCI
-                        <div class="group relative inline-block">
-                            <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                            <div
-                                class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
-                                    </div>
-                            </div>
+                        <button type="button" data-tooltip-target="tip-160757"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-160757" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Commodity Channel Index. >100 overbought, <-100 oversold. Measures deviation from avg.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="timing-cci" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
@@ -733,27 +755,33 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Risk Score
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Composite risk metric (0-10). Higher score indicates higher volatility/downside
+                            <button type="button" data-tooltip-target="tip-709830"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-709830" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Composite risk metric (0-10). Higher score indicates higher volatility/downside
                                     risk.
-                                </div>
-                            </div>
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="risk-score" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Recommendation
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div
-                                    class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Aggregated trading suggestion (Buy/Sell/Hold) based on all technical factors.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-558599"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-558599" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Aggregated trading suggestion (Buy/Sell/Hold) based on all technical factors.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="risk-recommendation" class="text-xl font-semibold text-text-primary">-</div>
                     </div>
@@ -776,12 +804,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Trend Following
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    EMA alignment and ADX trend strength.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-134938"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-134938" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            EMA alignment and ADX trend strength.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="mom-trend-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">EMA: <span id="mom-trend-ema">-</span></div>
@@ -790,12 +822,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Momentum
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Returns over 1m/3m/6m and MACD histogram direction.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-400380"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-400380" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Returns over 1m/3m/6m and MACD histogram direction.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="mom-momentum-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">MACD: <span id="mom-momentum-macd">-</span></div>
@@ -805,12 +841,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Mean Reversion
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Z-score, Bollinger %B, and RSI deviation from extremes.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-984806"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-984806" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Z-score, Bollinger %B, and RSI deviation from extremes.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="mom-meanrev-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">Z: <span id="mom-meanrev-z">-</span> | BB %B: <span id="mom-meanrev-bb">-</span></div>
@@ -820,12 +860,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Volatility
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Volatility ratio and annualized volatility assessment.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-775873"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-775873" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Volatility ratio and annualized volatility assessment.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="mom-vol-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">Ratio: <span id="mom-vol-ratio">-</span></div>
@@ -835,12 +879,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Oscillators
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Stochastic %K, Williams %R, and Rate of Change.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-839235"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-839235" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Stochastic %K, Williams %R, and Rate of Change.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="mom-osc-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">Stoch %K: <span id="mom-osc-stoch">-</span></div>
@@ -866,12 +914,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Profitability
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Return on equity, net margin, and operating margin.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-322948"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-322948" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Return on equity, net margin, and operating margin.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="fund-profit-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">ROE: <span id="fund-profit-roe">-</span></div>
@@ -882,12 +934,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Growth
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Revenue growth and earnings growth rates.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-241156"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-241156" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Revenue growth and earnings growth rates.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="fund-growth-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">Revenue: <span id="fund-growth-rev">-</span></div>
@@ -897,12 +953,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Financial Health
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    Current ratio, debt-to-equity, and free cash flow.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-179186"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-179186" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            Current ratio, debt-to-equity, and free cash flow.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="fund-health-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">Current Ratio: <span id="fund-health-cr">-</span></div>
@@ -913,12 +973,16 @@
                     <div class="bg-dashboard-background p-4 rounded-lg">
                         <div class="text-sm text-text-secondary flex items-center gap-1">
                             Valuation
-                            <div class="group relative inline-block">
-                                <i class="fas fa-info-circle text-xs text-text-tertiary cursor-help"></i>
-                                <div class="invisible group-hover:visible absolute z-20 w-48 p-2 mt-1 text-xs text-dashboard-surface bg-text-primary rounded shadow-lg left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                                    P/E, P/B, P/S, and PEG valuation multiples.
-                                </div>
-                            </div>
+                            <button type="button" data-tooltip-target="tip-573270"
+                            class="inline-flex items-center justify-center text-text-tertiary hover:text-accent focus:outline-hidden focus:ring-2 focus:ring-accent rounded-full align-middle ml-1">
+                            <i class="fas fa-info-circle text-xs" aria-hidden="true"></i>
+                            <span class="sr-only">Show info</span>
+                        </button>
+                        <div id="tip-573270" role="tooltip"
+                            class="absolute z-10 invisible inline-block px-3 py-2 text-xs font-medium text-white bg-gray-900 rounded-lg shadow-xs opacity-0 tooltip dark:bg-gray-700 max-w-xs">
+                            P/E, P/B, P/S, and PEG valuation multiples.
+                            <div class="tooltip-arrow" data-popper-arrow></div>
+                        </div>
                         </div>
                         <div id="fund-val-score" class="text-xl font-semibold text-text-primary mt-1">-</div>
                         <div class="text-xs text-text-tertiary mt-1">P/E: <span id="fund-val-pe">-</span></div>
