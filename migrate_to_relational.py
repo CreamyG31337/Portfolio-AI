@@ -27,11 +27,11 @@ def migrate_to_relational():
         
         # Step 1: Create the new relational schema
         print("📋 Step 1: Creating relational schema...")
-        with open('web_dashboard/schema/relational_design.sql', 'r') as f:
+        with open('database/schema/supabase/relational_design.sql', 'r') as f:
             schema_sql = f.read()
         
         # Note: This would need to be run in Supabase SQL editor
-        print("⚠️  Please run the SQL in web_dashboard/schema/relational_design.sql in your Supabase dashboard first!")
+        print("⚠️  Please run the SQL in database/schema/supabase/relational_design.sql in your Supabase dashboard first!")
         print("   Then press Enter to continue...")
         input()
         

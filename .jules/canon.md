@@ -1,7 +1,8 @@
-## 2026-07-22 - Cleanup Orphaned Alter Scripts
- **Learning:** When rolling up table schema updates (like adding columns), ad-hoc `alter_table.sql` scripts should not remain in the `database/schema/research/` modular schema root if the changes are already incorporated into the main `tables/` file. They cause clutter and aren't executed during a fresh boot.
- **Prevention:** Move orphaned ad-hoc migration or alter scripts to `database/archive/` once their changes have been consolidated into the canonical table definitions.
-
-## 2026-09-29 - Check a path exists before "fixing" a doc link (PR #585 rejected)
-**Learning:** #585 rewrote `database/migrations/` → `database/schema/supabase/migrations/` and `migrations/008_…` → `database/schema/research/migrations/008_…`. Both originals were correct: dated migrations still land in `database/migrations/`, `migrations/008_create_yt_sources.sql` exists at the repo root, and `database/schema/research/migrations/` does not exist.
-**Prevention:** `git ls-files <path>` the new target before changing any doc path, and confirm where recent migrations actually go with `git log --name-only`.
+## 2026-10-21 - [Docs/Schema Fidelity Fixes]
+ **Bug:** Multiple stale documents pointed at `web_dashboard/schema/` which was reorganized to `database/schema/supabase/`. `docs/database/*` claimed deprecated/missing tables (`youtube_sources`, `_deprecated_ui_ai_summary_20260520`, etc.) existed, but the files didn't. Two valid schema files (`ticker_symbol_aliases`, `fundamentals_fetch_skips`) were missing from `_init_schema.sql` include directives.
+ **Learning:** Orphan schema files might just be missing includes from the `_init_schema.sql` manifest, and generated JSON doc artifacts can fall out of sync with actual modular schema structure over time. Documented paths require updating after major refactoring.
+ **Prevention:** Use `export_clean_schema.py` and `generate_schema_docs.py` (or manual pruning) regularly to ensure docs align with actual code truth. Double check `_init_schema.sql` includes when adding new `.sql` tables.
+## 2026-10-21 - [Docs/Schema Fidelity Fixes]
+ **Bug:** Multiple stale documents pointed at `web_dashboard/schema/` which was reorganized to `database/schema/supabase/`. `docs/database/*` claimed deprecated/missing tables (`youtube_sources`, `_deprecated_ui_ai_summary_20260520`, etc.) existed, but the files didn't. Two valid schema files (`ticker_symbol_aliases`, `fundamentals_fetch_skips`) were missing from `_init_schema.sql` include directives.
+ **Learning:** Orphan schema files might just be missing includes from the `_init_schema.sql` manifest, and generated JSON doc artifacts can fall out of sync with actual modular schema structure over time. Documented paths require updating after major refactoring.
+ **Prevention:** Use `export_clean_schema.py` and `generate_schema_docs.py` (or manual pruning) regularly to ensure docs align with actual code truth. Double check `_init_schema.sql` includes when adding new `.sql` tables.

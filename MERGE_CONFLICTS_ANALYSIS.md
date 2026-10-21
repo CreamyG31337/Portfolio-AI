@@ -28,7 +28,7 @@ self.ensure_ticker_in_securities(trade.ticker, trade.currency)  # ✅ Correct!
 3. **`web_dashboard/scheduler/jobs_dividends.py`** - Use PR version (has ticker verification)
 
 ### Schema/Script Files (Both versions similar, use PR for consistency):
-4. **`web_dashboard/schema/31_add_ticker_foreign_keys.sql`** - Use PR version (whitespace cleaned)
+4. **`database/schema/supabase/31_add_ticker_foreign_keys.sql`** - Use PR version (whitespace cleaned)
 5. **`web_dashboard/scripts/apply_fk_migration.py`** - Use PR version (whitespace cleaned)
 6. **`web_dashboard/scripts/audit_missing_tickers.py`** - Use PR version (whitespace cleaned)
 7. **`web_dashboard/scripts/backfill_securities_tickers.py`** - Use PR version (whitespace cleaned)
@@ -47,7 +47,7 @@ Since the PR branch has the correct implementation, you can accept the PR versio
 git checkout --theirs data/repositories/supabase_repository.py
 git checkout --theirs web_dashboard/migrate_all_funds.py
 git checkout --theirs web_dashboard/scheduler/jobs_dividends.py
-git checkout --theirs web_dashboard/schema/31_add_ticker_foreign_keys.sql
+git checkout --theirs database/schema/supabase/31_add_ticker_foreign_keys.sql
 git checkout --theirs web_dashboard/scripts/apply_fk_migration.py
 git checkout --theirs web_dashboard/scripts/audit_missing_tickers.py
 git checkout --theirs web_dashboard/scripts/backfill_securities_tickers.py
@@ -80,11 +80,11 @@ Manually resolve each conflict, keeping the PR branch version for the critical f
 
 3. **Accept PR version for schema/scripts:**
    ```powershell
-   git checkout --theirs web_dashboard/schema/31_add_ticker_foreign_keys.sql
+   git checkout --theirs database/schema/supabase/31_add_ticker_foreign_keys.sql
    git checkout --theirs web_dashboard/scripts/apply_fk_migration.py
    git checkout --theirs web_dashboard/scripts/audit_missing_tickers.py
    git checkout --theirs web_dashboard/scripts/backfill_securities_tickers.py
-   git add web_dashboard/schema/31_add_ticker_foreign_keys.sql
+   git add database/schema/supabase/31_add_ticker_foreign_keys.sql
    git add web_dashboard/scripts/*.py
    ```
 

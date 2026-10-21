@@ -28,7 +28,7 @@ This document explains how profit and loss (P&L) is calculated in the system and
 
 ## System Components
 
-### 1. Database Views (`web_dashboard/schema/`)
+### 1. Database Views (`database/schema/supabase/`)
 - **`latest_positions`**: Current positions with calculated P&L
 - **`daily_portfolio_snapshots`**: Daily portfolio values
 - **`historical_pnl_summary`**: Historical P&L calculations

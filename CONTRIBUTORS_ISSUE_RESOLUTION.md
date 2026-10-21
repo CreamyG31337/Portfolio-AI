@@ -27,7 +27,7 @@ Contributors (also called "holders") are **investors who have contributed money 
 ## Files Created
 
 ### 1. SQL Schema
-- **`web_dashboard/schema/05_fund_contributions_schema.sql`**
+- **`database/schema/supabase/05_fund_contributions_schema.sql`**
   - Creates `fund_contributions` table
   - Creates `contributor_ownership` view
   - Creates `fund_contributor_summary` view
@@ -46,7 +46,7 @@ Contributors (also called "holders") are **investors who have contributed money 
   - Troubleshooting guide
 
 ### 4. Updated Files
-- **`web_dashboard/schema/00_complete_setup.sql`**
+- **`database/schema/supabase/00_complete_setup.sql`**
   - Added fund_contributions table to complete setup
 - **`docs/DATABASE_SCHEMA.md`**
   - Added documentation for fund_contributions table and views
@@ -58,7 +58,7 @@ Contributors (also called "holders") are **investors who have contributed money 
 In your Supabase SQL Editor, run:
 ```sql
 -- Copy and paste the contents of:
-web_dashboard/schema/05_fund_contributions_schema.sql
+database/schema/supabase/05_fund_contributions_schema.sql
 ```
 
 This creates:
@@ -146,7 +146,7 @@ The application currently reads contributor data from CSV files. In the future, 
 See detailed documentation in:
 - `web_dashboard/CONTRIBUTORS_MIGRATION.md` - Full migration guide
 - `docs/DATABASE_SCHEMA.md` - Database schema documentation
-- `web_dashboard/schema/05_fund_contributions_schema.sql` - SQL schema
+- `database/schema/supabase/05_fund_contributions_schema.sql` - SQL schema
 
 ## Quick Reference
 

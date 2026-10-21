@@ -42,7 +42,6 @@
 - [ticker_theses](#ticker-theses)
 - [ui_ai_rollup_fund](#ui-ai-rollup-fund)
 - [ui_ai_summary](#ui-ai-summary)
-- [youtube_sources](#youtube-sources)
 
 ---
 
@@ -1237,52 +1236,6 @@
 | `idx_ui_ai_summary_content_class` | `content_class`, `updated_at` | ✗ |
 | `idx_ui_ai_summary_scope_updated` | `scope`, `updated_at` | ✗ |
 | `ui_ai_summary_scope_key_unique` | `scope`, `scope_key` | ✓ |
-
----
-
-## youtube_sources
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `id` | INTEGER | ✗ | nextval('youtube_sources_id_seq'::regclass) |
-| `kind` | VARCHAR(20) | ✗ | 'channel'::character varying |
-| `channel_id` | VARCHAR(64) | ✓ | - |
-| `handle` | VARCHAR(120) | ✓ | - |
-| `query_text` | TEXT | ✓ | - |
-| `label` | VARCHAR(200) | ✗ | - |
-| `alpha_mechanism` | VARCHAR(20) | ✓ | - |
-| `confidence_weight` | NUMERIC(3, 2) | ✗ | 1.00 |
-| `expected_tickers` | ARRAY | ✗ | '{}'::text[] |
-| `enabled` | BOOLEAN | ✗ | true |
-| `max_videos_per_poll` | INTEGER | ✗ | 5 |
-| `min_duration_s` | INTEGER | ✗ | 120 |
-| `max_duration_s` | INTEGER | ✓ | - |
-| `last_video_id` | VARCHAR(16) | ✓ | - |
-| `last_seen_at` | TIMESTAMP | ✓ | - |
-| `last_polled_at` | TIMESTAMP | ✓ | - |
-| `last_success_at` | TIMESTAMP | ✓ | - |
-| `consecutive_failures` | INTEGER | ✗ | 0 |
-| `last_error_reason` | VARCHAR(32) | ✓ | - |
-| `captions_ok` | BOOLEAN | ✓ | - |
-| `notes` | TEXT | ✓ | - |
-| `added_by` | VARCHAR(200) | ✓ | - |
-| `source_of_recommendation` | VARCHAR(200) | ✓ | - |
-| `created_at` | TIMESTAMP | ✗ | now() |
-| `updated_at` | TIMESTAMP | ✗ | now() |
-
-### Primary Key
-
-- `id`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `idx_youtube_sources_channel` | `channel_id` | ✓ |
-| `idx_youtube_sources_enabled` | `enabled` | ✗ |
-| `idx_youtube_sources_query` | `query_text` | ✓ |
 
 ---
 
