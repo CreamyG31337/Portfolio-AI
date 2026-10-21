@@ -152,7 +152,7 @@ publisher, and is close to pure noise for this use case.
 
 ## Signals already on the row (use these before inventing regexes)
 
-[`schema/15_add_chain_of_thought_fields.sql`](../../web_dashboard/schema/15_add_chain_of_thought_fields.sql)
+[`schema/15_add_chain_of_thought_fields.sql`](../../database/schema/supabase/15_add_chain_of_thought_fields.sql)
 already gives structured columns the old plan never used:
 
 | Column | Why it discriminates | Note |

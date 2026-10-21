@@ -13,7 +13,7 @@ This PR branch contains important code fixes that need to be merged into main, e
 
 ### Files Already in Main ✅
 These files exist in main branch (schema files):
-- `web_dashboard/schema/31_add_ticker_foreign_keys.sql`
+- `database/schema/supabase/31_add_ticker_foreign_keys.sql`
 - `web_dashboard/scripts/backfill_securities_tickers.py`
 - `web_dashboard/scripts/apply_fk_migration.py`
 
@@ -72,6 +72,6 @@ The PR branch contains **important bug fixes** that are NOT in main:
 - `web_dashboard/migrate.py` - Added ticker verification  
 - `web_dashboard/migrate_all_funds.py` - Added ticker verification
 - `web_dashboard/scheduler/jobs_dividends.py` - Added ticker verification
-- `web_dashboard/schema/31_add_ticker_foreign_keys.sql` - Whitespace only
+- `database/schema/supabase/31_add_ticker_foreign_keys.sql` - Whitespace only
 - `web_dashboard/scripts/apply_fk_migration.py` - Whitespace only
 - `web_dashboard/scripts/backfill_securities_tickers.py` - Whitespace only

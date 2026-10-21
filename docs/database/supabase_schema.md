@@ -8,8 +8,6 @@
 
 ## Table of Contents
 
-- [_deprecated_ui_ai_rollup_fund_20260520](#-deprecated-ui-ai-rollup-fund-20260520)
-- [_deprecated_ui_ai_summary_20260520](#-deprecated-ui-ai-summary-20260520)
 - [ai_analysis_queue](#ai-analysis-queue)
 - [ai_analysis_skip_list](#ai-analysis-skip-list)
 - [ai_assistant_chats](#ai-assistant-chats)
@@ -22,7 +20,6 @@
 - [congress_positions](#congress-positions)
 - [congress_trade_returns](#congress-trade-returns)
 - [congress_trades](#congress-trades)
-- [congress_trades_backup_20260717_prescrape](#congress-trades-backup-20260717-prescrape)
 - [contributor_access](#contributor-access)
 - [contributors](#contributors)
 - [dividend_log](#dividend-log)
@@ -52,63 +49,6 @@
 - [user_profiles](#user-profiles)
 - [watched_tickers](#watched-tickers)
 - [watched_tickers_v2](#watched-tickers-v2)
-
----
-
-## _deprecated_ui_ai_rollup_fund_20260520
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `fund` | VARCHAR(200) | ✗ | - |
-| `headline` | VARCHAR(300) | ✓ | - |
-| `narrative` | TEXT | ✓ | - |
-| `sources_used` | JSONB | ✓ | - |
-| `inputs_digest` | VARCHAR(64) | ✗ | - |
-| `model_used` | VARCHAR(100) | ✓ | - |
-| `created_at` | TIMESTAMP | ✓ | now() |
-| `updated_at` | TIMESTAMP | ✓ | now() |
-
-### Primary Key
-
-- `fund`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `idx_ui_ai_rollup_fund_updated` | `updated_at` | ✗ |
-
----
-
-## _deprecated_ui_ai_summary_20260520
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `id` | UUID | ✗ | gen_random_uuid() |
-| `scope` | VARCHAR(80) | ✗ | - |
-| `scope_key` | VARCHAR(256) | ✗ | - |
-| `content_class` | VARCHAR(20) | ✗ | 'price_linked'::character varying |
-| `summary_json` | JSONB | ✗ | '{}'::jsonb |
-| `inputs_digest` | VARCHAR(64) | ✗ | - |
-| `model_used` | VARCHAR(100) | ✓ | - |
-| `created_at` | TIMESTAMP | ✓ | now() |
-| `updated_at` | TIMESTAMP | ✓ | now() |
-
-### Primary Key
-
-- `id`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `idx_ui_ai_summary_content_class` | `content_class`, `updated_at` | ✗ |
-| `idx_ui_ai_summary_scope_updated` | `scope`, `updated_at` | ✗ |
-| `ui_ai_summary_scope_key_unique` | `scope`, `scope_key` | ✓ |
 
 ---
 
@@ -524,52 +464,6 @@
 | `idx_congress_trades_politician_id` | `politician_id` | ✗ |
 | `idx_congress_trades_quality_status` | `quality_status` | ✗ |
 | `idx_congress_transaction_date` | `transaction_date` | ✗ |
-
----
-
-## congress_trades_backup_20260717_prescrape
-
-### Columns
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|----------|
-| `id` | INTEGER | ✗ | nextval('congress_trades_id_seq'::regclass) |
-| `ticker` | VARCHAR(20) | ✗ | - |
-| `chamber` | VARCHAR(20) | ✗ | - |
-| `transaction_date` | DATE | ✗ | - |
-| `disclosure_date` | DATE | ✗ | - |
-| `type` | VARCHAR(20) | ✗ | - |
-| `amount` | VARCHAR(100) | ✓ | - |
-| `asset_type` | VARCHAR(50) | ✓ | - |
-| `conflict_score` | DOUBLE PRECISION | ✓ | - |
-| `notes` | TEXT | ✓ | - |
-| `created_at` | TIMESTAMP | ✓ | now() |
-| `price` | NUMERIC(10, 2) | ✓ | NULL::numeric |
-| `party` | VARCHAR(50) | ✓ | - |
-| `state` | VARCHAR(2) | ✓ | - |
-| `owner` | VARCHAR(100) | ✗ | 'Unknown'::character varying |
-| `politician_id` | INTEGER | ✓ | - |
-| `asset_description` | TEXT | ✓ | - |
-
-### Primary Key
-
-- `id`
-
-### Indexes
-
-| Name | Columns | Unique |
-|------|---------|--------|
-| `congress_trades_backup_20260717_pre_ticker_transaction_date_idx` | `ticker`, `transaction_date` | ✗ |
-| `congress_trades_backup_20260717_prescrape_chamber_idx` | `chamber` | ✗ |
-| `congress_trades_backup_20260717_prescrape_conflict_score_idx` | `conflict_score` | ✗ |
-| `congress_trades_backup_20260717_prescrape_disclosure_date_idx` | `disclosure_date` | ✗ |
-| `congress_trades_backup_20260717_prescrape_owner_idx` | `owner` | ✗ |
-| `congress_trades_backup_20260717_prescrape_party_idx` | `party` | ✗ |
-| `congress_trades_backup_20260717_prescrape_politician_id_idx` | `politician_id` | ✗ |
-| `congress_trades_backup_20260717_prescrape_state_idx` | `state` | ✗ |
-| `congress_trades_backup_20260717_prescrape_ticker_idx` | `ticker` | ✗ |
-| `congress_trades_backup_20260717_prescrape_transaction_date_idx` | `transaction_date` | ✗ |
-| `congress_trades_backup_202607_politician_id_ticker_transact_key` | `politician_id`, `ticker`, `transaction_date`, `amount`, `type`, `owner` | ✓ |
 
 ---
 
