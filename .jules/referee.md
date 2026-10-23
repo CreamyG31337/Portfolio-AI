@@ -15,3 +15,7 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+## 2026-10-23 - Prevent ABS() when checking if a position is closed
+**Issue:** `remove_closed_position_from_watchlist` used `abs(net_by_fund.get(fund, 0.0)) > _CLOSED_POSITION_EPSILON` to see if a long position was still held. This meant shorting, overselling, or deleting a BUY (causing net shares to go negative) was incorrectly treated as "still held".
+**Learning:** `abs()` incorrectly treats negative shares as an active holding.
+**Prevention:** Do NOT wrap `net_shares` in `abs()` when checking if a financial position is completely closed against an epsilon threshold (e.g., `net_shares > _CLOSED_POSITION_EPSILON`). A net negative share balance logically means the original long position is closed.
