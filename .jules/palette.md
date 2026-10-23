@@ -19,3 +19,8 @@
 **Issue:** Custom autocomplete dropdowns implemented manually (e.g., in `trade_entry.html`, `contributions.html`, and `ticker_autocomplete.ts`) lacked necessary ARIA roles, making them inaccessible to screen readers.
 **Learning:** Hand-rolled components like autocompletes require strict adherence to the ARIA combobox pattern (`role="combobox"`, `role="listbox"`, `role="option"`, `aria-expanded`, and dynamic updates to `aria-activedescendant` based on unique IDs during keyboard navigation).
 **Prevention:** When creating or fixing custom JS-driven dropdowns/autocompletes, ensure complete ARIA attributes are applied both statically in HTML and updated dynamically in TypeScript keyboard/focus handlers. Alternatively, use standard Flowbite/Tailwind components whenever possible.
+
+## 2026-10-18 - Tailwind v4 outline-hidden over outline-none
+**Issue:** Some components used `focus:outline-none`, which in Tailwind v4 breaks accessibility in Windows High Contrast mode by applying `outline-style: none`.
+**Learning:** Found multiple usages of `outline-none` when exploring the codebase.
+**Prevention:** Strictly use `focus:outline-hidden` to visually hide outlines while maintaining accessible boundaries.
