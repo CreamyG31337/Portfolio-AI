@@ -123,3 +123,49 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     assert fewer(buy, _trade("GLO.TO", "BUY", 100)) == []              # price/date-only edit
     assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
     assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]
+
+
+def test_negative_shares_closes_position(monkeypatch) -> None:
+    from unittest.mock import MagicMock
+    from web_dashboard.routes.admin_routes import remove_closed_position_from_watchlist
+
+    mock_client = MagicMock()
+    # Mock trade_log query returning net negative shares
+    mock_client.supabase.table.return_value.select.return_value.eq.return_value.execute.return_value.data = [
+        {"fund": "TestFund", "shares": 100.0, "reason": "", "action": "BUY"},
+        {"fund": "TestFund", "shares": 150.0, "reason": "", "action": "SELL"}
+    ]
+    # Mock watchlist query returning one active row
+    mock_watch_table = MagicMock()
+    mock_watch_table.select.return_value.eq.return_value.eq.return_value.execute.return_value.data = [
+        {"fund": "TestFund", "source": "TRADELOG", "is_active": True}
+    ]
+
+    def table_side_effect(name):
+        if name == "trade_log":
+            return mock_client.supabase.table.return_value
+        return mock_watch_table
+
+    mock_client.supabase.table.side_effect = table_side_effect
+
+    mock_set = MagicMock(return_value={"ok": True})
+
+    # We patch it directly in the module it was defined in because it's locally imported
+    monkeypatch.setattr("web_dashboard.routes.admin_routes.set_watchlist_active", mock_set, raising=False)
+    monkeypatch.setattr("web_dashboard.watchlist_access.set_watchlist_active", mock_set, raising=False)
+
+    # Actually it's locally imported *inside* the function:
+    # from watchlist_access import WATCHLIST_V2_TABLE, set_watchlist_active
+    # So monkeypatching the watchlist_access module directly will work, but the import happens at runtime.
+    import sys
+    class MockWatchlistAccess:
+        WATCHLIST_V2_TABLE = "watchlist_v2"
+        set_watchlist_active = mock_set
+
+    monkeypatch.setitem(sys.modules, 'watchlist_access', MockWatchlistAccess())
+
+    removed = remove_closed_position_from_watchlist(mock_client, "TestFund", "AAPL")
+
+    # Should be removed because -50.0 is closed.
+    assert removed == ["TestFund"]
+    mock_set.assert_called_once()
