@@ -3312,7 +3312,8 @@ function updateChangeMetric(valId: string, pctId: string, change: number, pct: n
             : 'bg-theme-error-bg text-theme-error-text'}`;
 
         if (valEl) {
-            valEl.className = `text-2xl font-bold ${change >= 0 ? 'text-theme-success-text' : 'text-theme-error-text'}`;
+            valEl.classList.remove('text-theme-success-text', 'text-theme-error-text');
+                valEl.classList.add('text-2xl', 'font-bold', change >= 0 ? 'text-theme-success-text' : 'text-theme-error-text');
         }
     }
 }
