@@ -943,7 +943,8 @@ async function handleUpdateEmail(): Promise<void> {
         const result: ApiResponse = await response.json();
 
         if (response.ok && result.success) {
-            elements.updateEmailResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.updateEmailResult.classList.remove('bg-theme-error-bg/10', 'border-theme-error-text/30');
+            elements.updateEmailResult.classList.add('mt-4', 'bg-theme-success-bg/10', 'border', 'border-theme-success-text/30', 'rounded-lg', 'p-4');
             elements.updateEmailResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${result.message || 'Email updated'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
 
@@ -957,13 +958,15 @@ async function handleUpdateEmail(): Promise<void> {
             fetchUsers();
             fetchContributors();
         } else {
-            elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.updateEmailResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+            elements.updateEmailResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
             elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${result.error || 'Failed to update email'}</span>`;
             elements.updateEmailResult.classList.remove('hidden');
         }
     } catch (error) {
         if (!elements.updateEmailResult) return;
-        elements.updateEmailResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+        elements.updateEmailResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+            elements.updateEmailResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
         elements.updateEmailResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.updateEmailResult.classList.remove('hidden');
     }
@@ -1102,13 +1105,15 @@ async function handleDigestPreview(): Promise<void> {
         const html = String((data as { email_html?: string }).email_html || '');
         if (iframe) iframe.srcdoc = html;
         if (resultEl) {
-            resultEl.className = 'mt-4 text-sm text-theme-success-text';
+            resultEl.classList.remove('text-theme-error-text');
+            resultEl.classList.add('mt-4', 'text-sm', 'text-theme-success-text');
             resultEl.textContent = 'Preview ready. Use Open full digest for the hosted page.';
             resultEl.classList.remove('hidden');
         }
     } catch (err) {
         if (resultEl) {
-            resultEl.className = 'mt-4 text-sm text-theme-error-text';
+            resultEl.classList.remove('text-theme-success-text');
+            resultEl.classList.add('mt-4', 'text-sm', 'text-theme-error-text');
             resultEl.textContent = err instanceof Error ? err.message : String(err);
             resultEl.classList.remove('hidden');
         }
@@ -1147,14 +1152,16 @@ async function handleDigestSend(): Promise<void> {
             throw new Error((data as ApiResponse).error || `HTTP ${response.status}`);
         }
         if (resultEl) {
-            resultEl.className = 'mt-4 text-sm text-theme-success-text';
+            resultEl.classList.remove('text-theme-error-text');
+            resultEl.classList.add('mt-4', 'text-sm', 'text-theme-success-text');
             resultEl.textContent = `Sent. Issue: ${(data as { issue_id?: string }).issue_id || 'ok'}`;
             resultEl.classList.remove('hidden');
         }
         showToast('Digest sent', 'success');
     } catch (err) {
         if (resultEl) {
-            resultEl.className = 'mt-4 text-sm text-theme-error-text';
+            resultEl.classList.remove('text-theme-success-text');
+            resultEl.classList.add('mt-4', 'text-sm', 'text-theme-error-text');
             resultEl.textContent = err instanceof Error ? err.message : String(err);
             resultEl.classList.remove('hidden');
         }
@@ -1189,7 +1196,8 @@ async function handleGrantAccess(): Promise<void> {
         const data: ApiResponse = await response.json();
 
         if (response.ok && data.success) {
-            elements.grantAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+            elements.grantAccessResult.classList.remove('bg-theme-error-bg/10', 'border-theme-error-text/30');
+            elements.grantAccessResult.classList.add('mt-4', 'bg-theme-success-bg/10', 'border', 'border-theme-success-text/30', 'rounded-lg', 'p-4');
             elements.grantAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access granted'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
 
@@ -1201,13 +1209,15 @@ async function handleGrantAccess(): Promise<void> {
             // Refresh access records
             fetchAccessRecords();
         } else {
-            elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+            elements.grantAccessResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+            elements.grantAccessResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
             elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to grant access'}</span>`;
             elements.grantAccessResult.classList.remove('hidden');
         }
     } catch (error) {
         if (!elements.grantAccessResult) return;
-        elements.grantAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+        elements.grantAccessResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+            elements.grantAccessResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
         elements.grantAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
         elements.grantAccessResult.classList.remove('hidden');
     }
@@ -1262,7 +1272,8 @@ async function handleRevokeAccess(): Promise<void> {
                 const data: ApiResponse = await response.json();
                 if (response.ok && data.success) {
                     if (elements.revokeAccessResult) {
-                        elements.revokeAccessResult.className = 'mt-4 bg-theme-success-bg/10 border border-theme-success-text/30 rounded-lg p-4';
+                        elements.revokeAccessResult.classList.remove('bg-theme-error-bg/10', 'border-theme-error-text/30');
+                        elements.revokeAccessResult.classList.add('mt-4', 'bg-theme-success-bg/10', 'border', 'border-theme-success-text/30', 'rounded-lg', 'p-4');
                         elements.revokeAccessResult.innerHTML = `<i class="fas fa-check-circle text-theme-success-text mr-2"></i><span class="text-theme-success-text">✅ ${data.message || 'Access revoked'}</span>`;
                         elements.revokeAccessResult.classList.remove('hidden');
                     }
@@ -1271,14 +1282,16 @@ async function handleRevokeAccess(): Promise<void> {
                     fetchAccessRecords();
                 } else {
                     if (elements.revokeAccessResult) {
-                        elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+                        elements.revokeAccessResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+                        elements.revokeAccessResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
                         elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ ${data.error || data.message || 'Failed to revoke access'}</span>`;
                         elements.revokeAccessResult.classList.remove('hidden');
                     }
                 }
             } catch (error) {
                 if (!elements.revokeAccessResult) return;
-                elements.revokeAccessResult.className = 'mt-4 bg-theme-error-bg/10 border border-theme-error-text/30 rounded-lg p-4';
+                elements.revokeAccessResult.classList.remove('bg-theme-success-bg/10', 'border-theme-success-text/30');
+                        elements.revokeAccessResult.classList.add('mt-4', 'bg-theme-error-bg/10', 'border', 'border-theme-error-text/30', 'rounded-lg', 'p-4');
                 elements.revokeAccessResult.innerHTML = `<i class="fas fa-exclamation-circle text-theme-error-text mr-2"></i><span class="text-theme-error-text">❌ Error: ${error instanceof Error ? error.message : String(error)}</span>`;
                 elements.revokeAccessResult.classList.remove('hidden');
             }
