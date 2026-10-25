@@ -123,3 +123,12 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     assert fewer(buy, _trade("GLO.TO", "BUY", 100)) == []              # price/date-only edit
     assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
     assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]
+
+def test_short_position_counts_as_closed() -> None:
+    # A short position (net negative shares) should be treated as closed.
+    # The `abs()` bug treated abs(-10) as > epsilon, so it was seen as an active holding.
+    # We can use the existing `_run` helper to test this.
+    trades = [_t("Chimera", "SELL", 10)]
+    removed, deactivated = _run(trades, [_w("Chimera")])
+    assert removed == ["Chimera"]
+    assert deactivated == ["Chimera"]
