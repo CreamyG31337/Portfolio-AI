@@ -1755,7 +1755,7 @@ class AIAssistant {
             bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary border border-accent/30 rounded-lg rounded-br-sm px-4 py-3 shadow-xs';
 
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content leading-relaxed text-white';
+            contentDiv.className = 'message-content leading-relaxed text-text-primary';
             if (isLoading) {
                 contentDiv.innerHTML = content;
             } else {
@@ -2253,7 +2253,7 @@ class AIAssistant {
         const randomId = Math.random().toString(36).substring(2, 9);
         const header = document.createElement('button');
         header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-theme-info-bg/20 transition-colors focus:ring-4 focus:ring-theme-info-text/20 focus:outline-none';
+        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-theme-info-bg/20 transition-colors focus:ring-4 focus:ring-theme-info-text/20 focus:outline-hidden';
         header.setAttribute('data-collapse-toggle', `search-results-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `search-results-${randomId}`);
@@ -2294,7 +2294,7 @@ class AIAssistant {
         const randomId = Math.random().toString(36).substring(2, 9);
         const header = document.createElement('button');
         header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-accent/20 transition-colors focus:ring-4 focus:ring-accent/20 focus:outline-none';
+        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-accent/20 transition-colors focus:ring-4 focus:ring-accent/20 focus:outline-hidden';
         header.setAttribute('data-collapse-toggle', `research-articles-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `research-articles-${randomId}`);
