@@ -15,3 +15,7 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+## 2026-10-20 - [Fix abs() usage on net shares]
+**Issue:** Wrapping net shares in abs() caused negative share counts (from overselling or shorting) to be treated as an active holding.
+**Learning:** A net negative share balance logically means the original long position is closed.
+**Prevention:** Do not wrap net shares in abs() when comparing against the closed position epsilon threshold.
