@@ -123,3 +123,8 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     assert fewer(buy, _trade("GLO.TO", "BUY", 100)) == []              # price/date-only edit
     assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
     assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]
+
+def test_negative_shares_oversell_counts_as_closed() -> None:
+    trades = [_t("Chimera", "BUY", 100), _t("Chimera", "SELL", 120)]
+    removed, deactivated = _run(trades, [_w("Chimera"), _w("TFSA")])
+    assert sorted(removed) == ["Chimera", "TFSA"]

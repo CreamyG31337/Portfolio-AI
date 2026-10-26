@@ -15,3 +15,7 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+## 2026-04-18 - [Fix oversell epsilon math and missing API response fields]
+**Issue:** When closing positions, overselling generated net negative shares which the `abs()` function wrongly interpreted as holding the position, keeping it on watchlists. In addition, the PUT and DELETE APIs failed to emit `rebuild_reason` causing UI toast regressions vs POST.
+**Learning:** Epsilon comparisons for closed positions should never wrap net shares in absolute value because shorting or discrepancies should correctly flag the original long position as closed. API endpoints with identical side-effects need consistent contract implementations for front-end parity.
+**Prevention:** Remove `abs()` when checking for closed positions via epsilon thresholds. Maintain CRUD API response symmetry.
