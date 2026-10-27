@@ -117,6 +117,7 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     buy = _trade("GLO.TO", "BUY", 100)
     assert fewer(buy) == ["GLO.TO"]                                    # delete a BUY
     assert fewer(_trade("GLO.TO", "SELL", 100)) == []                  # delete a SELL adds shares back
+    assert fewer(_trade("GLO.TO", "SELL", -100)) == []                 # delete a SELL (negative shares) adds shares back
     assert fewer(buy, _trade("glo.to", "BUY", 40)) == ["GLO.TO"]       # BUY cut
     assert fewer(buy, _trade("GLO.TO", "BUY", 150)) == []              # BUY raised
     assert fewer(buy, _trade("GLO.TO", "SELL", 100)) == ["GLO.TO"]     # BUY flipped to SELL

@@ -15,3 +15,8 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+
+## 2026-10-27 - [Fix negative shares double-negative bug in watchlist edit cleanup]
+**Issue:** `_tickers_with_fewer_shares` failed to properly deduct shares for 'SELL' trades if the trade was stored with a negative share count, treating `- (-100)` as `+100`.
+**Learning:** Short position trades or specific UI flows might store `shares` as a negative value instead of enforcing an absolute value with a separate `action` column context. Relying on raw `float()` parsing for signed math can create double-negatives.
+**Prevention:** Always apply `abs()` to raw trade quantities (e.g., `abs(float(t.get('shares') or 0))`) before applying signed math based on the `action` field.
