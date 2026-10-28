@@ -61,6 +61,8 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i tables/user_newsletter_subscriptions.sql
 \i tables/watched_tickers.sql
 \i tables/watched_tickers_v2.sql
+\i tables/fundamentals_fetch_skips.sql
+\i tables/ticker_symbol_aliases.sql
 
 -- FUNCTIONS
 \i functions/assign_fund_to_user.sql
