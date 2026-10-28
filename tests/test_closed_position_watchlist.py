@@ -123,3 +123,17 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     assert fewer(buy, _trade("GLO.TO", "BUY", 100)) == []              # price/date-only edit
     assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
     assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]
+
+
+def test_edit_and_delete_with_negative_shares_from_db() -> None:
+    from routes.admin_routes import _tickers_with_fewer_shares as fewer
+
+    # Database might store short SELLs as negative shares
+    # A delete of a SELL (-100) should be considered as adding 100 net shares
+    assert fewer(_trade("GLO.TO", "SELL", -100)) == []
+
+    # Changing a SELL from -100 to -10 means we bought back 90 shares
+    assert fewer(_trade("GLO.TO", "SELL", -100), _trade("GLO.TO", "SELL", -10)) == []
+
+    # Changing a SELL from -10 to -100 means we sold 90 more shares (net shares go down)
+    assert fewer(_trade("GLO.TO", "SELL", -10), _trade("GLO.TO", "SELL", -100)) == ["GLO.TO"]
