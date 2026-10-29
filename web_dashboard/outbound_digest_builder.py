@@ -50,23 +50,16 @@ def get_display_currency_service(client: SupabaseClient, user_id: str) -> str:
     return "CAD"
 
 
+from supabase_pagination import fetch_all_rows
+
 def fetch_latest_positions_dataframe(client: SupabaseClient, fund_names: List[str]) -> pd.DataFrame:
     if not fund_names:
         return pd.DataFrame()
-    all_rows: List[Dict[str, Any]] = []
-    batch_size = 1000
-    offset = 0
-    while True:
-        q = client.supabase.table("latest_positions").select("*").in_("fund", fund_names)
-        result = q.range(offset, offset + batch_size - 1).execute()
-        if not result.data:
-            break
-        all_rows.extend(result.data)
-        if len(result.data) < batch_size:
-            break
-        offset += batch_size
-        if offset > 50000:
-            break
+    all_rows = fetch_all_rows(
+        client, "latest_positions", select="*",
+        apply_query=lambda q: q.in_("fund", fund_names),
+        order="fund", order_secondary="ticker"
+    )
     if not all_rows:
         return pd.DataFrame()
     return pd.DataFrame(all_rows)
@@ -76,22 +69,15 @@ def fetch_cash_balances_for_funds(client: SupabaseClient, fund_names: List[str])
     if not fund_names:
         return {"CAD": 0.0, "USD": 0.0}
     balances: Dict[str, float] = {"CAD": 0.0, "USD": 0.0}
-    offset = 0
-    batch_size = 1000
-    while True:
-        q = client.supabase.table("cash_balances").select("*").in_("fund", fund_names)
-        result = q.range(offset, offset + batch_size - 1).execute()
-        if not result.data:
-            break
-        for row in result.data:
-            currency = row.get("currency", "CAD")
-            amount = float(row.get("balance", 0) or 0)
-            balances[currency] = balances.get(currency, 0.0) + amount
-        if len(result.data) < batch_size:
-            break
-        offset += batch_size
-        if offset > 50000:
-            break
+    all_rows = fetch_all_rows(
+        client, "cash_balances", select="*",
+        apply_query=lambda q: q.in_("fund", fund_names),
+        order="id"
+    )
+    for row in all_rows:
+        currency = row.get("currency", "CAD")
+        amount = float(row.get("balance", 0) or 0)
+        balances[currency] = balances.get(currency, 0.0) + amount
     return balances
 
 

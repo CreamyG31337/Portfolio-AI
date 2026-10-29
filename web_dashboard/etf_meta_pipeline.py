@@ -52,37 +52,30 @@ def purge_stale_etf_group_queue(keep_lookback_days: int) -> int:
     cutoff = (datetime.now(UTC).date() - timedelta(days=keep_lookback_days - 1)).isoformat()
     db = SupabaseClient(use_service_role=True)
     purged = 0
-    offset = 0
-    page_size = 500
-    while True:
-        result = (
-            db.supabase.table("ai_analysis_queue")
-            .select("id,target_key,status")
-            .eq("analysis_type", "etf_group")
-            .in_("status", ["pending", "failed"])
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        batch = list(result.data or [])
-        if not batch:
-            break
-        for row in batch:
-            key = str(row.get("target_key") or "")
-            parts = key.split("_", 1)
-            day = parts[1] if len(parts) > 1 else ""
-            if not day or day >= cutoff:
-                continue
-            db.supabase.table("ai_analysis_queue").update(
-                {
-                    "status": "completed",
-                    "completed_at": datetime.now(UTC).isoformat(),
-                    "error_message": "stale_queue_purge: outside lookback window",
-                }
-            ).eq("id", row["id"]).execute()
-            purged += 1
-        if len(batch) < page_size:
-            break
-        offset += page_size
+    from supabase_pagination import fetch_all_rows
+
+    def apply_status(q):
+        return q.in_("status", ["pending", "failed"])
+
+    batch = fetch_all_rows(
+        db, "ai_analysis_queue", select="id,target_key,status",
+        filters=[("analysis_type", "eq", "etf_group")],
+        apply_query=apply_status, order="id"
+    )
+    for row in batch:
+        key = str(row.get("target_key") or "")
+        parts = key.split("_", 1)
+        day = parts[1] if len(parts) > 1 else ""
+        if not day or day >= cutoff:
+            continue
+        db.supabase.table("ai_analysis_queue").update(
+            {
+                "status": "completed",
+                "completed_at": datetime.now(UTC).isoformat(),
+                "error_message": "stale_queue_purge: outside lookback window",
+            }
+        ).eq("id", row["id"]).execute()
+        purged += 1
     if purged:
         logger.info(
             "Purged %s stale etf_group queue row(s) with holdings date before %s",
