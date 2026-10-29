@@ -15,3 +15,7 @@
 ## 2026-09-29 - Latest-of-several timestamps: GREATEST, not COALESCE
 **Issue:** `list_theses_due` sorted by `COALESCE(latest_llm_reply_at, last_reviewed_at, created_at)`, which returns the first non-null value, so a newer human review was ignored once any AI reply existed.
 **Prevention:** Use `GREATEST(...)` for "most recent of" across nullable columns (Postgres `GREATEST` skips NULLs). Use `COALESCE` only for "first available".
+## 2026-10-20 - Negative shares cause incorrect net shares calculation on SELL
+**Issue:** Short positions stored as negative shares in the database would be added instead of subtracted when calculating net shares (or evaluating if shares went down), resulting in double-negative math errors where selling a short position incorrectly increased net shares.
+**Learning:** Raw db values representing shares could be negative (specifically for shorts). Checking `action == 'SELL'` and subtracting the raw value results in `-(-value) = +value`.
+**Prevention:** When doing signed math on position sizes based on trade action (e.g. `return -qty if action == 'SELL' else qty`), always apply `abs()` to the raw DB value first.
