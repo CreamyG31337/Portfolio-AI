@@ -1089,8 +1089,13 @@ OUTPUT JSON ONLY:
             posts_filtered = 0
             posts_duplicate = 0
             
+
+            post_params = []
+            metric_ids = []
+
             for metric in metrics:
                 metric_id = metric['id']
+                metric_ids.append((metric_id,))
                 ticker = metric['ticker']
                 platform = metric['platform']
                 raw_posts = metric['raw_data'] or []
@@ -1099,24 +1104,24 @@ OUTPUT JSON ONLY:
                     try:
                         # Extract post fields based on platform
                         if platform == 'stocktwits':
-                            content = post_data.get('body', '')
+                            content_body = post_data.get('body', '')
                             # StockTwits posts are already filtered by ticker, so accept all
                             post_record = {
                                 'metric_id': metric_id,
                                 'platform': platform,
                                 'post_id': self._stable_post_id(platform, post_data),
-                                'content': content,
+                                'content': content_body,
                                 'author': post_data.get('user', ''),
                                 'posted_at': post_data.get('created_at') or metric['created_at'],
                                 'engagement_score': 0,  # Not available in current StockTwits data
                                 'url': f"https://stocktwits.com/{post_data.get('user', 'Unknown')}/message/{post_data.get('id')}" if post_data.get('id') else None,
-                                'extracted_tickers': self._extract_tickers_basic(content)
+                                'extracted_tickers': self._extract_tickers_basic(content_body)
                             }
                         elif platform == 'reddit':
                             title = post_data.get('title', '')
                             selftext = post_data.get('selftext', '')
-                            content = title + '\n\n' + selftext
-                            full_text = content.upper()
+                            content_body = title + '\n\n' + selftext
+                            full_text = content_body.upper()
                             
                             # Validate that post actually mentions the ticker
                             cashtag_pattern = r'\$' + re.escape(ticker) + r'\b'
@@ -1136,7 +1141,7 @@ OUTPUT JSON ONLY:
                                 'metric_id': metric_id,
                                 'platform': platform,
                                 'post_id': self._stable_post_id(platform, post_data),
-                                'content': content,
+                                'content': content_body,
                                 'author': f"u/{author}" if author else None,
                                 # Fall back to when we observed the post rather
                                 # than epoch. Rows collected before the
@@ -1155,40 +1160,43 @@ OUTPUT JSON ONLY:
                             # Unknown platform: post_record would be unbound.
                             continue
 
-                        # Every ticker is re-polled roughly 20x a day and the
-                        # API keeps returning the same recent posts, so without
-                        # this the same post lands once per poll. Reddit had
-                        # 17,763 stored rows for 251 real posts before it.
-                        insert_query = """
-                            INSERT INTO social_posts
-                            (metric_id, platform, post_id, content, author, posted_at,
-                             engagement_score, url, extracted_tickers)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (platform, post_id) DO NOTHING
-                        """
-                        inserted = self.postgres.execute_update(insert_query, (
+                        post_params.append((
                             post_record['metric_id'], post_record['platform'], post_record['post_id'],
                             post_record['content'], post_record['author'], post_record['posted_at'],
                             post_record['engagement_score'], post_record['url'], post_record['extracted_tickers']
                         ))
 
-                        if inserted:
-                            posts_created += 1
-                        else:
-                            posts_duplicate += 1
-
                     except Exception as e:
                         logger.warning(f"Error extracting post for metric {metric_id}: {e}")
                         continue
 
+            if post_params:
+                # Every ticker is re-polled roughly 20x a day and the
+                # API keeps returning the same recent posts, so without
+                # this the same post lands once per poll. Reddit had
+                # 17,763 stored rows for 251 real posts before it.
+                insert_query = """
+                    INSERT INTO social_posts
+                    (metric_id, platform, post_id, content, author, posted_at,
+                     engagement_score, url, extracted_tickers)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (platform, post_id) DO NOTHING
+                """
+                inserted = self.postgres.execute_many(insert_query, post_params)
+                if inserted:
+                    posts_created = inserted
+                posts_duplicate = len(post_params) - posts_created
+
+            if metric_ids:
                 # Mark the metric walked even when it yielded nothing new, so
                 # the next batch moves on instead of re-selecting it forever.
-                self.postgres.execute_update(
+                self.postgres.execute_many(
                     "UPDATE social_metrics SET posts_extracted_at = NOW() WHERE id = %s",
-                    (metric_id,),
+                    metric_ids,
                 )
 
             if posts_filtered > 0:
+
                 logger.info(f"⚠️  Filtered out {posts_filtered} posts that didn't mention their ticker")
             if posts_duplicate > 0:
                 logger.info(f"♻️  Skipped {posts_duplicate} posts already seen on an earlier poll")

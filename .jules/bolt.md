@@ -108,3 +108,7 @@
 ## 2026-10-19 - [Batch N+1 Postgres and Supabase Updates]
 **Learning:** Found N+1 database queries in `analyze_congress_trades_batch.py` that were bottlenecking the background scheduler. Both local postgres (`execute_update`) and remote Supabase (`.execute()`) were being called individually for each trade in a session. Furthermore, when creating test mocks for Supabase `.update().in_().execute()`, missing methods on the mock like `.in_()` can crash unit tests.
 **Action:** Replaced per-row postgres updates with batched `execute_many` passing a list of tuples, and changed the Supabase sync helper to chunked `.in_("id", chunk).execute()` updates. Ensure any test mocks checking Supabase builder chains include the `.in_()` method.
+
+## 2025-02-23 - [Batching PostgREST operations in SocialService]
+**Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
+**Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
