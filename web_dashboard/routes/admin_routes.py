@@ -256,7 +256,7 @@ def _net_shares_from_trades(trades: list) -> float:
     for t in trades:
         act = str(t.get('action') or '').upper() or infer_trade_action(t.get('reason', ''), default='BUY')
         try:
-            qty = float(t.get('shares') or 0)
+            qty = abs(float(t.get('shares') or 0))
         except (TypeError, ValueError):
             continue
         if act in ('BUY', 'DIVIDEND'):
@@ -324,7 +324,7 @@ def _tickers_with_fewer_shares(old_trade: dict, new_trade: dict | None = None) -
     """
     def signed(t: dict) -> float:
         try:
-            qty = float(t.get('shares') or 0)
+            qty = abs(float(t.get('shares') or 0))
         except (TypeError, ValueError):
             return 0.0
         return -qty if _trade_entry_display_action(t) == 'SELL' else qty
