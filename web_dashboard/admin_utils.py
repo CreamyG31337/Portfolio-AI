@@ -126,36 +126,15 @@ def get_fund_statistics_batched(
     stats = {fund: {"positions": 0, "trades": 0} for fund in fund_names}
 
     try:
+        from supabase_pagination import fetch_all_rows
+        def apply_in(q):
+            return q.in_("fund", fund_names)
+
         with perf_timer("DB: portfolio_positions.count(batched)", log_to_console=False):
-            all_positions: List[Dict[str, Any]] = []
-            batch_size = 1000
-            offset = 0
-
-            while True:
-                result = (
-                    client.supabase.table("portfolio_positions")
-                    .select("fund")
-                    .in_("fund", fund_names)
-                    .range(offset, offset + batch_size - 1)
-                    .execute()
-                )
-
-                if not result.data:
-                    break
-
-                all_positions.extend(result.data)
-
-                if len(result.data) < batch_size:
-                    break
-
-                offset += batch_size
-                if offset > 50000:
-                    logger.warning(
-                        "Reached 50,000 row safety limit in get_fund_statistics_batched "
-                        "positions pagination"
-                    )
-                    break
-
+            all_positions = fetch_all_rows(
+                client, "portfolio_positions", select="fund",
+                apply_query=apply_in, order="id", max_rows=50000
+            )
             if all_positions:
                 position_counts = Counter(pos["fund"] for pos in all_positions)
                 for fund, count in position_counts.items():
@@ -163,35 +142,10 @@ def get_fund_statistics_batched(
                         stats[fund]["positions"] = count
 
         with perf_timer("DB: trade_log.count(batched)", log_to_console=False):
-            all_trades: List[Dict[str, Any]] = []
-            batch_size = 1000
-            offset = 0
-
-            while True:
-                result = (
-                    client.supabase.table("trade_log")
-                    .select("fund")
-                    .in_("fund", fund_names)
-                    .range(offset, offset + batch_size - 1)
-                    .execute()
-                )
-
-                if not result.data:
-                    break
-
-                all_trades.extend(result.data)
-
-                if len(result.data) < batch_size:
-                    break
-
-                offset += batch_size
-                if offset > 50000:
-                    logger.warning(
-                        "Reached 50,000 row safety limit in get_fund_statistics_batched "
-                        "trades pagination"
-                    )
-                    break
-
+            all_trades = fetch_all_rows(
+                client, "trade_log", select="fund",
+                apply_query=apply_in, order="id", max_rows=50000
+            )
             if all_trades:
                 trade_counts = Counter(trade["fund"] for trade in all_trades)
                 for fund, count in trade_counts.items():

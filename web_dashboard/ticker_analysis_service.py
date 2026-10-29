@@ -1395,32 +1395,21 @@ class TickerAnalysisService:
             except Exception as e:
                 logger.warning(f"Error fetching production funds (holdings unfiltered): {e}")
 
-            page_size = 1000
-            offset = 0
-            while True:
-                holdings_query = (
-                    self.supabase.supabase.table('portfolio_positions')
-                    .select('ticker')
-                )
+            from supabase_pagination import fetch_all_rows
+            def apply_funds(q):
                 if production_funds:
-                    holdings_query = holdings_query.in_('fund', production_funds)
-                holdings_result = (
-                    holdings_query
-                    .range(offset, offset + page_size - 1)
-                    .execute()
-                )
-                batch = holdings_result.data or []
-                if not batch:
-                    break
-                for row in batch:
-                    ticker = row.get('ticker')
-                    if ticker and ticker not in seen:
-                        seen.add(ticker)
-                        tickers.append((ticker, 100))
-                        stats["holdings_candidates"] += 1
-                if len(batch) < page_size:
-                    break
-                offset += page_size
+                    return q.in_('fund', production_funds)
+                return q
+            batch = fetch_all_rows(
+                self.supabase, 'portfolio_positions', select='ticker',
+                apply_query=apply_funds, order='id'
+            )
+            for row in batch:
+                ticker = row.get('ticker')
+                if ticker and ticker not in seen:
+                    seen.add(ticker)
+                    tickers.append((ticker, 100))
+                    stats["holdings_candidates"] += 1
         except Exception as e:
             logger.warning(f"Error fetching holdings: {e}")
         

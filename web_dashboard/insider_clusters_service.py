@@ -36,6 +36,7 @@ def fetch_recent_insider_buys(
             .eq("type", "Purchase")
             .gte("transaction_date", cutoff)
             .order("transaction_date", desc=True)
+            .order("id")
             .range(offset, offset + _PAGE_SIZE - 1)
             .execute()
         )
