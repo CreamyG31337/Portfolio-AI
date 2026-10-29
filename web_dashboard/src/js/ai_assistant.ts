@@ -2253,7 +2253,8 @@ class AIAssistant {
         const randomId = Math.random().toString(36).substring(2, 9);
         const header = document.createElement('button');
         header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-theme-info-bg/20 transition-colors focus:ring-4 focus:ring-theme-info-text/20 focus:outline-none';
+        // outline-hidden (not outline-none): keeps Windows High Contrast focus visible (TW v4)
+        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-theme-info-bg/20 transition-colors focus:ring-4 focus:ring-theme-info-text/20 focus:outline-hidden';
         header.setAttribute('data-collapse-toggle', `search-results-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `search-results-${randomId}`);
@@ -2294,7 +2295,7 @@ class AIAssistant {
         const randomId = Math.random().toString(36).substring(2, 9);
         const header = document.createElement('button');
         header.type = 'button';
-        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-accent/20 transition-colors focus:ring-4 focus:ring-accent/20 focus:outline-none';
+        header.className = 'w-full text-left p-3 flex justify-between items-center rounded-t-lg hover:bg-accent/20 transition-colors focus:ring-4 focus:ring-accent/20 focus:outline-hidden';
         header.setAttribute('data-collapse-toggle', `research-articles-${randomId}`);
         header.setAttribute('aria-expanded', 'false');
         header.setAttribute('aria-controls', `research-articles-${randomId}`);

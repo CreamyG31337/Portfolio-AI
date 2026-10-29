@@ -44,7 +44,7 @@ interface TradeSubmitResponse {
     success?: boolean;
     error?: string;
     rebuild_job_id?: string;
-    rebuild_reason?: 'backdated' | 'sell' | null;
+    rebuild_reason?: 'backdated' | 'sell' | 'edit' | 'delete' | null;
     watchlist_removed?: string[];
 }
 
@@ -806,7 +806,8 @@ async function handleEditSubmit(e: Event): Promise<void> {
         fetchRecentTrades(currentPage);
 
         if (result.rebuild_job_id) {
-            showToastForTradeEntry('Background rebuild started', 'info');
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'trade updated';
+            showToastForTradeEntry(`Updating positions in the background (${why})`, 'info');
         }
         showWatchlistRemovedToast(result);
     } catch (error) {
@@ -876,7 +877,8 @@ async function handleDeleteConfirm(): Promise<void> {
         fetchRecentTrades(currentPage);
 
         if (result.rebuild_job_id) {
-            showToastForTradeEntry('Background rebuild started', 'info');
+            const why = result.rebuild_reason === 'backdated' ? 'backdated trade' : 'trade deleted';
+            showToastForTradeEntry(`Updating positions in the background (${why})`, 'info');
         }
         showWatchlistRemovedToast(result);
     } catch (error) {

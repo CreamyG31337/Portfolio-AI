@@ -20,3 +20,7 @@
 **Issue:** `_net_shares_from_trades` and `_tickers_with_fewer_shares` assumed `shares` from `trade_log` was always positive and used `act == 'SELL'` to deduct shares. However, short position SELL trades might have negative shares in the DB. This double-negative effectively increased net shares when it should have decreased them.
 **Learning:** For signed math operations tracking net shares with explicit action fields, apply `abs()` to raw DB shares before evaluating the sign.
 **Prevention:** Wrap `float(t.get('shares') or 0)` with `abs()` when checking position logic to correctly handle both positive and negative recorded shares.
+
+## 2026-10-29 - Oversell epsilon and CRUD rebuild_reason parity
+**Issue:** `abs(net_shares) > epsilon` treated oversold/negative nets as still held, so watchlist cleanup skipped. PUT/DELETE trade APIs also omitted `rebuild_reason` that POST already returned.
+**Prevention:** Compare signed net shares to epsilon (no abs). Keep rebuild_reason on create/update/delete responses.

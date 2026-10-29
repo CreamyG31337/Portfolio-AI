@@ -112,7 +112,7 @@ def _trade(ticker: str, action: str, shares: float) -> dict[str, Any]:
 
 
 def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
-    from web_dashboard.routes.admin_routes import _tickers_with_fewer_shares as fewer
+    from routes.admin_routes import _tickers_with_fewer_shares as fewer
 
     buy = _trade("GLO.TO", "BUY", 100)
     assert fewer(buy) == ["GLO.TO"]                                    # delete a BUY
@@ -124,12 +124,18 @@ def test_edit_and_delete_check_only_tickers_that_lost_shares() -> None:
     assert fewer(buy, _trade("KO", "BUY", 100)) == ["GLO.TO"]          # ticker typo fixed: old one lost the lot
     assert fewer(_trade("GLO.TO", "SELL", 10), _trade("KO", "SELL", 10)) == ["KO"]
 
+
 def test_negative_shares():
-    # If SELL is given as -100 in DB, it should be treated as 100 shares sold (so net -100)
-    # Deleting a BUY of -100 should act as deleting a BUY of 100.
-    from web_dashboard.routes.admin_routes import _tickers_with_fewer_shares as fewer
+    # Defensive: abs(qty) before signed math if a row somehow stores negative shares.
+    from routes.admin_routes import _tickers_with_fewer_shares as fewer
     buy = _trade("GLO.TO", "BUY", -100)
     assert fewer(buy) == ["GLO.TO"]
 
     sell = _trade("GLO.TO", "SELL", -100)
-    assert fewer(sell) == [] # deleting a SELL adds shares back, so delta is +100
+    assert fewer(sell) == []  # deleting a SELL adds shares back, so delta is +100
+
+
+def test_negative_shares_oversell_counts_as_closed() -> None:
+    trades = [_t("Chimera", "BUY", 100), _t("Chimera", "SELL", 120)]
+    removed, deactivated = _run(trades, [_w("Chimera"), _w("TFSA")])
+    assert sorted(removed) == ["Chimera", "TFSA"]

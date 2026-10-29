@@ -416,7 +416,7 @@ async function testWebaiCookies() {
                 verboseHtml += `<div>${result.details.has_1psid ? '✅' : '❌'} __Secure-1PSID: ${result.details.has_1psid ? 'Present' : 'Missing'}</div>`;
             }
             if (result.details.has_1psidts !== undefined) {
-                verboseHtml += `<div>${result.details.has_1psidts ? '✅' : '⚠️'} __Secure-1PSIDTS: ${result.details.has_1psidts ? 'Present' : 'Missing (optional)'}</div>`;
+                verboseHtml += `<div>${result.details.has_1psidts ? '✅' : '⚠︝'} __Secure-1PSIDTS: ${result.details.has_1psidts ? 'Present' : 'Missing (optional)'}</div>`;
             }
 
             // Client initialization
@@ -429,7 +429,7 @@ async function testWebaiCookies() {
                 verboseHtml += `<div>${result.details.response_received ? '✅' : '❌'} Response Received: ${result.details.response_received ? 'Yes' : 'No'}</div>`;
             }
             if (result.details.response_length !== undefined) {
-                verboseHtml += `<div>📏 Response Length: ${result.details.response_length} characters</div>`;
+                verboseHtml += `<div>📝 Response Length: ${result.details.response_length} characters</div>`;
             }
 
             // Error details
@@ -437,12 +437,12 @@ async function testWebaiCookies() {
                 verboseHtml += `<div class="text-red-600 dark:text-red-400">❌ Error: ${escapeHtml(result.details.error)}</div>`;
             }
             if (result.details.error_type) {
-                verboseHtml += `<div class="text-red-600 dark:text-red-400">🔍 Error Type: ${escapeHtml(result.details.error_type)}</div>`;
+                verboseHtml += `<div class="text-red-600 dark:text-red-400">🔝 Error Type: ${escapeHtml(result.details.error_type)}</div>`;
             }
 
             // Cookie file location
             if (result.details.cookie_file) {
-                verboseHtml += `<div class="text-gray-600 dark:text-gray-400">📁 Cookie File: ${escapeHtml(result.details.cookie_file)}</div>`;
+                verboseHtml += `<div class="text-gray-600 dark:text-gray-400">📝 Cookie File: ${escapeHtml(result.details.cookie_file)}</div>`;
             }
 
             verboseHtml += '</div></div>';
@@ -847,6 +847,8 @@ async function loadCookieRefresherStatus() {
             });
 
             if (statusDot) {
+                // TODO(palette): prefer classList add/remove for state colors so we
+                // never wipe structural classes if this element gains them in HTML.
                 if (hasCookies) {
                     statusDot.className = 'bg-green-500';
                 } else if (partialCookies) {
