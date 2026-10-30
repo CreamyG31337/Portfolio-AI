@@ -1658,6 +1658,7 @@ company. Ordinary words that happen to look like symbols are not tickers.
 
         inserted = 0
         seen: set = set()
+        insert_params = []
         for ticker_data in tickers:
             if not isinstance(ticker_data, dict):
                 continue
@@ -1668,13 +1669,7 @@ company. Ordinary words that happen to look like symbols are not tickers.
             seen.add(sym)
             try:
                 company_info = self._lookup_company_info(sym)
-                insert_query = """
-                    INSERT INTO extracted_tickers
-                    (analysis_id, ticker, confidence, context, is_primary,
-                     company_name, sector)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """
-                self.postgres.execute_update(insert_query, (
+                insert_params.append((
                     analysis_id,
                     sym,
                     ticker_data.get('confidence', 0.5),
@@ -1683,9 +1678,22 @@ company. Ordinary words that happen to look like symbols are not tickers.
                     ticker_data.get('company_name') or company_info.get('company_name'),
                     company_info.get('sector'),
                 ))
-                inserted += 1
             except Exception as e:
-                logger.warning("Error inserting extracted ticker row for %s: %s", sym, e)
+                logger.warning("Error collecting extracted ticker data for %s: %s", sym, e)
+
+        if insert_params:
+            insert_query = """
+                INSERT INTO extracted_tickers
+                (analysis_id, ticker, confidence, context, is_primary,
+                 company_name, sector)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            try:
+                self.postgres.execute_many(insert_query, insert_params)
+                inserted = len(insert_params)
+            except Exception as e:
+                logger.warning("Error in batch inserting extracted tickers: %s", e)
+
         return inserted
 
     def _lookup_company_info(self, ticker: str) -> Dict[str, str]:
