@@ -135,7 +135,8 @@ def test_negative_shares():
     assert fewer(sell) == []  # deleting a SELL adds shares back, so delta is +100
 
 
-def test_negative_shares_oversell_counts_as_closed() -> None:
+def test_negative_shares_short_position_remains_active() -> None:
+    # A short position (negative net shares) is actively held, so it remains watched.
     trades = [_t("Chimera", "BUY", 100), _t("Chimera", "SELL", 120)]
     removed, deactivated = _run(trades, [_w("Chimera"), _w("TFSA")])
-    assert sorted(removed) == ["Chimera", "TFSA"]
+    assert removed == [] and deactivated == []
