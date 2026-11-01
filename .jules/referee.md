@@ -24,3 +24,8 @@
 ## 2026-10-29 - Oversell epsilon and CRUD rebuild_reason parity
 **Issue:** `abs(net_shares) > epsilon` treated oversold/negative nets as still held, so watchlist cleanup skipped. PUT/DELETE trade APIs also omitted `rebuild_reason` that POST already returned.
 **Prevention:** Compare signed net shares to epsilon (no abs). Keep rebuild_reason on create/update/delete responses.
+
+## 2026-10-29 - Oversell epsilon and CRUD rebuild_reason parity
+**Issue:** `abs(net_shares) > epsilon` treated oversold/negative nets as still held, so watchlist cleanup skipped. PUT/DELETE trade APIs also omitted `rebuild_reason` that POST already returned.
+**Learning:** Reverting abs() broke short positions (which use negative shares). API endpoints triggering the same UI toast should return the same shape payload.
+**Prevention:** Compare signed net shares to epsilon using abs() so short positions stay on the watchlist. Keep rebuild_reason parity on create/update/delete responses.

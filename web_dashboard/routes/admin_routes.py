@@ -287,8 +287,7 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
         for f in {r.get('fund') for r in rows if r.get('fund')}:
             net_by_fund[f] = _net_shares_from_trades([r for r in rows if r.get('fund') == f])
 
-        # Negative net (oversell / deleted BUY) means the long is closed — do not abs().
-        if net_by_fund.get(fund, 0.0) > _CLOSED_POSITION_EPSILON:
+        if abs(net_by_fund.get(fund, 0.0)) > _CLOSED_POSITION_EPSILON:
             return []  # partial sell: still held in this fund
 
         watch_rows = admin_client.supabase.table(WATCHLIST_V2_TABLE) \
@@ -304,7 +303,7 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
             if w_fund != fund:
                 if str(w.get('source') or '').upper() != 'TRADELOG':
                     continue  # deliberately watched in another fund: leave it
-                if net_by_fund.get(w_fund, 0.0) > _CLOSED_POSITION_EPSILON:
+                if abs(net_by_fund.get(w_fund, 0.0)) > _CLOSED_POSITION_EPSILON:
                     continue  # still held there
             result = set_watchlist_active(admin_client, fund=w_fund, ticker=ticker, is_active=False)
             if result.get('ok'):
@@ -2824,7 +2823,7 @@ def api_update_trade(trade_id):
             "success": True,
             "message": f"Trade {tid} updated: {action} {shares} {ticker}",
             "rebuild_job_id": job_id,
-            "rebuild_reason": "edit" if job_id else None,
+            "rebuild_reason": ("backdated" if earliest_date < datetime.now().date() else "edit") if job_id else None,
             "watchlist_removed": watchlist_removed,
         })
     
@@ -2887,7 +2886,7 @@ def api_delete_trade(trade_id):
             "success": True,
             "message": f"Trade {tid} deleted",
             "rebuild_job_id": job_id,
-            "rebuild_reason": "delete" if job_id else None,
+            "rebuild_reason": ("backdated" if trade_date < datetime.now().date() else "delete") if job_id else None,
             "watchlist_removed": watchlist_removed,
         })
     
