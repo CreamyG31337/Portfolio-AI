@@ -34,6 +34,8 @@ elif sys.path[0] != str(project_root):
     sys.path.remove(str(project_root))
     sys.path.insert(0, str(project_root))
 
+from summary_common import ticker_sentiment_for_tickers  # noqa: E402  (needs sys.path above)
+
 # Initialize logger
 logger = logging.getLogger(__name__)
 
@@ -339,6 +341,7 @@ def symbol_article_scraper_job() -> None:
                             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
                             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
                             sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                            ticker_sentiment=ticker_sentiment_for_tickers(summary_data, extracted_tickers),
                             logic_check=logic_check
                         )
                         

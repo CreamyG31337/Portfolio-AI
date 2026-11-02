@@ -37,6 +37,7 @@ elif sys.path[0] != str(project_root):
 
 from scheduler.scheduler_core import log_job_execution
 from scheduler.jobs_common import calculate_relevance_score
+from summary_common import ticker_sentiment_for_tickers
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -1034,7 +1035,8 @@ def archive_retry_job() -> None:
                                     fact_check=summary_data.get("fact_check") if isinstance(summary_data, dict) else None,
                                     conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
                                     sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
-                                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
+                                    sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+                                    ticker_sentiment=ticker_sentiment_for_tickers(summary_data, extracted_tickers),
                                 )
                                 
                                 # Also update content
@@ -1255,6 +1257,7 @@ def process_research_reports_job() -> None:
                     conclusion=summary_result.get("conclusion") if isinstance(summary_result, dict) else None,
                     sentiment=summary_result.get("sentiment") if isinstance(summary_result, dict) else None,
                     sentiment_score=summary_result.get("sentiment_score") if isinstance(summary_result, dict) else None,
+                    ticker_sentiment=ticker_sentiment_for_tickers(summary_result, extracted_tickers),
                     logic_check=summary_result.get("logic_check") if isinstance(summary_result, dict) else None
                 )
                 

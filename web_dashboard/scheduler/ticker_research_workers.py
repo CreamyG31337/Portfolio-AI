@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Optional, Sequence
 
 from scheduler.article_pipeline import ArticleCounters
+from summary_common import ticker_sentiment_for_tickers
 from scheduler.jobs_common import (
     calculate_relevance_score,
     claim_recent_summary_input,
@@ -319,6 +320,7 @@ def process_ticker_search_result(ctx: TickerArticleCtx, result: dict) -> Article
             conclusion=summary_data.get("conclusion") if isinstance(summary_data, dict) else None,
             sentiment=summary_data.get("sentiment") if isinstance(summary_data, dict) else None,
             sentiment_score=summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None,
+            ticker_sentiment=ticker_sentiment_for_tickers(summary_data, extracted_tickers),
             logic_check=logic_check,
         )
 

@@ -195,7 +195,8 @@ class ResearchRepository:
         sentiment: Optional[str] = None,
         sentiment_score: Optional[float] = None,
         logic_check: Optional[str] = None,
-        source_metadata: Optional[Dict[str, Any]] = None
+        source_metadata: Optional[Dict[str, Any]] = None,
+        ticker_sentiment: Optional[List[Dict[str, str]]] = None
     ) -> Optional[str]:
         """Save a research article to the database
 
@@ -274,6 +275,21 @@ class ResearchRepository:
                 meta_col = meta_value = meta_update = ""
                 meta_params = ()
 
+            # Per-ticker sentiment ([{ticker, sentiment, reason}], from the summarizer).
+            # Only written when the caller has one, so a re-save without it never
+            # wipes a value an earlier save or re-summarize stored.
+            if ticker_sentiment:
+                ts_col = "ticker_sentiment,"
+                ts_value = "%s::jsonb,"
+                ts_update = (
+                    "ticker_sentiment = COALESCE("
+                    "EXCLUDED.ticker_sentiment, research_articles.ticker_sentiment),"
+                )
+                ts_params: tuple = (json.dumps(ticker_sentiment),)
+            else:
+                ts_col = ts_value = ts_update = ""
+                ts_params = ()
+
             # Point-in-time first-known clock: set on INSERT only; never on conflict.
             if self._has_available_at_column:
                 avail_col = "available_at,"
@@ -288,11 +304,11 @@ class ResearchRepository:
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, embedding, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        {meta_col} {avail_col} ticker_validated_at
+                        {meta_col} {ts_col} {avail_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        {meta_value} {avail_value} NOW()
+                        {meta_value} {ts_value} {avail_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -313,6 +329,7 @@ class ResearchRepository:
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
                         {meta_update}
+                        {ts_update}
                         ticker_validated_at = NOW()
                     RETURNING id
                 """
@@ -335,18 +352,18 @@ class ResearchRepository:
                     sentiment,
                     sentiment_score,
                     logic_check,
-                ) + meta_params
+                ) + meta_params + ts_params
             else:
                 query = f"""
                     INSERT INTO research_articles (
                         tickers, sector, article_type, title, url, summary, content,
                         source, published_at, relevance_score, fund,
                         claims, fact_check, conclusion, sentiment, sentiment_score, logic_check,
-                        {meta_col} {avail_col} ticker_validated_at
+                        {meta_col} {ts_col} {avail_col} ticker_validated_at
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         %s::jsonb, %s, %s, %s, %s, %s,
-                        {meta_value} {avail_value} NOW()
+                        {meta_value} {ts_value} {avail_value} NOW()
                     )
                     ON CONFLICT (url) DO UPDATE SET
                         tickers = EXCLUDED.tickers,
@@ -366,6 +383,7 @@ class ResearchRepository:
                         sentiment_score = EXCLUDED.sentiment_score,
                         logic_check = EXCLUDED.logic_check,
                         {meta_update}
+                        {ts_update}
                         ticker_validated_at = NOW()
                     RETURNING id
                 """
@@ -387,7 +405,7 @@ class ResearchRepository:
                     sentiment,
                     sentiment_score,
                     logic_check,
-                ) + meta_params
+                ) + meta_params + ts_params
             
             with self.client.get_connection() as conn:
                 cursor = conn.cursor()

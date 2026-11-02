@@ -43,6 +43,7 @@ from yt_captions import (
     fetch_caption_text,
     watch_url_for,
 )
+from summary_common import ticker_sentiment_for_tickers
 
 logger = logging.getLogger(__name__)
 
@@ -635,6 +636,7 @@ def _ingest_inline(
         sentiment_score=data.get("sentiment_score"),
         logic_check=data.get("logic_check"),
         source_metadata=article.source_metadata,
+        ticker_sentiment=ticker_sentiment_for_tickers(data, enrichment.tickers),
     )
     if not article_id:
         return IngestOutcome(
@@ -802,5 +804,6 @@ def enrich_saved_transcript(
         sentiment=data.get("sentiment"),
         sentiment_score=data.get("sentiment_score"),
         logic_check=data.get("logic_check"),
+        ticker_sentiment=ticker_sentiment_for_tickers(data, enrichment.tickers),
     )
     return enrichment

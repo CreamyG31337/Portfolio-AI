@@ -15,6 +15,7 @@ from typing import Any
 from market_regime_normalization import normalize_market_regime
 from ollama_client import OllamaClient, collect_with_summary_model_chain
 from postgres_client import PostgresClient
+from summary_common import sentiment_for_ticker
 from settings import (
     get_meta_analysis_human_thesis_scope,
     get_summarizing_model,
@@ -190,7 +191,8 @@ class TickerMetaAnalysisService:
         fresh = article_fresh_publish_predicate(self.postgres)
         return self.postgres.execute_query(
             f"""
-            SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at
+            SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at,
+                   ticker_sentiment
             FROM research_articles
             WHERE (
                 ticker = %s
@@ -559,10 +561,21 @@ class TickerMetaAnalysisService:
                 if aid is not None:
                     evidence["article_ids"].append(str(aid))
                 parts.append(f"- {_clip(a.get('title'), 200)}")
-                parts.append(
-                    f"  sentiment={a.get('sentiment')} score={a.get('sentiment_score')} "
-                    f"published={a.get('published_at')}"
-                )
+                # The article-level label can be about another company it names;
+                # show its view of this ticker when the summarizer gave one.
+                view = sentiment_for_ticker(a.get("ticker_sentiment"), ticker)
+                if view:
+                    parts.append(
+                        f"  sentiment_for_{ticker}={view['sentiment']} "
+                        f"(article overall={a.get('sentiment')}) published={a.get('published_at')}"
+                    )
+                    if view.get("reason"):
+                        parts.append(f"  why: {_clip(view['reason'], 300)}")
+                else:
+                    parts.append(
+                        f"  sentiment={a.get('sentiment')} score={a.get('sentiment_score')} "
+                        f"published={a.get('published_at')}"
+                    )
                 concl = a.get("conclusion")
                 if concl:
                     parts.append(f"  conclusion: {_clip(concl, 500)}")

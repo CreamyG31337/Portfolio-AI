@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from scheduler.article_pipeline import ArticleCounters
+from summary_common import ticker_sentiment_for_tickers
 from scheduler.jobs_common import (
     claim_recent_summary_input,
     has_strong_market_signal,
@@ -268,6 +269,7 @@ def process_alpha_research_item(ctx: AlphaResearchCtx, item: IndexResult) -> Art
             sentiment_score=(
                 summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
             ),
+            ticker_sentiment=ticker_sentiment_for_tickers(summary_data, extracted_tickers),
             logic_check=logic_check,
         )
 
@@ -503,6 +505,7 @@ def process_opportunity_discovery_item(
             sentiment_score=(
                 summary_data.get("sentiment_score") if isinstance(summary_data, dict) else None
             ),
+            ticker_sentiment=ticker_sentiment_for_tickers(summary_data, [extracted_ticker]),
             logic_check=logic_check,
         )
 
