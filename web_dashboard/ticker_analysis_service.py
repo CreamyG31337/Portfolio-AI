@@ -403,7 +403,8 @@ class TickerAnalysisService:
             fresh = article_fresh_publish_predicate(self.postgres)
             result = self.postgres.execute_query(f"""
                 SELECT id, title, url, summary, source, published_at, fetched_at,
-                       relevance_score, sentiment, sentiment_score, article_type
+                       relevance_score, sentiment, sentiment_score, article_type,
+                       ticker_sentiment
                 FROM research_articles
                 WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
                   AND {as_of} >= %s
@@ -411,7 +412,15 @@ class TickerAnalysisService:
                 ORDER BY {as_of} DESC
                 LIMIT %s
             """, (ticker.upper(), ticker.upper(), start_str, self.MAX_RESEARCH_ARTICLES))
-            return result or []
+            rows = result or []
+            # An article's overall sentiment can be about another company it mentions
+            # (a bearish ASUS story that also names NVDA). Attach its view of *this*
+            # ticker so the prompt shows that instead, when the summarizer gave one.
+            from summary_common import sentiment_for_ticker
+
+            for row in rows:
+                row["ticker_view"] = sentiment_for_ticker(row.get("ticker_sentiment"), ticker)
+            return rows
         except Exception as e:
             logger.warning(f"Error fetching research articles for {ticker}: {e}")
             return []
@@ -909,8 +918,14 @@ class TickerAnalysisService:
             title = (a.get('title', 'N/A') or 'N/A')
             source = (a.get('source', 'N/A') or 'N/A')
             date = str(a.get('published_at', a.get('fetched_at', 'N/A')))[:10]
-            sentiment = a.get('sentiment', 'N/A') or 'N/A'
+            view = a.get('ticker_view')
+            if view:
+                sentiment = view['sentiment']
+            else:
+                sentiment = a.get('sentiment', 'N/A') or 'N/A'
             lines.append(f"{title} | {source} | {date} | {sentiment}")
+            if view and view.get('reason'):
+                lines.append(f"  On this ticker: {' '.join(view['reason'].split())}")
             summary = (a.get('summary') or '').strip()
             if summary:
                 summary = " ".join(summary.split())

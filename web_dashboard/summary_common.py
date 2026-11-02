@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import re
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -297,6 +297,74 @@ def _sanitize_ticker_sentiment(raw: Any) -> list[dict[str, str]]:
         seen.add(ticker)
         result.append({"ticker": ticker, "sentiment": sentiment, "reason": reason})
     return result
+
+
+def _ticker_key(ticker: Any) -> str:
+    return str(ticker or "").strip().upper().lstrip("$")
+
+
+def _ticker_base(ticker: str) -> str:
+    # "SHOP.TO" -> "SHOP": the summarizer names the company's symbol, the validator
+    # may then add the listing suffix.
+    return ticker.split(".", 1)[0]
+
+
+def ticker_sentiment_for_tickers(
+    summary_data: Any, tickers: Optional[list[str]]
+) -> Optional[list[dict[str, str]]]:
+    """Per-ticker sentiment entries for the tickers an article was actually saved with.
+
+    The summarizer returns ``ticker_sentiment`` for every symbol it named; the ticker
+    validator then drops some and may re-spell others (``SHOP`` -> ``SHOP.TO``). Keep
+    one entry per saved ticker, re-keyed to the saved spelling, so a reader can look
+    up the article's view of *that* ticker. Returns None when nothing matches.
+    """
+    if not isinstance(summary_data, dict) or not tickers:
+        return None
+    entries = _sanitize_ticker_sentiment(summary_data.get("ticker_sentiment"))
+    if not entries:
+        return None
+    by_exact = {e["ticker"]: e for e in entries}
+    by_base: dict[str, dict[str, str]] = {}
+    for e in entries:
+        by_base.setdefault(_ticker_base(e["ticker"]), e)
+
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for raw in tickers:
+        key = _ticker_key(raw)
+        if not key or key in seen:
+            continue
+        entry = by_exact.get(key) or by_base.get(_ticker_base(key))
+        if entry:
+            seen.add(key)
+            result.append({**entry, "ticker": key})
+    return result or None
+
+
+def sentiment_for_ticker(ticker_sentiment: Any, ticker: str) -> Optional[dict[str, str]]:
+    """This article's sentiment entry for ``ticker`` ({ticker, sentiment, reason}), or None.
+
+    ``ticker_sentiment`` is the stored JSONB (list, or a JSON string from some drivers).
+    Callers fall back to the article-level sentiment when this returns None.
+    """
+    if isinstance(ticker_sentiment, str):
+        try:
+            ticker_sentiment = json.loads(ticker_sentiment)
+        except (TypeError, ValueError):
+            return None
+    entries = _sanitize_ticker_sentiment(ticker_sentiment)
+    key = _ticker_key(ticker)
+    if not entries or not key:
+        return None
+    for e in entries:
+        if e["ticker"] == key:
+            return e
+    base = _ticker_base(key)
+    for e in entries:
+        if _ticker_base(e["ticker"]) == base:
+            return e
+    return None
 
 
 def _decode_json_string(raw_value: str) -> str:
