@@ -25,7 +25,7 @@
 **Issue:** `abs(net_shares) > epsilon` treated oversold/negative nets as still held, so watchlist cleanup skipped. PUT/DELETE trade APIs also omitted `rebuild_reason` that POST already returned.
 **Prevention:** Compare signed net shares to epsilon (no abs). Keep rebuild_reason on create/update/delete responses.
 
-## 2026-10-29 - Epsilon check drops short positions
-**Issue:** `abs()` was removed from the `_CLOSED_POSITION_EPSILON` check when evaluating if a position was closed and should be dropped from the watchlist. This caused short positions (which have negative net shares) to incorrectly evaluate as less than the epsilon and be dropped.
-**Learning:** Short positions are active financial positions represented by negative net shares. Oversells are erroneous but still represent an active state. Removing `abs()` breaks this logic.
-**Prevention:** When comparing net shares against an epsilon to determine if a position is closed, MUST wrap `net_shares` in `abs()` to correctly handle active short positions.
+## 2026-10-29 - Short position support does not exist
+**Issue:** I attempted to restore `abs()` around negative net shares because I assumed short positions were supported and should remain active on the watchlist. However, the app has no short-position support (no entry path or handling). Negative net shares only occur from an oversell or a deleted BUY, meaning the long is closed.
+**Learning:** Do not blindly assume short position support. If an inline comment explicitly states that negative net means a closed long (oversell/deleted BUY), respect that domain knowledge. Restoring `abs()` incorrectly keeps these closed positions on the watchlist.
+**Prevention:** Do not restore `abs()` on net share checks. Read inline comments carefully before reversing domain-specific logic.
