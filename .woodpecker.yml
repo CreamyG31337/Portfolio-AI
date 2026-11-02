@@ -520,11 +520,16 @@ steps:
         # To temporarily disable, set AI_QUEUE_ENABLED=false in that file.
         # Migrated jobs (Q2 ticker_analysis, Q4a–c meta/ETF, congress catch-up,
         # social sentiment sessions) are queue-managed by default.
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_ENABLED=\"${AI_QUEUE_ENABLED:-true}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades,social_sentiment_analysis}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_PRIMARY=\"${AI_QUEUE_WORKERS_OLLAMA_PRIMARY:-1}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
-        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"${AI_QUEUE_WORKERS_GLM:-1}\""
+        # Keep the doubled dollar sign on these five lines. Woodpecker expands the
+        # brace-with-default form from the pipeline env BEFORE this script runs, so a
+        # single dollar meant the host optional.env sourced above could never override
+        # them. The doubled form escapes to one literal dollar for the shell to expand
+        # after sourcing. (2026-11-02: AI_QUEUE_JOBS in the host file was ignored.)
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_ENABLED=\"$${AI_QUEUE_ENABLED:-true}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_JOBS=\"$${AI_QUEUE_JOBS:-ticker_analysis,ticker_meta_analysis,sector_meta_analysis,etf_group_analysis,analyze_congress_trades,social_sentiment_analysis,youtube_transcript_summary}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_PRIMARY=\"$${AI_QUEUE_WORKERS_OLLAMA_PRIMARY:-1}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"$${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
+        FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"$${AI_QUEUE_WORKERS_GLM:-1}\""
         # Optional tuning knobs — only passed when explicitly set on host. Code defaults apply otherwise.
         [ -n "$AI_QUEUE_LEASE_TTL_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_LEASE_TTL_SEC=\"$AI_QUEUE_LEASE_TTL_SEC\""
         [ -n "$AI_QUEUE_HEARTBEAT_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_HEARTBEAT_SEC=\"$AI_QUEUE_HEARTBEAT_SEC\""
