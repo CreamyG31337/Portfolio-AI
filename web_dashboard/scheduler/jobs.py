@@ -2224,6 +2224,20 @@ def register_default_jobs(scheduler) -> None:
         )
         logger.info("Registered job: archive_retry (every 45 minutes)")
 
+    # RSS feed ingestion - every 3 hours. Defined in AVAILABLE_JOBS since early 2026
+    # but never registered, so feeds in rss_feeds were only ever fetched by hand.
+    if AVAILABLE_JOBS.get('rss_feed_ingest', {}).get('enabled_by_default', True):
+        scheduler.add_job(
+            rss_feed_ingest_job,
+            trigger=IntervalTrigger(minutes=AVAILABLE_JOBS['rss_feed_ingest']['default_interval_minutes']),
+            id='rss_feed_ingest',
+            name=f"{get_job_icon('rss_feed_ingest')} RSS Feed Ingestion",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        logger.info("Registered job: rss_feed_ingest (every 3 hours)")
+
     # Subreddit Scanner - every 4 hours
     if AVAILABLE_JOBS.get('subreddit_scanner', {}).get('enabled_by_default', True):
         scheduler.add_job(
