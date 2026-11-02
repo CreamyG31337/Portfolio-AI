@@ -112,3 +112,7 @@
 ## 2025-02-23 - [Batching PostgREST operations in SocialService]
 **Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
 **Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
+
+## 2024-05-18 - Do not batch AI sentiment ticker extraction inserts
+**Learning:** In `web_dashboard/social_service.py` (`_persist_extracted_tickers`), changing individual `execute_update` inserts into a batched `execute_many` insert saves almost nothing because analyses usually extract very few tickers. The actual per-ticker bottleneck is `_lookup_company_info`. Additionally, batching forces a single bad ticker to drop the entire analysis batch (instead of just the bad row) and breaks tests that lack `execute_many` mock coverage.
+**Action:** Keep per-row DB writes when dealing with small sets of AI-extracted entities, especially when there are synchronous lookup steps alongside the inserts and partial success is preferred.
