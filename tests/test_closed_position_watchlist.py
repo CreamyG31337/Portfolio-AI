@@ -136,6 +136,10 @@ def test_negative_shares():
 
 
 def test_negative_shares_oversell_counts_as_closed() -> None:
+    # This app has NO short positions. A negative net is an oversell, so the long
+    # is closed and the watchlist row must go. Do NOT "fix" this into a
+    # short-position test or restore abs() in admin_routes; PRs #651, #652 and
+    # #655 tried and were closed.
     trades = [_t("Chimera", "BUY", 100), _t("Chimera", "SELL", 120)]
     removed, deactivated = _run(trades, [_w("Chimera"), _w("TFSA")])
     assert sorted(removed) == ["Chimera", "TFSA"]

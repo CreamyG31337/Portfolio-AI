@@ -246,6 +246,13 @@ def _parse_ai_audit_timestamp(timestamp: object) -> datetime:
 
 # Helper function for FIFO P&L calculation
 # Below this many shares a position counts as fully closed (trade_log.shares is NUMERIC(15, 6)).
+#
+# DO NOT wrap net shares in abs() when comparing to this. This app has NO short
+# positions: there is no short-sale entry path, and every fund is long-only. A
+# negative net can only come from an oversell or a deleted BUY, which means the
+# long is closed. Compare the SIGNED net: `net > _CLOSED_POSITION_EPSILON`.
+# Bots have "fixed" this to abs() three times (PRs #651, #652, #655, all closed);
+# test_negative_shares_oversell_counts_as_closed guards it.
 _CLOSED_POSITION_EPSILON = 0.000001
 
 
@@ -287,7 +294,9 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
         for f in {r.get('fund') for r in rows if r.get('fund')}:
             net_by_fund[f] = _net_shares_from_trades([r for r in rows if r.get('fund') == f])
 
-        # Negative net (oversell / deleted BUY) means the long is closed — do not abs().
+        # Signed compare on purpose. NO short positions exist in this app, so a
+        # negative net (oversell / deleted BUY) means the long is closed. Do NOT
+        # add abs() here; see _CLOSED_POSITION_EPSILON.
         if net_by_fund.get(fund, 0.0) > _CLOSED_POSITION_EPSILON:
             return []  # partial sell: still held in this fund
 
@@ -304,6 +313,7 @@ def remove_closed_position_from_watchlist(admin_client, fund: str, ticker: str) 
             if w_fund != fund:
                 if str(w.get('source') or '').upper() != 'TRADELOG':
                     continue  # deliberately watched in another fund: leave it
+                # Signed compare, no abs(): no shorts exist (see _CLOSED_POSITION_EPSILON).
                 if net_by_fund.get(w_fund, 0.0) > _CLOSED_POSITION_EPSILON:
                     continue  # still held there
             result = set_watchlist_active(admin_client, fund=w_fund, ticker=ticker, is_active=False)
