@@ -187,15 +187,9 @@ _INSIDER_UPSERT_CHUNK = 200
 
 def _dedupe_insider_records(records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Keep the first record per upsert conflict key (one statement can't hit a key twice)."""
-    seen: set = set()
-    out: List[Dict[str, Any]] = []
-    for rec in records:
-        key = tuple(rec.get(c) for c in _INSIDER_CONFLICT_COLUMNS)
-        if key in seen:
-            continue
-        seen.add(key)
-        out.append(rec)
-    return out
+    from batch_upsert import dedupe_by_keys
+
+    return list(dedupe_by_keys(records, _INSIDER_CONFLICT_COLUMNS))
 
 
 def _upsert_insider_trades(supabase_client: Any, records: List[Dict[str, Any]]) -> tuple[int, int]:
@@ -203,31 +197,16 @@ def _upsert_insider_trades(supabase_client: Any, records: List[Dict[str, Any]]) 
 
     Returns (rows saved, rows failed).
     """
-    table = supabase_client.supabase.table
-    on_conflict = ",".join(_INSIDER_CONFLICT_COLUMNS)
-    records = _dedupe_insider_records(records)
-    saved = failed = 0
-    for start in range(0, len(records), _INSIDER_UPSERT_CHUNK):
-        chunk = records[start : start + _INSIDER_UPSERT_CHUNK]
-        try:
-            result = table("insider_trades").upsert(chunk, on_conflict=on_conflict).execute()
-            saved += len(result.data or [])
-            continue
-        except Exception as chunk_error:
-            logger.warning(
-                "Insider upsert chunk of %d failed (%s); retrying row by row", len(chunk), chunk_error
-            )
-        for rec in chunk:
-            try:
-                result = table("insider_trades").upsert([rec], on_conflict=on_conflict).execute()
-                saved += len(result.data or [])
-            except Exception as row_error:
-                failed += 1
-                logger.warning(
-                    "Insider trade %s %s %s not saved: %s",
-                    rec.get("ticker"), rec.get("insider_name"), rec.get("transaction_date"), row_error,
-                )
-    return saved, failed
+    from batch_upsert import upsert_in_chunks
+
+    return upsert_in_chunks(
+        supabase_client,
+        "insider_trades",
+        records,
+        _INSIDER_CONFLICT_COLUMNS,
+        chunk_size=_INSIDER_UPSERT_CHUNK,
+        label="Insider trade",
+    )
 
 
 def _fetch_insider_trades_from_source(url: str) -> tuple[List[Dict[str, Any]], str]:

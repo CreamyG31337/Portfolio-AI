@@ -472,25 +472,21 @@ def fetch_congress_trades_job() -> None:
 
                 # ⚡ Bolt: Perform batched upsert after loop finishes for this chamber
                 if trades_to_upsert:
-                    try:
-                        result = supabase_client.supabase.table("congress_trades")\
-                            .upsert(
-                                trades_to_upsert,
-                                on_conflict=CONGRESS_TRADE_UPSERT_ON_CONFLICT
-                            )\
-                            .execute()
+                    # One repeated conflict key in a batch fails the whole statement; the
+                    # shared helper dedupes and retries row by row so it can't drop them all.
+                    from batch_upsert import upsert_in_chunks
 
-                        if result.data:
-                            new_trades += len(result.data)
-                            logger.debug(f"✅ Saved {len(result.data)} trades in batch")
-                            # We can't know exactly how many were duplicates skipped vs new vs updated,
-                            # but we assume the difference between what we sent and what was returned
-                            # were either skipped or updated depending on Supabase version, but typically
-                            # len(result.data) represents the successful operations.
-                    except Exception as insert_error:
-                        error_insert_failed += len(trades_to_upsert)
+                    saved, failed = upsert_in_chunks(
+                        supabase_client,
+                        "congress_trades",
+                        trades_to_upsert,
+                        CONGRESS_TRADE_UPSERT_ON_CONFLICT,
+                        label=f"Congress trade ({chamber})",
+                    )
+                    new_trades += saved
+                    if failed:
+                        error_insert_failed += failed
                         errors += 1
-                        logger.error(f"Failed to batched insert trades: {insert_error}")
                     
                 # Note: API is locked to page 0 only, so we don't paginate
                 # We only get the 10 most recent trades per chamber per run

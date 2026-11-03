@@ -366,8 +366,13 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
         'default_interval_minutes': 360,  # 6 hours (but uses cron triggers)
         'enabled_by_default': True,
         'icon': '🏛️',
+        # Hourly through the US day. FMP's free tier returns only the latest 10 trades
+        # per chamber per call, and House/Senate post filings during business hours, so
+        # four night-time polls saw ~20 trades/day while hundreds were filed (House
+        # capture fell ~90% after the Jan 2026 switch from the scraper). 17 runs x 2
+        # chambers = 34 calls/day, well inside the 250/day free limit.
         'cron_triggers': [
-            {'hour': '19,21,23,1', 'minute': 0, 'timezone': 'America/Los_Angeles'}
+            {'hour': '7-23', 'minute': 5, 'timezone': 'America/New_York'}
         ]
     },
     'insider_trades': {
@@ -2040,7 +2045,7 @@ def register_default_jobs(scheduler) -> None:
                 max_instances=1,
                 coalesce=True
             )
-            logger.info("Registered job: congress_trades_fetch (nightly at 7 PM, 9 PM, 11 PM, 1 AM PT)")
+            logger.info("Registered job: congress_trades_fetch (hourly 7 AM-11 PM ET)")
         else:
             scheduler.add_job(
                 fetch_congress_trades_job,
