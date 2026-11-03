@@ -425,6 +425,33 @@ class TickerAnalysisService:
             logger.warning(f"Error fetching research articles for {ticker}: {e}")
             return []
 
+    def _get_newsletters(self, ticker: str) -> List[Dict]:
+        """Recent newsletters (your subscriptions) that mention this ticker."""
+        from newsletter_repository import fetch_newsletters_for_ticker
+
+        return fetch_newsletters_for_ticker(self.postgres, ticker, limit=5)
+
+    def _format_newsletters(self, newsletters: List[Dict]) -> str:
+        """Format newsletters: sender, subject, date, this ticker's sentiment, summary."""
+        if not newsletters:
+            return ""
+        lines = [
+            f"[ Newsletters (subscriptions, last 30 days) - {len(newsletters)} ]",
+            "Sender | Subject | Date | Sentiment",
+            "-------|---------|------|----------",
+        ]
+        for n in newsletters:
+            view = n.get('ticker_view')
+            sentiment = (view or {}).get('sentiment') or n.get('sentiment') or 'N/A'
+            date = str(n.get('received_at') or 'N/A')[:10]
+            lines.append(f"{n.get('sender_name') or 'N/A'} | {n.get('subject') or 'N/A'} | {date} | {sentiment}")
+            if view and view.get('reason'):
+                lines.append(f"  On this ticker: {' '.join(view['reason'].split())}")
+            body = (n.get('conclusion') or n.get('summary') or '').strip()
+            if body:
+                lines.append(f"  Summary: {' '.join(body.split())[:600]}")
+        return "\n".join(lines)
+
     def _get_social_sentiment(self, ticker: str, start_date: datetime) -> Dict:
         """Get social sentiment for this ticker.
         
@@ -620,6 +647,7 @@ class TickerAnalysisService:
             'etf_changes': self._get_etf_changes(ticker, start_date),
             'congress_trades': self._get_congress_trades(ticker, start_date),
             'insider_trades': self._get_insider_trades(ticker, start_date),
+            'newsletters': self._get_newsletters(ticker),
             'signals': self._get_latest_signals(ticker),
             'research_articles': articles,
             'social_sentiment': self._get_social_sentiment(ticker, start_date),
@@ -1050,6 +1078,10 @@ class TickerAnalysisService:
         # Research articles
         if data.get('research_articles'):
             sections.append(self._format_articles(data['research_articles']))
+
+        # Newsletters (your subscriptions)
+        if data.get('newsletters'):
+            sections.append(self._format_newsletters(data['newsletters']))
         
         # Social sentiment
         if data.get('social_sentiment'):
@@ -1312,6 +1344,13 @@ class TickerAnalysisService:
                     artifact_types.append('articles')
                 if data.get('social_sentiment'):
                     artifact_types.append('social')
+                newsletter_ids = [
+                    str(n.get('id'))
+                    for n in (data.get('newsletters') or [])
+                    if isinstance(n, dict) and n.get('id') is not None
+                ]
+                if newsletter_ids:
+                    artifact_types.append('newsletters')
 
                 from falsifiable_proposal import proposal_metadata
 
@@ -1321,6 +1360,7 @@ class TickerAnalysisService:
                     "evidence": {
                         "article_ids": article_ids,
                         "artifact_types": artifact_types,
+                        **({"newsletter_ids": newsletter_ids} if newsletter_ids else {}),
                     },
                 }
                 stance_meta.update(proposal_metadata(response))

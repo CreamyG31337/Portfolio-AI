@@ -185,6 +185,10 @@ def run_newsletter_ai_pipeline(
     embedding = service.generate_embedding_for_newsletter(nl_id, content)
 
     tickers_out = all_tickers if all_tickers else None
+    # The summarizer returns the same CoT fields as for articles (sentiment, claims,
+    # conclusion, per-ticker sentiment). Until 2026-11 only summary + tickers were
+    # saved, so analysis had no read on whether a newsletter was bullish or bearish.
+    _persist_newsletter_analysis_fields(repo, nl_id, summary_data, all_tickers)
     if include_subject_in_update:
         repo.client.execute_update(
             """
@@ -223,6 +227,49 @@ def run_newsletter_ai_pipeline(
         duration_ms=int((time.perf_counter() - t_row) * 1000),
         pipeline_source=pipeline_source,
     )
+
+
+def _persist_newsletter_analysis_fields(
+    repo: Any, nl_id: Any, summary_data: Any, tickers: Optional[List[str]]
+) -> None:
+    """Save sentiment / claims / conclusion / per-ticker sentiment for a newsletter.
+
+    Never raises: a failure here must not lose the summary + tickers saved after it.
+    """
+    if not isinstance(summary_data, dict):
+        return
+    try:
+        import json as _json
+
+        from summary_common import ticker_sentiment_for_tickers
+
+        claims = summary_data.get("claims")
+        ts = ticker_sentiment_for_tickers(summary_data, tickers)
+        repo.client.execute_update(
+            """
+            UPDATE newsletters
+            SET sentiment = %s,
+                sentiment_score = %s,
+                claims = %s::jsonb,
+                fact_check = %s,
+                conclusion = %s,
+                logic_check = %s,
+                ticker_sentiment = %s::jsonb
+            WHERE id = %s
+            """,
+            (
+                summary_data.get("sentiment"),
+                summary_data.get("sentiment_score"),
+                _json.dumps(claims) if claims else None,
+                summary_data.get("fact_check"),
+                summary_data.get("conclusion"),
+                summary_data.get("logic_check"),
+                _json.dumps(ts) if ts else None,
+                nl_id,
+            ),
+        )
+    except Exception as exc:
+        logger.warning("Could not save analysis fields for newsletter %s: %s", nl_id, exc)
 
 
 class NewsletterService:

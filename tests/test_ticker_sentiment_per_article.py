@@ -142,6 +142,9 @@ def test_meta_bundle_shows_per_ticker_sentiment(monkeypatch: pytest.MonkeyPatch)
     import pit_time
 
     pit_time._column_cache["research_articles"] = (False, None)
+    import newsletter_repository
+
+    monkeypatch.setattr(newsletter_repository, "fetch_newsletters_for_ticker", lambda *a, **k: [])
     from meta_analysis_service import TickerMetaAnalysisService
 
     std_row = {

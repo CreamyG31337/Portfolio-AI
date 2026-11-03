@@ -429,3 +429,42 @@ class NewsletterRepository:
         except Exception as e:
             logger.error(f"❌ Error getting newsletter count: {e}")
             return 0
+
+
+NEWSLETTER_EVIDENCE_MAX_AGE_DAYS = 30
+
+
+def fetch_newsletters_for_ticker(
+    postgres: Any, ticker: str, *, limit: int = 5, max_age_days: int = NEWSLETTER_EVIDENCE_MAX_AGE_DAYS
+) -> List[Dict[str, Any]]:
+    """Recent processed newsletters that mention ``ticker``, newest first, for analysis prompts.
+
+    Each row carries ``ticker_view`` -- the newsletter's own sentiment entry for this
+    ticker when the summarizer gave one (see summary_common.sentiment_for_ticker).
+    Same 30-day freshness rule as article evidence. Returns [] on any error.
+    """
+    key = (ticker or "").strip().upper()
+    if not key:
+        return []
+    try:
+        rows = postgres.execute_query(
+            """
+            SELECT id, sender_name, subject, summary, sentiment, conclusion,
+                   ticker_sentiment, received_at
+            FROM newsletters
+            WHERE tickers @> ARRAY[%s]::text[]
+              AND processed_at IS NOT NULL
+              AND received_at > NOW() - make_interval(days => %s)
+            ORDER BY received_at DESC
+            LIMIT %s
+            """,
+            (key, int(max_age_days), int(limit)),
+        ) or []
+    except Exception as exc:
+        logger.warning("Newsletter evidence fetch failed for %s: %s", key, exc)
+        return []
+    from summary_common import sentiment_for_ticker
+
+    for row in rows:
+        row["ticker_view"] = sentiment_for_ticker(row.get("ticker_sentiment"), key)
+    return rows
