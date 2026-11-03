@@ -968,6 +968,13 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 
+def reached_cutoff(newest_on_page: Any, cutoff_date: Optional[datetime]) -> bool:
+    """True when every trade on the page is older than the cutoff (see the page loop)."""
+    if cutoff_date is None or newest_on_page is None:
+        return False
+    return newest_on_page < cutoff_date.date()
+
+
 def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> None:
     """Main seeder function - scrapes historical data from source"""
     print("=" * 70)
@@ -1199,9 +1206,12 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
                 if newest_on_page and most_recent_trade_date and newest_on_page >= most_recent_trade_date:
                     print(f"   ⏭️  Page {page}: All trades already imported (newest: {newest_on_page} >= {most_recent_trade_date})")
             
-            # Check if we should stop (reached cutoff date, if specified)
-            if cutoff_date and oldest_on_page and oldest_on_page < cutoff_date.date():
-                print(f"🛑 Reached cutoff date ({oldest_on_page}). Stopping.")
+            # Stop once a whole page is before the cutoff. Pages are ordered by
+            # *disclosure*, not transaction date, and late filers disclose trades from
+            # months or years back -- so stopping on the oldest trade on a page ended an
+            # 11-month backfill after ~3 pages (2026-11-03). Use the newest instead.
+            if reached_cutoff(newest_on_page, cutoff_date):
+                print(f"🛑 Whole page before cutoff (newest {newest_on_page}). Stopping.")
                 break
             
             # Note: We don't stop when we reach older trades - we want to import historical data

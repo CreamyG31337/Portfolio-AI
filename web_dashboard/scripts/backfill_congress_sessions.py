@@ -35,7 +35,10 @@ else:
 
 from supabase_client import SupabaseClient
 from postgres_client import PostgresClient
-from utils.grouping import get_politician_sessions
+# Not ``utils.grouping``: project root sits first on sys.path (so the root ``utils``
+# package wins), and grouping lives in web_dashboard/utils. The bare import raised
+# ModuleNotFoundError on every run, so congress_trade_sessions stopped at 2025-12-30.
+from web_dashboard.utils.grouping import get_politician_sessions
 
 # Setup logging
 logging.basicConfig(
