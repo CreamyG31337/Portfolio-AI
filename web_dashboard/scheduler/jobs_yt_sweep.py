@@ -148,6 +148,7 @@ def plan_fetches(
     budget: int,
     is_known: Callable[[str], bool] | None = None,
     is_stale: Callable[[str], bool] | None = None,
+    is_blocked: Callable[[Mapping[str, Any]], bool] | None = None,
 ) -> tuple[list[tuple[str, Mapping[str, Any]]], int]:
     """Choose which hits to spend caption fetches on.
 
@@ -158,6 +159,9 @@ def plan_fetches(
     It matters beyond one night: a video rejected as too old is never saved, so the
     ``is_known`` pre-filter would re-offer it — and re-spend the budget on it —
     every night forever.
+
+    ``is_blocked(hit)`` drops hits from blocklisted channels (K12) before anything
+    else, so a blocked channel never costs a lookup or a caption fetch.
     """
     from yt_captions import watch_url_for
 
@@ -173,6 +177,8 @@ def plan_fetches(
         ):
             video_id = str(hit.get("video_id") or "")
             if not video_id:
+                continue
+            if is_blocked is not None and is_blocked(hit):
                 continue
             try:
                 if known(watch_url_for(video_id)):
@@ -206,6 +212,27 @@ def plan_fetches(
             break
         depth += 1
     return queue, skipped_known
+
+
+def _blocked_checker() -> Callable[[Mapping[str, Any]], bool] | None:
+    """Hit filter for the K12 channel blocklist; None when nothing is blocked."""
+    try:
+        from yt_channel_policy import get_blocklist
+
+        blocklist = get_blocklist()
+    except Exception as exc:  # never block the sweep on the policy lookup
+        logger.warning("YouTube channel blocklist unavailable: %s", exc)
+        return None
+    if not blocklist:
+        return None
+
+    def _is_blocked(hit: Mapping[str, Any]) -> bool:
+        if blocklist.blocks(channel_id=hit.get("channel_id"), name=hit.get("channel_name")):
+            logger.info("Sweep skipping blocklisted channel %r: %s", hit.get("channel_name"), hit.get("video_id"))
+            return True
+        return False
+
+    return _is_blocked
 
 
 def _stale_checker(
@@ -312,6 +339,7 @@ def sweep_holdings(
                         "score": h.score,
                         "views": h.view_count,
                         "matched": list(h.matched),
+                        "channel_name": getattr(h, "channel_name", None),
                     }
                     for h in hits
                 ],
@@ -329,6 +357,7 @@ def sweep_holdings(
         budget=fetch_budget,
         is_known=getattr(research_repo, "article_exists", None),
         is_stale=_stale_checker(age_limit, metadata_fn, summary),
+        is_blocked=_blocked_checker(),
     )
     summary.planned = len(queue)
     summary.skipped_known = skipped_known

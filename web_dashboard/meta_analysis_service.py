@@ -189,6 +189,9 @@ class TickerMetaAnalysisService:
 
         as_of = article_as_of_expr(self.postgres)
         fresh = article_fresh_publish_predicate(self.postgres)
+        from yt_channel_policy import get_blocklist
+
+        blocked_sql, blocked_params = get_blocklist().sql_exclusion()
         return self.postgres.execute_query(
             f"""
             SELECT id, title, conclusion, sentiment, sentiment_score, published_at, fetched_at,
@@ -200,10 +203,11 @@ class TickerMetaAnalysisService:
             )
             AND {as_of} > NOW() - INTERVAL '90 days'
             AND {fresh}
+            {blocked_sql}
             ORDER BY {as_of} DESC
             LIMIT 6
             """,
-            (ticker, ticker),
+            (ticker, ticker, *blocked_params),
         ) or []
 
     def _fetch_signal_snapshot(self, ticker: str) -> dict[str, Any] | None:

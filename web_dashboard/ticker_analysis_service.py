@@ -401,6 +401,9 @@ class TickerAnalysisService:
 
             as_of = article_as_of_expr(self.postgres)
             fresh = article_fresh_publish_predicate(self.postgres)
+            from yt_channel_policy import get_blocklist
+
+            blocked_sql, blocked_params = get_blocklist().sql_exclusion()
             result = self.postgres.execute_query(f"""
                 SELECT id, title, url, summary, source, published_at, fetched_at,
                        relevance_score, sentiment, sentiment_score, article_type,
@@ -409,9 +412,10 @@ class TickerAnalysisService:
                 WHERE (tickers @> ARRAY[%s]::text[] OR ticker = %s)
                   AND {as_of} >= %s
                   AND {fresh}
+                  {blocked_sql}
                 ORDER BY {as_of} DESC
                 LIMIT %s
-            """, (ticker.upper(), ticker.upper(), start_str, self.MAX_RESEARCH_ARTICLES))
+            """, (ticker.upper(), ticker.upper(), start_str, *blocked_params, self.MAX_RESEARCH_ARTICLES))
             rows = result or []
             # An article's overall sentiment can be about another company it mentions
             # (a bearish ASUS story that also names NVDA). Attach its view of *this*
