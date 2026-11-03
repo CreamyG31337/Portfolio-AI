@@ -139,7 +139,8 @@ new feed.
 
 ### Ordered next work → Phase I (**I4**, **I2**), then J
 
-*Updated 2026-11-03.* **Data-pipeline audit (2026-11-02/03):** RSS ingest was never scheduled
+*Updated 2026-11-03.* **⏰ Due ~2026-12-01: K15 monthly YouTube re-check** (promoted channels,
+K12/K13 lists, newsletters edge) — see the K checklist. **Data-pipeline audit (2026-11-02/03):** RSS ingest was never scheduled
 (now every 3h, #660); per-ticker article sentiment was generated but never stored (now stored and
 shown to ticker/meta analysis, #661); ~25% of Sep–mid-Oct transcripts held leaked model reasoning
 instead of a summary (147 re-summarized via the AI queue); CI deploys ignored host-file
@@ -1152,7 +1153,7 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
 
   Allowlist still earns its keep. Sweep is ~neutral (no worse than same-ticker stances without
   video). Post-fix sweep at 7d moved −3.4pp → **+3.6pp** (n=420), but only ~76 post-fix rows had
-  30d outcomes — **re-check again ~2026-12-01**. **Policy: never disable the sweep; curate it.**
+  30d outcomes — **re-check again ~2026-12-01 (K15)**. **Policy: never disable the sweep; curate it.**
   Per-channel 30d spread is wide: Global Market Pulse +9.9pp, Big Picture Investing +3.8pp,
   Schwab +2.8pp vs Jerry Romine −14.1pp, Scott's Stock DD −12.4pp, Dividend Guy −11.3pp,
   Dougie Finance −8.3pp, Satyajit Dasgupta −7.6pp (overlapping daily stances — a shortlist, not
@@ -1167,7 +1168,20 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   both lists (promote: sweep, edge ≥ +3pp and mean excess > 0; block: edge ≤ −7pp or mean
   excess ≤ −8). Run monthly; a human approves. 2026-11-02 data: promote Global Market Pulse,
   Big Picture Investing, Global News Daily, MB Capital; block AlphaStreet, Investing Talk
-  Podcast, Fyfull (excess only, edge ~0).
+  Podcast, Fyfull (excess only, edge ~0). **2026-11-03 decision:** promoted Global Market Pulse
+  (`UCILqmk1-PYEOsgKr_kEAotA`) and Big Picture Investing (`UCD6YjhZMNj_iz1tDAxc97_w`) to
+  `youtube_sources`; the other promote/block candidates wait for the re-check.
+- [ ] **K15 · Monthly YouTube re-check — next ~2026-12-01** (then monthly). Run
+  `python web_dashboard/scripts/k5_youtube_source_roi.py` (or `--print-sql` + `--input` from a
+  cloud session) and decide:
+  1. Did the two promoted channels hold up as allowlist? (They now count as "Allowlist video".)
+  2. Approve or reject the script's K13 PROMOTE / K12 BLOCK lists (block = add to
+     `system_settings.youtube_channel_blocklist`; promote = add a `youtube_sources` row).
+  3. Post-fix sweep: the 2026-11-02 run had only ~76 post-staleness-fix rows with 30d outcomes
+     (7d edge −3.4pp → +3.6pp). Confirm at 30d.
+  4. Newsletters (wired in 2026-11-03): edge of stances with evidence family `newsletters`.
+  5. Re-run once the 2026-11-02 transcript backfill is ≥30d old — ~25% of the Sep–Oct sample
+     had broken summaries.
 - [ ] **K14 · YouTube on Today** — "what YouTube said this week about your holdings"; Today/Ideas
   only read Alpha Research / Opportunity Discovery today, so transcripts surface only via stances.
 - [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap
