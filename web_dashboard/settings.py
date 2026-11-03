@@ -455,7 +455,7 @@ def get_discovery_search_queries() -> list[str]:
         f"small cap breakout stocks this week",
         "penny stocks with catalysts today",
         f"biotech clinical trial results {current_month}",
-        "new spin-off stocks 2025",
+        f"new spin-off stocks {datetime.now().year}",
         "microcap stocks earnings beat",
         "small cap stocks analyst upgrades today"
     ]

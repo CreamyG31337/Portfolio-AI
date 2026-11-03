@@ -117,9 +117,11 @@ def opportunity_discovery_job() -> None:
         queries = get_discovery_search_queries()
         logger.info(f"Using {len(queries)} discovery queries")
 
-        # Rotate through queries (pick one per run to avoid overwhelming the system)
+        # Rotate through queries, one per run. Index by calendar day, not hour: the job
+        # runs once a day at a fixed time, so hour-based rotation ran the same query
+        # every day (2026-07..11, 7 of 8 queries never ran and nothing was saved).
         from datetime import datetime
-        query_index = datetime.now().hour % len(queries)
+        query_index = datetime.now().toordinal() % len(queries)
         selected_query = queries[query_index]
 
         negative_keywords = "-astrology -horoscope -zodiac -restaurant -recipe -celebrity -movie -tv -sports"
