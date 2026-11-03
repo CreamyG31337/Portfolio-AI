@@ -23,6 +23,10 @@ def _disable_phase3_sector_prior(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ARTICLE_EVIDENCE_MAX_PUBLISH_AGE_DAYS", "0")
     import pit_time
     pit_time._column_cache["research_articles"] = (False, None)
+    # Newsletter evidence adds a query; these tests pin query order, so stub it out
+    # (covered in test_newsletter_evidence.py).
+    import newsletter_repository
+    monkeypatch.setattr(newsletter_repository, "fetch_newsletters_for_ticker", lambda *a, **k: [])
 
 
 from meta_analysis_service import (  # noqa: E402

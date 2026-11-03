@@ -581,6 +581,29 @@ class TickerMetaAnalysisService:
                     parts.append(f"  conclusion: {_clip(concl, 500)}")
             parts.append("")
 
+        # Newsletters the user subscribes to. Own evidence key: they live in the
+        # newsletters table, not research_articles, so mixing ids would break joins.
+        from newsletter_repository import fetch_newsletters_for_ticker
+
+        newsletters = fetch_newsletters_for_ticker(self.postgres, ticker, limit=4)
+        if newsletters:
+            families.append("newsletters")
+            evidence["newsletter_ids"] = [str(n["id"]) for n in newsletters if n.get("id") is not None]
+            parts.append("### Newsletters (user subscriptions, last 30 days)")
+            for n in newsletters:
+                view = n.get("ticker_view")
+                sentiment = (view or {}).get("sentiment") or n.get("sentiment") or "n/a"
+                parts.append(
+                    f"- {_clip(n.get('sender_name'), 80)}: {_clip(n.get('subject'), 200)} "
+                    f"(received={n.get('received_at')}) sentiment_for_{ticker}={sentiment}"
+                )
+                if view and view.get("reason"):
+                    parts.append(f"  why: {_clip(view['reason'], 300)}")
+                body = n.get("conclusion") or n.get("summary")
+                if body:
+                    parts.append(f"  summary: {_clip(body, 500)}")
+            parts.append("")
+
         trade_ai, sessions = self._fetch_congress_snippets(ticker)
         if sessions or trade_ai:
             families.append("congress")

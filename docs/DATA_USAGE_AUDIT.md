@@ -23,7 +23,7 @@ read by nothing.
 
 | Source | Volume | Read by | Opportunity |
 |---|---|---|---|
-| **Newsletters** (`newsletters`) | 737 total, 174 in 30d, 675 with tickers, all AI-summarized (claims, sentiment, conclusion) | UI only (`app.py`, research routes) | **Biggest gap.** Same shape as articles; add to the ticker/meta article evidence (or land them as an article type). Curated by you, so likely higher quality than SearXNG. |
+| **Newsletters** (`newsletters`) | 737 total, 174 in 30d, 675 with tickers, all AI-summarized (claims, sentiment, conclusion) | UI only (`app.py`, research routes) | ✅ **Wired in 2026-11-03**: ticker + meta analysis get a Newsletters block (30d, per-ticker sentiment when present), evidence family `newsletters` + `evidence.newsletter_ids`. Also found only `summary`/`tickers` were saved — sentiment, claims, conclusion, per-ticker sentiment now persisted for new newsletters; older rows show their summary. |
 | **Market relationships** (`market_relationships`) | 5,007 supplier/competitor links, written by 4 research jobs | Void (only `check_relationships.py`) | Peer context: "news on a supplier/competitor of a holding". Could feed the dossier or a meta "peers" block. |
 | **Congress realized returns** (`congress_trade_returns` 50k, `congress_positions` 3k) | Daily jobs | UI only | Weight congress evidence by the politician's track record (the 5.1b leaderboard data already exists). |
 | **Congress sessions** (`congress_trade_sessions`) | 1,548 rows, last write 2025-12-30 | Meta-analysis reads summaries by id | Stale: `rescore_congress_sessions` is unscheduled. Either reschedule or stop citing them. |
@@ -61,7 +61,7 @@ sentiment, curated sources like newsletters and the YouTube allowlist).
 
 1. **Fix insider ingest** — losing ~600 rows/week every day it waits. Small.
 2. **Fix Opportunity Discovery rotation** — Ideas has been missing one of its two sources since July. Small.
-3. **Feed newsletters into ticker/meta evidence** — curated, already summarized, unused. Medium.
+3. ~~**Feed newsletters into ticker/meta evidence**~~ — done 2026-11-03. Re-check its edge (evidence family `newsletters`) once ~30d of outcomes exist.
 4. **Sweep blocklist / promotion** (ROADMAP K12/K13). Small–medium.
 5. **Weight congress evidence by politician track record** using `congress_trade_returns`. Medium.
 6. **Peers block from `market_relationships`**. Medium.
