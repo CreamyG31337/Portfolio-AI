@@ -1174,7 +1174,11 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
 - [ ] **K15 · Monthly YouTube re-check — next ~2026-12-01** (then monthly). Run
   `python web_dashboard/scripts/k5_youtube_source_roi.py` (or `--print-sql` + `--input` from a
   cloud session) and decide:
-  1. Did the two promoted channels hold up as allowlist? (They now count as "Allowlist video".)
+  1. Did the two promoted channels hold up as allowlist? Added 2026-11-03 as `youtube_sources`
+     ids 16–17 (polling OK, first videos landed). **Caveat:** the script classifies by *current*
+     `youtube_sources` membership, so their pre-promotion sweep history — the reason they were
+     promoted — now counts as "Allowlist video" and flatters that group. Judge them only on
+     stances from 2026-11-04 on, and read the allowlist row with and without them.
   2. Approve or reject the script's K13 PROMOTE / K12 BLOCK lists (block = add to
      `system_settings.youtube_channel_blocklist`; promote = add a `youtube_sources` row).
   3. Post-fix sweep: the 2026-11-02 run had only ~76 post-staleness-fix rows with 30d outcomes
