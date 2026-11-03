@@ -147,6 +147,50 @@ def report(rows: list[dict[str, Any]], min_channel_n: int = 30) -> None:
     print(f"\nPER CHANNEL 30d (>= {min_channel_n} stances), sorted by edge")
     for (c, allow), n, e, m in res:
         print(f"{c[:34]:34} {'ALLOW' if allow else 'sweep':5} n={n:4} edge={_fmt(e, 1):>6}pp  mean_xac={_fmt(m, 2):>6}")
+    print_decision_lists(res)
+
+
+# K13 thresholds. Deliberately loose on n (stances overlap daily) and asymmetric:
+# promotion needs both a positive edge and positive excess; a block needs a clearly
+# bad edge or clearly bad excess. Humans approve both lists.
+PROMOTE_MIN_EDGE_PP = 3.0
+BLOCK_MAX_EDGE_PP = -7.0
+BLOCK_MAX_MEAN_XAC = -8.0
+
+
+def decision_lists(res: list, blocklist: Any = None) -> tuple[list, list]:
+    """(promote, block) candidates from per-channel rows ((name, allow), n, edge, mean_xac).
+
+    Only sweep-found channels are candidates; already-blocked channels are left out.
+    """
+    promote, block = [], []
+    for (name, allow), n, edge, xac in res:
+        if allow or (blocklist is not None and blocklist.blocks(name=name)):
+            continue
+        if edge is not None and xac is not None and edge >= PROMOTE_MIN_EDGE_PP and xac > 0:
+            promote.append((name, n, edge, xac))
+        elif (edge is not None and edge <= BLOCK_MAX_EDGE_PP) or (xac is not None and xac <= BLOCK_MAX_MEAN_XAC):
+            block.append((name, n, edge, xac))
+    return promote, block
+
+
+def print_decision_lists(res: list) -> None:
+    try:
+        from yt_channel_policy import get_blocklist
+
+        blocklist = get_blocklist()
+    except Exception:
+        blocklist = None
+    promote, block = decision_lists(res, blocklist)
+    print(f"\nK13 PROMOTE to youtube_sources (sweep, edge >= +{PROMOTE_MIN_EDGE_PP}pp and mean_xac > 0)")
+    for name, n, e, m in promote or [("(none)", 0, None, None)]:
+        print(f"  {name[:40]:40} n={n:4} edge={_fmt(e, 1):>6}pp  mean_xac={_fmt(m, 2):>6}")
+    print(
+        f"\nK12 BLOCK candidates (sweep, edge <= {BLOCK_MAX_EDGE_PP}pp or mean_xac <= {BLOCK_MAX_MEAN_XAC}; "
+        "add to system_settings.youtube_channel_blocklist)"
+    )
+    for name, n, e, m in block or [("(none)", 0, None, None)]:
+        print(f"  {name[:40]:40} n={n:4} edge={_fmt(e, 1):>6}pp  mean_xac={_fmt(m, 2):>6}")
 
 
 def main() -> None:

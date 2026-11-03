@@ -812,7 +812,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curate (K12/K13), re-check ~2026-12-01; K6/K9–K14 open |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curated: K12 blocklist + K13 promote/block lists shipped 2026-11-03, re-check ~2026-12-01; K6/K9–K11/K14 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1158,11 +1158,16 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   Dougie Finance −8.3pp, Satyajit Dasgupta −7.6pp (overlapping daily stances — a shortlist, not
   a verdict). Caveat: ~25% of Sep–Oct transcripts in this sample had a leaked-reasoning
   "summary" (no tickers/claims, NEUTRAL) until the 2026-11-02 backfill; re-run after.
-- [ ] **K12 · Sweep blocklist** — per-channel "never cite" for sweep results; seed with the
-  worst channels above. No blocklist or weighting exists today; `youtube_sources.confidence_weight`
-  is never read by the evidence path.
-- [ ] **K13 · Sweep → allowlist promotion shortlist** — monthly list of sweep channels beating
-  the shuffled baseline with enough n, for human approval.
+- [x] **K12 · Channel blocklist** — done 2026-11-03. `web_dashboard/yt_channel_policy.py`:
+  default = the 7 worst K5 channels; override via `system_settings.youtube_channel_blocklist`
+  (`[{"channel_id","name","reason"}]`, `[]` blocks nothing). The sweep skips blocked channels
+  before any caption fetch; ticker + meta analysis drop their transcripts from evidence (30 rows
+  today). `youtube_sources.confidence_weight` is still never read by the evidence path.
+- [x] **K13 · Promote / block shortlist** — done 2026-11-03. `k5_youtube_source_roi.py` ends with
+  both lists (promote: sweep, edge ≥ +3pp and mean excess > 0; block: edge ≤ −7pp or mean
+  excess ≤ −8). Run monthly; a human approves. 2026-11-02 data: promote Global Market Pulse,
+  Big Picture Investing, Global News Daily, MB Capital; block AlphaStreet, Investing Talk
+  Podcast, Fyfull (excess only, edge ~0).
 - [ ] **K14 · YouTube on Today** — "what YouTube said this week about your holdings"; Today/Ideas
   only read Alpha Research / Opportunity Discovery today, so transcripts surface only via stances.
 - [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap
