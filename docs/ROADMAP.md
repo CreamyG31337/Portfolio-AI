@@ -143,8 +143,10 @@ new feed.
 (now every 3h, #660); per-ticker article sentiment was generated but never stored (now stored and
 shown to ticker/meta analysis, #661); ~25% of Sep–mid-Oct transcripts held leaked model reasoning
 instead of a summary (147 re-summarized via the AI queue); CI deploys ignored host-file
-`AI_QUEUE_*` overrides (#662); K5 re-check done (below). Next: audit whether every other
-collected source (insider, congress, social, signals) feeds a stance or screen.
+`AI_QUEUE_*` overrides (#662); K5 re-check done (below). **[Data-usage audit](DATA_USAGE_AUDIT.md)
+(2026-11-03):** insider ingest silently dropping ~all rows since mid-Aug and Opportunity Discovery
+stuck on one query since July (both fixed); newsletters (174/30d, summarized) and
+`market_relationships` never reach analysis — next opportunities, ranked in that doc.
 
 *2026-09-29.* Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5
 shipped; I1 story dedup shipped 2026-07-29; Phase K through **K5** is done (allowlist kept,
