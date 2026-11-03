@@ -113,6 +113,8 @@ class TestSymbolArticleHTMLParsing(unittest.TestCase):
         self.assertTrue(any('/article/1234567' in url for url in article_urls))
 
 
+# The real site comes from SYMBOL_ARTICLE_BASE_URL, which test runs don't set.
+@patch('symbol_article_scraper.BASE_URL', 'https://example.com')
 class TestURLValidation(unittest.TestCase):
     """Test URL validation strategies."""
     
@@ -156,6 +158,8 @@ class TestURLValidation(unittest.TestCase):
             self.skipTest("symbol_article_scraper module not available")
 
 
+# The real site comes from SYMBOL_ARTICLE_BASE_URL, which test runs don't set.
+@patch('symbol_article_scraper.BASE_URL', 'https://example.com')
 class TestFetching(unittest.TestCase):
     """Test fetching functionality (mocked)."""
     
