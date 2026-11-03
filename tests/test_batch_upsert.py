@@ -57,15 +57,19 @@ def test_bad_row_isolated() -> None:
 
 def test_congress_fetch_polls_hourly_through_the_us_day() -> None:
     """FMP returns only the latest 10 per chamber; nightly polling missed most filings."""
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from test_rss_feed_ingest_registration import _RecordingScheduler
-
     from scheduler.jobs import register_default_jobs
 
-    sched = _RecordingScheduler()
+    class _Sched:
+        def __init__(self) -> None:
+            self.jobs: dict[str, dict[str, Any]] = {}
+
+        def add_job(self, func: Any, *args: Any, **kwargs: Any) -> None:
+            self.jobs[kwargs.get("id") or repr(func)] = {"func": func, **kwargs}
+
+        def __getattr__(self, _name: str) -> Any:
+            return lambda *a, **k: None
+
+    sched = _Sched()
     register_default_jobs(sched)
     trig = sched.jobs["congress_trades_fetch"]["trigger"]
     hours = str(next(f for f in trig.fields if f.name == "hour"))
