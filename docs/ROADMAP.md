@@ -139,7 +139,14 @@ new feed.
 
 ### Ordered next work → Phase I (**I4**, **I2**), then J
 
-*Updated 2026-09-29.* Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5
+*Updated 2026-11-03.* **Data-pipeline audit (2026-11-02/03):** RSS ingest was never scheduled
+(now every 3h, #660); per-ticker article sentiment was generated but never stored (now stored and
+shown to ticker/meta analysis, #661); ~25% of Sep–mid-Oct transcripts held leaked model reasoning
+instead of a summary (147 re-summarized via the AI queue); CI deploys ignored host-file
+`AI_QUEUE_*` overrides (#662); K5 re-check done (below). Next: audit whether every other
+collected source (insider, congress, social, signals) feeds a stance or screen.
+
+*2026-09-29.* Phase H closed 2026-07-27; Ideas quality P1–P6 + measurement rig M1–M5
 shipped; I1 story dedup shipped 2026-07-29; Phase K through **K5** is done (allowlist kept,
 sweep staleness fixed — re-check ~2026-11-01). Aug–Sep work went to ops and polish off-roadmap:
 [Grok Bot](GROK_BOT_RESEARCH.md) weekday X sweeps → `grok_x_briefs` → Today / Action Queue
@@ -803,7 +810,7 @@ flowchart TD
 | **H** (closed 2026-07-27) | Source-ROI; meta-bundle; trend memory; congress herd; executive scoring; retro; Ideas usage | **H1–H7 shipped** — Ideas quality P1–P4 followed same day; human triage still the habit bar |
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
-| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29): allowlist earns its keep, sweep fixed for staleness, re-check ~2026-11-01; K6/K9/K10/K11 open |
+| **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curate (K12/K13), re-check ~2026-12-01; K6/K9–K14 open |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1132,8 +1139,30 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   re-offered nightly, with a second guard in `ingest_video`. Date-sorted search was tried
   and dropped: yt-dlp 2026.07.04 has no `ytsearchdate`, and the `sp=CAI%253D` results URL
   no longer sorts by date (verified live).
-  **Re-check ~2026-11-01** once post-fix stances have 30d outcomes; if sweep-cited stances
-  still trail the baseline, disable `youtube_holdings_sweep`.
+  **Re-check done 2026-11-02** (`web_dashboard/scripts/k5_youtube_source_roi.py`, same
+  after-cost rule + day-bucketed shuffled baseline, within-group):
+
+  | Cites | n 30d | edge vs shuffled 30d | mean excess after cost 30d |
+  |---|---|---|---|
+  | Allowlist video | 165 | **+4.4pp** | **+1.15** |
+  | Sweep-only video | 1,803 | −1.6pp | −1.51 |
+  | No YouTube, same tickers | 435 | −2.2pp | −0.45 |
+
+  Allowlist still earns its keep. Sweep is ~neutral (no worse than same-ticker stances without
+  video). Post-fix sweep at 7d moved −3.4pp → **+3.6pp** (n=420), but only ~76 post-fix rows had
+  30d outcomes — **re-check again ~2026-12-01**. **Policy: never disable the sweep; curate it.**
+  Per-channel 30d spread is wide: Global Market Pulse +9.9pp, Big Picture Investing +3.8pp,
+  Schwab +2.8pp vs Jerry Romine −14.1pp, Scott's Stock DD −12.4pp, Dividend Guy −11.3pp,
+  Dougie Finance −8.3pp, Satyajit Dasgupta −7.6pp (overlapping daily stances — a shortlist, not
+  a verdict). Caveat: ~25% of Sep–Oct transcripts in this sample had a leaked-reasoning
+  "summary" (no tickers/claims, NEUTRAL) until the 2026-11-02 backfill; re-run after.
+- [ ] **K12 · Sweep blocklist** — per-channel "never cite" for sweep results; seed with the
+  worst channels above. No blocklist or weighting exists today; `youtube_sources.confidence_weight`
+  is never read by the evidence path.
+- [ ] **K13 · Sweep → allowlist promotion shortlist** — monthly list of sweep channels beating
+  the shuffled baseline with enough n, for human approval.
+- [ ] **K14 · YouTube on Today** — "what YouTube said this week about your holdings"; Today/Ideas
+  only read Alpha Research / Opportunity Discovery today, so transcripts surface only via stances.
 - [ ] **K6 · Optional ASR fallback** — only for allowlisted no-caption videos; local/cheap
   model; still land as the same article type.
 
