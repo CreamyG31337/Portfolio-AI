@@ -112,6 +112,11 @@ def test_action_queue_enrich_merges_research_and_ai(client, auth_ok):
     ), patch(
         "routes.dashboard_routes.attach_ai_reviews",
         side_effect=_attach_ai,
+    ), patch(
+        # The route builds a real client; without RESEARCH_DATABASE_URL that raises and
+        # enrichment is silently skipped, so the test only passed where the env was set.
+        "postgres_client.PostgresClient",
+        return_value=MagicMock(),
     ):
         resp = client.get("/api/dashboard/action-queue?fund=TEST&limit=5")
 

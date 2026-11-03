@@ -156,6 +156,11 @@ class _RangeQuery:
     def gte(self, *_a, **_k):
         return self
 
+    def order(self, column, desc=False):
+        # Production pages with a stable order (PostgREST pages can shift without one).
+        self._rows = sorted(self._rows, key=lambda r: (r.get(column) is None, r.get(column)), reverse=desc)
+        return self
+
     def in_(self, column, values):
         self._rows = [r for r in self._rows if r.get(column) in values]
         return self
