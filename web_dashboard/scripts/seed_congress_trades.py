@@ -968,6 +968,20 @@ def map_trade_to_schema(trade_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
 
 
+# A page with no Next.js data is not "end of data": it is a 429 / Cloudflare / error
+# shell (2026-11-03: a ~7KB "Too Many Requests" page ended a backfill as "success").
+# Retry it after these waits, then give up loudly.
+BLOCKED_PAGE_BACKOFF_S = (60, 180, 600)
+# Late filers can make a whole page old (page 27 on 2026-11-03 was all 2024 trades), so
+# one old page is not proof we've gone back far enough.
+CUTOFF_STOP_CONSECUTIVE_PAGES = 3
+
+
+def page_has_next_data(html: Optional[str]) -> bool:
+    """True when the HTML carries the Next.js payload trades are parsed from."""
+    return bool(html) and "__next_f.push" in html
+
+
 def reached_cutoff(newest_on_page: Any, cutoff_date: Optional[datetime]) -> bool:
     """True when every trade on the page is older than the cutoff (see the page loop)."""
     if cutoff_date is None or newest_on_page is None:
@@ -975,7 +989,7 @@ def reached_cutoff(newest_on_page: Any, cutoff_date: Optional[datetime]) -> bool
     return newest_on_page < cutoff_date.date()
 
 
-def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> None:
+def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> Optional[bool]:
     """Main seeder function - scrapes historical data from source"""
     print("=" * 70)
     print("CONGRESS TRADES HISTORY SEEDER")
@@ -1034,6 +1048,9 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
     print()
     
     page = start_page
+    blocked_retries = 0
+    old_pages_in_a_row = 0
+    incomplete_reason: Optional[str] = None
     total_added = 0
     total_skipped = 0
     total_errors = 0
@@ -1053,15 +1070,27 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
             if not html:
                 html = fetch_page_direct(url)
             
-            if not html:
-                print(f"❌ Failed to fetch page {page}")
+            if not page_has_next_data(html):
+                # Failed fetch, 429, or a Cloudflare/error shell -- never "end of data".
+                if blocked_retries < len(BLOCKED_PAGE_BACKOFF_S):
+                    wait_s = BLOCKED_PAGE_BACKOFF_S[blocked_retries]
+                    blocked_retries += 1
+                    print(
+                        f"⏳ Page {page} blocked or empty shell ({len(html or '')} bytes); "
+                        f"retry {blocked_retries}/{len(BLOCKED_PAGE_BACKOFF_S)} in {wait_s}s"
+                    )
+                    time.sleep(wait_s)
+                    continue
+                incomplete_reason = f"page {page} still blocked after {blocked_retries} retries"
+                print(f"❌ {incomplete_reason}. Resume with --start-page {page}.")
                 break
-            
+            blocked_retries = 0
+
             # Extract trade data
             trades = extract_trade_data_from_html(html)
-            
+
             if not trades:
-                print("✅ No more trades found (reached end of data).")
+                print(f"✅ No more trades found on page {page} (reached end of data).")
                 break
             
             # Process the trades
@@ -1211,8 +1240,16 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
             # months or years back -- so stopping on the oldest trade on a page ended an
             # 11-month backfill after ~3 pages (2026-11-03). Use the newest instead.
             if reached_cutoff(newest_on_page, cutoff_date):
-                print(f"🛑 Whole page before cutoff (newest {newest_on_page}). Stopping.")
-                break
+                old_pages_in_a_row += 1
+                if old_pages_in_a_row >= CUTOFF_STOP_CONSECUTIVE_PAGES:
+                    print(
+                        f"🛑 {old_pages_in_a_row} pages in a row before cutoff "
+                        f"(newest {newest_on_page}). Stopping."
+                    )
+                    break
+                print(f"   Page {page} entirely before cutoff (late filings?); continuing.")
+            else:
+                old_pages_in_a_row = 0
             
             # Note: We don't stop when we reach older trades - we want to import historical data
             # The script will continue until it reaches the end of available data
@@ -1253,7 +1290,10 @@ def seed_congress_trades(months_back: Optional[int] = None, page_size: int = 100
     print(f"Total trades imported: {total_added:,}")
     print(f"Total skipped: {total_skipped:,}")
     print(f"Total errors: {total_errors:,}")
+    if incomplete_reason:
+        print(f"⚠️  INCOMPLETE: {incomplete_reason}")
     print()
+    return incomplete_reason is None
 
 
 if __name__ == "__main__":
@@ -1289,4 +1329,7 @@ if __name__ == "__main__":
     )
     
     args = parser.parse_args()
-    seed_congress_trades(months_back=args.months_back, page_size=args.page_size, max_pages=args.max_pages, start_page=args.start_page, skip_recent=args.skip_recent)
+    ok = seed_congress_trades(months_back=args.months_back, page_size=args.page_size, max_pages=args.max_pages, start_page=args.start_page, skip_recent=args.skip_recent)
+    # Non-zero so scrape_congress_trades_job reports failure instead of "success"
+    # when the source blocked us mid-run.
+    sys.exit(1 if ok is False else 0)
