@@ -531,6 +531,10 @@ steps:
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_OLLAMA_SECONDARY=\"$${AI_QUEUE_WORKERS_OLLAMA_SECONDARY:-1}\""
         FLASK_CMD="$FLASK_CMD -e AI_QUEUE_WORKERS_GLM=\"$${AI_QUEUE_WORKERS_GLM:-1}\""
         # Optional tuning knobs — only passed when explicitly set on host. Code defaults apply otherwise.
+        # Congress scraper (scrape_congress_trades / seed_congress_trades.py) refuses to run
+        # without its source URL; FlareSolverr falls back to host.docker.internal:8191.
+        [ -n "$CONGRESS_TRADES_BASE_URL" ] && FLASK_CMD="$FLASK_CMD -e CONGRESS_TRADES_BASE_URL=\"$CONGRESS_TRADES_BASE_URL\""
+        [ -n "$FLARESOLVERR_URL" ] && FLASK_CMD="$FLASK_CMD -e FLARESOLVERR_URL=\"$FLARESOLVERR_URL\""
         [ -n "$AI_QUEUE_LEASE_TTL_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_LEASE_TTL_SEC=\"$AI_QUEUE_LEASE_TTL_SEC\""
         [ -n "$AI_QUEUE_HEARTBEAT_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_HEARTBEAT_SEC=\"$AI_QUEUE_HEARTBEAT_SEC\""
         [ -n "$AI_QUEUE_POLL_IDLE_SEC" ] && FLASK_CMD="$FLASK_CMD -e AI_QUEUE_POLL_IDLE_SEC=\"$AI_QUEUE_POLL_IDLE_SEC\""
