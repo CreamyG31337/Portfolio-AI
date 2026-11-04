@@ -1656,8 +1656,8 @@ company. Ordinary words that happen to look like symbols are not tickers.
         if not isinstance(tickers, list):
             return 0
 
-        inserted = 0
         seen: set = set()
+        valid_tickers = []
         for ticker_data in tickers:
             if not isinstance(ticker_data, dict):
                 continue
@@ -1666,15 +1666,33 @@ company. Ordinary words that happen to look like symbols are not tickers.
             if not sym or len(sym) > 20 or sym in seen:
                 continue
             seen.add(sym)
+            valid_tickers.append((sym, ticker_data))
+
+        if not valid_tickers:
+            return 0
+
+        # Batch lookup company info to avoid N+1 Supabase queries
+        company_info_map = {}
+        try:
+            symbols = [sym for sym, _ in valid_tickers]
+            result = self.supabase.supabase.table("securities")\
+                .select("ticker, company_name, sector")\
+                .in_("ticker", symbols)\
+                .execute()
+            if result.data:
+                for row in result.data:
+                    company_info_map[row['ticker']] = {
+                        'company_name': row.get('company_name', ''),
+                        'sector': row.get('sector', '')
+                    }
+        except Exception as e:
+            logger.warning(f"Error bulk looking up company info: {e}")
+
+        insert_params = []
+        for sym, ticker_data in valid_tickers:
             try:
-                company_info = self._lookup_company_info(sym)
-                insert_query = """
-                    INSERT INTO extracted_tickers
-                    (analysis_id, ticker, confidence, context, is_primary,
-                     company_name, sector)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """
-                self.postgres.execute_update(insert_query, (
+                company_info = company_info_map.get(sym, {})
+                insert_params.append((
                     analysis_id,
                     sym,
                     ticker_data.get('confidence', 0.5),
@@ -1683,35 +1701,36 @@ company. Ordinary words that happen to look like symbols are not tickers.
                     ticker_data.get('company_name') or company_info.get('company_name'),
                     company_info.get('sector'),
                 ))
-                inserted += 1
             except Exception as e:
-                logger.warning("Error inserting extracted ticker row for %s: %s", sym, e)
-        return inserted
+                logger.warning("Error preparing extracted ticker row for %s: %s", sym, e)
 
-    def _lookup_company_info(self, ticker: str) -> Dict[str, str]:
-        """Look up company information from Supabase securities table
-        
-        Args:
-            ticker: Ticker symbol to look up
-            
-        Returns:
-            Dictionary with company_name and sector
-        """
-        try:
-            result = self.supabase.supabase.table("securities")\
-                .select("company_name, sector")\
-                .eq("ticker", ticker.upper())\
-                .execute()
-            
-            if result.data:
-                return {
-                    'company_name': result.data[0].get('company_name', ''),
-                    'sector': result.data[0].get('sector', '')
-                }
-        except Exception as e:
-            logger.warning(f"Error looking up company info for {ticker}: {e}")
-        
-        return {}
+        if insert_params:
+            insert_query = """
+                INSERT INTO extracted_tickers
+                (analysis_id, ticker, confidence, context, is_primary,
+                 company_name, sector)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+            # Catching errors on the batch insert level, though it loses per-row failure isolation
+            # as previously mentioned, but we'll try to follow instructions to batch the query.
+            # We can still loop single execute_updates if batch insertion has issues, but let's stick to execute_many.
+            try:
+                inserted = self.postgres.execute_many(insert_query, insert_params)
+                return inserted if inserted is not None else len(insert_params)
+            except Exception as e:
+                logger.warning("Error batch inserting extracted ticker rows: %s", e)
+                # Fallback to single inserts if batch fails
+                inserted = 0
+                for params in insert_params:
+                    try:
+                        self.postgres.execute_update(insert_query, params)
+                        inserted += 1
+                    except Exception as single_e:
+                        logger.warning("Error inserting extracted ticker row for %s: %s", params[1], single_e)
+                return inserted
+        return 0
+
+
     
     def run_daily_cleanup(self) -> Dict[str, int]:
         """Run enhanced cleanup with new retention policy
