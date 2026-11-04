@@ -112,3 +112,7 @@
 ## 2025-02-23 - [Batching PostgREST operations in SocialService]
 **Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
 **Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
+
+## $(date +%Y-%m-%d) - Batched database writes and lookups in _persist_extracted_tickers
+**Learning:** In `web_dashboard/social_service.py`, the `_persist_extracted_tickers` method was performing per-row Supabase `.eq()` queries and local Postgres `execute_update` calls inside a loop over tickers, creating a severe N+1 bottleneck for both network HTTP requests and local DB writes.
+**Action:** Always batch Supabase lookups using `.in_()` over a list of unique keys to eliminate N+1 network requests, and batch Postgres inserts/updates using `execute_many` to minimize roundtrips. Ensure any helper methods left unused by this refactoring (like `_lookup_company_info`) are removed.
