@@ -19,3 +19,7 @@
 **Issue:** Custom autocomplete dropdowns implemented manually (e.g., in `trade_entry.html`, `contributions.html`, and `ticker_autocomplete.ts`) lacked necessary ARIA roles, making them inaccessible to screen readers.
 **Learning:** Hand-rolled components like autocompletes require strict adherence to the ARIA combobox pattern (`role="combobox"`, `role="listbox"`, `role="option"`, `aria-expanded`, and dynamic updates to `aria-activedescendant` based on unique IDs during keyboard navigation).
 **Prevention:** When creating or fixing custom JS-driven dropdowns/autocompletes, ensure complete ARIA attributes are applied both statically in HTML and updated dynamically in TypeScript keyboard/focus handlers. Alternatively, use standard Flowbite/Tailwind components whenever possible.
+## 2026-11-04 - Palette: Prefer classList toggling for state dot
+**Issue:** Explicit `className` assignments were wiping out structural Tailwind classes.
+**Learning:** It is crucial to use `classList.remove()` and `classList.add()` rather than setting `className` to maintain existing structural classes when updating state styles.
+**Prevention:** Avoid direct `className` assignment for state changes on elements that have structural Tailwind classes.

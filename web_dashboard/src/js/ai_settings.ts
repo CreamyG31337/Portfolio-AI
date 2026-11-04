@@ -847,14 +847,15 @@ async function loadCookieRefresherStatus() {
             });
 
             if (statusDot) {
-                // TODO(palette): prefer classList add/remove for state colors so we
-                // never wipe structural classes if this element gains them in HTML.
                 if (hasCookies) {
-                    statusDot.className = 'bg-green-500';
+                    statusDot.classList.remove('bg-yellow-500', 'bg-red-500', 'bg-text-tertiary');
+                    statusDot.classList.add('bg-green-500');
                 } else if (partialCookies) {
-                    statusDot.className = 'bg-yellow-500';
+                    statusDot.classList.remove('bg-green-500', 'bg-red-500', 'bg-text-tertiary');
+                    statusDot.classList.add('bg-yellow-500');
                 } else {
-                    statusDot.className = 'bg-red-500';
+                    statusDot.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-text-tertiary');
+                    statusDot.classList.add('bg-red-500');
                 }
             }
 
@@ -897,7 +898,8 @@ async function loadCookieRefresherStatus() {
         } else if (result.error) {
             console.log('[DEBUG] Error loading status:', result.error);
             if (statusDot) {
-                statusDot.className = 'bg-red-500';
+                statusDot.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-text-tertiary');
+                statusDot.classList.add('bg-red-500');
             }
             if (statusText) {
                 statusText.textContent = 'Error: ' + (result.message || result.error || 'Unknown');
@@ -905,7 +907,8 @@ async function loadCookieRefresherStatus() {
         } else {
             console.log('[DEBUG] No cookies configured');
             if (statusDot) {
-                statusDot.className = 'bg-red-500';
+                statusDot.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-text-tertiary');
+                statusDot.classList.add('bg-red-500');
             }
             if (statusText) {
                 statusText.textContent = 'No cookies';
@@ -914,7 +917,8 @@ async function loadCookieRefresherStatus() {
     } catch (error) {
         console.error('[DEBUG] Error loading refresher status:', error);
         if (statusDot) {
-            statusDot.className = 'bg-red-500';
+            statusDot.classList.remove('bg-green-500', 'bg-yellow-500', 'bg-text-tertiary');
+            statusDot.classList.add('bg-red-500');
         }
         if (statusText) {
             statusText.textContent = 'Error loading status';
