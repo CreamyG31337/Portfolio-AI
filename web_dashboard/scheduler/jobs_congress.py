@@ -1033,6 +1033,32 @@ def rescore_congress_sessions_job(limit: int = 1000, batch_size: int = 10, model
         logger.error(f"❌ Congress sessions rescore job failed: {e}", exc_info=True)
 
 
+def _run_congress_session_backfill(project_root: Path) -> None:
+    """Run scripts/backfill_congress_sessions.py; never raises."""
+    backfill_path = project_root / 'web_dashboard' / 'scripts' / 'backfill_congress_sessions.py'
+    if not backfill_path.exists():
+        logger.debug(f"Backfill script not found at {backfill_path}; skipping session link.")
+        return
+    try:
+        logger.info("Running session backfill to link new trades to sessions...")
+        backfill_proc = subprocess.run(
+            [sys.executable, '-u', str(backfill_path)],
+            cwd=str(project_root),
+            capture_output=True,
+            text=True,
+            timeout=3600,
+            encoding='utf-8'
+        )
+        if backfill_proc.returncode == 0:
+            logger.info("Session backfill completed successfully.")
+        else:
+            logger.warning(f"Session backfill exited with code {backfill_proc.returncode}; new trades may need manual backfill.")
+    except subprocess.TimeoutExpired:
+        logger.warning("Session backfill timed out; new trades may need manual backfill.")
+    except Exception as backfill_err:
+        logger.warning(f"Session backfill failed: {backfill_err}; new trades may need manual backfill.")
+
+
 def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int = 100, max_pages: Optional[int] = None, start_page: int = 1, skip_recent: bool = False) -> None:
     """Manual job: Scrape congressional trades from external source.
 
@@ -1180,30 +1206,9 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
             else:
                 message = "Congress trades scraping completed"
             
-            # Run session backfill so new scraped trades get linked to sessions (for session-based AI analysis)
-            backfill_path = project_root / 'web_dashboard' / 'scripts' / 'backfill_congress_sessions.py'
-            if backfill_path.exists():
-                try:
-                    logger.info("Running session backfill to link new trades to sessions...")
-                    backfill_proc = subprocess.run(
-                        [sys.executable, '-u', str(backfill_path)],
-                        cwd=str(project_root),
-                        capture_output=True,
-                        text=True,
-                        timeout=3600,
-                        encoding='utf-8'
-                    )
-                    if backfill_proc.returncode == 0:
-                        logger.info("Session backfill completed successfully.")
-                    else:
-                        logger.warning(f"Session backfill exited with code {backfill_proc.returncode}; new trades may need manual backfill.")
-                except subprocess.TimeoutExpired:
-                    logger.warning("Session backfill timed out; new trades may need manual backfill.")
-                except Exception as backfill_err:
-                    logger.warning(f"Session backfill failed: {backfill_err}; new trades may need manual backfill.")
-            else:
-                logger.debug(f"Backfill script not found at {backfill_path}; skipping session link.")
-            
+            # Link new scraped trades to sessions (for session-based AI analysis).
+            _run_congress_session_backfill(project_root)
+
             log_job_execution(job_id, success=True, message=message, duration_ms=duration_ms)
             mark_job_completed('scrape_congress_trades', target_date, None, [], duration_ms=duration_ms, message=message)
             logger.info(f"✅ {message}")
@@ -1212,6 +1217,8 @@ def scrape_congress_trades_job(months_back: Optional[int] = None, page_size: int
             # Use last 10 lines as error snippet
             error_snippet = "\n".join(full_output[-10:])
             message = f"Script failed with exit code {return_code}. Last output:\n{error_snippet}"
+            # A blocked/partial scrape still saved pages before it stopped; link those too.
+            _run_congress_session_backfill(project_root)
             log_job_execution(job_id, success=False, message=message, duration_ms=duration_ms)
             mark_job_failed('scrape_congress_trades', target_date, None, message, duration_ms=duration_ms)
             logger.error(f"❌ Script failed: {message}")
