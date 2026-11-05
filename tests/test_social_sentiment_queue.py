@@ -49,8 +49,12 @@ class FakePostgres:
         self.updates.append((" ".join(sql.split()), params))
         return 1
 
-    def sql_matching(self, needle: str, *, updates: bool = False) -> List[Tuple[str, Any]]:
-        source = self.updates if updates else self.queries
+    def execute_many(self, sql: str, params_list: Any) -> int:
+        self.updates.append((" ".join(sql.split()), params_list))
+        return len(params_list)
+
+    def sql_matching(self, needle: str, *, updates: bool = False, execute_many: bool = False) -> List[Tuple[str, Any]]:
+        source = self.updates if updates or execute_many else self.queries
         return [(sql, params) for sql, params in source if needle in sql]
 
 
@@ -305,8 +309,8 @@ def test_persist_extracted_tickers_skips_junk_symbols():
     )
 
     assert inserted == 2
-    rows = postgres.sql_matching("INSERT INTO extracted_tickers", updates=True)
-    symbols = [params[1] for _, params in rows]
+    rows = postgres.sql_matching("INSERT INTO extracted_tickers", execute_many=True)
+    symbols = [params[1] for params in rows[0][1]] if rows else []
     assert symbols == ["AAPL", "MSFT"]
 
 
