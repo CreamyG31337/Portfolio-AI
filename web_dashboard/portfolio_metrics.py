@@ -19,6 +19,56 @@ from supabase_client import SupabaseClient
 logger = logging.getLogger(__name__)
 
 
+def summarize_nav_holders(
+    contributor_units: Dict[str, float],
+    contributor_data: Dict[str, Dict[str, Any]],
+    total_units: float,
+    fund_total_value: float,
+    display_currency: str,
+) -> Dict[str, Any]:
+    """Turn a finished NAV ledger into one row per person who still holds units.
+
+    ``current_value`` is units times today's unit price. Return percent uses each
+    person's net cash in, so two people in the same fund can show different returns.
+    """
+    if total_units <= 0 or fund_total_value <= 0:
+        return {
+            "display_currency": display_currency,
+            "fund_value": fund_total_value,
+            "unit_price": None,
+            "holders": [],
+        }
+
+    current_nav = fund_total_value / total_units
+    holders: List[Dict[str, Any]] = []
+    for name, units in contributor_units.items():
+        if units <= 0:
+            continue
+        data = contributor_data.get(name) or {}
+        net = float(data.get("net_contribution") or 0.0)
+        current_value = units * current_nav
+        gain_loss = current_value - net
+        gain_loss_pct = (gain_loss / net * 100.0) if net > 0 else None
+        holders.append(
+            {
+                "name": name,
+                "net_contribution": net,
+                "current_value": current_value,
+                "gain_loss": gain_loss,
+                "gain_loss_pct": gain_loss_pct,
+                "ownership_pct": (units / total_units) * 100.0,
+                "units": units,
+            }
+        )
+    holders.sort(key=lambda row: (-float(row["current_value"]), str(row["name"]).lower()))
+    return {
+        "display_currency": display_currency,
+        "fund_value": fund_total_value,
+        "unit_price": current_nav,
+        "holders": holders,
+    }
+
+
 def _get_cash_balances(fund: str) -> Dict[str, float]:
     from flask_data_utils import get_cash_balances_flask
 
@@ -283,6 +333,7 @@ def get_user_investment_metrics(
     display_currency: Optional[str] = None,
     user_email: Optional[str] = None,
     user_id: Optional[str] = None,
+    for_all_holders: bool = False,
     _cache_version: str = CACHE_VERSION,
 ) -> Optional[Dict[str, Any]]:
     """Get investment metrics for the currently logged-in user using NAV-based calculation.
@@ -312,6 +363,10 @@ def get_user_investment_metrics(
         - gain_loss_pct: Gain/loss percentage (accurate per-user return)
         - ownership_pct: Ownership percentage (based on units)
         - contributor_name: Their name (for display)
+
+        When ``for_all_holders`` is True, skip the login match and return every
+        person who still holds units (same NAV pass). Shape: ``fund_value``,
+        ``unit_price``, ``display_currency``, and ``holders``.
 
         Returns None if:
         - User not logged in
@@ -349,8 +404,8 @@ def get_user_investment_metrics(
         except (ImportError, RuntimeError):
             resolved_user_id = ""
 
-    # Require at least one identifier for matching.
-    if not resolved_email and not resolved_user_id:
+    # Require at least one identifier for matching a single login.
+    if not for_all_holders and not resolved_email and not resolved_user_id:
         return None
 
     ledger_client = _get_supabase_client_for_nav_contribution_ledger(session_id)
@@ -397,6 +452,8 @@ def get_user_investment_metrics(
         
         if not all_contributions:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - No contributions found, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
+            if for_all_holders:
+                return summarize_nav_holders({}, {}, 0.0, 0.0, display_currency)
             return None
         
         # Get cash balances for total fund value
@@ -415,6 +472,8 @@ def get_user_investment_metrics(
         
         if fund_total_value <= 0:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - Fund value <= 0, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
+            if for_all_holders:
+                return summarize_nav_holders({}, {}, 0.0, fund_total_value, display_currency)
             return None
         
         # Parse and sort contributions chronologically
@@ -672,8 +731,22 @@ def get_user_investment_metrics(
         
         if total_units <= 0:
             log_message(f"[{session_id}] PERF: get_user_investment_metrics - Total units <= 0, returning None (total: {time.time() - func_start:.2f}s)", level='DEBUG')
+            if for_all_holders:
+                return summarize_nav_holders(
+                    contributor_units, contributor_data, total_units, fund_total_value, display_currency
+                )
             return None
-        
+
+        if for_all_holders:
+            elapsed = time.time() - func_start
+            log_message(
+                f"[{session_id}] PERF: get_user_investment_metrics - all holders, total time: {elapsed:.2f}s",
+                level="DEBUG",
+            )
+            return summarize_nav_holders(
+                contributor_units, contributor_data, total_units, fund_total_value, display_currency
+            )
+
         # Match login to any ledger row's email (not only first stored per contributor name).
         # If that fails, fall back to contributor_access(user_id -> contributor_id) mapping.
         user_email_norm = _nav_normalize_email(resolved_email)

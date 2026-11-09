@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Chimera holders - Portfolio Dashboard{% endblock %}
+{% block page_title %}Chimera holders{% endblock %}
+{% block page_subtitle %}What each person put in, and what that share is worth now{% endblock %}
+
+{% block content %}
+<!-- PAGE: chimera_holders.html | ID: admin_chimera_holders -->
+<div class="px-4 py-6 max-w-6xl">
+    <div class="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <p class="text-sm text-text-secondary max-w-2xl">
+            Project Chimera only. Same unit math as <span class="text-text-primary">Your share</span> on the dashboard.
+            Today’s move is each person’s slice of the fund’s day change.
+        </p>
+        <button type="button" id="copy-holder-report" class="btn-outline-sm disabled:opacity-40" disabled>
+            <i class="fas fa-copy mr-1" aria-hidden="true"></i>Copy for a text
+        </button>
+    </div>
+    <p id="copy-holder-status" class="hidden mb-4 text-sm text-theme-success-text" role="status"></p>
+
+    <div id="holder-error" class="hidden mb-4 rounded-lg border border-theme-error-text/40 bg-theme-error-bg/20 px-4 py-3 text-sm text-theme-error-text"></div>
+
+    <div id="holder-loading" class="py-10 text-center text-text-secondary">
+        <i class="fas fa-spinner fa-spin mr-2" aria-hidden="true"></i>Loading holder balances…
+    </div>
+
+    <div id="holder-empty" class="hidden rounded-lg border border-border bg-dashboard-surface px-4 py-8 text-center text-text-secondary">
+        No one currently holds units in Project Chimera.
+    </div>
+
+    <div id="holder-body" class="hidden">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">Fund value</h5>
+                <p class="text-2xl font-bold text-text-primary" id="holder-fund-value">--</p>
+            </div>
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">People</h5>
+                <p class="text-2xl font-bold text-text-primary" id="holder-count">--</p>
+            </div>
+            <div class="p-4 bg-dashboard-surface rounded-lg border border-border shadow-xs">
+                <h5 class="mb-1 text-sm font-medium text-text-tertiary">Fund today</h5>
+                <p class="text-2xl font-bold text-text-primary" id="holder-fund-day">--</p>
+            </div>
+        </div>
+
+        <div class="mb-4 flex flex-wrap gap-3 items-end">
+            <div class="flex-1 min-w-[12rem]">
+                <label for="holder-search" class="block mb-1 text-xs font-medium text-text-secondary">Find a person</label>
+                <input id="holder-search" type="search" class="form-input-theme w-full" placeholder="Name" autocomplete="off">
+            </div>
+            <div>
+                <label for="holder-sort" class="block mb-1 text-xs font-medium text-text-secondary">Sort</label>
+                <select id="holder-sort" class="form-input-theme">
+                    <option value="current_value">Worth now</option>
+                    <option value="gain_loss_pct">Return</option>
+                    <option value="net_contribution">Put in</option>
+                    <option value="name">Name</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="holder-cards" class="space-y-3 md:hidden"></div>
+
+        <div class="hidden md:block overflow-x-auto rounded-lg border border-border">
+            <table class="w-full text-sm text-left">
+                <thead class="text-xs uppercase text-text-tertiary bg-dashboard-surface-alt">
+                    <tr>
+                        <th class="px-4 py-3 font-medium">Name</th>
+                        <th class="px-4 py-3 font-medium text-right">Put in</th>
+                        <th class="px-4 py-3 font-medium text-right">Worth now</th>
+                        <th class="px-4 py-3 font-medium text-right">Gain / loss</th>
+                        <th class="px-4 py-3 font-medium text-right">Return</th>
+                        <th class="px-4 py-3 font-medium text-right">Share</th>
+                        <th class="px-4 py-3 font-medium text-right">Today</th>
+                    </tr>
+                </thead>
+                <tbody id="holder-rows" class="bg-dashboard-surface"></tbody>
+            </table>
+        </div>
+        <p id="holder-filter-empty" class="hidden mt-4 text-sm text-text-secondary">No names match that search.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="/assets/js/chimera_holders.js?v={{ build_timestamp|default('dev')|replace(' ', '')|replace(':', '') }}"></script>
+{% endblock %}

@@ -159,6 +159,11 @@
             <div class="flex items-baseline gap-2">
                 <span class="text-2xl font-bold text-text-primary" id="metric-investors">--</span>
             </div>
+            {% if is_admin|default(false) %}
+            <p id="chimera-holders-link-wrap" class="hidden mt-2">
+                <a href="/admin/chimera-holders" class="text-xs font-medium text-accent hover:underline">See how each person is doing</a>
+            </p>
+            {% endif %}
         </div>
 
         <!-- Holdings Count -->

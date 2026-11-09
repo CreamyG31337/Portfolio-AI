@@ -31,6 +31,7 @@ MIGRATED_PAGES = {
     'admin_trade_entry': '/admin/trade-entry',
     'admin_contributions': '/admin/contributions',
     'admin_contributors': '/admin/contributors',
+    'admin_chimera_holders': '/admin/chimera-holders',
     'admin_ai_settings': '/admin/ai-settings',
     'admin_ai_audit': '/admin/ai-audit',
     'admin_security_metadata': '/admin/security-metadata',

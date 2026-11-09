@@ -841,6 +841,13 @@ except Exception as e:
     logger.error(f"Failed to register Admin Blueprint: {e}", exc_info=True)
 
 try:
+    from routes.holder_glance_routes import holder_glance_bp
+    app.register_blueprint(holder_glance_bp)
+    logger.info("✅ Registered Chimera holder glance Blueprint")
+except Exception as e:
+    logger.error(f"Failed to register Chimera holder glance Blueprint: {e}", exc_info=True)
+
+try:
     from routes.color_test_routes import color_test_bp
     app.register_blueprint(color_test_bp)
     logger.info("✅ Registered Color Test Blueprint")

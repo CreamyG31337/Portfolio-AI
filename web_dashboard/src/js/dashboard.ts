@@ -1578,6 +1578,11 @@ async function fetchSummary(): Promise<void> {
                     investorContainer.classList.remove('hidden');
                     updateMetric('metric-investors', data.investor_count, '', false);
                 }
+                const holdersLink = document.getElementById('chimera-holders-link-wrap');
+                if (holdersLink) {
+                    const isChimera = (state.currentFund || '') === 'Project Chimera';
+                    holdersLink.classList.toggle('hidden', !isChimera);
+                }
             }
         }
 
