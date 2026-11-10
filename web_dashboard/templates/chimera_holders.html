@@ -44,11 +44,25 @@
             </div>
         </div>
 
-        <div class="mb-4 flex flex-wrap gap-3 items-end">
-            <div class="flex-1 min-w-[12rem]">
-                <label for="holder-search" class="block mb-1 text-xs font-medium text-text-secondary">Find a person</label>
-                <input id="holder-search" type="search" class="form-input-theme w-full" placeholder="Name" autocomplete="off">
+        <section class="mb-6 rounded-lg border border-border bg-dashboard-surface p-4" aria-labelledby="holder-picker-heading">
+            <div class="mb-3 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <h2 id="holder-picker-heading" class="text-sm font-semibold text-text-primary">Who to show</h2>
+                    <p class="text-xs text-text-secondary">
+                        Pick the people to name. Everyone else is added up into one Others row with no names,
+                        on screen and in the copied text. Remembered in this browser.
+                    </p>
+                </div>
+                <button type="button" id="holder-picker-clear" class="btn-outline-sm disabled:opacity-40" disabled>
+                    Show everyone
+                </button>
             </div>
+            <input id="holder-search" type="search" class="form-input-theme w-full mb-3" placeholder="Find a name" autocomplete="off" aria-label="Find a name">
+            <div id="holder-picker" class="flex flex-wrap gap-2"></div>
+            <p id="holder-picker-summary" class="mt-3 text-xs text-text-tertiary" role="status"></p>
+        </section>
+
+        <div class="mb-4 flex flex-wrap gap-3 items-end">
             <div>
                 <label for="holder-sort" class="block mb-1 text-xs font-medium text-text-secondary">Sort</label>
                 <select id="holder-sort" class="form-input-theme">
@@ -78,7 +92,6 @@
                 <tbody id="holder-rows" class="bg-dashboard-surface"></tbody>
             </table>
         </div>
-        <p id="holder-filter-empty" class="hidden mt-4 text-sm text-text-secondary">No names match that search.</p>
     </div>
 </div>
 {% endblock %}
