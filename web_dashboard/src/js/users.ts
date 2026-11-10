@@ -599,7 +599,7 @@ async function showActionMenu(
         }
 
         const menu = document.createElement('div');
-        menu.className = 'fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center';
+        menu.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center';
         menu.innerHTML = `
             <div class="bg-dashboard-surface rounded-lg shadow-2xl border-2 border-border max-w-md w-full mx-4">
                 <div class="border-b border-border px-6 py-4 bg-dashboard-background rounded-t-lg">
