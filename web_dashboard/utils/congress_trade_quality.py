@@ -299,30 +299,32 @@ def apply_trade_quality_overrides(
             stats["matched"] += 1
             trade_id = int(row["id"])
             try:
-                needs_mark = row.get("quality_status") != QUALITY_GARBAGE
-                if needs_mark:
-                    client.supabase.table("congress_trades").update(
-                        {
-                            "quality_status": QUALITY_GARBAGE,
-                            "quality_reason": rule.get("reason"),
-                            "suggested_ticker": normalize_ticker(rule.get("suggested_ticker"))
-                            or None,
-                        }
-                    ).eq("id", trade_id).execute()
-                    stats["marked_garbage"] += 1
-
                 sibling_id = _ensure_corrected_sibling(client, row, rule)
                 if sibling_id is None:
                     stats["errors"] += 1
                     continue
                 stats["siblings_ensured"] += 1
 
-                if row.get("replacement_trade_id") != sibling_id:
-                    # Trigger allows first-time replacement_trade_id fill on garbage rows
-                    client.supabase.table("congress_trades").update(
-                        {"replacement_trade_id": sibling_id}
-                    ).eq("id", trade_id).execute()
-                    stats["linked"] += 1
+                needs_mark = row.get("quality_status") != QUALITY_GARBAGE
+                needs_link = row.get("replacement_trade_id") != sibling_id
+
+                if needs_mark or needs_link:
+                    update_payload = {}
+                    if needs_mark:
+                        update_payload.update({
+                            "quality_status": QUALITY_GARBAGE,
+                            "quality_reason": rule.get("reason"),
+                            "suggested_ticker": normalize_ticker(rule.get("suggested_ticker")) or None,
+                        })
+                    if needs_link:
+                        update_payload["replacement_trade_id"] = sibling_id
+
+                    client.supabase.table("congress_trades").update(update_payload).eq("id", trade_id).execute()
+
+                    if needs_mark:
+                        stats["marked_garbage"] += 1
+                    if needs_link:
+                        stats["linked"] += 1
             except Exception as exc:
                 logger.error("Failed applying quality override for trade %s: %s", trade_id, exc)
                 stats["errors"] += 1

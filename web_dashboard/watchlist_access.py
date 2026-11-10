@@ -380,30 +380,34 @@ def request_manual_ticker_analysis(
         }
 
     legacy_added: list[str] = []
-    for t in unique:
-        try:
-            existing = (
-                supabase_client.supabase.table("ai_analysis_queue")
-                .select("id")
-                .eq("analysis_type", "ticker")
-                .eq("target_key", t)
-                .eq("status", "pending")
-                .limit(1)
-                .execute()
-            )
-            if existing.data:
-                continue
-            supabase_client.supabase.table("ai_analysis_queue").insert(
-                {
-                    "analysis_type": "ticker",
-                    "target_key": t,
-                    "priority": 1000,
-                    "status": "pending",
-                }
-            ).execute()
-            legacy_added.append(t)
-        except Exception as exc:
-            logger.warning("legacy queue insert failed for %s: %s", t, exc)
+    try:
+        existing_result = (
+            supabase_client.supabase.table("ai_analysis_queue")
+            .select("target_key")
+            .eq("analysis_type", "ticker")
+            .in_("target_key", unique)
+            .eq("status", "pending")
+            .execute()
+        )
+        existing_keys = {str(row.get("target_key") or "").upper() for row in (existing_result.data or [])}
+
+        to_insert = []
+        for t in unique:
+            if t.upper() not in existing_keys:
+                to_insert.append(
+                    {
+                        "analysis_type": "ticker",
+                        "target_key": t,
+                        "priority": 1000,
+                        "status": "pending",
+                    }
+                )
+                legacy_added.append(t)
+
+        if to_insert:
+            supabase_client.supabase.table("ai_analysis_queue").insert(to_insert).execute()
+    except Exception as exc:
+        logger.warning("legacy queue batch insert failed: %s", exc)
 
     from scheduler.ai_task_workers import (
         enqueue_ticker_analysis_tasks,
