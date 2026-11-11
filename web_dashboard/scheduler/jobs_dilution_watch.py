@@ -107,11 +107,24 @@ def dilution_watch_job() -> None:
         observed = len(observations)
 
         # Persist only flagged movers; clean readings are noise here.
+        # OPTIMIZATION: Batched DB writes instead of per-row upserts to prevent timeouts/thrashing
+        params_list = []
         for obs in observations:
             if not obs.get("flagged"):
                 continue
+            params_list.append((
+                obs["ticker"],
+                obs["as_of"],
+                obs["window_days"],
+                obs["shares_start"],
+                obs["shares_end"],
+                obs["pct_change"],
+                True,
+            ))
+
+        if params_list:
             try:
-                postgres.execute_update(
+                postgres.execute_many(
                     """
                     INSERT INTO dilution_observations (
                         ticker, as_of, window_days, shares_start, shares_end,
@@ -119,19 +132,11 @@ def dilution_watch_job() -> None:
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (ticker, as_of, window_days) DO NOTHING
                     """,
-                    (
-                        obs["ticker"],
-                        obs["as_of"],
-                        obs["window_days"],
-                        obs["shares_start"],
-                        obs["shares_end"],
-                        obs["pct_change"],
-                        True,
-                    ),
+                    params_list
                 )
-                flagged += 1
-            except Exception as row_exc:
-                logger.warning("dilution_watch insert failed for %s: %s", obs["ticker"], row_exc)
+                flagged += len(params_list)
+            except Exception as batch_exc:
+                logger.warning("dilution_watch batch insert failed: %s", batch_exc)
 
         duration_ms = int((time.time() - start) * 1000)
         msg = (
