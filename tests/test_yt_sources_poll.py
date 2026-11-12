@@ -887,3 +887,50 @@ def test_summary_message_is_human_readable() -> None:
     summary = PollSummary(sources_polled=2, landed=3, attempted=4, considered=4)
     assert "2 sources" in summary.message
     assert "3 landed" in summary.message
+
+
+# ---------------------------------------------------------------------------
+# Title filter (title_exclude_regex)
+# ---------------------------------------------------------------------------
+
+
+def test_title_exclude_regex_skips_before_ingest(pg: _FakePg) -> None:
+    listing = [
+        VideoListing(video_id="aaaaaaaaaaa", watch_url="https://www.youtube.com/watch?v=aaaaaaaaaaa",
+                     title="Breaking Down My $159,000 Salary | The Pay Check"),
+        VideoListing(video_id="bbbbbbbbbbb", watch_url="https://www.youtube.com/watch?v=bbbbbbbbbbb",
+                     title="Inside America's Only Internet Sea Cable Maker"),
+    ]
+    seen: list[str] = []
+
+    def ingest(url: str, **_kwargs: Any) -> SimpleNamespace:
+        seen.append(url.rsplit("=", 1)[-1])
+        return _outcome("saved")
+
+    result = poll_source(
+        _source_row(title_exclude_regex=r"\|\s*The Pay Check\b"),
+        postgres_client=pg,
+        research_repo=_fake_repo(),
+        list_fn=lambda row, limit=None: listing,
+        ingest_fn=ingest,
+        sleep_fn=_no_sleep,
+    )
+
+    assert seen == ["bbbbbbbbbbb"]
+    assert result.skipped_title == 1
+    assert result.landed == 1
+    assert result.attempted == 1  # the skip costs no fetch budget
+    assert result.cursor_advanced_to == "aaaaaaaaaaa"
+
+
+def test_invalid_title_regex_is_ignored(pg: _FakePg) -> None:
+    result = poll_source(
+        _source_row(title_exclude_regex="(unclosed"),
+        postgres_client=pg,
+        research_repo=_fake_repo(),
+        list_fn=lambda row, limit=None: _listing("aaaaaaaaaaa"),
+        ingest_fn=lambda *a, **k: _outcome("saved"),
+        sleep_fn=_no_sleep,
+    )
+    assert result.skipped_title == 0
+    assert result.landed == 1

@@ -207,6 +207,42 @@ _SEED: list[dict[str, Any]] = [
         "notes": 'value-investing / 13F commentary; mostly large-cap',
         "tier": 1,
     },
+    {
+        # User-supplied 2026-11-11. General-interest explainers; INDUSTRY routes
+        # each transcript through the yt_industry_theses pass. Tested on 5 videos:
+        # industry pieces (memory chips, subsea cable, shipbuilding) gave usable
+        # theses; lifestyle series gave noise, so the title filter drops them and
+        # the duration cap drops the 3-4 hour compilations.
+        "label": "Business Insider",
+        "handle": "@BusinessInsider",
+        "channel_id": 'UCcyq283he07B7_KUX07mmtA',
+        "kind": 'channel',
+        "alpha_mechanism": 'INDUSTRY',
+        "expected_tickers": [],
+        "min_duration_s": 600,
+        "max_duration_s": 2700,
+        "title_exclude_regex": (
+            r"\|\s*(The Pay Check|Boot Camp|Pushing Limits|CMO Insider Podcast|Well Spent)\b"
+            r"|^Meet The |World Cup|FIFA|Jobs Around The World|Life Lessons"
+        ),
+        "notes": 'INDUSTRY thesis pass; lifestyle series excluded by title',
+        "tier": 1,
+    },
+    {
+        # User-supplied 2026-11-11 ("Maxenomics"). 15-35 min macro/industry
+        # essays, 0.5-7M views. Tested on 4 videos (data centers, rare earths,
+        # nuclear, Starship): every one produced a quote-backed industry thesis.
+        "label": "Maxinomics",
+        "handle": "@Maxinomics",
+        "channel_id": 'UCUEmaeh13ai1ivT5wzz5Lhg',
+        "kind": 'channel',
+        "alpha_mechanism": 'INDUSTRY',
+        "expected_tickers": [],
+        "min_duration_s": 600,
+        "max_duration_s": 3600,
+        "notes": 'INDUSTRY thesis pass; macro/industry essays',
+        "tier": 1,
+    },
 ]
 
 
@@ -301,34 +337,35 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if args.dry_run:
             continue
+        columns = [
+            "kind", "channel_id", "handle", "label", "alpha_mechanism",
+            "expected_tickers", "enabled", "max_videos_per_poll",
+            "min_duration_s", "max_duration_s", "notes",
+            "source_of_recommendation",
+        ]
+        values: list[Any] = [
+            row["kind"],
+            row["channel_id"],
+            row["handle"],
+            row["label"],
+            row.get("alpha_mechanism"),
+            row.get("expected_tickers") or [],
+            bool(row["enabled"]),
+            int(row["max_videos_per_poll"]),
+            int(row["min_duration_s"]),
+            row.get("max_duration_s"),
+            row.get("notes"),
+            "seed_yt_sources zwsp",
+        ]
+        # Only rows that use it need migration 2026-11_add_yt_industry_ideas.sql.
+        if row.get("title_exclude_regex"):
+            columns.append("title_exclude_regex")
+            values.append(row["title_exclude_regex"])
+        placeholders = ", ".join(["%s"] * len(columns))
         pg.execute_update(
-            """
-            INSERT INTO youtube_sources (
-                kind, channel_id, handle, label, alpha_mechanism,
-                expected_tickers, enabled, max_videos_per_poll,
-                min_duration_s, max_duration_s, notes,
-                source_of_recommendation, updated_at
-            ) VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s,
-                %s, %s, %s,
-                %s, NOW()
-            )
-            """,
-            (
-                row["kind"],
-                row["channel_id"],
-                row["handle"],
-                row["label"],
-                row.get("alpha_mechanism"),
-                row.get("expected_tickers") or [],
-                bool(row["enabled"]),
-                int(row["max_videos_per_poll"]),
-                int(row["min_duration_s"]),
-                row.get("max_duration_s"),
-                row.get("notes"),
-                "seed_yt_sources zwsp",
-            ),
+            f"INSERT INTO youtube_sources ({', '.join(columns)}, updated_at) "
+            f"VALUES ({placeholders}, NOW())",
+            tuple(values),
         )
         inserted += 1
         print(

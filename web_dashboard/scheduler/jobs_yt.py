@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -159,6 +160,8 @@ class SourcePollResult:
     landed: int = 0
     skipped_exists: int = 0
     skipped_duration: int = 0
+    # Title matched the row's ``title_exclude_regex``; decided before any fetch.
+    skipped_title: int = 0
     # Caption body below the floor: a degenerate track, not a failure to retry.
     skipped_thin: int = 0
     soft_failed: int = 0
@@ -179,6 +182,7 @@ class PollSummary:
     attempted: int = 0
     skipped_exists: int = 0
     skipped_duration: int = 0
+    skipped_title: int = 0
     skipped_thin: int = 0
     soft_failed: int = 0
     errors: int = 0
@@ -195,6 +199,7 @@ class PollSummary:
             f"{self.considered} considered",
             f"{self.skipped_exists} already",
             f"{self.skipped_duration} duration-skip",
+            f"{self.skipped_title} title-skip",
             f"{self.skipped_thin} thin-skip",
             f"{self.soft_failed} soft-fail",
             f"{self.errors} error",
@@ -264,6 +269,27 @@ def _source_label(row: Mapping[str, Any]) -> str:
         or row.get("query_text")
         or f"source {row.get('id')}"
     )
+
+
+def title_excluded(row: Mapping[str, Any], title: str | None) -> bool:
+    """True when ``title`` matches the row's ``title_exclude_regex`` (case-insensitive).
+
+    Lets a broad channel skip its off-topic series (Business Insider's "The Pay
+    Check", "Boot Camp") before spending a caption fetch and two GLM calls. A bad
+    pattern is logged and treated as no filter, so it never blocks a source.
+    """
+    pattern = str(row.get("title_exclude_regex") or "").strip()
+    if not pattern or not title:
+        return False
+    try:
+        return re.search(pattern, title, flags=re.IGNORECASE) is not None
+    except re.error as exc:
+        logger.warning(
+            "Ignoring invalid title_exclude_regex on youtube_sources id=%s: %s",
+            row.get("id"),
+            exc,
+        )
+        return False
 
 
 def _per_poll_limit(row: Mapping[str, Any]) -> int:
@@ -454,6 +480,17 @@ def poll_source(
         except Exception as exc:
             # Not fatal: ingest_video repeats this check before writing.
             logger.warning("article_exists check failed for %s: %s", watch_url, exc)
+
+        if title_excluded(row, candidate.title):
+            result.skipped_title += 1
+            result.considered += 1
+            any_success = True
+            logger.info(
+                "Skipping %s (%s): title matches title_exclude_regex",
+                candidate.video_id,
+                (candidate.title or "")[:60],
+            )
+            continue
 
         if dry_run:
             result.considered += 1
@@ -648,6 +685,7 @@ def poll_youtube_sources(
         summary.considered += result.considered
         summary.skipped_exists += result.skipped_exists
         summary.skipped_duration += result.skipped_duration
+        summary.skipped_title += result.skipped_title
         summary.skipped_thin += result.skipped_thin
         summary.soft_failed += result.soft_failed
         summary.errors += result.errors

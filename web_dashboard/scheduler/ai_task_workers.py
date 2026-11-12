@@ -1571,12 +1571,12 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
     url = str(payload.get("url") or "") or watch_url_for(video_id)
     if article_id:
         rows = postgres.execute_query(
-            "SELECT id, title, content, source_metadata FROM research_articles WHERE id = %s",
+            "SELECT id, title, content, source_metadata, source FROM research_articles WHERE id = %s",
             (article_id,),
         )
     else:
         rows = postgres.execute_query(
-            "SELECT id, title, content, source_metadata FROM research_articles WHERE url = %s",
+            "SELECT id, title, content, source_metadata, source FROM research_articles WHERE url = %s",
             (url,),
         )
     if not rows:
@@ -1644,6 +1644,8 @@ def youtube_transcript_summary_task_handler(task: Mapping[str, Any], backend: st
         issuer_channel=is_issuer_channel(meta if isinstance(meta, dict) else None),
         ollama_client=ollama,
         summarize_fn=_summarize,
+        source_metadata=meta if isinstance(meta, dict) else None,
+        source=str(row.get("source") or "") or None,
     )
     logger.info(
         "youtube_transcript_summary enriched %s (article=%s) via %s/%s",

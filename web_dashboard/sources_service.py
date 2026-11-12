@@ -16,7 +16,7 @@ TICKER_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 HANDLE_RE = re.compile(r"^@?[A-Za-z0-9._-]{2,120}$")
 VALID_KINDS = frozenset({"channel", "search", "playlist", "ir"})
 VALID_MECHANISMS = frozenset(
-    {"MARKET_MOVER", "LEAK", "TEARDOWN", "ANALYSIS", "EARNINGS_IR", ""}
+    {"MARKET_MOVER", "LEAK", "TEARDOWN", "ANALYSIS", "EARNINGS_IR", "INDUSTRY", ""}
 )
 MAX_BULK_ROWS = 100
 

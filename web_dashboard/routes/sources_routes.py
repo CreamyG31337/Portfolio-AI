@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 sources_bp = Blueprint("sources", __name__)
 
 _probe_lock = threading.Lock()
-_ALPHA_MECHANISMS = ("MARKET_MOVER", "LEAK", "TEARDOWN", "ANALYSIS", "EARNINGS_IR")
+_ALPHA_MECHANISMS = ("MARKET_MOVER", "LEAK", "TEARDOWN", "ANALYSIS", "EARNINGS_IR", "INDUSTRY")
 
 
 def _deny_readonly():

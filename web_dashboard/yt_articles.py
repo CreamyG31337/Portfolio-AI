@@ -648,6 +648,15 @@ def _ingest_inline(
             title=article.title,
         )
 
+    _run_industry_thesis(
+        research_repo,
+        article_id=str(article_id),
+        title=article.title,
+        content=article.content,
+        source_metadata=article.source_metadata,
+        source=article.source,
+    )
+
     logger.info(
         "✅ Landed YouTube Transcript %s (%s chars, tickers=%s)",
         article.video_id,
@@ -762,6 +771,8 @@ def enrich_saved_transcript(
     issuer_channel: bool = False,
     ollama_client: Any | None = None,
     summarize_fn: Callable[..., Any] | None = None,
+    source_metadata: Mapping[str, Any] | None = None,
+    source: str | None = None,
 ) -> EnrichmentResult:
     """Summarize + ticker-extract an already-saved transcript row, then update it.
 
@@ -806,4 +817,44 @@ def enrich_saved_transcript(
         logic_check=data.get("logic_check"),
         ticker_sentiment=ticker_sentiment_for_tickers(data, enrichment.tickers),
     )
+    _run_industry_thesis(
+        research_repo,
+        article_id=article_id,
+        title=title,
+        content=content,
+        source_metadata=source_metadata,
+        source=source,
+    )
     return enrichment
+
+
+def _run_industry_thesis(
+    research_repo: Any,
+    *,
+    article_id: str,
+    title: str,
+    content: str,
+    source_metadata: Mapping[str, Any] | None,
+    source: str | None,
+) -> None:
+    """Second GLM pass for ``alpha_mechanism='INDUSTRY'`` sources; no-op otherwise.
+
+    Ideas go to ``yt_industry_ideas``, never to the article's tickers. Failures
+    are logged and swallowed: the normal enrichment already landed.
+    """
+    from yt_industry_theses import is_industry_source, run_and_save
+
+    if not is_industry_source(source_metadata):
+        return
+    client = getattr(research_repo, "client", None)
+    if client is None:
+        logger.warning("Industry thesis skipped for %s: repo has no postgres client", article_id)
+        return
+    run_and_save(
+        postgres_client=client,
+        article_id=article_id,
+        title=title,
+        content=content,
+        source_metadata=source_metadata,
+        source=source,
+    )
