@@ -194,6 +194,143 @@ def _fetch_alpha_ideas_query(
     return postgres.execute_query(sql, tuple(params))
 
 
+def build_advise_pack(
+    pg: Any,
+    supabase_client: Any,
+    fund: str | None = None,
+    *,
+    limit: int = 12,
+    actions: list[dict[str, Any]] | None = None,
+    theses_attention: list[dict[str, Any]] | None = None,
+    confluence_events: list[dict[str, Any]] | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    """Build and rank candidate recommendations for a fund (Today advise_pack).
+
+    Shares identical logic between Today briefing API and the nightly advise_pack ledger.
+    If ``actions``, ``theses_attention``, or ``confluence_events`` are omitted (as in the nightly
+    job), they are populated using the same helpers Today briefing uses.
+    """
+    from advise_service import rank_candidate_pack
+    from track_record_service import build_track_record_summary
+
+    if actions is None:
+        import pandas as pd
+        from action_queue_service import (
+            attach_ai_reviews,
+            attach_research_context,
+            build_action_queue_items,
+        )
+
+        positions_df = None
+        try:
+            from flask_data_utils import get_current_positions_flask
+
+            positions_df = get_current_positions_flask(fund=fund)
+        except Exception:
+            positions_df = None
+
+        if positions_df is None:
+            if hasattr(supabase_client, "get_current_positions"):
+                try:
+                    raw_pos = (
+                        supabase_client.get_current_positions(fund=fund)
+                        if fund
+                        else supabase_client.get_current_positions()
+                    )
+                    if raw_pos:
+                        positions_df = pd.DataFrame(raw_pos)
+                except Exception:
+                    positions_df = None
+        if positions_df is None:
+            positions_df = pd.DataFrame(columns=["ticker"])
+
+        actions = build_action_queue_items(
+            supabase_client, fund, 8, positions_df=positions_df
+        )
+        try:
+            attach_research_context(pg, actions)
+            attach_ai_reviews(pg, fund or "", actions)
+        except Exception as exc:
+            logger.warning("build_advise_pack: enrich action queue failed: %s", exc)
+
+    if theses_attention is None:
+        try:
+            from user_insights_service import list_theses_attention
+
+            theses_attention = list_theses_attention(pg, limit=20)
+        except Exception as exc:
+            logger.warning("build_advise_pack: theses attention failed: %s", exc)
+            theses_attention = []
+
+    if confluence_events is None:
+        try:
+            from confluence_service import fetch_recent_confluence_events
+
+            confluence_events = fetch_recent_confluence_events(pg, days=2, limit=15)
+        except Exception as exc:
+            logger.warning("build_advise_pack: confluence events failed: %s", exc)
+            confluence_events = []
+
+    # Prefer 7d (more samples); fall back shape is still valid if empty.
+    track_summary: dict[str, Any] | None = None
+    try:
+        track_summary = build_track_record_summary(pg, horizon_days=7)
+        if int(track_summary.get("total_scored") or 0) < 30:
+            track_summary = build_track_record_summary(pg, horizon_days=30)
+    except Exception as tr_exc:
+        logger.warning("build_advise_pack: track record for advise failed: %s", tr_exc)
+
+    # A3: shared ranking source with the chat pulse. Falls back to the same
+    # held-gated watchlist signals when the queue + theses are empty, so
+    # Today and chat agree instead of Today showing "no items". Inherits A2
+    # tension annotation + demotion.
+    def _today_signal_fallback() -> list[dict[str, Any]]:
+        from ai_assistant_candidates import build_signal_fallback_candidates
+        from flask_data_utils import get_current_positions_flask
+
+        held_df = None
+        try:
+            held_df = get_current_positions_flask(fund=fund)
+        except Exception:
+            held_df = None
+        held: set[str] = set()
+        if held_df is not None and not getattr(held_df, "empty", True):
+            col = "ticker" if "ticker" in held_df.columns else "symbol"
+            if col in held_df.columns:
+                held = {
+                    str(t).upper().strip()
+                    for t in held_df[col].dropna().tolist()
+                    if str(t).strip()
+                }
+        elif hasattr(supabase_client, "get_current_positions"):
+            try:
+                raw_pos = (
+                    supabase_client.get_current_positions(fund=fund)
+                    if fund
+                    else supabase_client.get_current_positions()
+                )
+                if raw_pos:
+                    held = {
+                        str(p.get("ticker") or p.get("symbol") or "").upper().strip()
+                        for p in raw_pos
+                        if str(p.get("ticker") or p.get("symbol") or "").strip()
+                    }
+            except Exception:
+                pass
+        return build_signal_fallback_candidates(
+            supabase_client, fund=fund, held_tickers=held, limit=limit
+        )
+
+    return rank_candidate_pack(
+        action_queue=actions,
+        theses_attention=theses_attention,
+        track_record=track_summary,
+        confluence_events=confluence_events,
+        signal_fallback=_today_signal_fallback,
+        limit=limit,
+    )
+
+
 def build_today_briefing(
     supabase_client: Any,
     *,
@@ -314,50 +451,14 @@ def build_today_briefing(
     advise_pack: list[dict[str, Any]] = []
     advise_source = "advise"
     try:
-        from advise_service import rank_candidate_pack
-        from track_record_service import build_track_record_summary
-
-        # Prefer 7d (more samples); fall back shape is still valid if empty.
-        track_summary: dict[str, Any] | None = None
-        try:
-            track_summary = build_track_record_summary(pg, horizon_days=7)
-            if int(track_summary.get("total_scored") or 0) < 30:
-                track_summary = build_track_record_summary(pg, horizon_days=30)
-        except Exception as tr_exc:
-            logger.warning("Today briefing: track record for advise failed: %s", tr_exc)
-
-        # A3: shared ranking source with the chat pulse. Falls back to the same
-        # held-gated watchlist signals when the queue + theses are empty, so
-        # Today and chat agree instead of Today showing "no items". Inherits A2
-        # tension annotation + demotion.
-        def _today_signal_fallback() -> list[dict[str, Any]]:
-            from ai_assistant_candidates import build_signal_fallback_candidates
-            from flask_data_utils import get_current_positions_flask
-
-            try:
-                held_df = get_current_positions_flask(fund=fund)
-            except Exception:
-                held_df = None
-            held: set[str] = set()
-            if held_df is not None and not getattr(held_df, "empty", True):
-                col = "ticker" if "ticker" in held_df.columns else "symbol"
-                if col in held_df.columns:
-                    held = {
-                        str(t).upper().strip()
-                        for t in held_df[col].dropna().tolist()
-                        if str(t).strip()
-                    }
-            return build_signal_fallback_candidates(
-                supabase_client, fund=fund, held_tickers=held, limit=12
-            )
-
-        advise_pack, advise_source = rank_candidate_pack(
-            action_queue=actions,
-            theses_attention=theses_attention,
-            track_record=track_summary,
-            confluence_events=confluence_events,
-            signal_fallback=_today_signal_fallback,
+        advise_pack, advise_source = build_advise_pack(
+            pg,
+            supabase_client,
+            fund=fund,
             limit=12,
+            actions=actions,
+            theses_attention=theses_attention,
+            confluence_events=confluence_events,
         )
     except Exception as exc:
         logger.warning("Today briefing: advise pack failed: %s", exc)

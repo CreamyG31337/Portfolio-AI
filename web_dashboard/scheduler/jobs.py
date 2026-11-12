@@ -311,6 +311,16 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 23, 'minute': 15, 'timezone': 'America/New_York'},
         ],
     },
+    'advise_pack_ledger': {
+        'name': 'Advise Pack Ledger',
+        'description': "Nightly no-LLM write of Today's ranked buy/sell candidate pack into stance_history, scored forward (roadmap Phase Z3)",
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '📋',
+        'cron_triggers': [
+            {'hour': 22, 'minute': 45, 'timezone': 'America/New_York'},
+        ],
+    },
     'phase_l_restudy': {
         'name': 'Phase L Monthly Re-study',
         'description': 'Monthly re-run of the winners/precursor study so signals are re-judged as the holdout grows; feeds the weekly retro (roadmap Phase L)',
@@ -831,6 +841,7 @@ from scheduler.jobs_confluence import confluence_job
 from scheduler.jobs_congress_herd import congress_herd_job
 from scheduler.jobs_alpha_idea_ledger import alpha_idea_ledger_job
 from scheduler.jobs_ark_trade_ledger import ark_trade_ledger_job
+from scheduler.jobs_advise_pack_ledger import advise_pack_ledger_job
 from scheduler.jobs_phase_l_restudy import phase_l_restudy_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
@@ -947,6 +958,7 @@ __all__ = [
     'congress_herd_job',
     'alpha_idea_ledger_job',
     'ark_trade_ledger_job',
+    'advise_pack_ledger_job',
     'phase_l_restudy_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
@@ -1784,6 +1796,24 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600,
         )
         logger.info("Registered job: ark_trade_ledger (nightly precursor:ark_buy stances)")
+
+    if AVAILABLE_JOBS.get('advise_pack_ledger', {}).get('enabled_by_default', True):
+        advise_trigger = AVAILABLE_JOBS['advise_pack_ledger']['cron_triggers'][0]
+        scheduler.add_job(
+            advise_pack_ledger_job,
+            trigger=CronTrigger(
+                hour=advise_trigger['hour'],
+                minute=advise_trigger['minute'],
+                timezone=advise_trigger['timezone'],
+            ),
+            id='advise_pack_ledger',
+            name=f"{get_job_icon('advise_pack_ledger')} Advise Pack Ledger",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: advise_pack_ledger (nightly advise_pack stances)")
 
     if AVAILABLE_JOBS.get('phase_l_restudy', {}).get('enabled_by_default', True):
         pl_trigger = AVAILABLE_JOBS['phase_l_restudy']['cron_triggers'][0]

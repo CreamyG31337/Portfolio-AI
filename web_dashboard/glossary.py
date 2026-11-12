@@ -256,6 +256,14 @@ GLOSSARY: dict[str, dict[str, str]] = {
         ),
         "source": "Detected from ARK daily trade notifications.",
     },
+    "advise_pack": {
+        "label": "Advise pack",
+        "short": (
+            "Nightly snapshot of the top ranked buy and sell candidates shown on the Today briefing, "
+            "graded forward so the recommendation engine's accuracy is measured automatically."
+        ),
+        "source": "Recorded nightly from the Today briefing recommendation engine.",
+    },
     "alpha_idea": {
         "label": "Alpha idea",
         "short": "A stock a research article suggested might be worth a look.",
