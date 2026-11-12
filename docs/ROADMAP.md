@@ -7,6 +7,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 |-----|--------------------------|
 | **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Closed 2026-07-27:** H1–H7 shipped. Ideas quality P1–P6 closed (P5 by product judgment 2026-07-29). Measurement rig M1–M5 shipped — see §2.4. |
 | **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not blocking I/K). |
+| **This doc → [§2.7 Attention inbox](#27-attention-inbox--personal-context-silvia-review--backlog)** | **Backlog (2026-11-12):** borrows from Silvia — persisted per-user alert inbox (Radar-style) with earnings/move alerts + email push, assistant user-memory, linked citations, export. Consumes existing artifacts; parallel to I/J/K. |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
 | **This doc → [Phase K](#phase-k--youtube-captions--research-articles)** | **Backlog (post-H, prefer after I1):** pull video captions/subtitles → normalize into `research_articles`-shaped rows so existing extract/summarize/meta paths analyze them (earnings calls, IR, curated finance channels). Absorbs the deferred “earnings-call transcript” idea from Phase G. |
@@ -554,6 +555,43 @@ Ordered by leverage for the chat surface; all stay human-in-the-loop.
 | Stuffing friend tips into Ideas via chat | Watchlist / Ideas separation stays |
 | New collectors “for the assistant” | Assistant consumes existing artifacts; Phase H/I/J/K own feeds |
 
+### 2.7 Attention inbox + personal context (Silvia review) — **backlog**
+
+**Created 2026-11-12** from a review of Silvia (cfosilvia.com), a commercial "personal AI CFO"
+(Pompliano / ProCap, ~20k users). Its research is much shallower than ours. What it does better
+is **push**, **personal context**, and **checkable answers**. Every item below consumes artifacts
+we already produce: no new collectors, no auto-trading. Parallel polish like the A-wishlist, so
+it does not block I/J/K.
+
+What Silvia offers and how we compare:
+
+| Silvia feature | Our equivalent | Gap |
+|---|---|---|
+| **Radar**: a ranked feed of earnings, breaking news, big moves and account changes on *your* holdings, with an unread badge and per-alert on/off "Schedules" | Today (`today_briefing_service.py`) already returns stance flips, filing + dilution alerts, insider clusters, congress herd, confluence, theses attention and watchlist movers | Today is a **snapshot you have to visit**. It has no persisted items, no read/unread state, no badge, no per-user toggles and **no earnings block** (0 refs in the service) |
+| "She remembers everything" | `ai_assistant_chats` stores transcripts (A11) | No lasting **facts about the user** (goals, risk limits, "never suggest X") that carry across chats |
+| Answers cite specific accounts / holdings / transactions | Handler tells the model to cite tool results (`ai_chat_handler.py`) | Citations are plain text, not links you can follow to the trade, ticker or article |
+| Goals: target + date + linked accounts → % complete, projected finish, needed monthly contribution | Portfolio value history per fund | None |
+| Download / email any Artifact (CSV, PDF) | Digest email infra (`outbound_digest_builder.py`) | No export from chat answers or research reports |
+| Research: 2–5 min async report, history list, shareable link | Research workers, `search_web`, `search_research` | No "ask a deep question, come back later" mode in the chat |
+
+| ID | Item | Notes | Size |
+|----|------|-------|------|
+| **S1** | **Attention inbox (Radar)**: persist alert items | New `user_alerts` table (`user_id`, `fund`, `kind`, `ticker`, `severity`, `source_ref`, `created_at`, `read_at`, `dismissed_at`, dedup key). Have the jobs that already feed Today write a row when they fire (filing/dilution, insider cluster, congress herd, confluence, stance flip, theses attention), filtered to holdings + watchlist. Today reads from the table, not just a recompute. Sidebar badge = unread count. Add to `CRITICAL_APP_TABLES` only if we decide alert history is irreplaceable (probably not). | M |
+| **S2** | **Earnings + big-move alerts** | Pillar 4.4 is still the missing Today block. Daily job over holdings + watchlist using the A9 `get_earnings_calendar` logic → T-7 / T-1 alerts into S1. Add a price-move threshold alert (e.g. \|1d\| > 2σ of trailing 60d) from existing price data. | S |
+| **S3** | **Per-user alert settings + push** | Settings page toggles per `kind` (on / off / email). Reuse the Mailgun outbound path for an "urgent only" email (dilution, earnings tomorrow, stance flip on a held name). Real-time push is out of scope; a batched daily email is enough. | S |
+| **S4** | **Assistant memory (user facts)** | `assistant_memory` table per user: short facts the user asked the model to remember, plus confirmed ones it proposed. Injected into the system prompt and **viewable/editable/deletable in Settings** (no hidden memory). A tool `remember_fact` the model calls only on an explicit user ask. Consider seeding from active Insights theses. | M |
+| **S5** | **Linked citations in chat** | Tool results carry stable refs (`trade:<id>`, `ticker:<sym>`, `article:<id>`, `thesis:<id>`). Model emits them as `[ref]` markers; the frontend renders links to `/ticker_details`, the trade log, research articles. Makes answers checkable, in line with "inspectable outputs". Extend the quality harness to check that cited refs exist. | M |
+| **S6** | **Export from chat / reports** | "Download CSV" for tabular tool outputs and "Email me this" for an answer or report via the existing digest email path. | S |
+| **S7** | **Goals** *(optional; low priority)* | Per-fund or per-contributor goal: target value + date → % complete, projected date at the trailing contribution + return pace, needed monthly amount. Mainly useful for Chimera contributors. | S/M |
+| **S8** | **Async deep research from chat** *(optional)* | "Research this" button queues a multi-step job on the AI task queue; the result lands as a saved report with a permalink and shows up as an S1 alert when done. | M |
+
+**Do not borrow:** whole-life net-worth tracking (real estate, vehicles, collectibles), Plaid bank
+links and spending categories, phone/SMS chat, usage tiers. Wrong product: this is a portfolio
+research tool, not a budgeting app.
+
+**Suggested order:** S1 → S2 → S3 (S2 is the cheapest visible win and closes 4.4), then S5 →
+S4. S6–S8 as appetite allows.
+
 ---
 
 ## Pillar 3 — Smarter loops (only after Pillars 1–2)
@@ -590,7 +628,7 @@ Ordered by value-per-effort:
 | 4.1 | **Dilution watch** | #1 micro-cap killer. Monitor EDGAR full-text for S-3 / 424B5 / ATM offerings / reverse splits on holdings + watchlist. SEC plumbing exists (`web_dashboard/scheduler/sec_form4_poc.py`). Surface on Today screen + dossier. | M |
 | 4.2 | **Insider cluster-buy detection** — **shipped 2026-06-11** | 130k insider rows already collected. "3+ distinct insiders buying within 30 days" is one SQL view + a Today-screen block. No new collection. | S |
 | 4.3 | **Liquidity / exit-risk panel** — **shipped 2026-06-11 (panel; holdings column open)** | Position size ÷ avg dollar volume = "days to exit" per holding. Pure math on existing data; more honest micro-cap risk than beta. Holdings-table column + portfolio panel. | S |
-| 4.4 | **Earnings calendar** | Genuinely absent. Earnings dates for holdings/watchlist (yfinance), countdown badges on Today + dossier; optional pre-earnings AI note later. | M |
+| 4.4 | **Earnings calendar** | Genuinely absent. Earnings dates for holdings/watchlist (yfinance), countdown badges on Today + dossier; optional pre-earnings AI note later. *(2026-11-12: on-demand lookup exists as chat tool `get_earnings_calendar` (A9), but Today still has no earnings block — folded into §2.7 **S2**.)* | M |
 | 4.5 | **Short interest** | FINRA bi-monthly; days-to-cover on dossier. | M |
 | 4.6 | **13F ownership deltas** | Quarterly EDGAR; institutional accumulation/distribution on dossier. | M/L |
 
@@ -814,6 +852,7 @@ flowchart TD
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
 | **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curated: K12 blocklist + K13 promote/block lists shipped 2026-11-03, re-check ~2026-12-01; K6/K9–K11/K14 open |
+| **S** (backlog, parallel) | §2.7 Attention inbox + personal context (Silvia borrows): S1 alert table → S2 earnings/move alerts → S3 settings + email push; then S5 linked citations, S4 assistant memory | **not started** (added 2026-11-12) |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
