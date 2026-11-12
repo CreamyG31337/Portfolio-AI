@@ -57,13 +57,29 @@ SEED = 20261112
 DISCOVERY_MONTHS = (1, 2, 3, 4)
 HOLDOUT_MONTHS = (6, 7, 8)
 ACTIVE_ETFS = ("ARKK", "ARKW", "ARKF", "ARKG", "ARKQ", "ARKX")
+# ETF families. A share-count change is mostly fund flow (creations/redemptions move every
+# holding by the same %), so the signals below use only the part of a change that differs
+# from the fund's own median change that day, plus new positions and exits.
+# Coverage = (first usable day, last day) of each family's feed; the iShares feeds stop
+# 2026-05-15 so they can only be judged on discovery windows.
+ETF_FAMILIES: dict[str, tuple[tuple[str, ...], date, date]] = {
+    "ark": (ACTIVE_ETFS, date(2026, 1, 4), date(2026, 11, 11)),
+    "ark_indexed": (("PRNT", "IZRL"), date(2026, 1, 4), date(2026, 11, 9)),
+    "theme": (
+        ("XBI", "SMH", "BUZZ", "OIH", "PPH", "BUG", "IBOT", "SMOT", "DAPP", "BOTZ",
+         "SMHX", "MOAT", "LIT", "BBH", "FINX", "RTH"),
+        date(2026, 1, 26), date(2026, 10, 29),
+    ),
+    "ishares": (("IVV", "IWM", "IWC", "IWO", "IBB", "ICLN", "SOXX"), date(2026, 1, 26), date(2026, 5, 15)),
+}
+ETF_PRE_DAYS = 30  # fund decisions are near-term; 60 would leave almost no covered windows
+OVERWEIGHT_PP = 2.0  # holding's % change beats the fund's median % change that day by this
 # Source coverage starts (first date the source has data). A window is eligible for a
 # signal only when its whole pre-period lies after this date (a few days' slack).
 COVERAGE = {
     "insider": date(2020, 1, 1),
     "congress": date(2020, 1, 1),
     "articles": date(2025, 12, 25),
-    "etf": date(2026, 1, 3),
     "momentum": date(2025, 12, 1),  # needs ~63 trading days of prices before the window
     "alpha_idea": date(2025, 12, 25),  # ideas exist as far back as the articles
 }
@@ -123,17 +139,39 @@ def load_articles(pg: Any, universe: set[str], since: date) -> pd.DataFrame:
     return df[df["ticker"].isin(universe)].copy()
 
 
-def load_etf_buys(pg: Any, universe: set[str], since: date) -> pd.DataFrame:
+def load_etf_events(pg: Any, universe: set[str]) -> pd.DataFrame:
+    """Deliberate ETF decisions: new positions, exits, and flow-adjusted over/underweights.
+
+    Returns ticker, d, family, kind in {new, exit, over, under}. Each fund's first logged
+    day is dropped (the initial snapshot shows up as a wall of changes).
+    """
+    fam_of = {e: f for f, (etfs, _, _) in ETF_FAMILIES.items() for e in etfs}
     rows = pg.execute_query(
         """
-        SELECT upper(holding_ticker) AS ticker, date AS d
+        SELECT upper(etf_ticker) AS etf, upper(holding_ticker) AS ticker, date AS d,
+               shares_before::float AS sb, shares_after::float AS sa, percent_change::float AS pc
         FROM etf_holdings_changes
-        WHERE action = 'BUY' AND etf_ticker = ANY(%s) AND date >= %s
+        WHERE upper(etf_ticker) = ANY(%s)
         """,
-        (list(ACTIVE_ETFS), since),
+        (list(fam_of),),
     )
     df = pd.DataFrame(rows)
-    return df[df["ticker"].isin(universe)].copy() if len(df) else df
+    if df.empty:
+        return pd.DataFrame(columns=["ticker", "d", "family", "kind"])
+    df = df[df["d"] > df.groupby("etf")["d"].transform("min")]
+    sb, sa = df["sb"].fillna(0), df["sa"].fillna(0)
+    new, exit_ = (sb <= 0) & (sa > 0), (sa <= 0) & (sb > 0)
+    cont = ~new & ~exit_ & df["pc"].notna()
+    med = df[cont].groupby(["etf", "d"])["pc"].transform("median")
+    excess = (df.loc[cont, "pc"] - med).reindex(df.index)
+    kind = pd.Series(pd.NA, index=df.index, dtype="object")
+    kind[excess >= OVERWEIGHT_PP] = "over"
+    kind[excess <= -OVERWEIGHT_PP] = "under"
+    kind[new] = "new"
+    kind[exit_] = "exit"
+    out = df.assign(kind=kind, family=df["etf"].map(fam_of)).dropna(subset=["kind"])
+    out = out[out["ticker"].isin(universe)]
+    return out[["ticker", "d", "family", "kind"]].reset_index(drop=True)
 
 
 def load_alpha_ideas(pg: Any, universe: set[str]) -> pd.DataFrame:
@@ -207,9 +245,17 @@ def build_features(
         put("article_bullish", "articles", t.map(a_bull).fillna(0) >= 1)
         put("article_bearish", "articles", t.map(a_bear).fillna(0) >= 1)
 
-        if len(etf):
-            eb = _count_in(etf, lo, hi)
-            put("ark_buy", "etf", t.map(eb).fillna(0) >= 1)
+        elo = s - timedelta(days=ETF_PRE_DAYS)
+        for fam, (_, f_start, f_end) in ETF_FAMILIES.items():
+            ok = f_start <= elo + timedelta(days=SLACK_DAYS) and hi <= f_end + timedelta(days=1)
+            fe = etf[etf["family"] == fam] if len(etf) else etf
+            for kinds, label in ((("new", "over"), "add"), (("new",), "new"), (("exit", "under"), "cut")):
+                name = f"etf_{fam}_{label}"
+                if not ok or fe.empty:
+                    g[name] = np.nan
+                    continue
+                c = _count_in(fe, elo, hi, fe["kind"].isin(kinds))
+                g[name] = (t.map(c).fillna(0) >= 1).astype(float)
         if len(ideas):
             ib2 = _count_in(ideas, lo, hi)
             put("alpha_idea_bullish", "alpha_idea", t.map(ib2).fillna(0) >= 1)
@@ -310,10 +356,13 @@ def main() -> int:
     insiders = load_insiders(universe, earliest)
     congress = load_congress(universe, earliest)
     articles = load_articles(pg, universe, earliest)
-    etf = load_etf_buys(pg, universe, earliest)
+    etf = load_etf_events(pg, universe)
     ideas = load_alpha_ideas(pg, universe)
     print(f"  insiders {len(insiders)}  congress {len(congress)}  article-mentions {len(articles)}"
-          f"  ark buys {len(etf)}  bullish ideas {len(ideas)}")
+          f"  bullish ideas {len(ideas)}")
+    if len(etf):
+        print("  ETF decision events (family x kind):")
+        print(etf.groupby(["family", "kind"]).size().unstack(fill_value=0).to_string())
 
     feats = build_features(windows, panel, insiders=insiders, congress=congress,
                            articles=articles, etf=etf, ideas=ideas)
@@ -321,7 +370,8 @@ def main() -> int:
     signals = [c for c in (
         "insider_buy", "insider_buy_cluster", "insider_sell_heavy", "congress_buy",
         "article_any", "article_burst", "article_bullish", "article_bearish",
-        "ark_buy", "alpha_idea_bullish", "momentum_top", "momentum_bottom",
+        "alpha_idea_bullish", "momentum_top", "momentum_bottom",
+        *[f"etf_{f}_{k}" for f in ETF_FAMILIES for k in ("add", "new", "cut")],
     ) if c in feats.columns]
 
     cols = ["n_with", "tickers_with", "mean_with", "mean_without", "diff", "ci_lo", "ci_hi",
