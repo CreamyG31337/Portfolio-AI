@@ -902,6 +902,7 @@ flowchart TD
 | **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curated: K12 blocklist + K13 promote/block lists shipped 2026-11-03, re-check ~2026-12-01; K6/K9–K11/K14 open |
 | **Z** (next — before S) | §2.8 Zero-review operation: Z1 Ideas auto-admit + Z3 score every directional claim → Z2 paper book → Z5 delisting rule, Z4 auto-apply YouTube lists, Z7 retro → Z6 auto source demotion (after CIs) | **not started** (added 2026-11-12) |
 | **S** (backlog, after Z1–Z3) | §2.7 Attention inbox + personal context (Silvia borrows): S1 alert table → S2 earnings/move alerts → S3 settings + email push; then S5 linked citations, S4 assistant memory | **not started** (added 2026-11-12) |
+| **L** (active, added 2026-11-12) | Winners-first precursor study: peer-relative winners/losers → hindsight theses → precursor lift vs controls → frozen rules scored forward. See [Phase L](#phase-l--winners-first-precursor-study) | **L1 in progress** |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -1287,6 +1288,21 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
 | Parallel “video insights” UI/stack | Must flow through `research_articles` |
 | Replacing paid transcript vendors as a dependency | Optional later; captions-first is free enough for v0 |
 | Auto-trading on video-derived stances | Same north star — human approval |
+
+### Phase L — Winners-first precursor study
+
+**Created 2026-11-12** (cream's idea). Index-relative scoring says ideas lag, but most stocks
+move with their sector, and the market has been volatile. So work backwards: find the stocks
+that beat their **peers**, explain the move with hindsight, find the signals that came *before*
+it, and keep only signals that also hold up on data they were not found on. Fully automatic
+(§2.8): no step waits on a human.
+
+| Step | What | Guard against | Status |
+|---|---|---|---|
+| **L1** | **Peer-relative winners/losers.** Universe = IVV/IWM/IWC members on the *earliest* `etf_holdings_log` date (keeps later-delisted names → no survivorship). Peer group = **sector × size band** (large/small/micro). `securities.industry` is empty for ~97% of names; industry peers are a later refinement. 63-trading-day windows starting each month from Jan 2026. `rel = return − peer median`; top 10% per group = winner, bottom 10% = loser, rest = control. Also re-scores `alpha_idea` against peers. Script: `web_dashboard/scripts/winners_study.py` (`prices` / `label` / `rescore-ideas`, `prices --fill` for rate-limited gaps), cache in the host-mounted `logs/study/`. **Done 2026-11-12:** 2,854-name universe, 30 peer groups, 8 windows (Jan–Aug starts), ~275 winners / ~245 losers per window → `logs/study/windows.csv.gz`. 168 tickers have no yfinance data (mostly delisted), so some survivorship remains. **Ideas vs peers** (same 1,094 rows scored both ways): 30d hit 48.0% / mean −1.87% (median −0.39%) vs index −1.32%; 90d 42.7% / −1.88% vs index −2.50%. **Sector moves don't explain the lag:** bullish ideas still trail their own peers by ~2% over 1–3 months, and the mean is worse than the median, so a few blow-ups drag it down. | Sector moves passing as skill; survivorship | ✅ done |
+| **L2** | **Hindsight theses (LLM, ~200 calls).** For sampled winners *and losers*, read the articles around the window; label the catalyst (earnings/guidance, M&A, contract/FDA, theme/rotation, squeeze, unexplained) and propose "what should have tipped us off". Proposals are **candidates for L3, not evidence**. AI task queue. | Narrative fallacy: every winner has a good story | — |
+| **L3** | **Precursor lift.** For each candidate signal, how often it appears in the 30–60 days *before* the window (point-in-time dates only: `disclosure_date`, `fetched_at`, `analysis_date`) among winners vs losers vs controls → lift + CI. Sources: insider buys/clusters, congress buys, ETF adds/weight increases (`etf_holdings_changes`), article volume/sentiment spikes, `signal_analysis`, dilution (negative), our own stances. No fundamentals: only today's snapshot exists, so they would leak the future. | Base rates: a signal that is equally common before losers is noise | — |
+| **L4** | **Out-of-sample + forward scoring.** Discover on Jan–Jul windows, confirm on Aug–Oct (untouched until then). Survivors are frozen as rules and written to `stance_history` as `precursor:<rule>` sources, scored by `stance_outcomes` like `alpha_idea`; Z6 demotes them if they decay. | Multiple comparisons: dozens of signals × windows find some by luck | — |
 
 ### Phase B–F checklist (2026-06-10)
 
