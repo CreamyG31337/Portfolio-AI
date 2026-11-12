@@ -7,6 +7,7 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 |-----|--------------------------|
 | **This doc → [Phase H](#phase-h--close-the-learn--synthesize-loop-active)** | **Closed 2026-07-27:** H1–H7 shipped. Ideas quality P1–P6 closed (P5 by product judgment 2026-07-29). Measurement rig M1–M5 shipped — see §2.4. |
 | **This doc → [AI Assistant](#ai-assistant--decide-chat-surface-shipped--wishlist)** | **Decide chat surface (2026-07):** Today pulse + tools shipped; wishlist is parallel polish (not blocking I/K). |
+| **This doc → [§2.8 Zero-review operation](#28-zero-review-operation--backlog-do-first)** | **Do first (2026-11-12):** nothing may depend on the user reading or clicking. Ideas auto-admit into the scored universe, every directional claim gets scored, a paper book tracks "would following the system have helped", YouTube lists auto-apply. |
 | **This doc → [§2.7 Attention inbox](#27-attention-inbox--personal-context-silvia-review--backlog)** | **Backlog (2026-11-12):** borrows from Silvia — persisted per-user alert inbox (Radar-style) with earnings/move alerts + email push, assistant user-memory, linked citations, export. Consumes existing artifacts; parallel to I/J/K. |
 | **This doc → [Phase I](#phase-i--collection-quality--macro-context-worldmonitor-borrows)** | **Backlog (post-H):** story dedup, FRED/stress → regime, Form 4 P/S filter — from [`research/WORLDMONITOR.md`](research/WORLDMONITOR.md). Do not start until Phase H closes. |
 | **This doc → [Phase J](#phase-j--event--news-catalyst-backtesting)** | **Backlog (post-I):** backtest news/world-event windows against price moves to find securities with predictable, high-magnitude responses (e.g. defense names in conflict escalations, COVID-era theme winners). Learn-layer research; not a new collector binge. |
@@ -129,7 +130,7 @@ Learn plumbing ahead of Learn→Synthesize / Learn→Collect wiring).
 | **Executive trades** | Open Cabinet → `congress_trades` (`chamber='Executive'`) with Congress UI filter. **H6 shipped 2026-07-21:** executive sessions use a policy/contract rubric instead of the degenerate committee prompt. Spot-check scores after deploy; kill collector only if v1 stays useless. |
 | **Weekly retro** | Computes flips + hit rates Sundays; Mailgun code shipped 2026-06-20; **`RETRO_DIGEST_RECIPIENTS` never set in prod** — self-review logs into the abyss. Five-minute env fix. |
 | **Congress Learn exemption** | Herd → `stance_history` shipped as **Phase H5** (2026-07-20). **5.1b / 5.1c** still open. |
-| **Ideas inbox labels** | H7 (2026-07-27): zero *human* Accept/Dismiss. Ideas quality **P1–P6 closed** (why-care UI, cleanup script, low-value filters, `idea_score`; P5 by product judgment 2026-07-29). Habit bar remains: genuine Accept/Dismiss. Exclude `auto_cleanup` from label sets. |
+| **Ideas inbox labels** | H7 (2026-07-27): zero *human* Accept/Dismiss. Ideas quality **P1–P6 closed** (why-care UI, cleanup script, low-value filters, `idea_score`; P5 by product judgment 2026-07-29). ~~Habit bar remains: genuine Accept/Dismiss.~~ **2026-11-12:** human Accept/Dismiss is no longer a success bar. Ideas get measured by auto-admit + stance outcomes ([§2.8 Z1](#28-zero-review-operation--backlog-do-first)). Exclude `auto_cleanup` from label sets. |
 
 ### Failure mode to watch
 
@@ -589,8 +590,54 @@ What Silvia offers and how we compare:
 links and spending categories, phone/SMS chat, usage tiers. Wrong product: this is a portfolio
 research tool, not a budgeting app.
 
-**Suggested order:** S1 → S2 → S3 (S2 is the cheapest visible win and closes 4.4), then S5 →
-S4. S6–S8 as appetite allows.
+**Zero-review rule applies (§2.8):** the inbox is a convenience, never a measurement. Read and
+dismiss state must not feed any metric. Every S1 alert kind that implies a direction (insider
+cluster, dilution, stance flip, congress herd, confluence, big move) gets an auto-scored
+outcome via Z3, so we learn which alert kinds are worth having without anyone reading them. S4
+stores only facts the user explicitly asked it to remember; there is no "confirm proposed
+memories" queue.
+
+**Suggested order:** after Z1–Z3. Then S1 → S2 → S3 (S2 is the cheapest visible win and closes
+4.4), then S5 → S4. S6–S8 as appetite allows.
+
+### 2.8 Zero-review operation — **backlog, do first**
+
+**Created 2026-11-12.** Operating constraint from the (only) user: *"I don't have time to read
+all the random insights and act on them, and that makes testing their usefulness difficult.
+Make sure nothing depends on me reviewing it."*
+
+Evidence that review-gated designs fail here: `idea_triage` has had **0 human decisions** since
+June (H7). Ideas only enter the scored analysis universe through Accept, so **no Ideas output has
+ever been measured**. The Insights review queue, K13 monthly approvals and the delisting
+"judgment call" are the same pattern.
+
+**Rule (also in Guardrails):** every feature must run, get measured and improve with **zero
+human reads or clicks**. Human input (Accept, theses, watchlist adds, memory) is an *optional
+extra signal*. It is never a gate, a prerequisite or a success metric. A new surface that makes
+a claim ships **with its automatic scorer**, or it does not ship.
+
+| ID | Item | Replaces | Size |
+|----|------|----------|------|
+| **Z1** | **Ideas auto-admit (probation tier).** Each day the top-N ideas by `idea_score` (N≈3–5, capped for LLM queue load) enter the nightly analysis universe as `watched_tickers_v2` `tier='probation'` with an expiry (≈45d). They get stanced → `stance_history` (`source` tagged with the originating article / source) → `stance_outcomes` like any ticker. On expiry they drop out unless held or manually watched. Accept still works as a shortcut; it is no longer the only way in. Source-ROI for alpha/opportunity sources then falls out of the existing G1 join. | "Habit bar: genuine Accept/Dismiss" (H7, §2.2) | M |
+| **Z2** | **Paper book (shadow portfolio).** One mechanical, rules-only portfolio that follows the Decide layer: enters on Advise / Action Queue BUY, exits on SELL/RISK or after N days, equal weight, with a cost haircut, no LLM. Daily NAV vs benchmark and vs the real funds. Answers *"would following the system have beaten what I actually did?"*, the usefulness question no hit-rate slice answers. Lives in the Research DB; never touches broker accounts (not auto-trading). One line in the weekly retro. | Human judging whether queue items were good | M |
+| **Z3** | **Score every directional claim.** Anything that implies a direction writes a `stance_history` row with its own `source`, so `stance_outcomes` scores it automatically: S1 alert kinds, chat-surfaced candidates (`source='chat'`, logged when `list_entry_candidates` / pulse returns them), Today `advise_pack`, Phase J playbook hits. Track record / source-ROI then rank *surfaces*, not just collectors. | Reading alerts/briefs to judge them | S/M |
+| **Z4** | **Auto-apply YouTube promote/block (K13/K15) as a monthly job.** Same thresholds the script prints, plus hysteresis (two consecutive months), max 2 changes per run, and each change logged with before/after into `system_settings` history. Fully reversible; the retro email lists what changed. | "Run monthly; a human approves" | S |
+| **Z5** | **Default delisting rule.** Score a dead-lettered ticker as −100% if the last 10 trading days before disappearance show no >20% jump (delisting/bankruptcy), else as the last price (acquisition). Report hit rate under both the rule and "dropped" so the bias is visible. No human review of the dead-letter set. | "Needs a judgment call" (§2.4b) | S |
+| **Z6** | **Automatic source demotion.** Once CIs and the pre-registered primary metric (§2.4b) land: a source whose primary metric is below baseline with the CI excluding zero for two consecutive monthly runs gets evidence weight 0 in meta bundles automatically (collector keeps running, so it can recover). Deleting a collector stays a code change. | Human reading source-ROI tables | M |
+| **Z7** | **Retro email is the only touchpoint, and it is optional.** The weekly retro (already sent) gains: paper book vs benchmark vs real funds (Z2), top/bottom surfaces by edge (Z3), and what Z1/Z4/Z6 changed automatically. Nothing waits on it being read. | — | S |
+
+**Also re-scoped by this rule:**
+
+- **Insights theses (§2.6):** optional input. The `theses_attention` "due for review" list is
+  informational. Thesis advice is already scored via the R3 ledger, which is the real measure.
+  No new work should depend on humans writing or reviewing theses.
+- **Phase J:** seed event windows automatically from existing articles (theme clustering +
+  dates). Do not hand-seed.
+- **Measurement follow-ups (§2.4b) "triggers":** fire automatically when the condition holds
+  (e.g. sample size reached); results land in the retro. Nobody needs to remember to run them.
+
+**Order:** Z1 + Z3 first (they make everything else measurable), then Z2, Z5, Z4, Z7; Z6
+after the §2.4b CIs.
 
 ---
 
@@ -852,7 +899,8 @@ flowchart TD
 | **I** (backlog / next) | Collection quality + macro — **I1 story dedup ✅**; FRED/stress, Form 4, SEC/Fed feeds | **I1 shipped 2026-07-29**; I2–I5 open |
 | **J** (backlog) | Event/news catalyst backtesting — labeled world events + article themes → abnormal returns → repeatable playbooks | after I (needs clean news + I2 stress optional) — **not started** |
 | **K** (backlog) | YouTube captions → `research_articles` — earnings/IR + curated channels; reuse summarize/meta | **K1-K5 + K7 + K8 shipped** (allowlist poll and holdings sweep both scheduled and enabled); K5 (2026-09-29, re-checked 2026-11-02): allowlist +4.4pp, sweep ~neutral → curated: K12 blocklist + K13 promote/block lists shipped 2026-11-03, re-check ~2026-12-01; K6/K9–K11/K14 open |
-| **S** (backlog, parallel) | §2.7 Attention inbox + personal context (Silvia borrows): S1 alert table → S2 earnings/move alerts → S3 settings + email push; then S5 linked citations, S4 assistant memory | **not started** (added 2026-11-12) |
+| **Z** (next — before S) | §2.8 Zero-review operation: Z1 Ideas auto-admit + Z3 score every directional claim → Z2 paper book → Z5 delisting rule, Z4 auto-apply YouTube lists, Z7 retro → Z6 auto source demotion (after CIs) | **not started** (added 2026-11-12) |
+| **S** (backlog, after Z1–Z3) | §2.7 Attention inbox + personal context (Silvia borrows): S1 alert table → S2 earnings/move alerts → S3 settings + email push; then S5 linked citations, S4 assistant memory | **not started** (added 2026-11-12) |
 
 ### Phase H — Close the Learn ↔ Synthesize loop (**closed 2026-07-27**)
 
@@ -895,9 +943,9 @@ show no clear collector edge (M5). Pattern donor for bundle work: Insights R1
   Ideas quality P1–P4 shipped — see [§2.2](#22-ideas-inbox--which-new-ideas-merit-attention)
   and [`.cursor/plans/ideas_inbox_quality.plan.md`](../.cursor/plans/ideas_inbox_quality.plan.md).
   Do **not** train a relevance scorer on triage labels; exclude `decided_by='auto_cleanup'`
-  from any usage metric. Success bar remains ≥1 genuine human Accept/Dismiss. Before
-  extending Ideas for J5/K promotions, confirm the cleaned inbox is actually used — or keep
-  Today / watchlist / Insights as the Decide termini.
+  from any usage metric. ~~Success bar remains ≥1 genuine human Accept/Dismiss.~~
+  **Superseded 2026-11-12 by §2.8 Z1:** Ideas are measured by auto-admitting top ideas into
+  the scored universe, not by clicks.
 
 #### Still gated (do not start in Phase H)
 
@@ -994,7 +1042,7 @@ flowchart LR
 #### Design constraints
 
 - **Human-in-the-loop only** — playbooks suggest watchlists / Ideas candidates; never auto-orders.
-- **No new collectors to start** — seed events manually or from existing articles; optional public
+- **No new collectors to start** — seed events automatically from existing articles (§2.8, no hand-seeding); optional public
   event calendars later only if J1–J3 prove signal.
 - **Repeatability > one-off pumps** — a name that spiked once in 2020 is anecdote; a name (or
   thin peer set) that responded the same way across ≥2 analogous windows is a candidate.
@@ -1205,7 +1253,7 @@ Pin versions; treat fetch failures as soft-skip (`blocked` / `no_captions` / …
   today). `youtube_sources.confidence_weight` is still never read by the evidence path.
 - [x] **K13 · Promote / block shortlist** — done 2026-11-03. `k5_youtube_source_roi.py` ends with
   both lists (promote: sweep, edge ≥ +3pp and mean excess > 0; block: edge ≤ −7pp or mean
-  excess ≤ −8). Run monthly; a human approves. 2026-11-02 data: promote Global Market Pulse,
+  excess ≤ −8). Run monthly; ~~a human approves~~ to be auto-applied by §2.8 **Z4**. 2026-11-02 data: promote Global Market Pulse,
   Big Picture Investing, Global News Daily, MB Capital; block AlphaStreet, Investing Talk
   Podcast, Fyfull (excess only, edge ~0). **2026-11-03 decision:** promoted Global Market Pulse
   (`UCILqmk1-PYEOsgKr_kEAotA`) and Big Picture Investing (`UCD6YjhZMNj_iz1tDAxc97_w`) to
@@ -1308,7 +1356,8 @@ Checked with `web_dashboard/scripts/verify_stance_pipeline.py` (read-only; rerun
 - **`idea_triage` empty of human decisions** at June verify — **H7 re-check 2026-07-27:
   still 0 human rows** (~695 Alpha/Opportunity articles in pool). Ideas quality P1–P4
   shipped same day; any `auto_cleanup` dismissals are machine hygiene, not engagement.
-  Product signal on human use remains open until Accept/Dismiss get clicked.
+  ~~Product signal on human use remains open until Accept/Dismiss get clicked.~~ Human use is
+  no longer the measure. See §2.8 Z1 (2026-11-12).
 
 Two real findings from the June 2026 ledger rollout (still relevant):
 
@@ -1330,7 +1379,12 @@ TEST_* residue — production jobs must filter by `is_production`.
 
 ## Guardrails (carry over from the meta roadmap, plus new)
 
-- **No autonomous trading.** Outputs are suggestions a human approves. Ever.
+- **No autonomous trading.** Outputs are suggestions a human approves. Ever. (The Z2 paper
+  book is simulation in the Research DB, not trading.)
+- **Nothing depends on human review (2026-11-12).** Every feature must run, be measured and
+  improve with zero human reads or clicks. Human actions are optional extra signal, never a
+  gate or success metric. A surface that makes a claim ships with its automatic scorer. See
+  [§2.8](#28-zero-review-operation--backlog-do-first).
 - **No new collection jobs until the Learn layer says which existing ones earn their keep.**
   As of 2026-07-15 that means: **finish Phase H1 (source-ROI) before G6 / §4.5 / §4.6 / §5.3.**
   Phase I (WorldMonitor borrows) starts **after Phase H closes**; I1 is a quality fix on
