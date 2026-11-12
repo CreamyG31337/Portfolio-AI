@@ -10,6 +10,7 @@ from action_queue_service import attach_ai_reviews, attach_research_context, bui
 from market_brief_service import fetch_latest_brief
 from market_regime_normalization import normalize_market_regime
 from postgres_client import PostgresClient
+from stance_history import EVENT_STANCE_SOURCES
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,8 @@ def fetch_stance_flips(postgres: PostgresClient, *, days: int = 2, limit: int = 
                    ) AS rn
             FROM stance_history
             WHERE as_of >= NOW() - (%s || ' days')::interval
+              AND as_of <= NOW()
+              AND source <> ALL(%s)
         )
         SELECT cur.ticker, cur.source, cur.fund_key,
                prev.stance AS from_stance, cur.stance AS to_stance,
@@ -41,7 +44,7 @@ def fetch_stance_flips(postgres: PostgresClient, *, days: int = 2, limit: int = 
         ORDER BY cur.as_of DESC
         LIMIT %s
         """,
-        (days, limit),
+        (days, list(EVENT_STANCE_SOURCES), limit),
     )
     return [dict(r) for r in rows]
 

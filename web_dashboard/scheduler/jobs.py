@@ -289,6 +289,17 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 22, 'minute': 45, 'timezone': 'America/New_York'},
         ],
     },
+    'alpha_idea_ledger': {
+        'name': 'Alpha Idea Ledger',
+        'description': 'Nightly no-LLM write of directional Alpha/Opportunity ideas into stance_history so ideas are scored without triage (ROADMAP §2.8 Z1)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '💡',
+        # After congress_herd (22:45 ET); independent of it.
+        'cron_triggers': [
+            {'hour': 23, 'minute': 0, 'timezone': 'America/New_York'},
+        ],
+    },
     'weekly_stance_retro': {
         'name': 'Weekly Stance Retro',
         'description': 'Weekly log summary of stance flips and outcome hit rates',
@@ -796,6 +807,7 @@ from scheduler.jobs_yahoo_sedi_insiders import yahoo_sedi_insiders_job
 from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_confluence import confluence_job
 from scheduler.jobs_congress_herd import congress_herd_job
+from scheduler.jobs_alpha_idea_ledger import alpha_idea_ledger_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -909,6 +921,7 @@ __all__ = [
     'sec_filings_job',
     'confluence_job',
     'congress_herd_job',
+    'alpha_idea_ledger_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -1705,6 +1718,28 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600,
         )
         logger.info("Registered job: congress_herd (nightly stance_history writes)")
+
+    if AVAILABLE_JOBS.get('alpha_idea_ledger', {}).get('enabled_by_default', True):
+        ai_cfg = AVAILABLE_JOBS['alpha_idea_ledger']
+        ai_trigger = ai_cfg.get(
+            'cron_triggers',
+            [{'hour': 23, 'minute': 0, 'timezone': 'America/New_York'}],
+        )[0]
+        scheduler.add_job(
+            alpha_idea_ledger_job,
+            trigger=CronTrigger(
+                hour=ai_trigger.get('hour', 23),
+                minute=ai_trigger.get('minute', 0),
+                timezone=ai_trigger.get('timezone', 'America/New_York'),
+            ),
+            id='alpha_idea_ledger',
+            name=f"{get_job_icon('alpha_idea_ledger')} Alpha Idea Ledger",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: alpha_idea_ledger (nightly stance_history writes)")
 
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']

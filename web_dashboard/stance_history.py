@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from collections.abc import Mapping
@@ -46,6 +47,11 @@ BEARISH_STANCES = frozenset(
 )
 
 DIRECTIONAL_STANCES = BULLISH_STANCES | BEARISH_STANCES
+
+# Event sources write one row per external call (an article), not a running state.
+# Consecutive rows disagreeing is two authors disagreeing, not the system changing
+# its mind, so they are excluded from stance-flip detection.
+EVENT_STANCE_SOURCES: tuple[str, ...] = ("alpha_idea",)
 
 # Kept in ledger but excluded from directional hit-rate in V1.
 NON_DIRECTIONAL_STANCES = frozenset({"RISK", "WATCH"})
@@ -98,8 +104,23 @@ def record_stance(
     requested_by: str | None = None,
     source_ref_id: str | UUID | None = None,
     metadata: Mapping[str, Any] | None = None,
+    as_of: datetime | None = None,
+    dedupe_on_source_ref: bool = False,
 ) -> bool:
     """Append a stance row only if it differs from the latest row for (ticker, source, fund_key).
+
+    Two dedupe modes:
+
+    * default — *state* sources (an analysis re-run nightly): skip when stance and
+      confidence equal the latest row, so only changes enter the ledger.
+    * ``dedupe_on_source_ref=True`` — *event* sources (one article = one call): skip
+      only when a row for the same (ticker, source, source_ref_id) already exists.
+      Two bullish articles on the same ticker are two independent calls and must both
+      be scored; state dedupe would silently keep only the first one ever.
+
+    ``as_of`` overrides the insert time (default ``now()``). Event sources set it to
+    when the call became actionable so backfills and late runs score from the right
+    entry date.
 
     Returns True if a row was inserted. Never raises — callers wrap if they need strict behavior.
     """
@@ -111,7 +132,28 @@ def record_stance(
     if not ticker_u or not source_s or not stance_s:
         return False
 
+    if dedupe_on_source_ref and not source_ref_id:
+        logger.warning("record_stance: dedupe_on_source_ref needs source_ref_id (%s)", ticker_u)
+        return False
+
     try:
+        if dedupe_on_source_ref:
+            existing = postgres.execute_query(
+                """
+                SELECT 1 FROM stance_history
+                WHERE ticker = %s AND source = %s AND source_ref_id = %s
+                LIMIT 1
+                """,
+                (ticker_u, source_s, str(source_ref_id)),
+            )
+            if existing:
+                return False
+            return _insert_stance(
+                postgres, ticker_u, fund_s, source_s, stance_s, confidence,
+                price_at_stance, drivers, risks, model_used, requested_by,
+                source_ref_id, metadata, as_of,
+            )
+
         latest = postgres.execute_query(
             """
             SELECT stance, confidence FROM stance_history
@@ -130,40 +172,11 @@ def record_stance(
         ):
             return False
 
-        ref_id = str(source_ref_id) if source_ref_id else None
-        postgres.execute_update(
-            """
-            INSERT INTO stance_history (
-                ticker, fund_key, source, stance, confidence, price_at_stance,
-                drivers, risks, model_used, requested_by, source_ref_id, metadata
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s::jsonb
-            )
-            """,
-            (
-                ticker_u,
-                fund_s,
-                source_s,
-                stance_s,
-                confidence,
-                price_at_stance,
-                drivers,
-                risks,
-                model_used,
-                requested_by,
-                ref_id,
-                _json_metadata(metadata),
-            ),
+        return _insert_stance(
+            postgres, ticker_u, fund_s, source_s, stance_s, confidence,
+            price_at_stance, drivers, risks, model_used, requested_by,
+            source_ref_id, metadata, as_of,
         )
-        logger.debug(
-            "Recorded stance %s for %s source=%s fund_key=%s",
-            stance_s,
-            ticker_u,
-            source_s,
-            fund_s or "(none)",
-        )
-        return True
     except Exception as exc:
         logger.warning(
             "Failed to record stance for %s source=%s: %s",
@@ -172,6 +185,59 @@ def record_stance(
             exc,
         )
         return False
+
+
+def _insert_stance(
+    postgres: Any,
+    ticker_u: str,
+    fund_s: str,
+    source_s: str,
+    stance_s: str,
+    confidence: float | Decimal | None,
+    price_at_stance: float | Decimal | None,
+    drivers: list[str] | None,
+    risks: list[str] | None,
+    model_used: str | None,
+    requested_by: str | None,
+    source_ref_id: str | UUID | None,
+    metadata: Mapping[str, Any] | None,
+    as_of: datetime | None,
+) -> bool:
+    ref_id = str(source_ref_id) if source_ref_id else None
+    postgres.execute_update(
+        """
+        INSERT INTO stance_history (
+            ticker, fund_key, source, stance, confidence, price_at_stance,
+            drivers, risks, model_used, requested_by, source_ref_id, as_of, metadata
+        ) VALUES (
+            %s, %s, %s, %s, %s, %s,
+            %s, %s, %s, %s, %s, COALESCE(%s::timestamptz, now()), %s::jsonb
+        )
+        """,
+        (
+            ticker_u,
+            fund_s,
+            source_s,
+            stance_s,
+            confidence,
+            price_at_stance,
+            drivers,
+            risks,
+            model_used,
+            requested_by,
+            ref_id,
+            as_of,
+            _json_metadata(metadata),  # keep last: tests read metadata as args[-1]
+        ),
+    )
+    logger.debug(
+        "Recorded stance %s for %s source=%s fund_key=%s",
+        stance_s,
+        ticker_u,
+        source_s,
+        fund_s or "(none)",
+    )
+    return True
 
 
 def record_stance_safe(
