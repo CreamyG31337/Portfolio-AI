@@ -131,3 +131,98 @@ def test_retro_digest_enabled_requires_mailgun(monkeypatch) -> None:
     monkeypatch.setenv("RETRO_DIGEST_RECIPIENTS", "owner@test.com")
     with patch("mailgun_outbound.get_mailgun_outbound_params", return_value=None):
         assert retro_digest_enabled() is False
+
+
+def test_build_weekly_retro_digest_html_renders_idea_scorecard_tables() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    fake_scorecard = {
+        "available": True,
+        "overall": {"n": 15, "hit_rate_pct": 60.0, "mean_signed_excess_pct": 2.5},
+        "by_direction": [
+            {"stance": "BULLISH", "n": 10, "hit_rate_pct": 70.0, "mean_signed_excess_pct": 3.0},
+            {"stance": "BEARISH", "n": 5, "hit_rate_pct": 40.0, "mean_signed_excess_pct": 1.5},
+        ],
+        "by_domain": [
+            {"domain": "fool.com", "n": 10, "hit_rate_pct": 70.0, "mean_signed_excess_pct": 3.0},
+        ],
+        "by_article_type": [
+            {"article_type": "Alpha Research", "n": 15, "hit_rate_pct": 60.0, "mean_signed_excess_pct": 2.5},
+        ],
+        "by_score_band": [
+            {"band": "8+", "n": 5, "hit_rate_pct": 80.0, "mean_signed_excess_pct": 4.0},
+            {"band": "6-7", "n": 10, "hit_rate_pct": 50.0, "mean_signed_excess_pct": 1.75},
+        ],
+    }
+
+    with patch("today_briefing_service.fetch_stance_flips", return_value=[]), \
+         patch("track_record_service.build_track_record_summary", return_value={"total_scored": 0}), \
+         patch("web_dashboard.retro_digest_service.build_idea_scorecard", return_value=fake_scorecard):
+        digest = build_weekly_retro_digest_html(pg, horizon_days=30)
+
+    assert "Ideas scorecard (30d)" in digest
+    assert "Overall: 60.0% hit rate, +2.50% mean signed excess (15 scored)" in digest
+    assert "By direction:" in digest
+    assert "BULLISH" in digest
+    assert "BEARISH" in digest
+    assert "By domain (min n=10):" in digest
+    assert "fool.com" in digest
+    assert "By score band:" in digest
+    assert "8+" in digest
+    assert "6-7" in digest
+
+
+def test_build_weekly_retro_digest_html_renders_no_scored_ideas_when_empty_or_unavailable() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+
+    # Case 1: unavailable
+    with patch("today_briefing_service.fetch_stance_flips", return_value=[]), \
+         patch("track_record_service.build_track_record_summary", return_value={"total_scored": 0}), \
+         patch("web_dashboard.retro_digest_service.build_idea_scorecard", return_value={"available": False}):
+        digest = build_weekly_retro_digest_html(pg, horizon_days=30)
+
+    assert "Ideas scorecard (30d)" in digest
+    assert "<p>No scored ideas yet.</p>" in digest
+
+    # Case 2: available but overall.n == 0
+    with patch("today_briefing_service.fetch_stance_flips", return_value=[]), \
+         patch("track_record_service.build_track_record_summary", return_value={"total_scored": 0}), \
+         patch(
+             "web_dashboard.retro_digest_service.build_idea_scorecard",
+             return_value={"available": True, "overall": {"n": 0, "hit_rate_pct": None, "mean_signed_excess_pct": None}},
+         ):
+        digest2 = build_weekly_retro_digest_html(pg, horizon_days=30)
+
+    assert "Ideas scorecard (30d)" in digest2
+    assert "<p>No scored ideas yet.</p>" in digest2
+
+
+def test_build_weekly_retro_digest_html_splits_domain_table_if_over_10() -> None:
+    pg = MagicMock()
+    pg.execute_query.return_value = []
+    domains = [
+        {"domain": f"domain{i}.com", "n": 10, "hit_rate_pct": 50.0, "mean_signed_excess_pct": float(20 - i)}
+        for i in range(12)
+    ]
+    fake_scorecard = {
+        "available": True,
+        "overall": {"n": 120, "hit_rate_pct": 50.0, "mean_signed_excess_pct": 2.0},
+        "by_direction": [],
+        "by_domain": domains,
+        "by_article_type": [],
+        "by_score_band": [],
+    }
+
+    with patch("today_briefing_service.fetch_stance_flips", return_value=[]), \
+         patch("track_record_service.build_track_record_summary", return_value={"total_scored": 0}), \
+         patch("web_dashboard.retro_digest_service.build_idea_scorecard", return_value=fake_scorecard):
+        digest = build_weekly_retro_digest_html(pg, horizon_days=30)
+
+    # Top 5 and bottom 5 included
+    assert "domain0.com" in digest
+    assert "domain4.com" in digest
+    assert "domain7.com" in digest
+    assert "domain11.com" in digest
+    # Separator ellipsis included
+    assert "…" in digest

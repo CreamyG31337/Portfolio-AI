@@ -11,6 +11,11 @@ from typing import Any
 from postgres_client import PostgresClient
 from track_record_service import build_track_record_summary
 
+try:
+    from idea_scorecard_service import build_idea_scorecard
+except ImportError:
+    from web_dashboard.idea_scorecard_service import build_idea_scorecard
+
 logger = logging.getLogger(__name__)
 
 
@@ -139,6 +144,73 @@ def _fmt_rate(value: float | None) -> str:
     return f"{100.0 * value:.1f}%"
 
 
+def _fmt_rate_pct(value: Any) -> str:
+    """Format hit rate that is already in percent units (e.g. 58.3 -> '58.3%')."""
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _render_scorecard_table(
+    title: str,
+    rows: list[dict[str, Any]],
+    key_field: str,
+    key_header: str,
+    *,
+    split_top_bottom: bool = False,
+) -> str:
+    if not rows:
+        return ""
+    table_rows: list[str] = []
+    display_rows: list[tuple[dict[str, Any], bool]] = []
+    if split_top_bottom and len(rows) > 10:
+        for r in rows[:5]:
+            display_rows.append((r, False))
+        display_rows.append(({}, True))
+        for r in rows[-5:]:
+            display_rows.append((r, False))
+    else:
+        for r in rows:
+            display_rows.append((r, False))
+
+    for r, is_sep in display_rows:
+        if is_sep:
+            table_rows.append(
+                '<tr><td colspan="4" style="padding:4px 8px;text-align:center;color:#888;">…</td></tr>'
+            )
+            continue
+        label = html.escape(str(r.get(key_field) or ""))
+        n = r.get("n", 0)
+        rate_str = _fmt_rate_pct(r.get("hit_rate_pct"))
+        excess_str = _fmt_pct(r.get("mean_signed_excess_pct"))
+        table_rows.append(
+            f"<tr>"
+            f'<td style="padding:4px 8px;">{label}</td>'
+            f'<td style="padding:4px 8px;text-align:right;">{n}</td>'
+            f'<td style="padding:4px 8px;text-align:right;">{rate_str}</td>'
+            f'<td style="padding:4px 8px;text-align:right;">{excess_str}</td>'
+            f"</tr>"
+        )
+
+    return (
+        f"<p><strong>{html.escape(title)}:</strong></p>"
+        f'<table style="border-collapse:collapse;margin-bottom:12px;font-size:13px;">'
+        f"<thead>"
+        f'<tr style="border-bottom:1px solid #ccc;text-align:left;">'
+        f'<th style="padding:4px 8px;">{html.escape(key_header)}</th>'
+        f'<th style="padding:4px 8px;text-align:right;">N</th>'
+        f'<th style="padding:4px 8px;text-align:right;">Hit rate</th>'
+        f'<th style="padding:4px 8px;text-align:right;">Signed excess</th>'
+        f"</tr>"
+        f"</thead>"
+        f'<tbody>{"".join(table_rows)}</tbody>'
+        f"</table>"
+    )
+
+
 def build_weekly_retro_digest_html(
     postgres: PostgresClient | None = None,
     *,
@@ -227,6 +299,42 @@ def build_weekly_retro_digest_html(
             for verdict, rate in verdict_rates.items():
                 parts.append(f"<li>{html.escape(verdict)}: {_fmt_rate(rate)}</li>")
             parts.append("</ul>")
+
+    scorecard = build_idea_scorecard(pg, horizon_days=horizon_days)
+    parts.append(f"<h3>Ideas scorecard ({horizon_days}d)</h3>")
+    overall = scorecard.get("overall") if scorecard.get("available") else None
+    if not scorecard.get("available") or not overall or (overall.get("n") or 0) == 0:
+        parts.append("<p>No scored ideas yet.</p>")
+    else:
+        parts.append(
+            f"<p>Overall: {_fmt_rate_pct(overall.get('hit_rate_pct'))} hit rate, "
+            f"{_fmt_pct(overall.get('mean_signed_excess_pct'))} mean signed excess "
+            f"({overall.get('n', 0)} scored)</p>"
+        )
+        dir_table = _render_scorecard_table(
+            "By direction", scorecard.get("by_direction") or [], "stance", "Direction"
+        )
+        if dir_table:
+            parts.append(dir_table)
+
+        domain_table = _render_scorecard_table(
+            "By domain (min n=10)",
+            scorecard.get("by_domain") or [],
+            "domain",
+            "Domain",
+            split_top_bottom=True,
+        )
+        if domain_table:
+            parts.append(domain_table)
+
+        band_table = _render_scorecard_table(
+            "By score band",
+            scorecard.get("by_score_band") or [],
+            "band",
+            "Score band",
+        )
+        if band_table:
+            parts.append(band_table)
 
     parts.append(f"<h3>Confluence events ({flip_days}d)</h3>")
     if confluence_rows:
