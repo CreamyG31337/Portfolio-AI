@@ -51,7 +51,7 @@ DIRECTIONAL_STANCES = BULLISH_STANCES | BEARISH_STANCES
 # Event sources write one row per external call (an article), not a running state.
 # Consecutive rows disagreeing is two authors disagreeing, not the system changing
 # its mind, so they are excluded from stance-flip detection.
-EVENT_STANCE_SOURCES: tuple[str, ...] = ("alpha_idea",)
+EVENT_STANCE_SOURCES: tuple[str, ...] = ("alpha_idea", "precursor:ark_buy")
 
 # Kept in ledger but excluded from directional hit-rate in V1.
 NON_DIRECTIONAL_STANCES = frozenset({"RISK", "WATCH"})

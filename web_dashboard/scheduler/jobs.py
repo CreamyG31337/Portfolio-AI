@@ -300,6 +300,28 @@ AVAILABLE_JOBS: Dict[str, Dict[str, Any]] = {
             {'hour': 23, 'minute': 0, 'timezone': 'America/New_York'},
         ],
     },
+    'ark_trade_ledger': {
+        'name': 'ARK Trade Ledger',
+        'description': 'Nightly no-LLM write of new ARK active-fund buys as BEARISH precursor:ark_buy stances, scored forward (roadmap Phase L4 / L3b)',
+        'default_interval_minutes': 1440,
+        'enabled_by_default': True,
+        'icon': '🏹',
+        # ARK's trade notification lands after the close; 5-day lookback self-heals missed nights.
+        'cron_triggers': [
+            {'hour': 23, 'minute': 15, 'timezone': 'America/New_York'},
+        ],
+    },
+    'phase_l_restudy': {
+        'name': 'Phase L Monthly Re-study',
+        'description': 'Monthly re-run of the winners/precursor study so signals are re-judged as the holdout grows; feeds the weekly retro (roadmap Phase L)',
+        'default_interval_minutes': 43200,
+        'enabled_by_default': True,
+        'icon': '🔬',
+        # First Saturday of the month (APScheduler ANDs day and day_of_week).
+        'cron_triggers': [
+            {'day': '1-7', 'day_of_week': 'sat', 'hour': 3, 'minute': 0, 'timezone': 'America/New_York'},
+        ],
+    },
     'weekly_stance_retro': {
         'name': 'Weekly Stance Retro',
         'description': 'Weekly log summary of stance flips and outcome hit rates',
@@ -808,6 +830,8 @@ from scheduler.jobs_sec_filings import sec_filings_job
 from scheduler.jobs_confluence import confluence_job
 from scheduler.jobs_congress_herd import congress_herd_job
 from scheduler.jobs_alpha_idea_ledger import alpha_idea_ledger_job
+from scheduler.jobs_ark_trade_ledger import ark_trade_ledger_job
+from scheduler.jobs_phase_l_restudy import phase_l_restudy_job
 from scheduler.jobs_weekly_stance_retro import weekly_stance_retro_job
 from scheduler.jobs_ui_ai_summaries import ui_ai_summaries_job
 
@@ -922,6 +946,8 @@ __all__ = [
     'confluence_job',
     'congress_herd_job',
     'alpha_idea_ledger_job',
+    'ark_trade_ledger_job',
+    'phase_l_restudy_job',
     'weekly_stance_retro_job',
     'ui_ai_summaries_job',
     # Research jobs
@@ -1740,6 +1766,44 @@ def register_default_jobs(scheduler) -> None:
             misfire_grace_time=3600,
         )
         logger.info("Registered job: alpha_idea_ledger (nightly stance_history writes)")
+
+    if AVAILABLE_JOBS.get('ark_trade_ledger', {}).get('enabled_by_default', True):
+        ark_trigger = AVAILABLE_JOBS['ark_trade_ledger']['cron_triggers'][0]
+        scheduler.add_job(
+            ark_trade_ledger_job,
+            trigger=CronTrigger(
+                hour=ark_trigger['hour'],
+                minute=ark_trigger['minute'],
+                timezone=ark_trigger['timezone'],
+            ),
+            id='ark_trade_ledger',
+            name=f"{get_job_icon('ark_trade_ledger')} ARK Trade Ledger",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=3600,
+        )
+        logger.info("Registered job: ark_trade_ledger (nightly precursor:ark_buy stances)")
+
+    if AVAILABLE_JOBS.get('phase_l_restudy', {}).get('enabled_by_default', True):
+        pl_trigger = AVAILABLE_JOBS['phase_l_restudy']['cron_triggers'][0]
+        scheduler.add_job(
+            phase_l_restudy_job,
+            trigger=CronTrigger(
+                day=pl_trigger['day'],
+                day_of_week=pl_trigger['day_of_week'],
+                hour=pl_trigger['hour'],
+                minute=pl_trigger['minute'],
+                timezone=pl_trigger['timezone'],
+            ),
+            id='phase_l_restudy',
+            name=f"{get_job_icon('phase_l_restudy')} Phase L Monthly Re-study",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=6 * 3600,
+        )
+        logger.info("Registered job: phase_l_restudy (first Saturday monthly)")
 
     if AVAILABLE_JOBS.get('weekly_stance_retro', {}).get('enabled_by_default', True):
         wr_cfg = AVAILABLE_JOBS['weekly_stance_retro']

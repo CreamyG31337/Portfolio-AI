@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import html
+import json
 import logging
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from postgres_client import PostgresClient
@@ -211,6 +213,66 @@ def _render_scorecard_table(
     )
 
 
+PRECURSOR_SUMMARY = Path(__file__).resolve().parent / "logs" / "study" / "precursor_latest.json"
+PRECURSOR_STALE_DAYS = 45
+
+
+def _ci_excludes_zero(ci: Any) -> bool:
+    if not isinstance(ci, list) or len(ci) != 2 or None in ci:
+        return False
+    return ci[0] > 0 or ci[1] < 0
+
+
+def _render_signal_retest(path: Path = PRECURSOR_SUMMARY, now: datetime | None = None) -> str:
+    """Monthly Phase L re-test (jobs_phase_l_restudy): which signals still hold up."""
+    head = "<h3>Signal re-test (monthly)</h3>"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return head + "<p>Not run yet.</p>"
+    now = now or datetime.now(UTC)
+    try:
+        generated = datetime.fromisoformat(str(data.get("generated_at")))
+    except ValueError:
+        generated = None
+    age = (now - generated).days if generated else None
+    windows = data.get("holdout_windows") or []
+    confirmed = data.get("confirmed") or []
+    out = [head, (
+        f"<p>Run {html.escape(str(data.get('generated_at', '?'))[:10])}"
+        f"{' (STALE: job not running?)' if age is not None and age > PRECURSOR_STALE_DAYS else ''}. "
+        f"Holdout: {len(windows)} window(s) from {html.escape(str(data.get('holdout_from', '?')))}. "
+        f"Confirmed signals: <strong>{html.escape(', '.join(confirmed)) if confirmed else 'none'}</strong>.</p>"
+    )]
+    notable = [
+        s for s in data.get("signals") or []
+        if s.get("passed_discovery") or (_ci_excludes_zero(s.get("hold_ci")) and (s.get("hold_n") or 0) >= 30)
+    ]
+    if notable:
+        out.append(
+            "<table border=\"1\" cellpadding=\"4\" cellspacing=\"0\" style=\"border-collapse:collapse;font-size:13px;\">"
+            "<tr><th>Signal</th><th>Discovery (pp vs peers)</th><th>Holdout (pp vs peers)</th><th>Status</th></tr>"
+        )
+        for s in notable:
+            def cell(diff: Any, ci: Any, n: Any) -> str:
+                if diff is None:
+                    return "–"
+                ci_s = f" [{ci[0]:+.1f}, {ci[1]:+.1f}]" if isinstance(ci, list) and None not in ci else ""
+                return f"{diff:+.1f}{ci_s} n={n}"
+
+            status = "confirmed" if s.get("confirmed") else (
+                "passed discovery, not holdout" if s.get("passed_discovery") else "holdout only (not pre-registered)"
+            )
+            out.append(
+                f"<tr><td>{html.escape(str(s.get('signal')))}</td>"
+                f"<td>{cell(s.get('disc_diff'), s.get('disc_ci'), s.get('disc_n'))}</td>"
+                f"<td>{cell(s.get('hold_diff'), s.get('hold_ci'), s.get('hold_n'))}</td>"
+                f"<td>{status}</td></tr>"
+            )
+        out.append("</table>")
+    return "".join(out)
+
+
 def build_weekly_retro_digest_html(
     postgres: PostgresClient | None = None,
     *,
@@ -335,6 +397,8 @@ def build_weekly_retro_digest_html(
         )
         if band_table:
             parts.append(band_table)
+
+    parts.append(_render_signal_retest())
 
     parts.append(f"<h3>Confluence events ({flip_days}d)</h3>")
     if confluence_rows:

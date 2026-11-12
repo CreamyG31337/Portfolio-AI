@@ -248,6 +248,14 @@ GLOSSARY: dict[str, dict[str, str]] = {
         "short": "Several US politicians disclosed buying the same stock around the same time.",
         "source": "Detected from public congressional trade disclosures.",
     },
+    "precursor:ark_buy": {
+        "label": "ARK buy",
+        "short": (
+            "Bearish call recorded the first time in 30 days that one of ARK's active ETFs buys a "
+            "stock. A 2020–2026 backtest found ARK's buys lag the index afterwards; this scores that rule forward."
+        ),
+        "source": "Detected from ARK daily trade notifications.",
+    },
     "alpha_idea": {
         "label": "Alpha idea",
         "short": "A stock a research article suggested might be worth a look.",
