@@ -84,14 +84,14 @@ ETF_CONFIGS = {
     "PRNT": { "provider": "ARK", "url": f"{_ARK_BASE}/fund-documents/funds-etf-csv/THE_3D_PRINTING_ETF_PRNT_HOLDINGS.csv" },
     # Removed single-holding funds (ARKB, ARKD, ARKT) and venture funds (ARKSX, ARKVX, ARKUX) - they don't provide useful stock signals
     
-    # iShares (BlackRock) - Requires specific AJAX URL with Product ID
-    "IVV": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239726/ishares-core-sp-500-etf/1467271812596.ajax?fileType=csv&fileName=IVV_holdings&dataType=fund" },
-    "IWM": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund" },
-    "IWC": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239716/ishares-microcap-etf/1467271812596.ajax?fileType=csv&fileName=IWC_holdings&dataType=fund" },
-    "IWO": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239709/ishares-russell-2000-growth-etf/1467271812596.ajax?fileType=csv&fileName=IWO_holdings&dataType=fund" },
-    "SOXX": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239705/ishares-phlx-semiconductor-sector-index-fund/1467271812596.ajax?fileType=csv&fileName=SOXX_holdings&dataType=fund" },
-    "ICLN": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239738/ishares-global-clean-energy-etf/1467271812596.ajax?fileType=csv&fileName=ICLN_holdings&dataType=fund" },
-    "IBB": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239699/ishares-nasdaq-biotechnology-etf/1467271812596.ajax?fileType=csv&fileName=IBB_holdings&dataType=fund" },
+    # iShares (BlackRock) - Direct latest-holdings.csv
+    "IVV": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239726/ishares-core-sp-500-etf/latest-holdings.csv" },
+    "IWM": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239710/ishares-russell-2000-etf/latest-holdings.csv" },
+    "IWC": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239716/ishares-microcap-etf/latest-holdings.csv" },
+    "IWO": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239709/ishares-russell-2000-growth-etf/latest-holdings.csv" },
+    "SOXX": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239705/ishares-phlx-semiconductor-sector-index-fund/latest-holdings.csv" },
+    "ICLN": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239738/ishares-global-clean-energy-etf/latest-holdings.csv" },
+    "IBB": { "provider": "iShares", "url": f"{_ISHARES_BASE}/us/products/239699/ishares-nasdaq-biotechnology-etf/latest-holdings.csv" },
     
     # SPDR (State Street) - Excel format
     "XBI": { "provider": "SPDR", "url": "https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-xbi.xlsx" },
@@ -316,6 +316,10 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
     try:
         logger.info(f"📥 Downloading {etf_ticker} holdings from iShares...")
         
+        # Convert legacy AJAX URL to direct latest-holdings.csv if needed
+        if ".ajax" in csv_url:
+            csv_url = re.sub(r'/\d+\.ajax\?.*$', '/latest-holdings.csv', csv_url)
+            
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/csv,application/csv;q=0.9,*/*;q=0.8',
@@ -328,17 +332,35 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
         save_date = date if date else datetime.now(timezone.utc)
         save_raw_etf_file(etf_ticker, response.content, '.csv', save_date)
         
-        from io import StringIO
-        # iShares CSVs often have metadata headers. Look for "Ticker"
         content = response.text
-        lines = content.split('\n')
-        header_row = 0
-        for i, line in enumerate(lines[:25]):
-            if 'Ticker' in line and ('Name' in line or 'Security Name' in line):
+        stripped = content.strip()
+        if stripped.startswith("<!DOCTYPE") or stripped.startswith("<html") or "<head>" in stripped[:500]:
+            logger.error(f"❌ iShares returned HTML instead of CSV for {etf_ticker} (url={csv_url})")
+            return None
+
+        from io import StringIO
+        lines = content.splitlines()
+        header_row = None
+        for i, line in enumerate(lines[:50]):
+            line_clean = line.strip().strip('"')
+            if line_clean.startswith("Ticker,") or line_clean.startswith("Ticker\t") or (line_clean.startswith("Ticker") and ("Name" in line or "Security Name" in line)):
                 header_row = i
                 break
         
-        df = pd.read_csv(StringIO(content), skiprows=header_row)
+        if header_row is None:
+            logger.error(f"❌ Could not find Ticker header in iShares CSV for {etf_ticker}")
+            return None
+        
+        # Stop at the trailing footer/blank section after holdings data
+        footer_row = None
+        for i in range(header_row + 1, len(lines)):
+            line_str = lines[i].strip()
+            if not line_str or line_str.startswith('"The content contained herein') or line_str.startswith('The content contained'):
+                footer_row = i
+                break
+
+        data_lines = lines[header_row:footer_row] if footer_row is not None else lines[header_row:]
+        df = pd.read_csv(StringIO("\n".join(data_lines)))
         df.columns = df.columns.str.strip()
         
         column_mapping = {
@@ -348,6 +370,7 @@ def fetch_ishares_holdings(etf_ticker: str, csv_url: str, date: Optional[datetim
             'Shares': 'shares',
             'Quantity': 'shares',  # Common in iShares CSV
             'Weight (%)': 'weight_percent',
+            'Market Weight': 'weight_percent',
             'Sector': 'sector',
             'Asset Class': 'asset_class',
             'Exchange': 'exchange',
@@ -1102,25 +1125,25 @@ def upsert_securities_metadata(db: SupabaseClient, df: pd.DataFrame, provider: s
                 unique_securities[col] = None
         
         records = []
-        # OPTIMIZATION: Replaced .iterrows() with .itertuples(index=False) for much faster iteration
-        for row in unique_securities.itertuples(index=False):
-            ticker = row.ticker
+        # OPTIMIZATION: Replaced .itertuples(index=False) with .to_dict('records') so row.get works
+        for row in unique_securities.to_dict('records'):
+            ticker = row.get('ticker')
             if not ticker or len(str(ticker)) > 20:  # Skip long garbage tickers
                 continue
                 
             record = {
                 'ticker': ticker,
-                'company_name': row.name,
+                'company_name': row.get('name') if pd.notna(row.get('name')) else None,
                 'last_updated': datetime.now(timezone.utc).isoformat()
             }
             
             # Add optional fields if they have values
-            if row.get('sector'):
+            if row.get('sector') and pd.notna(row.get('sector')):
                 record['sector'] = row['sector']
-            if row.get('industry'):
+            if row.get('industry') and pd.notna(row.get('industry')):
                 record['industry'] = row['industry']
             # Note: asset_class, exchange, and first_detected_by don't exist in Supabase securities table
-            if row.get('currency'):
+            if row.get('currency') and pd.notna(row.get('currency')):
                 record['currency'] = row['currency']
                 
             records.append(record)
