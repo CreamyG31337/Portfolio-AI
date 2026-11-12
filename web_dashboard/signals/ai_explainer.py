@@ -182,7 +182,7 @@ def _generate_explanation_via_glm(prompt: str, model: str, temperature: float = 
             stream=False,
             json_mode=False,
             temperature=float(temperature),
-            max_tokens=512,
+            max_tokens=2048,
             timeout=60.0,
             allow_cheap_fallback=True,
         )

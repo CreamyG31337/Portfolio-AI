@@ -80,7 +80,7 @@ def _probe_glm(model: str) -> dict[str, Any]:
         messages,
         model=model,
         temperature=0.1,
-        max_tokens=512,
+        max_tokens=2048,
         tools=TOOL_SCHEMAS,
         tool_choice="auto",
         timeout=90.0,

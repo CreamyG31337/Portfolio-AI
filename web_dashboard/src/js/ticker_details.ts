@@ -298,7 +298,7 @@ function formatModelLabel(modelId: string): string {
 }
 
 function preferredModelId(): string {
-    return (selectedModel || tickerDetailsConfig.defaultModel || 'glm-5.2').trim();
+    return (selectedModel || tickerDetailsConfig.defaultModel || 'glm-5.3').trim();
 }
 
 function populateModelSelect(

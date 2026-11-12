@@ -182,7 +182,7 @@
             "num_ctx": 128000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.7 via Z.AI. Retired; use glm-5.2.",
+            "desc": "Zhipu GLM-4.7 via Z.AI. Retired; use glm-5.3.",
             "hidden": true
         },
         "glm-4.5": {
@@ -190,7 +190,7 @@
             "num_ctx": 128000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI. Retired; use glm-5.2.",
+            "desc": "Zhipu GLM-4.5 (full MoE) via Z.AI. Retired; use glm-5.3.",
             "hidden": true
         },
         "glm-4.5-air": {
@@ -205,22 +205,29 @@
             "num_ctx": 200000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-4.6 via Z.AI. Retired; use glm-5.2.",
+            "desc": "Zhipu GLM-4.6 via Z.AI. Retired; use glm-5.3.",
             "hidden": true
+        },
+        "glm-5.3": {
+            "provider": "zhipu",
+            "num_ctx": 1000000,
+            "temperature": 0.1,
+            "max_tokens": 16384,
+            "desc": "Zhipu GLM-5.3 via Z.AI. Default primary GLM (1M ctx on plan)."
         },
         "glm-5.2": {
             "provider": "zhipu",
             "num_ctx": 1000000,
             "temperature": 0.1,
             "max_tokens": 16384,
-            "desc": "Zhipu GLM-5.2 via Z.AI. Default primary GLM (1M ctx on plan)."
+            "desc": "Zhipu GLM-5.2 via Z.AI. Previous default; still available on Coding Plan."
         },
         "glm-5.1": {
             "provider": "zhipu",
             "num_ctx": 200000,
             "temperature": 0.1,
             "max_tokens": 16384,
-            "desc": "Zhipu GLM-5.1 via Z.AI. Previous default; still available on Coding Plan."
+            "desc": "Zhipu GLM-5.1 via Z.AI. Still available on Coding Plan."
         },
         "glm-5-turbo": {
             "provider": "zhipu",
@@ -234,7 +241,7 @@
             "num_ctx": 200000,
             "temperature": 0.1,
             "max_tokens": 4096,
-            "desc": "Zhipu GLM-5 base via Z.AI. Retired; use glm-5.2.",
+            "desc": "Zhipu GLM-5 base via Z.AI. Retired; use glm-5.3.",
             "hidden": true
         },
         "gemini-2.5-flash": {

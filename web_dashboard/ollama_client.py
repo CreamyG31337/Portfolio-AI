@@ -53,7 +53,7 @@ else:
 
         OLLAMA_MODEL = get_primary_model()
     except ImportError:
-        OLLAMA_MODEL = "glm-5.2"
+        OLLAMA_MODEL = "glm-5.3"
 try:
     from model_registry import OLLAMA_SUMMARIZING_DEFAULT
 except ImportError:
@@ -1131,7 +1131,7 @@ class OllamaClient:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.2"
+                model = "glm-5.3"
         # Route GLM models to Z.AI transport (independent of Ollama availability).
         if model and str(model).startswith("glm-"):
             yield from self._query_glm(
@@ -1415,7 +1415,7 @@ class OllamaClient:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.2"
+                model = "glm-5.3"
         try:
             text, _used = collect_with_summary_model_chain(
                 self,
@@ -2060,7 +2060,7 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
                 model = get_primary_model()
             except ImportError:
-                model = "glm-5.2"
+                model = "glm-5.3"
         # Get model-specific defaults if values not provided
         model_settings = self.get_model_settings(model)
         

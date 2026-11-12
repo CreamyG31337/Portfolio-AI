@@ -179,9 +179,9 @@ def _default_model() -> str:
     try:
         from model_registry import PRIMARY_MODEL_DEFAULT
 
-        return (PRIMARY_MODEL_DEFAULT or "glm-5.2").strip()
+        return (PRIMARY_MODEL_DEFAULT or "glm-5.3").strip()
     except Exception:
-        return "glm-5.2"
+        return "glm-5.3"
 
 
 def call_glm(title: str, content: str, *, model: str) -> str:

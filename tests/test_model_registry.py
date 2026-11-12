@@ -25,14 +25,14 @@ from model_registry import (  # noqa: E402
     "stored,available,expected",
     [
         ("glm-4.7", None, PRIMARY_MODEL_DEFAULT),
-        ("glm-4.6", ["glm-5.2", "glm-5.1"], PRIMARY_MODEL_DEFAULT),
+        ("glm-4.6", ["glm-5.3", "glm-5.2", "glm-5.1"], PRIMARY_MODEL_DEFAULT),
         ("glm-4.7", ["granite4.1:8b"], "granite4.1:8b"),
         ("glm-5.2", ["glm-5.2", "glm-5.1"], "glm-5.2"),
         (None, ["granite4.1:8b"], "granite4.1:8b"),
         ("qwen3.6:27b-heretic", None, OLLAMA_NVIDIA_DEFAULT),
         ("qwen3.6:27b-heretic-agentic", ["qwen3.5:9b-q8_0"], OLLAMA_NVIDIA_DEFAULT),
 
-        (OLLAMA_QWEN38_STOCK, ["qwen3.5:9b-q8_0", "glm-5.2"], OLLAMA_NVIDIA_DEFAULT),
+        (OLLAMA_QWEN38_STOCK, ["qwen3.5:9b-q8_0", "glm-5.3"], OLLAMA_NVIDIA_DEFAULT),
     ],
 )
 def test_resolve_ai_model_preference(
@@ -72,7 +72,7 @@ def test_get_user_ai_model_migrates_deprecated_preference() -> None:
         return_value=True,
     ) as mock_set, patch(
         "ollama_client.list_available_models",
-        return_value=["glm-5.2", "glm-5.1", "granite4.1:8b"],
+        return_value=["glm-5.3", "glm-5.2", "glm-5.1", "granite4.1:8b"],
     ):
         result = user_preferences.get_user_ai_model()
 

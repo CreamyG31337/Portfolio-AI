@@ -30,7 +30,7 @@ from model_registry import SUPPORTED_GLM_MODELS
 
 GLM_ALLOWED: List[str] = list(SUPPORTED_GLM_MODELS)
 # Static list when API is unavailable
-GLM_MODELS: List[str] = ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.5-air"]
+GLM_MODELS: List[str] = ["glm-5.3", "glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.5-air"]
 
 # Z.AI OpenAI-compatible Coding API (GLM-4.7, Coding Plan)
 # Override with ZHIPU_BASE_URL if using general endpoint (e.g. open.bigmodel.cn)

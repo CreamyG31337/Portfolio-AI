@@ -396,11 +396,11 @@ def test_default_summarizer_and_fallbacks_when_settings_empty(monkeypatch: pytes
     assert settings_module.get_summarizing_fallback_models() == [
         "granite4.1:8b",
         "qwen3.5:9b-q8_0",
-        "glm-5.2",
+        "glm-5.3",
     ]
     chain = ollama_client._get_summary_model_chain(None)
     assert chain[0] == "qwen3.5:9b-q8_0"
     assert chain[1] == "granite4.1:8b"
-    assert chain[2] == "glm-5.2"
+    assert chain[2] == "glm-5.3"
     assert len(chain) == 3
     assert chain[-1].startswith("glm-")

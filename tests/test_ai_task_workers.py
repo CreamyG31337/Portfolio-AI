@@ -333,7 +333,7 @@ def test_backend_model_and_host_mapping(monkeypatch):
 def test_model_for_backend_glm_default_uses_primary_registry(monkeypatch):
     monkeypatch.delenv("AI_QUEUE_MODEL_GLM", raising=False)
     monkeypatch.delenv("AI_PRIMARY_MODEL", raising=False)
-    assert model_for_backend("glm") == "glm-5.2"
+    assert model_for_backend("glm") == "glm-5.3"
 
 
 def test_ticker_meta_analysis_task_handler_uses_backend_bound_model(monkeypatch):

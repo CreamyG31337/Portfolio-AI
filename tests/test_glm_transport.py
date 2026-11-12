@@ -29,6 +29,7 @@ def test_get_glm_models_refresh_false_skips_live_fetch(monkeypatch: pytest.Monke
         lambda: (_ for _ in ()).throw(AssertionError("live fetch should not run")),
     )
     models = glm_config.get_glm_models(refresh=False)
+    assert "glm-5.3" in models
     assert "glm-5.2" in models
 
 
@@ -243,7 +244,7 @@ def test_streaming_length_cutoff_is_logged(
 def test_live_glm_models_have_room_to_reason() -> None:
     """GLM-5.x reasoning alone used ~3k tokens on a real ticker prompt; 4096 truncated 60% of calls."""
     cfg = json.loads((web_dashboard / "model_config.json").read_text(encoding="utf-8"))
-    for model in ("glm-5.2", "glm-5.1", "glm-5-turbo"):
+    for model in ("glm-5.3", "glm-5.2", "glm-5.1", "glm-5-turbo"):
         assert cfg["models"][model]["max_tokens"] >= 16384, model
 
 

@@ -14,11 +14,12 @@ from typing import List, Optional
 # Same default coding endpoint as glm_config (avoid importing glm_config at module load).
 _DEFAULT_ZHIPU_BASE = "https://api.z.ai/api/coding/paas/v4"
 
-PRIMARY_MODEL_DEFAULT = "glm-5.2"
+PRIMARY_MODEL_DEFAULT = "glm-5.3"
 CHEAP_MODEL_DEFAULT = "glm-5-turbo"
 
 # GLM ids exposed in UI pickers (Z.AI Coding Plan).
 SUPPORTED_GLM_MODELS: List[str] = [
+    "glm-5.3",
     "glm-5.2",
     "glm-5.1",
     "glm-5-turbo",

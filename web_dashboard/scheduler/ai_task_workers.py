@@ -247,7 +247,7 @@ def model_for_backend(backend: str) -> str:
 
             return get_primary_model()
         except ImportError:
-            return "glm-5.2"
+            return "glm-5.3"
     if backend == BACKEND_OLLAMA_SECONDARY:
         try:
             from model_registry import get_ollama_queue_secondary_model

@@ -136,9 +136,9 @@ def resolve_youtube_transcript_summary_model(
     try:
         from model_registry import PRIMARY_MODEL_DEFAULT
 
-        glm_default = (PRIMARY_MODEL_DEFAULT or "glm-5.2").strip()
+        glm_default = (PRIMARY_MODEL_DEFAULT or "glm-5.3").strip()
     except Exception:
-        glm_default = "glm-5.2"
+        glm_default = "glm-5.3"
 
     raw = None
     try:

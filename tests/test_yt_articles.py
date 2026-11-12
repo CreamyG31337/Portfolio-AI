@@ -749,7 +749,7 @@ def test_short_transcript_still_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -
         content="x" * 100,
         summarize_fn=fake_summarize,
     )
-    assert seen["model"] == "glm-5.2"
+    assert seen["model"] == "glm-5.3"
 
 
 def test_long_transcript_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -770,7 +770,7 @@ def test_long_transcript_routes_to_glm(monkeypatch: pytest.MonkeyPatch) -> None:
         content="x" * 16_001,
         summarize_fn=fake_summarize,
     )
-    assert seen["model"] == "glm-5.2"
+    assert seen["model"] == "glm-5.3"
 
 
 def test_long_duration_routes_to_glm_even_if_body_short(
@@ -794,7 +794,7 @@ def test_long_duration_routes_to_glm_even_if_body_short(
         duration_s=21 * 60,
         summarize_fn=fake_summarize,
     )
-    assert seen["model"] == "glm-5.2"
+    assert seen["model"] == "glm-5.3"
 
 
 def test_webai_never_auto_selected_for_long_transcript(
@@ -819,7 +819,7 @@ def test_webai_never_auto_selected_for_long_transcript(
         content="x" * 16_001,
         summarize_fn=fake_summarize,
     )
-    assert seen["model"] == "glm-5.2"
+    assert seen["model"] == "glm-5.3"
     assert not str(seen["model"]).startswith("gemini-")
 
 
