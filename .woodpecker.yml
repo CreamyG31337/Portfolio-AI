@@ -464,6 +464,12 @@ steps:
         [ -n "$SUPABASE_DATABASE_URL" ] && FLASK_CMD="$FLASK_CMD -e SUPABASE_DATABASE_URL=\"$SUPABASE_DATABASE_URL\""
         [ -n "$FMP_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e FMP_API_KEY=\"$FMP_API_KEY\""
         [ -n "$ZHIPU_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e ZHIPU_API_KEY=\"$ZHIPU_API_KEY\""
+        # OpenRouter (DeepSeek) fallback when the GLM plan is exhausted/down. Set in the host
+        # optional.env (not a Woodpecker secret, so a missing value never breaks the deploy).
+        [ -n "$OPENROUTER_API_KEY" ] && FLASK_CMD="$FLASK_CMD -e OPENROUTER_API_KEY=\"$OPENROUTER_API_KEY\""
+        [ -n "$OPENROUTER_FALLBACK_MODEL" ] && FLASK_CMD="$FLASK_CMD -e OPENROUTER_FALLBACK_MODEL=\"$OPENROUTER_FALLBACK_MODEL\""
+        [ -n "$GLM_FALLBACK_TO_OPENROUTER" ] && FLASK_CMD="$FLASK_CMD -e GLM_FALLBACK_TO_OPENROUTER=\"$GLM_FALLBACK_TO_OPENROUTER\""
+        [ -n "$GLM_QUOTA_COOLDOWN_SECONDS" ] && FLASK_CMD="$FLASK_CMD -e GLM_QUOTA_COOLDOWN_SECONDS=\"$GLM_QUOTA_COOLDOWN_SECONDS\""
         # Phase K: YouTube caption egress proxy (Gluetun on the deploy host). Not a secret
         # -- host:port only -- so it is defaulted here like OLLAMA_BASE_URL rather than
         # coming from Woodpecker. Direct egress gets rate-limited into multi-hour blocks.

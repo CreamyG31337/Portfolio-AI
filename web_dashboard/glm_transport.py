@@ -5,7 +5,8 @@ Shared Z.AI / GLM HTTP transport (OpenAI-compatible chat/completions).
 All production glm-* HTTP paths should use this module so multi-base failover,
 retryable HTTP statuses (including 500), and optional cheap-model fallback stay
 consistent. Does not route WebAI. When every Z.AI attempt fails, the public entry
-points retry once on the local Ollama host (see ``_local_fallback_target``).
+points fall back to OpenRouter DeepSeek (``_openrouter_fallback_target``), then the
+local Ollama host (see ``_local_fallback_target``).
 """
 
 from __future__ import annotations
@@ -478,6 +479,101 @@ def _local_fallback_post(
         return None
 
 
+# --- OpenRouter (DeepSeek) fallback + GLM quota cooldown ---------------------------
+#
+# Order when Z.AI fails: glm primary -> glm cheap (same key) -> OpenRouter DeepSeek
+# -> local Ollama. The GLM Coding Plan is prepaid, so it is always tried first; when
+# it reports quota/rate exhaustion (HTTP 429 / Z.AI 1113 / 1308) GLM is skipped for a
+# cooldown so every call does not pay the failing round-trips before falling back.
+
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_DEFAULT_MODEL = "deepseek/deepseek-v4-pro"
+_GLM_QUOTA_NEEDLES = ("429", "1113", "1308", "insufficient balance", "usage limit", "too many requests")
+_glm_cooldown_until: float = 0.0
+
+
+def _glm_cooldown_seconds() -> float:
+    try:
+        return max(0.0, float(os.getenv("GLM_QUOTA_COOLDOWN_SECONDS", "600")))
+    except ValueError:
+        return 600.0
+
+
+def glm_cooldown_active() -> bool:
+    return time.time() < _glm_cooldown_until
+
+
+def _note_glm_failure(error_text: Optional[str]) -> None:
+    """Start the GLM cooldown when a failure looks like quota / rate exhaustion."""
+    global _glm_cooldown_until
+    t = (error_text or "").lower()
+    if any(n in t for n in _GLM_QUOTA_NEEDLES) and _openrouter_fallback_target() is not None:
+        secs = _glm_cooldown_seconds()
+        if secs > 0:
+            _glm_cooldown_until = time.time() + secs
+            logger.warning("GLM quota/rate error (%s); routing to fallback for %.0fs", error_text, secs)
+
+
+def _openrouter_fallback_target() -> Optional[tuple[str, str, str]]:
+    """``(base_url, model, api_key)`` for the OpenRouter fallback, or None when disabled/unconfigured."""
+    flag = os.getenv("GLM_FALLBACK_TO_OPENROUTER", "true").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return None
+    key = os.getenv("OPENROUTER_API_KEY", "").strip()
+    if not key:
+        return None
+    model = os.getenv("OPENROUTER_FALLBACK_MODEL", "").strip() or OPENROUTER_DEFAULT_MODEL
+    base = os.getenv("OPENROUTER_BASE_URL", "").strip().rstrip("/") or OPENROUTER_BASE_URL
+    return base, model, key
+
+
+def _openrouter_fallback_post(
+    payload: Dict[str, Any], *, json_mode: bool, timeout: Optional[float]
+) -> Optional[Dict[str, Any]]:
+    """POST ``payload`` to OpenRouter; parsed ``message`` (with _model/_finish_reason) or None."""
+    target = _openrouter_fallback_target()
+    if target is None:
+        return None
+    base, or_model, key = target
+    body = dict(payload)
+    body["model"] = or_model
+    body["stream"] = False
+    logger.warning("GLM unavailable; falling back to OpenRouter model=%s", or_model)
+    try:
+        response = requests.post(
+            f"{base}/chat/completions",
+            json=body,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            timeout=_effective_timeout(json_mode=json_mode, timeout=timeout),
+        )
+        response.raise_for_status()
+        data = response.json()
+        choice = (data.get("choices") or [{}])[0]
+        msg = dict(choice.get("message") or {})
+        if not str(msg.get("content") or "").strip():
+            # Reasoning models can put the whole answer in reasoning when content is empty.
+            reasoning = str(msg.get("reasoning") or msg.get("reasoning_content") or "").strip()
+            if reasoning and not msg.get("tool_calls"):
+                msg["content"] = reasoning
+        msg["_finish_reason"] = choice.get("finish_reason")
+        msg["_model"] = f"openrouter:{or_model}"
+        return msg
+    except Exception as e:
+        logger.error("OpenRouter fallback model=%s failed: %s", or_model, e)
+        return None
+
+
+def _fallback_post(
+    payload: Dict[str, Any], *, json_mode: bool, timeout: Optional[float]
+) -> Optional[Dict[str, Any]]:
+    """Try OpenRouter, then the local Ollama host. Returns the first usable message."""
+    for post in (_openrouter_fallback_post, _local_fallback_post):
+        msg = post(payload, json_mode=json_mode, timeout=timeout)
+        if msg and (str(msg.get("content") or "").strip() or msg.get("tool_calls")):
+            return msg
+    return None
+
+
 def glm_chat_completion(
     messages: List[Dict[str, Any]],
     *,
@@ -497,17 +593,22 @@ def glm_chat_completion(
     """
     error_text: Optional[str] = None
     produced = False
-    for chunk in _glm_chat_completion_zai(
-        messages,
-        model=model,
-        stream=stream,
-        json_mode=json_mode,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout=timeout,
-        allow_cheap_fallback=allow_cheap_fallback,
-        _cheap_fallback_done=_cheap_fallback_done,
-    ):
+    zai_chunks = (
+        iter(("GLM API error: skipped (quota cooldown)",))
+        if glm_cooldown_active()
+        else _glm_chat_completion_zai(
+            messages,
+            model=model,
+            stream=stream,
+            json_mode=json_mode,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            allow_cheap_fallback=allow_cheap_fallback,
+            _cheap_fallback_done=_cheap_fallback_done,
+        )
+    )
+    for chunk in zai_chunks:
         if not produced and error_text is None and glm_raw_indicates_transport_failure(chunk):
             error_text = chunk
             continue
@@ -518,6 +619,8 @@ def glm_chat_completion(
         yield chunk
     if error_text is None:
         return
+    if not glm_cooldown_active():
+        _note_glm_failure(error_text)
     payload: Dict[str, Any] = {
         "messages": messages,
         "max_tokens": max(int(max_tokens), 2048) if json_mode else int(max_tokens),
@@ -525,7 +628,7 @@ def glm_chat_completion(
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
-    msg = _local_fallback_post(payload, json_mode=json_mode, timeout=timeout)
+    msg = _fallback_post(payload, json_mode=json_mode, timeout=timeout)
     content = str((msg or {}).get("content") or "").strip()
     yield content if content else error_text
 
@@ -544,21 +647,26 @@ def glm_chat_completion_message(
 ) -> GlmMessageResult:
     """Non-stream chat/completions supporting OpenAI-style tools / tool_calls.
 
-    Falls back once to the local Ollama host when every Z.AI attempt errors.
+    When every Z.AI attempt errors, falls back to OpenRouter (DeepSeek), then the
+    local Ollama host. During a GLM quota cooldown Z.AI is skipped entirely.
     """
-    result = _glm_chat_completion_message_zai(
-        messages,
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        tools=tools,
-        tool_choice=tool_choice,
-        timeout=timeout,
-        allow_cheap_fallback=allow_cheap_fallback,
-        _cheap_fallback_done=_cheap_fallback_done,
-    )
-    if not result.error:
-        return result
+    if glm_cooldown_active():
+        result = GlmMessageResult(error="GLM API error: skipped (quota cooldown)")
+    else:
+        result = _glm_chat_completion_message_zai(
+            messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            tools=tools,
+            tool_choice=tool_choice,
+            timeout=timeout,
+            allow_cheap_fallback=allow_cheap_fallback,
+            _cheap_fallback_done=_cheap_fallback_done,
+        )
+        if not result.error:
+            return result
+        _note_glm_failure(result.error)
     payload: Dict[str, Any] = {
         "messages": messages,
         "max_tokens": int(max_tokens),
@@ -567,7 +675,7 @@ def glm_chat_completion_message(
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = tool_choice if tool_choice is not None else "auto"
-    msg = _local_fallback_post(payload, json_mode=False, timeout=timeout)
+    msg = _fallback_post(payload, json_mode=False, timeout=timeout)
     if msg is None:
         return result
     content = str(msg.get("content") or "").strip()
