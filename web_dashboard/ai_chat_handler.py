@@ -54,6 +54,12 @@ class ChatHandler:
             fund: Optional fund name for context building
         """
         self.user_id = user_id
+        if not model:
+            try:
+                from user_preferences import get_user_ai_model
+                model = get_user_ai_model() or 'glm-5.3'
+            except Exception:
+                model = 'glm-5.3'
         self.model = model
         self.fund = fund
         self.backend = self._detect_backend()

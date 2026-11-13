@@ -1218,7 +1218,8 @@ def api_ai_chat_append():
                 return jsonify({"error": "Fund not accessible"}), 403
         except Exception:
             pass
-        model = data.get("model")
+        from user_preferences import get_user_ai_model
+        model = data.get("model") or get_user_ai_model()
         # Prefer append of new turns; accept full messages[] replace from client.
         if isinstance(data.get("turns"), list) and data.get("turns"):
             out = append_turns(user_id, fund, data["turns"], model=model)
@@ -1276,7 +1277,8 @@ def api_ai_chat():
         
         data = request.get_json()
         user_query = data.get('query', '')
-        model = data.get('model')
+        from user_preferences import get_user_ai_model
+        model = data.get('model') or get_user_ai_model()
         fund = data.get('fund')
         context_items = data.get('context_items', [])
         conversation_history = data.get('conversation_history', [])

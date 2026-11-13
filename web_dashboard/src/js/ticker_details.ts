@@ -301,45 +301,6 @@ function preferredModelId(): string {
     return (selectedModel || tickerDetailsConfig.defaultModel || 'glm-5.3').trim();
 }
 
-function populateModelSelect(
-    select: HTMLSelectElement,
-    models: AiModelOption[],
-    preferredId: string,
-): void {
-    select.innerHTML = '';
-    if (!Array.isArray(models) || models.length === 0) {
-        const fallbackId = preferredId || preferredModelId();
-        const option = document.createElement('option');
-        option.value = fallbackId;
-        option.textContent = formatModelLabel(fallbackId);
-        select.appendChild(option);
-        select.value = fallbackId;
-        return;
-    }
-
-    models.forEach((model) => {
-        const option = document.createElement('option');
-        option.value = model.id;
-        option.textContent = model.name || model.id;
-        select.appendChild(option);
-    });
-
-    const preferredOption = preferredId
-        ? Array.from(select.options).find((option) => option.value === preferredId)
-        : null;
-    if (preferredOption) {
-        select.value = preferredOption.value;
-    } else if (select.options.length > 0) {
-        select.value = select.options[0].value;
-    }
-}
-
-function applyModelSelectFallback(select: HTMLSelectElement, reason: unknown): void {
-    console.warn('AI model list unavailable; using server default:', reason);
-    const fallbackId = preferredModelId();
-    populateModelSelect(select, [], fallbackId);
-    selectedModel = select.value;
-}
 
 let currentTicker: string = '';
 let tickerList: string[] = [];
@@ -588,8 +549,6 @@ document.addEventListener('DOMContentLoaded', function (): void {
         });
     }
 
-    initModelSelect();
-    initSignalsModelSelect();
 
     // Reload ticker data when global fund selector changes
     window.addEventListener('fundChanged', () => {
@@ -601,117 +560,7 @@ document.addEventListener('DOMContentLoaded', function (): void {
     });
 });
 
-function initModelSelect(): void {
-    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
-    if (!select) return;
 
-    select.addEventListener('change', () => {
-        selectedModel = select.value;
-        updateContextUsage();
-        saveModelPreference(selectedModel);
-        syncModelSelects('ticker');
-    });
-
-    loadModelOptions();
-}
-
-function initSignalsModelSelect(): void {
-    const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    select.addEventListener('change', () => {
-        syncModelSelects('signals');
-    });
-
-    loadSignalsModelOptions();
-}
-
-function syncModelSelects(source: 'ticker' | 'signals'): void {
-    if (modelSyncInProgress) return;
-    modelSyncInProgress = true;
-
-    const tickerSelect = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
-    const signalsSelect = document.getElementById('signals-model-select') as HTMLSelectElement | null;
-
-    if (source === 'ticker' && tickerSelect && signalsSelect) {
-        const nextValue = tickerSelect.value;
-        if (nextValue && Array.from(signalsSelect.options).some(option => option.value === nextValue)) {
-            signalsSelect.value = nextValue;
-        }
-    }
-
-    if (source === 'signals' && signalsSelect && tickerSelect) {
-        const nextValue = signalsSelect.value;
-        if (nextValue && Array.from(tickerSelect.options).some(option => option.value === nextValue)) {
-            tickerSelect.value = nextValue;
-            selectedModel = nextValue;
-            updateContextUsage();
-            saveModelPreference(selectedModel);
-        }
-    }
-
-    modelSyncInProgress = false;
-}
-
-async function loadSignalsModelOptions(): Promise<void> {
-    const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    try {
-        const response = await fetch('/api/v2/ai/models', {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load AI models (${response.status})`);
-        }
-
-        const data = await response.json() as { models?: AiModelOption[]; default_model?: string };
-        populateModelSelect(select, data.models || [], data.default_model || preferredModelId());
-    } catch (error) {
-        applyModelSelectFallback(select, error);
-    }
-}
-
-function saveModelPreference(model: string): void {
-    if (!model) return;
-
-    fetch('/api/settings/ai_model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
-        body: JSON.stringify({ model: model })
-    }).catch((err: Error) => {
-        console.error('Error saving model preference:', err);
-    });
-}
-
-async function loadModelOptions(): Promise<void> {
-    const select = document.getElementById('ticker-model-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    try {
-        const response = await fetch('/api/v2/ai/models', {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load AI models (${response.status})`);
-        }
-
-        const data = await response.json() as { models?: AiModelOption[]; default_model?: string };
-        populateModelSelect(
-            select,
-            data.models || [],
-            selectedModel || data.default_model || preferredModelId(),
-        );
-
-        selectedModel = select.value;
-        updateContextUsage();
-    } catch (error) {
-        applyModelSelectFallback(select, error);
-        updateContextUsage();
-    }
-}
 
 
 
@@ -2444,10 +2293,7 @@ async function loadSignals(
         setSignalsLoading(true, forceRefresh ? 'Analyzing signals...' : 'Loading signals...');
         const aiParam = forceRefresh ? 'include_ai=1' : 'include_ai=0';
         const forceParam = forceRefresh ? '&force=1' : '';
-        const select = document.getElementById('signals-model-select') as HTMLSelectElement | null;
-        const selectedModel = select?.value?.trim() || '';
-        const modelParam = selectedModel ? `&model=${encodeURIComponent(selectedModel)}` : '';
-        const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}${forceParam}${modelParam}`, {
+        const response = await fetch(`/api/signals/analyze/${ticker}?${aiParam}${forceParam}`, {
             credentials: 'include'
         });
         if (isStaleLoad(expectedLoadSeq, ticker)) return;
@@ -3350,9 +3196,7 @@ async function requestMetaRebuild(ticker: string): Promise<void> {
                 'Content-Type': 'application/json',
                 ...getCsrfHeaders(),
             },
-            body: JSON.stringify({
-                model: selectedModel || undefined,
-            }),
+            body: JSON.stringify({}),
         });
 
         const payload = (await response.json().catch(() => ({}))) as {
@@ -3601,9 +3445,7 @@ async function requestReanalysis(ticker: string): Promise<void> {
                 'Content-Type': 'application/json',
                 ...getCsrfHeaders()
             },
-            body: JSON.stringify({
-                model: selectedModel || undefined
-            })
+            body: JSON.stringify({})
         });
 
         if (response.ok) {

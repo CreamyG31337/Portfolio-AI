@@ -110,6 +110,7 @@ const settingsForm = document.getElementById('settings-form') as HTMLFormElement
 const autoBlacklistInput = document.getElementById('auto_blacklist_threshold') as HTMLInputElement | null;
 const maxBatchSizeInput = document.getElementById('max_research_batch_size') as HTMLInputElement | null;
 const fallbackModelSelect = document.getElementById('ai_summarizing_fallback_model') as HTMLSelectElement | null;
+const preferredModelSelect = document.getElementById('preferred_ai_model') as HTMLSelectElement | null;
 const saveSettingsBtn = document.getElementById('save-settings-btn');
 const modelRuntimeTableBody = document.getElementById('model-runtime-table-body');
 const modelRuntimeUpdated = document.getElementById('model-runtime-updated');
@@ -1091,6 +1092,25 @@ async function loadSettings() {
             fallbackModelSelect.value = fallbackModel;
         }
 
+        if (preferredModelSelect) {
+            try {
+                const modelsResp = await fetch('/api/v2/ai/models');
+                if (modelsResp.ok) {
+                    const modelsData = await modelsResp.json();
+                    const models: Array<{ id: string; name: string; type?: string }> = modelsData.models || [];
+                    const currentPref = (data.ai_default_model as string) || modelsData.default_model || '';
+                    preferredModelSelect.innerHTML = models.map((m) =>
+                        `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name || m.id)} (${escapeHtml(m.type || 'model')})</option>`
+                    ).join('');
+                    if (currentPref) {
+                        preferredModelSelect.value = currentPref;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not load AI models for preferred model select:', err);
+            }
+        }
+
         renderModelRuntime(data.model_runtime || []);
 
         if (modelRuntimeUpdated) {
@@ -1168,6 +1188,16 @@ async function saveSettings() {
         const autoBlacklistThreshold = autoBlacklistInput?.value || '10';
         const maxResearchBatchSize = maxBatchSizeInput?.value || '100';
         const fallbackModel = fallbackModelSelect?.value?.trim() || '';
+        const preferredModel = preferredModelSelect?.value?.trim() || '';
+
+        const payload: Record<string, unknown> = {
+            auto_blacklist_threshold: autoBlacklistThreshold,
+            max_research_batch_size: maxResearchBatchSize,
+            ai_summarizing_fallback_models: fallbackModel ? [fallbackModel] : []
+        };
+        if (preferredModel) {
+            payload.ai_default_model = preferredModel;
+        }
 
         const response = await fetch('/api/admin/ai/settings', {
             method: 'POST',
@@ -1175,12 +1205,23 @@ async function saveSettings() {
                 'Content-Type': 'application/json',
                 ...getCsrfHeaders()
             },
-            body: JSON.stringify({
-                auto_blacklist_threshold: autoBlacklistThreshold,
-                max_research_batch_size: maxResearchBatchSize,
-                ai_summarizing_fallback_models: fallbackModel ? [fallbackModel] : []
-            })
+            body: JSON.stringify(payload)
         });
+
+        if (preferredModel) {
+            try {
+                await fetch('/api/settings/ai_model', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getCsrfHeaders()
+                    },
+                    body: JSON.stringify({ model: preferredModel })
+                });
+            } catch (prefErr) {
+                console.warn('Could not update user ai_model preference:', prefErr);
+            }
+        }
 
         const result: ApiResponse = await response.json();
 

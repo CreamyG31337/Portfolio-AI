@@ -171,8 +171,7 @@ let gridApi: AgGridApi | null = null;
 let gridColumnApi: AgGridColumnApi | null = null;
 let resizeFitTimer: number | null = null;
 
-// Model selection
-let selectedModel: string | null = null;
+// Model selection removed; backend resolves model
 
 // Context preview
 let contextPreviewContent: string | null = null;
@@ -663,80 +662,6 @@ function onSelectionChanged(): void {
     }
 }
 
-// Model selection functions
-function initModelSelect(): void {
-    const select = document.getElementById('congress-model-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    select.addEventListener('change', () => {
-        selectedModel = select.value;
-        saveModelPreference(selectedModel);
-    });
-
-    loadModelOptions();
-}
-
-function saveModelPreference(model: string): void {
-    if (!model) return;
-
-    // Save to localStorage for this page
-    localStorage.setItem('congress_trades_model', model);
-
-    // Also save to user preferences
-    fetch('/api/settings/ai_model', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
-        body: JSON.stringify({ model: model })
-    }).catch((err: Error) => {
-        console.error('Error saving model preference:', err);
-    });
-}
-
-async function loadModelOptions(): Promise<void> {
-    const select = document.getElementById('congress-model-select') as HTMLSelectElement | null;
-    if (!select) return;
-
-    try {
-        const response = await fetch('/api/v2/ai/models', {
-            credentials: 'include'
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to load AI models');
-        }
-
-        const data = await response.json();
-        const models = data.models || [];
-
-        select.innerHTML = '';
-        if (!Array.isArray(models) || models.length === 0) {
-            select.innerHTML = '<option value="">No models available</option>';
-            return;
-        }
-
-        models.forEach((model: { id: string; name: string; type?: string }) => {
-            const option = document.createElement('option');
-            option.value = model.id;
-            option.textContent = model.name;
-            select.appendChild(option);
-        });
-
-        // Load saved preference or use default
-        const savedModel = localStorage.getItem('congress_trades_model') || data.default_model;
-        if (savedModel && models.some((m: { id: string }) => m.id === savedModel)) {
-            select.value = savedModel;
-            selectedModel = savedModel;
-            localStorage.setItem('congress_trades_model', savedModel);
-        } else if (select.options.length > 0) {
-            select.value = select.options[0].value;
-            selectedModel = select.value;
-            localStorage.setItem('congress_trades_model', selectedModel);
-        }
-    } catch (error) {
-        console.error('Error loading AI models:', error);
-        select.innerHTML = '<option value="">Error loading models</option>';
-    }
-}
 
 // Context preview functions
 async function loadContextPreview(tradeIds: number[]): Promise<void> {
@@ -861,8 +786,7 @@ async function analyzeSelectedTrades(): Promise<void> {
             },
             credentials: 'include',
             body: JSON.stringify({ 
-                trade_ids: tradeIds,
-                model: selectedModel || null
+                trade_ids: tradeIds
             })
         });
 
@@ -1661,8 +1585,6 @@ function setupPoliticianAutocomplete(): void {
 
 // Auto-initialize if config is present
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize model selection
-    initModelSelect();
     setupPoliticianAutocomplete();
 
     // Handle date filter toggle

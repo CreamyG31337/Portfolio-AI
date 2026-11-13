@@ -89,6 +89,19 @@
                 </div>
 
                 <div>
+                    <label for="preferred_ai_model"
+                        class="block mb-2 text-sm font-medium text-text-primary">Preferred AI Model</label>
+                    <select id="preferred_ai_model" name="preferred_ai_model"
+                        class="border rounded-lg block w-full p-2.5">
+                        <option value="">Loading models...</option>
+                    </select>
+                    <p class="mt-1 text-xs text-text-tertiary">
+                        Default AI model used across all pages and interactive queries. Stored in <code
+                            class="px-1 py-0.5 bg-dashboard-surface-alt rounded text-xs">user_preferences.ai_model</code>.
+                    </p>
+                </div>
+
+                <div>
                     <label for="ai_summarizing_fallback_model"
                         class="block mb-2 text-sm font-medium text-text-primary">Summarization Fallback Model</label>
                     <select id="ai_summarizing_fallback_model" name="ai_summarizing_fallback_model"

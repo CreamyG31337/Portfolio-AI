@@ -197,11 +197,6 @@
 <!-- Reprocess Controls -->
 <div class="bg-dashboard-surface rounded-lg shadow-xs p-4 mb-6 border border-border">
     <div class="flex items-center gap-4 flex-wrap">
-            <label for="reanalysis-model" class="text-sm text-text-secondary">Model</label>
-            <select id="reanalysis-model"
-                class="text-sm border border-border rounded-lg bg-dashboard-surface text-text-primary px-2 py-1.5 min-w-[200px] focus:ring-2 focus:ring-accent/30 focus:border-accent">
-                <option value="">Loading models...</option>
-            </select>
         <p class="text-sm text-text-secondary">Use each article's Reprocess button below.</p>
     </div>
     <div id="reanalyze-progress" class="hidden mt-4">
@@ -508,15 +503,6 @@
                         <option value="50">50</option>
                     </select>
                 </div>
-
-                <!-- AI Model -->
-                <div>
-                    <label for="search-model" class="block mb-2 text-sm font-medium text-text-primary">AI Model</label>
-                    <select id="search-model" name="model"
-                        class="w-full px-4 py-2 bg-dashboard-background border border-border rounded-lg focus:ring-2 focus:ring-accent focus:border-accent text-text-primary">
-                        <option value="">Loading models...</option>
-                    </select>
-                </div>
             </div>
 
             <button type="submit" id="search-submit-btn"
@@ -713,7 +699,6 @@
 
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function () {
-        loadAvailableModels();
         setupArticleReanalyzeButtons();
         initSearchTab();
         loadResearchAiSummary();
@@ -820,44 +805,6 @@
         window.location.href = url.toString();
     }
 
-    function loadAvailableModels() {
-        fetch('/api/research/models')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.models) {
-                    availableModels = data.models;
-                    defaultModel = data.default_model || '';
-
-                    const select = document.getElementById('reanalysis-model');
-                    select.innerHTML = '';
-
-                    if (availableModels.length === 0) {
-                        select.innerHTML = '<option value="">No models available</option>';
-                        return;
-                    }
-
-                    availableModels.forEach(model => {
-                        const option = document.createElement('option');
-                        option.value = model;
-                        option.textContent = model;
-                        if (model === defaultModel) {
-                            option.selected = true;
-                        }
-                        select.appendChild(option);
-                    });
-                } else {
-                    console.error('Failed to load models:', data.error);
-                    document.getElementById('reanalysis-model').innerHTML =
-                        '<option value="">Error loading models</option>';
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching models:', error);
-                document.getElementById('reanalysis-model').innerHTML =
-                    '<option value="">Error loading models</option>';
-            });
-    }
-
     function setAllReanalyzeButtonsDisabled(disabled) {
         document.querySelectorAll('.reanalyze-article-btn').forEach(button => {
             button.disabled = disabled;
@@ -878,15 +825,7 @@
                     return;
                 }
 
-                const modelSelect = document.getElementById('reanalysis-model');
-                const modelName = modelSelect ? modelSelect.value : '';
-
-                if (!modelName) {
-                    showMessage('Please select a model.', 'warning');
-                    return;
-                }
-
-                reanalyzeArticles([articleId], modelName, button);
+                reanalyzeArticles([articleId], '', button);
             });
         });
     }
@@ -1269,13 +1208,8 @@
 
     // Search functionality
     let searchResults = [];
-    let searchModels = [];
-    let searchDefaultModel = '';
 
     function initSearchTab() {
-        // Load models for search form
-        loadSearchModels();
-
         // Setup search form handler
         const searchForm = document.getElementById('search-form');
         if (searchForm) {
@@ -1284,34 +1218,6 @@
 
         // Show empty state initially
         document.getElementById('search-empty').classList.remove('hidden');
-    }
-
-    function loadSearchModels() {
-        fetch('/api/research/models')
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && data.models) {
-                    searchModels = data.models;
-                    searchDefaultModel = data.default_model || '';
-
-                    const select = document.getElementById('search-model');
-                    if (select) {
-                        select.innerHTML = '';
-                        searchModels.forEach(model => {
-                            const option = document.createElement('option');
-                            option.value = model;
-                            option.textContent = model;
-                            if (model === searchDefaultModel) {
-                                option.selected = true;
-                            }
-                            select.appendChild(option);
-                        });
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error loading models for search:', error);
-            });
     }
 
     async function handleSearchSubmit(e) {
@@ -1406,8 +1312,6 @@
         card.className = 'bg-dashboard-background rounded-lg border border-border p-4';
         card.id = `result-card-${result.id}`;
 
-        const model = document.getElementById('search-model').value || searchDefaultModel;
-
         card.innerHTML = `
             <div class="flex items-start justify-between mb-3">
                 <div class="flex-1">
@@ -1436,12 +1340,12 @@
                     class="px-3 py-1.5 text-xs font-medium rounded border border-accent text-accent hover:bg-accent/10 focus:outline-hidden transition-colors">
                     <i class="fas fa-download mr-1"></i>Scrape
                 </button>
-                <button onclick="summarizeResult('${result.id}', '${model}')" id="btn-summarize-${result.id}"
+                <button onclick="summarizeResult('${result.id}')" id="btn-summarize-${result.id}"
                     class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-file-alt mr-1"></i>Summarize
                 </button>
-                <button onclick="analyzeResult('${result.id}', '${model}')" id="btn-analyze-${result.id}"
+                <button onclick="analyzeResult('${result.id}')" id="btn-analyze-${result.id}"
                     class="px-3 py-1.5 text-xs font-medium rounded border border-border text-text-secondary hover:bg-dashboard-surface-alt focus:outline-hidden transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     disabled>
                     <i class="fas fa-brain mr-1"></i>Analyze
@@ -1529,7 +1433,7 @@
         }
     }
 
-    async function summarizeResult(resultId, model) {
+    async function summarizeResult(resultId) {
         const result = searchResults.find(r => r.id === resultId);
         if (!result || result.state !== 'scraped') {
             showMessage('Please scrape the article first', 'warning');
@@ -1544,8 +1448,7 @@
                 method: 'POST',
                 headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
-                    content: result.data.content,
-                    model: model || searchDefaultModel
+                    content: result.data.content
                 })
             });
 
@@ -1575,7 +1478,7 @@
         }
     }
 
-    async function analyzeResult(resultId, model) {
+    async function analyzeResult(resultId) {
         const result = searchResults.find(r => r.id === resultId);
         if (!result || result.state !== 'scraped') {
             showMessage('Please scrape the article first', 'warning');
@@ -1590,8 +1493,7 @@
                 method: 'POST',
                 headers: _csrfHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({
-                    content: result.data.content,
-                    model: model || searchDefaultModel
+                    content: result.data.content
                 })
             });
 
@@ -1627,11 +1529,7 @@
             return;
         }
 
-        // Show model selector
-        const model = prompt('Enter model name (or leave empty for default):', searchDefaultModel);
-        if (model === null) return; // User cancelled
-
-        await analyzeResult(resultId, model || searchDefaultModel);
+        await analyzeResult(resultId);
     }
 
     async function saveResult(resultId) {
@@ -1653,7 +1551,7 @@
                     title: result.data.title || result.title,
                     content: result.data.content,
                     summary_data: result.data.summary_data || {},
-                    model: result.data.analysis?.model || searchDefaultModel
+                    model: result.data.analysis?.model || undefined
                 })
             });
 

@@ -977,13 +977,14 @@ def reanalyze_article_endpoint():
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
         
         article_id = data.get('article_id')
-        model_name = data.get('model_name')
+        model_name = data.get('model_name') or data.get('model')
+        if not model_name:
+            # Same model the batch article pipeline uses (summarizer chain), not the chat model.
+            from settings import get_summarizing_model
+            model_name = get_summarizing_model()
         
         if not article_id:
             return jsonify({"success": False, "error": "article_id is required"}), 400
-        
-        if not model_name:
-            return jsonify({"success": False, "error": "model_name is required"}), 400
         
         success, message = reanalyze_article_flask(article_id, model_name)
         
@@ -1019,13 +1020,14 @@ def reanalyze_article_stream():
             return jsonify({"success": False, "error": "No JSON data provided"}), 400
         
         article_id = data.get('article_id')
-        model_name = data.get('model_name')
+        model_name = data.get('model_name') or data.get('model')
+        if not model_name:
+            # Same model the batch article pipeline uses (summarizer chain), not the chat model.
+            from settings import get_summarizing_model
+            model_name = get_summarizing_model()
         
         if not article_id:
             return jsonify({"success": False, "error": "article_id is required"}), 400
-        
-        if not model_name:
-            return jsonify({"success": False, "error": "model_name is required"}), 400
         
         def generate_sse_events():
             """Generator that yields Server-Sent Events"""
@@ -1630,7 +1632,7 @@ def api_research_summarize():
         from ollama_client import generate_summary
         from settings import get_summarizing_model
 
-        # Use provided model or system default
+        # Use provided model or the summarizer the batch jobs use
         model_name = model or get_summarizing_model()
 
         summary_data = generate_summary(content, model=model_name)
@@ -1684,7 +1686,7 @@ def api_research_analyze():
         from settings import get_summarizing_model
         from research_utils import validate_ticker_format, normalize_ticker
 
-        # Use provided model or system default
+        # Use provided model or the summarizer the batch jobs use
         model_name = model or get_summarizing_model()
 
         summary_data = generate_summary(content, model=model_name)

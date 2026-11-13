@@ -177,7 +177,6 @@ class AIAssistant {
 
             this.setupEventListeners();
             console.log('[AIAssistant] Event listeners attached');
-            this.loadModels();
             this.loadPortfolioTickers();
             this.loadContextItems();
             await this.loadUserPreferences();
@@ -380,22 +379,6 @@ class AIAssistant {
         const contextCopyBtn = document.getElementById('context-copy-btn') as HTMLButtonElement | null;
         if (contextCopyBtn) {
             contextCopyBtn.addEventListener('click', () => this.copyContextPreview());
-        }
-
-        // Model selection
-        const modelSelect = document.getElementById('model-select') as HTMLSelectElement | null;
-        if (modelSelect) {
-            modelSelect.addEventListener('change', (e: Event) => {
-                const target = e.target as HTMLSelectElement;
-                this.selectedModel = target.value;
-                this.saveModelPreference();
-                // Update current model display in footer
-                this.updateModelDisplay();
-                // Update model description
-                this.updateModelDescription();
-                // Recalculate token usage with new model limits
-                this.calculateContextUsage();
-            });
         }
 
         // Fund selection: left-nav global selector only (no duplicate settings dropdown).
@@ -1022,55 +1005,7 @@ class AIAssistant {
     }
 
     loadModels(): void {
-        console.log('Fetching models from API...');
-        fetch('/api/v2/ai/models')
-            .then((res: Response) => {
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                return res.json();
-            })
-            .then((data: ModelsResponse) => {
-                console.log('Models API response:', data);
-                const select = document.getElementById('model-select') as HTMLSelectElement | null;
-                if (!select) return;
-
-                // Only clear and repopulate if we have valid data
-                if (data.models && Array.isArray(data.models) && data.models.length > 0) {
-                    select.innerHTML = '';
-                    data.models.forEach(model => {
-                        const option = document.createElement('option');
-                        option.value = model.id;
-                        option.textContent = model.name; // API handles display names
-                        select.appendChild(option);
-                    });
-
-                    const preferredId = this.selectedModel || data.default_model || this.config.defaultModel;
-                    const preferredOption = preferredId
-                        ? Array.from(select.options).find((option) => option.value === preferredId)
-                        : null;
-                    if (preferredOption) {
-                        select.value = preferredOption.value;
-                    } else if (select.options.length > 0) {
-                        select.value = select.options[0].value;
-                    }
-
-                    const previousModel = this.selectedModel;
-                    this.selectedModel = select.value;
-                    if (previousModel !== this.selectedModel) {
-                        this.updateModelDisplay();
-                        this.saveModelPreference();
-                    }
-
-                    this.updateModelDescription();
-                } else {
-                    console.error('Invalid models format received:', data);
-                    this.showError('No AI models available. Check Ollama connection.');
-                }
-            })
-            .catch((err: Error) => {
-                console.error('Error loading models:', err);
-                // Don't clear existing options on error - keep fallback
-                this.showError('Failed to load AI models. Using cached models if available.');
-            });
+        // Model selection is managed centrally via backend preferences; picker removed
     }
 
     loadContextItems(): void {
@@ -1145,8 +1080,7 @@ class AIAssistant {
         const usedTokens = Math.round(totalChars / 4);
 
         // Get model limit
-        const modelSelect = document.getElementById('model-select') as HTMLSelectElement;
-        const currentModel = modelSelect ? modelSelect.value : (this.selectedModel || this.config.defaultModel);
+        const currentModel = this.selectedModel || this.config.defaultModel;
 
         let configuredCtx = 4096; // Default safe fallback
         let labelSuffix = '';
@@ -1241,15 +1175,7 @@ class AIAssistant {
     }
 
     updateModelDescription(): void {
-        const model = this.selectedModel;
-        const desc = document.getElementById('model-description');
-        if (!desc) return;
-
-        if (this.isWebAIModel(model)) {
-            desc.textContent = 'Web-based AI model with persistent conversations';
-        } else {
-            desc.textContent = 'Local Ollama model';
-        }
+        // No-op: model description removed along with model select
     }
 
     updateTickerActions(): void {
