@@ -22,6 +22,14 @@ USER_PREF_RPC_DIAGNOSTICS = os.getenv("USER_PREF_RPC_DIAGNOSTICS", "").lower() i
 )
 USER_PREF_HTTP_TIMEOUT_SECONDS = float(os.getenv("USER_PREF_HTTP_TIMEOUT_SECONDS", "8"))
 
+# Preferences that are never served from the Flask session cache. The session
+# cookie has no expiry, so a cached value outlives changes made elsewhere
+# (another browser, AI Settings writing the system default, a DB fix).
+# v2_enabled drives navigation; ai_model picks the model every AI call uses,
+# and a stale session copy kept showing and running glm-5.2 after it was
+# changed to glm-5.3.
+_UNCACHED_PREF_KEYS = frozenset({"v2_enabled", "ai_model"})
+
 
 def _get_cache():
     """Flask session cache for preference reads."""
@@ -149,11 +157,10 @@ def get_user_preference(key: str, default: Any = None) -> Any:
     Returns:
         Preference value or default
     """
-    # Check cache first (but skip cache for v2_enabled to ensure fresh reads)
+    # Check cache first (except _UNCACHED_PREF_KEYS, always read fresh)
     cache = _get_cache()
     cache_key = _preference_cache_key(key)
-    # v2_enabled controls navigation and must always be read fresh from database
-    if key != 'v2_enabled' and cache_key in cache:
+    if key not in _UNCACHED_PREF_KEYS and cache_key in cache:
         cached_value = cache[cache_key]
         logger.debug(f"[PREF] Cache hit for '{key}': {cached_value} (type: {type(cached_value).__name__})")
         # If cache has None but we know the value exists (from get_all_user_preferences),
@@ -337,9 +344,9 @@ def get_user_preference(key: str, default: Any = None) -> Any:
             
             logger.debug(f"[PREF] Final value for '{key}': {value} (type: {type(value).__name__})")
             
-            # Return the value (don't cache v2_enabled to ensure fresh reads)
+            # Return the value (uncached keys are never stored in the session)
             if value is not None:
-                if key != 'v2_enabled':
+                if key not in _UNCACHED_PREF_KEYS:
                     cache[cache_key] = value
                 return value
         
@@ -513,11 +520,10 @@ def set_user_preference(key: str, value: Any) -> bool:
         cache = _get_cache()
         cache_key = _preference_cache_key(key)
         
-        # Don't cache v2_enabled to ensure fresh reads
-        if key != 'v2_enabled':
+        # Uncached keys are dropped from the session instead (clears stale copies)
+        if key not in _UNCACHED_PREF_KEYS:
             cache[cache_key] = value
         elif cache_key in cache:
-            # For v2_enabled, just remove from cache
             del cache[cache_key]
         
         logger.info(f"Successfully set preference '{key}' = {value}")
