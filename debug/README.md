@@ -102,6 +102,9 @@ Convenience script to activate the virtual environment.
 
 ## Corporate actions (stock splits)
 
+Splits are now applied automatically by `web_dashboard/split_guard.py` (see
+`docs/corporate_actions.md`). The manual tool below is kept for edge cases.
+
 Use `debug/apply_stock_split.py` to split-adjust `trade_log` rows. It never
 rebuilds positions.
 

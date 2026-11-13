@@ -1,5 +1,21 @@
 # Corporate actions
 
+**Splits are now applied automatically (2026-11-13).** `web_dashboard/split_guard.py`
+runs at the start of every `update_portfolio_prices_job`. It applies a split only when
+Yahoo lists a split-sized ratio (>= 1.5 or <= 1/1.5, so spin-offs such as SPGI 1.057 and
+UL 0.888 are ignored) **and** our own stored `portfolio_positions` prices show the matching
+cliff within a couple of rows of the ex-date. The writes happen in the Postgres function
+`apply_stock_split()`, in one transaction, keyed on a unique row in the `corporate_actions`
+table, so a split can never be applied twice. That table, not this file, is the ledger.
+
+- Dry run: `.\venv\Scripts\python.exe web_dashboard\split_guard.py --lookback-days 400`
+- Apply by hand: add `--apply` (still idempotent).
+- `status = 'unconfirmed'` rows: Yahoo reported a split but our prices never showed the
+  cliff. Nothing was changed for these.
+- After a rebuild while Yahoo is still unadjusted, the MNST caveat below still applies.
+
+The manual history below is kept for context.
+
 Record every split (or similar) that changes `trade_log` share/price without a
 matching back-adjusted price history. The next full rebuild will silently
 reintroduce a 2× overstatement if `trade_log` is already adjusted and Yahoo
@@ -9,6 +25,8 @@ reintroduce a 2× overstatement if `trade_log` is already adjusted and Yahoo
 
 | Ticker | Ratio | Ex-date | Funds | Applied | Method |
 |---|---|---|---|---|---|
+| ITA | 3:1 | 2026-11-05 | RRSP Lance Webull, TFSA | 2026-11-13 | `split_guard` (first run). Shares 12 → 36 and 0.453763 → 1.361289; 7 position rows each from 11-05. Had shown a phantom −$1,526 / −$58 P&L for 8 days. |
+| CRWD | 4:1 | 2026-07-02 (cliff in our data 07-01) | Project Chimera | 2026-11-13 | `split_guard`. 0.7261 → 2.9044 shares; 97 position rows from 07-01. Undervalued by ~$500 for 4.5 months. |
 | MNST | 2:1 | 2026-08-11 | RRSP Lance Webull, TFSA | 2026-08-13 | `trade_log` adjust via `debug/apply_stock_split.py` + 6-row targeted `portfolio_positions` repair (`date_only >= 2026-08-10`). **No rebuild.** |
 
 ### MNST 2:1 (2026-08-11)

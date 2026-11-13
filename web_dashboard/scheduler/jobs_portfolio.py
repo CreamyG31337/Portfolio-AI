@@ -584,6 +584,17 @@ def update_portfolio_prices_job(
                 logger.debug(traceback.format_exc())
                 # Continue with regular update anyway
         
+            # Apply any confirmed stock split before shares are rebuilt from
+            # trade_log, so this run already uses post-split share counts.
+            try:
+                from split_guard import run_split_guard
+
+                split_plans = run_split_guard(client, [f[0] for f in funds])
+                if any(p.status == "apply" for p in split_plans):
+                    invalidate_dashboard_cache = True
+            except Exception as split_error:
+                logger.warning(f"split_guard failed (continuing with price update): {split_error}", exc_info=True)
+
             # Mark job as started (for completion tracking)
             mark_job_started('update_portfolio_prices', target_date)
 
