@@ -236,7 +236,8 @@ class AIAssistant {
             'earnings-ticker-btn',
             'portfolio-analysis-btn',
             'market-news-btn',
-            'sector-news-btn',
+            'movers-btn',
+            'setups-btn',
             'run-analysis-btn'
         ];
 
@@ -517,7 +518,6 @@ class AIAssistant {
         const earningsTickerBtn = document.getElementById('earnings-ticker-btn');
         const portfolioAnalysisBtn = document.getElementById('portfolio-analysis-btn');
         const marketNewsBtn = document.getElementById('market-news-btn');
-        const sectorNewsBtn = document.getElementById('sector-news-btn');
 
         if (researchTickerBtn) researchTickerBtn.addEventListener('click', () => this.quickResearch('research'));
         if (analyzeTickerBtn) analyzeTickerBtn.addEventListener('click', () => this.quickResearch('analyze'));
@@ -525,7 +525,10 @@ class AIAssistant {
         if (earningsTickerBtn) earningsTickerBtn.addEventListener('click', () => this.quickResearch('earnings'));
         if (portfolioAnalysisBtn) portfolioAnalysisBtn.addEventListener('click', () => this.quickResearch('portfolio'));
         if (marketNewsBtn) marketNewsBtn.addEventListener('click', () => this.quickResearch('market'));
-        if (sectorNewsBtn) sectorNewsBtn.addEventListener('click', () => this.quickResearch('sector'));
+        const moversBtn = document.getElementById('movers-btn');
+        const setupsBtn = document.getElementById('setups-btn');
+        if (moversBtn) moversBtn.addEventListener('click', () => this.quickResearch('movers'));
+        if (setupsBtn) setupsBtn.addEventListener('click', () => this.quickResearch('setups'));
 
         // Ticker selection (optional)
         const tickerSelect = document.getElementById('ticker-select') as HTMLSelectElement | null;
@@ -1971,39 +1974,61 @@ class AIAssistant {
 
         let prompt = '';
 
+        const one = activeTickers.length === 1 ? activeTickers[0] : '';
+        const list = activeTickers.join(', ');
+        const fundNote = this.selectedFund ? ` (fund: ${this.selectedFund})` : '';
+
         switch (action) {
             case 'research':
-                if (activeTickers.length === 1) {
-                    prompt = `Research ${activeTickers[0]} - latest news and analysis`;
-                } else {
-                    prompt = `Research the following stocks: ${activeTickers.join(', ')}. Provide latest news for each.`;
-                }
+                prompt = one
+                    ? `Deep dive on ${one}. 1) get_ticker_setup for our stored stance, entry zone, target and stop. ` +
+                      `2) get_price_history (90d) for the trend and biggest moves. 3) search_web for news from the last month, ` +
+                      `then read_page the 2-3 most substantive articles. 4) Give the bull case and the bear case, each with evidence and sources. ` +
+                      `5) Verdict: buy / wait for a price / avoid, with the level that would change your mind. Say if there is no stored setup.`
+                    : `Deep dive on each of: ${list}. For each: stored setup (get_ticker_setup), 90d price action, ` +
+                      `the most important recent news (read the best source), and a one-line verdict (buy / wait / avoid) with the key level. ` +
+                      `Finish with a ranked list.`;
                 break;
             case 'analyze':
-                if (activeTickers.length === 1) {
-                    prompt = `Analyze ${activeTickers[0]} stock - recent performance and outlook`;
-                } else {
-                    prompt = `Analyze and compare the outlooks for: ${activeTickers.join(', ')}`;
-                }
+                prompt = `Why did ${one || list} move? Use get_price_history (90d) to find the biggest single-day moves and the trend, ` +
+                    `then search_web around those dates (read_page the best source) to find the actual cause. ` +
+                    `Separate company news from market/sector moves (compare with get_market_snapshot). ` +
+                    `Then: is the move likely to continue or reverse, and why?`;
                 break;
             case 'compare':
-                prompt = `Compare ${activeTickers.join(' and ')} stocks. Which is a better investment?`;
+                prompt = `Compare ${list} as investments right now. For each: stored setup (get_ticker_setup), 90d price action, ` +
+                    `the key recent news (read the best source), valuation/quality points you can source, and the main risk. ` +
+                    `If I could only buy one today, which one and why? Say "none" if none is worth buying at current prices.`;
                 break;
             case 'earnings':
-                if (activeTickers.length === 1) {
-                    prompt = `Find recent earnings news for ${activeTickers[0]}`;
-                } else {
-                    prompt = `Find recent earnings reports for: ${activeTickers.join(', ')}`;
-                }
+                prompt = `Earnings for ${one || list}: get_earnings_calendar for the next report date. ` +
+                    `Then search_web and read_page coverage of the most recent report: beats/misses, guidance, and how the stock reacted (get_price_history). ` +
+                    `What does the market expect next time, and is holding through the report a good or bad risk?`;
                 break;
             case 'portfolio':
-                prompt = this.generateDefaultPrompt();
+                prompt = `Check my holdings${fundNote}. 1) get_holdings_snapshot. 2) Which positions moved most recently, and why ` +
+                    `(get_price_history + search_web/read_page for the big movers only)? 3) Any SELL or RISK setups on held names ` +
+                    `(list_entry_candidates held_only)? 4) Any holdings reporting earnings in the next 14 days (get_earnings_calendar)? ` +
+                    `End with a short action list: what to look at first and why. Skip anything with nothing new.`;
                 break;
             case 'market':
-                prompt = "What's the latest stock market news today?";
+                prompt = `How is the market today? Call get_market_snapshot and get_market_brief first. ` +
+                    `Explain the 2-3 real drivers behind today's moves (search_web, then read_page the best sources; cite site and date). ` +
+                    `Note which sectors lead and lag, and what rates, the dollar, oil and VIX are saying. ` +
+                    `Finish with what it means for my holdings${fundNote}, using get_holdings_snapshot.`;
                 break;
-            case 'sector':
-                prompt = "What's happening in the stock market sectors today?";
+            case 'movers':
+                prompt = `Find today's movers worth a closer look. Use get_market_movers for day_gainers and day_losers ` +
+                    `(and most_actives if useful). Ignore illiquid names: market cap under $2B or volume under 1M. ` +
+                    `For the 5 most interesting, find why they moved (search_web + read_page). ` +
+                    `Then pick 2-3 worth a closer look: the catalyst, whether the move looks overdone or the start of a trend, ` +
+                    `what would prove it wrong, and the main risk. Say if one has a stored setup (get_ticker_setup).`;
+                break;
+            case 'setups':
+                prompt = `What are the best setups right now? Call list_entry_candidates for BUY setups, then get_ticker_setup ` +
+                    `for the top ones and compare each current price (get_price_history, short window) with its entry zone. ` +
+                    `Keep only names at or near their entry zone. For those, check today's news (search_web; read the best source) ` +
+                    `for anything that breaks the thesis. Rank the top 3 with entry, stop, target and why now.`;
                 break;
         }
 
