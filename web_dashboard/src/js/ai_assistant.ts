@@ -88,6 +88,7 @@ interface ChatResponse {
     error?: string;
     status?: string;
     name?: string;
+    detail?: string;
 }
 
 interface PortfolioIntelligenceResponse {
@@ -280,6 +281,9 @@ class AIAssistant {
             get_ideas_triage: 'ideas queue',
             get_earnings_calendar: 'earnings calendar',
             search_web: 'web search',
+            read_page: 'article',
+            get_market_snapshot: 'market snapshot',
+            get_market_movers: 'market movers',
             search_research: 'research library',
             get_ticker_snapshot: 'ticker snapshot',
             get_price_history: 'price history',
@@ -308,7 +312,7 @@ class AIAssistant {
             `<div class="flex flex-col gap-1">` +
             `<div class="flex items-center gap-2">` +
             `<div class="animate-spin rounded-full h-4 w-4 border-2 border-gray-300 dark:border-gray-600 border-t-accent"></div>` +
-            `<span>${this.loadingPhase}</span>` +
+            `<span>${this.loadingPhase.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)}</span>` +
             `<span class="text-xs text-text-secondary tabular-nums" data-loading-elapsed>${elapsed}</span>` +
             `</div>${hintHtml}</div>`
         );
@@ -1673,7 +1677,16 @@ class AIAssistant {
                                         }
                                         if (data.status === 'tool' && data.name) {
                                             const label = this.friendlyToolName(data.name);
-                                            this.setLiveLoadingPhase(`Looking up ${label}…`);
+                                            const detail = (data.detail || '').trim();
+                                            if (data.name === 'search_web' && detail) {
+                                                this.setLiveLoadingPhase(`Searching the web: “${detail}”…`);
+                                            } else if (data.name === 'read_page' && detail) {
+                                                this.setLiveLoadingPhase(`Reading ${detail}…`);
+                                            } else if (detail) {
+                                                this.setLiveLoadingPhase(`Looking up ${label} (${detail})…`);
+                                            } else {
+                                                this.setLiveLoadingPhase(`Looking up ${label}…`);
+                                            }
                                         }
                                         if (data.chunk) {
                                             // First token: stop the waiting chrome, show live text

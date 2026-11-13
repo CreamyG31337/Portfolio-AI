@@ -813,8 +813,8 @@ class TestChatHandlerToolLoop:
             tool_calls=[],
             finish_reason="stop",
         )
-        # 5 tool-calling rounds (0..4) then the forced-final round (5).
-        mock_glm = MagicMock(side_effect=[keep_calling] * 5 + [final])
+        # 12 tool-calling rounds (0..11) then the forced-final round (12).
+        mock_glm = MagicMock(side_effect=[keep_calling] * 12 + [final])
 
         with (
             app.test_request_context("/api/v2/ai/chat", method="POST"),
@@ -837,7 +837,7 @@ class TestChatHandlerToolLoop:
                 for c in resp.response
             )
 
-        assert mock_glm.call_count == 6
+        assert mock_glm.call_count == 13
         final_call = mock_glm.call_args_list[-1]
         # Forced-final round: tools disabled.
         assert final_call.kwargs.get("tools") is None
@@ -848,3 +848,47 @@ class TestChatHandlerToolLoop:
             for m in sent_messages
         ), "synthesis nudge not injected on forced-final round"
         assert "TSM fell 6.98%" in body
+
+    def test_glm_tool_loop_synthesizes_when_wall_budget_hit(self, app: Any) -> None:
+        """Running out of wall time must not discard gathered research: the next
+        round is a tools-off synthesis, not a 'timed out' error."""
+        handler = ChatHandler(user_id="u1", model="glm-5.3", fund="TEST")
+        keep_calling = GlmMessageResult(
+            content="",
+            tool_calls=[
+                {
+                    "id": "call_s",
+                    "type": "function",
+                    "function": {"name": "search_web", "arguments": '{"query":"TSM news"}'},
+                }
+            ],
+            finish_reason="tool_calls",
+        )
+        final = GlmMessageResult(content="Synthesis from what was found.", tool_calls=[], finish_reason="stop")
+        mock_glm = MagicMock(side_effect=[keep_calling, final])
+        # monotonic: loop start, round-0 check, round-1 check (past budget), then any extras.
+        clock = iter([0.0, 1.0, 1000.0] + [1000.0] * 20)
+
+        with (
+            app.test_request_context("/api/v2/ai/chat", method="POST"),
+            patch("glm_config.get_zhipu_api_key", return_value="fake-key"),
+            patch("glm_transport.glm_chat_completion_message", mock_glm),
+            patch("ai_assistant_tools.execute_tool", return_value=json.dumps({"ok": True, "results": []})),
+            patch("time.monotonic", side_effect=lambda: next(clock)),
+        ):
+            resp = handler._handle_glm_stream(
+                full_prompt="Why did TSM drop?",
+                system_prompt="sys",
+                conversation_history=[],
+                current_query="Why did TSM drop?",
+                enable_tools=True,
+            )
+            body = "".join(
+                c.decode("utf-8") if isinstance(c, (bytes, bytearray)) else str(c)
+                for c in resp.response
+            )
+
+        assert "timed out" not in body.lower()
+        assert "Synthesis from what was found." in body
+        assert mock_glm.call_args_list[-1].kwargs.get("tools") is None
+        assert '"detail": "TSM news"' in body  # live UI label for the search

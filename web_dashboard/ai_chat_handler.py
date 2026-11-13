@@ -15,6 +15,32 @@ import json
 logger = logging.getLogger(__name__)
 
 
+
+def _tool_detail(name: str, args_raw: Any) -> str:
+    """Short human label for what a tool call is doing (shown live in the chat UI)."""
+    try:
+        args = json.loads(args_raw) if isinstance(args_raw, str) else (args_raw or {})
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(args, dict):
+        return ""
+    if name in ("search_web", "search_research"):
+        return str(args.get("query") or "")[:120]
+    if name == "read_page":
+        from urllib.parse import urlparse
+
+        url = str(args.get("url") or "")
+        host = urlparse(url).netloc.removeprefix("www.")
+        return host or url[:80]
+    if name == "get_market_movers":
+        return str(args.get("screen") or "day_gainers")
+    for key in ("ticker", "tickers", "sector", "window"):
+        if args.get(key):
+            v = args[key]
+            return ", ".join(map(str, v))[:80] if isinstance(v, list) else str(v)[:80]
+    return ""
+
+
 class ChatHandler:
     """Orchestrates AI chat across multiple backends (WebAI, GLM, Ollama)"""
 
@@ -392,8 +418,10 @@ class ChatHandler:
 
             # Multi-step investigations (e.g. price_history -> several search_web)
             # need more than a couple of rounds; the wall clock bounds the worst case.
-            max_tool_rounds = 5
-            tool_wall_seconds = 120.0
+            # Deep research: think -> search -> read -> re-search loops need room.
+            # glm-5.3 reasons on every round, so each round is ~5-20s.
+            max_tool_rounds = 12
+            tool_wall_seconds = 360.0
             # When the tool budget is exhausted mid-investigation, GLM tends to spill
             # its next-search planning into the final answer. This nudge (injected only
             # on the forced-final round) tells it to synthesize from what it has.
@@ -466,18 +494,19 @@ class ChatHandler:
                     started = _time.monotonic()
                     final_content = ""
 
+                    out_of_time = False
                     for round_i in range(max_tool_rounds + 1):
-                        if _time.monotonic() - started > tool_wall_seconds:
+                        if not out_of_time and _time.monotonic() - started > tool_wall_seconds:
+                            # Never throw away gathered research: force a synthesis round.
                             logger.warning(
-                                "AI chat tool loop wall timeout model=%s fund=%s elapsed=%.1fs",
+                                "AI chat tool loop wall budget hit model=%s fund=%s elapsed=%.1fs; synthesizing",
                                 self.model,
                                 self.fund,
                                 _time.monotonic() - started,
                             )
-                            yield f"data: {json.dumps({'error': 'Tool loop timed out', 'done': True})}\n\n"
-                            return
+                            out_of_time = True
 
-                        tools_on = round_i < max_tool_rounds
+                        tools_on = round_i < max_tool_rounds and not out_of_time
                         # Forced-final round after tool use: prompt a clean synthesis.
                         if not tools_on and working and working[-1].get("role") == "tool":
                             working.append(synthesis_nudge)
@@ -523,7 +552,7 @@ class ChatHandler:
                             yield f"data: {json.dumps({'error': result.error, 'done': True})}\n\n"
                             return
 
-                        if result.has_tool_calls and round_i < max_tool_rounds:
+                        if result.has_tool_calls and tools_on:
                             assistant_msg: dict[str, Any] = {
                                 "role": "assistant",
                                 "content": result.content or None,
@@ -540,6 +569,7 @@ class ChatHandler:
                                         {
                                             "status": "tool",
                                             "name": name,
+                                            "detail": _tool_detail(name, args_raw),
                                             "done": False,
                                         }
                                     )
