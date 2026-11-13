@@ -22,6 +22,15 @@ collection → synthesis → presentation pipeline. If you only remember one doc
 
 ---
 
+## Ops housekeeping (small, no phase)
+
+- [ ] **Drop the split-repair backup tables** once ITA/CRWD look right on the dashboard for a
+  week or two (added 2026-11-13). They were taken before `split_guard` first applied the ITA 3:1
+  and CRWD 4:1 splits ([`corporate_actions.md`](corporate_actions.md)):
+  `drop table bak_split_20261113_trade_log, bak_split_20261113_positions;`
+- [ ] Run `scripts/export_clean_schema.py` to pick up the new `corporate_actions` table and
+  `apply_stock_split()` function (added 2026-11-13).
+
 ## The one-paragraph thesis
 
 **As of 2026-07-15:** Collect and Learn *plumbing* are ahead of the loop that joins them.
