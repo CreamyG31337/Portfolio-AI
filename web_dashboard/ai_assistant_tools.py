@@ -931,6 +931,9 @@ def _tool_get_price_history(
     days = _resolve_window_days(args.get("window"), args.get("since"), 90)
     if days is None:
         days = 1825  # cap "all" at ~5y for a single ticker to bound the fetch
+    # "today"/1d/since=today ranges contain no completed daily bar and every
+    # fetch strategy returns empty; always pull at least a week.
+    days = max(days, 7)
     window_label = f"{days}d"
 
     try:
