@@ -112,3 +112,6 @@
 ## 2025-02-23 - [Batching PostgREST operations in SocialService]
 **Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
 **Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
+## 2026-11-11 - Batched database inserts in sec_filings and dilution_watch scheduler jobs
+**Learning:** Replaced per-row execute_update calls in scheduler jobs with batched execute_many to prevent DB thrashing.
+**Action:** Search for other occurrences of execute_update in loops, and consider batching.

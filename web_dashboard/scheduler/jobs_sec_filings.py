@@ -140,14 +140,31 @@ def sec_filings_job() -> None:
             events = dedupe_events(
                 extract_filing_events(ticker, cik, submissions, since_date=since_date)
             )
+
+            # OPTIMIZATION: Batched DB writes instead of per-row upserts to prevent timeouts/thrashing
+            params_list = []
             for ev in events:
                 acc = ev["accession_no"]
                 if acc in seen_accessions:
                     continue
                 seen_accessions.add(acc)
                 events_found += 1
+                params_list.append((
+                    ev["ticker"],
+                    ev["cik"],
+                    ev["form_type"],
+                    ev["category"],
+                    ev["direction"],
+                    ev["filed_at"],
+                    ev["accession_no"],
+                    ev["title"],
+                    ev["url"],
+                    json.dumps(ev["raw"]),
+                ))
+
+            if params_list:
                 try:
-                    affected = postgres.execute_update(
+                    affected = postgres.execute_many(
                         """
                         INSERT INTO filing_events (
                             ticker, cik, form_type, category, direction,
@@ -158,24 +175,13 @@ def sec_filings_job() -> None:
                         )
                         ON CONFLICT (accession_no) DO NOTHING
                         """,
-                        (
-                            ev["ticker"],
-                            ev["cik"],
-                            ev["form_type"],
-                            ev["category"],
-                            ev["direction"],
-                            ev["filed_at"],
-                            ev["accession_no"],
-                            ev["title"],
-                            ev["url"],
-                            json.dumps(ev["raw"]),
-                        ),
+                        params_list
                     )
                     inserted += affected or 0
-                except Exception as row_exc:
+                except Exception as batch_exc:
                     logger.warning(
-                        "sec_filings insert failed for %s %s: %s",
-                        ev["ticker"], ev["accession_no"], row_exc,
+                        "sec_filings batch insert failed for ticker %s: %s",
+                        ticker, batch_exc,
                     )
 
         duration_ms = int((time.time() - start) * 1000)
