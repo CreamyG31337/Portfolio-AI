@@ -112,3 +112,7 @@
 ## 2025-02-23 - [Batching PostgREST operations in SocialService]
 **Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
 **Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
+
+## 2025-02-12 - Replaced per-row execute_update with execute_many for social extracted tickers
+**Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted ticker returned by the AI sentiment analysis. This could cause N+1 bottleneck and DB connection thrashing if many tickers were extracted.
+**Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency. Also remember to update mocked testing assertion code from single-update checks to list unpacking.
