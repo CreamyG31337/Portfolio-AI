@@ -149,11 +149,6 @@ Nothing else on `rss_feeds` changes. Populating `consecutive_failures` / `last_e
 the job is a **follow-up**, not part of this work — the UI must render them as "—" when null.
 
 ### 4.3 Register both tables
-
-Add `youtube_sources` to the schema allowlist at
-[`query_and_update_schemas.py:562`](../database/schema/query_and_update_schemas.py#L562)
-or the SQL interface will reject queries against it.
-
 ### 4.4 Migration files
 
 Follow the numbered convention in [`migrations/`](../migrations/):
@@ -310,7 +305,7 @@ following the `/admin/ai-settings` entry's markup exactly (`current_page=='admin
 
 ## 8. Task order
 
-1. Migrations + schema-allowlist registration + apply script. Verify `rss_feeds` job still runs.
+1. Migrations + apply script. Verify `rss_feeds` job still runs.
 2. `sources_routes.py` with RSS CRUD only. Ship it — this alone kills the throwaway-script workflow.
 3. `sources.html` with the RSS tab + sidebar link.
 4. `youtube_sources` CRUD endpoints + YouTube tab (no bulk, no test yet).
