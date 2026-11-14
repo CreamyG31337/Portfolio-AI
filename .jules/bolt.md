@@ -112,3 +112,7 @@
 ## 2025-02-23 - [Batching PostgREST operations in SocialService]
 **Learning:** Found a hot path in `web_dashboard/social_service.py` where a nested loop iteratively called `postgres.execute_update` for every extracted social post (and then once more per metric) over potentially thousands of rows, causing a massive N+1 bottleneck.
 **Action:** Always replace per-row `postgres.execute_update` inside iterative extraction loops with a single, aggregated `postgres.execute_many` call to improve efficiency and eliminate N+1 latency.
+
+## 2025-01-20 - Batch Trade Quality Updates and Legacy Queue Inserts
+**Learning:** Found N+1 database queries in `web_dashboard/utils/congress_trade_quality.py` (performing two separate `.update()` calls sequentially on the same row) and in `web_dashboard/watchlist_access.py` (iterating over a list of tickers to check for existence with `.select()` and then `.insert()` individually).
+**Action:** Combined the two conditional `.update()` operations in `congress_trade_quality.py` into a single batch update payload. In `watchlist_access.py`, refactored the N+1 loop to use an `IN` clause to fetch all existing tasks at once, computed the missing tasks locally, and executed a single bulk `.insert()` operation, significantly reducing database round trips.
