@@ -81,6 +81,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 \i functions/get_exchange_rate_for_date.sql
 \i functions/get_fund_thesis.sql
 \i functions/get_distinct_column_values.sql
+\i functions/get_portfolio_daily_totals.sql
 \i functions/get_latest_exchange_rate.sql
 \i functions/get_user_accessible_funds.sql
 \i functions/get_user_funds.sql

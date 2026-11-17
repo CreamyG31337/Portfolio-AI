@@ -652,6 +652,118 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
 
             return missing
 
+        def _fetch_position_daily_totals(
+            range_start: date,
+            range_end: date,
+        ) -> pd.DataFrame:
+            """Aggregate portfolio_positions to one row per calendar date.
+
+            Prefers the get_portfolio_daily_totals RPC (SQL GROUP BY) so long
+            histories like TFSA do not paginate tens of thousands of rows.
+            Falls back to paginated portfolio_positions reads if RPC is unavailable.
+            """
+            empty = pd.DataFrame(columns=["date", "value", "cost_basis", "pnl"])
+            fund_arg = fund if fund and str(fund).lower() != "all" else None
+            # Inclusive end-of-day bound: RPC uses date < p_end
+            p_start = f"{range_start}T00:00:00+00:00"
+            p_end = f"{(range_end + timedelta(days=1))}T00:00:00+00:00"
+
+            try:
+                # PostgREST caps RPC result pages at 1000 rows — page with .range().
+                rows: list[dict] = []
+                page_size = 1000
+                offset = 0
+                while True:
+                    rpc_result = (
+                        client.supabase.rpc(
+                            "get_portfolio_daily_totals",
+                            {
+                                "p_fund": fund_arg,
+                                "p_start": p_start,
+                                "p_end": p_end,
+                            },
+                        )
+                        .range(offset, offset + page_size - 1)
+                        .execute()
+                    )
+                    batch = rpc_result.data or []
+                    rows.extend(batch)
+                    if len(batch) < page_size:
+                        break
+                    offset += page_size
+                if rows:
+                    grouped = pd.DataFrame(rows)
+                    grouped["date"] = (
+                        pd.to_datetime(grouped["date"]).dt.normalize()
+                        + pd.Timedelta(hours=12)
+                    )
+                    for col in ("value", "cost_basis", "pnl"):
+                        grouped[col] = pd.to_numeric(grouped[col], errors="coerce").fillna(0.0)
+                    logger.info(
+                        "get_portfolio_daily_totals RPC returned %s daily rows for %s",
+                        len(grouped),
+                        fund_arg or "all",
+                    )
+                    return grouped[["date", "value", "cost_basis", "pnl"]]
+                return empty
+            except Exception as rpc_err:
+                logger.warning(
+                    "get_portfolio_daily_totals RPC unavailable, falling back to "
+                    "paginated portfolio_positions: %s",
+                    rpc_err,
+                )
+
+            filters = []
+            if fund_arg:
+                filters.append(("fund", "eq", fund_arg))
+            filters.append(("date", "gte", f"{range_start}T00:00:00"))
+            filters.append(("date", "lt", f"{range_end}T23:59:59.999999"))
+
+            all_rows = fetch_all_rows(
+                client,
+                "portfolio_positions",
+                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
+                filters=filters,
+                order="date",
+                order_secondary="id",
+            )
+
+            if not all_rows:
+                return empty
+
+            df = pd.DataFrame(all_rows)
+            df["date"] = pd.to_datetime(df["date"]).dt.date
+
+            has_preconverted = (
+                "total_value_base" in df.columns
+                and df["total_value_base"].notna().mean() > 0.8
+            )
+            if has_preconverted:
+                value_col, cost_col, pnl_col = (
+                    "total_value_base",
+                    "cost_basis_base",
+                    "pnl_base",
+                )
+            else:
+                value_col, cost_col, pnl_col = "total_value", "cost_basis", "pnl"
+
+            grouped = (
+                df.groupby("date")
+                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
+                .reset_index()
+                .rename(
+                    columns={
+                        value_col: "value",
+                        cost_col: "cost_basis",
+                        pnl_col: "pnl",
+                    }
+                )
+            )
+            grouped["date"] = (
+                pd.to_datetime(grouped["date"]).dt.normalize() + pd.Timedelta(hours=12)
+            )
+            return grouped
+
         def _merge_missing_dates_from_positions(
             base_daily_totals: pd.DataFrame,
             missing_dates: list[date],
@@ -676,60 +788,15 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 )
                 base_daily_totals = base_daily_totals.loc[keep_mask].copy()
 
-            all_rows = []
-            filters = []
-            if fund and fund.lower() != "all":
-                filters.append(("fund", "eq", fund))
-            filters.append(("date", "gte", f"{range_start}T00:00:00"))
-            filters.append(("date", "lt", f"{range_end}T23:59:59.999999"))
-
-            all_rows = fetch_all_rows(
-                client,
-                "portfolio_positions",
-                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
-                filters=filters,
-                order="date",
-                order_secondary="id"
-            )
-
-            if not all_rows:
+            pos_totals = _fetch_position_daily_totals(range_start, range_end)
+            if pos_totals.empty:
                 return base_daily_totals
 
-            df = pd.DataFrame(all_rows)
-            df["date"] = pd.to_datetime(df["date"]).dt.date
-            df = df[df["date"].isin(missing_date_set)]
-            if df.empty:
+            filled = pos_totals[
+                pd.to_datetime(pos_totals["date"]).dt.date.isin(missing_date_set)
+            ].copy()
+            if filled.empty:
                 return base_daily_totals
-
-            has_preconverted = False
-            if "total_value_base" in df.columns:
-                has_preconverted = df["total_value_base"].notna().mean() > 0.8
-
-            if has_preconverted:
-                value_col = "total_value_base"
-                cost_col = "cost_basis_base"
-                pnl_col = "pnl_base"
-            else:
-                value_col = "total_value"
-                cost_col = "cost_basis"
-                pnl_col = "pnl"
-
-            filled = (
-                df.groupby("date")
-                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
-                .reset_index()
-                .rename(
-                    columns={
-                        "date": "date",
-                        value_col: "value",
-                        cost_col: "cost_basis",
-                        pnl_col: "pnl",
-                    }
-                )
-            )
-            filled["date"] = (
-                pd.to_datetime(filled["date"]).dt.normalize() + pd.Timedelta(hours=12)
-            )
 
             merged = pd.concat([base_daily_totals, filled], ignore_index=True)
             merged = (
@@ -769,63 +836,6 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 if abs(pos_val - met_val) / pos_val > threshold:
                     suspect.append(d)
             return suspect
-
-        def _fetch_position_daily_totals(
-            range_start: date,
-            range_end: date,
-        ) -> pd.DataFrame:
-            """Aggregate portfolio_positions to one row per calendar date."""
-            all_rows: list[dict] = []
-            filters = []
-            if fund and fund.lower() != "all":
-                filters.append(("fund", "eq", fund))
-            filters.append(("date", "gte", f"{range_start}T00:00:00"))
-            filters.append(("date", "lt", f"{range_end}T23:59:59.999999"))
-
-            all_rows = fetch_all_rows(
-                client,
-                "portfolio_positions",
-                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
-                filters=filters,
-                order="date",
-                order_secondary="id"
-            )
-
-            if not all_rows:
-                return pd.DataFrame(columns=["date", "value", "cost_basis", "pnl"])
-
-            df = pd.DataFrame(all_rows)
-            df["date"] = pd.to_datetime(df["date"]).dt.date
-
-            has_preconverted = (
-                "total_value_base" in df.columns
-                and df["total_value_base"].notna().mean() > 0.8
-            )
-            if has_preconverted:
-                value_col, cost_col, pnl_col = (
-                    "total_value_base",
-                    "cost_basis_base",
-                    "pnl_base",
-                )
-            else:
-                value_col, cost_col, pnl_col = "total_value", "cost_basis", "pnl"
-
-            grouped = (
-                df.groupby("date")
-                .agg({value_col: "sum", cost_col: "sum", pnl_col: "sum"})
-                .reset_index()
-                .rename(
-                    columns={
-                        value_col: "value",
-                        cost_col: "cost_basis",
-                        pnl_col: "pnl",
-                    }
-                )
-            )
-            grouped["date"] = (
-                pd.to_datetime(grouped["date"]).dt.normalize() + pd.Timedelta(hours=12)
-            )
-            return grouped
 
         # OPTIMIZATION: Try fetching pre-aggregated metrics first
         # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
@@ -1061,56 +1071,29 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
             daily_totals = None
 
         if daily_totals is None:
-            # Query with base columns (Original Logic)
-            filters = []
-            if fund and fund.lower() != 'all':
-                filters.append(("fund", "eq", fund))
-            if cutoff_date:
-                filters.append(("date", "gte", cutoff_date.strftime('%Y-%m-%dT%H:%M:%SZ')))
-
-            all_rows = fetch_all_rows(
-                client,
-                "portfolio_positions",
-                "date, total_value, cost_basis, pnl, fund, currency, total_value_base, cost_basis_base, pnl_base, base_currency",
-                filters=filters,
-                order="date",
-                order_secondary="id"
+            # SQL-aggregated daily totals (RPC) instead of paginating every position row
+            range_end = datetime.now(timezone.utc).date()
+            range_start = (
+                cutoff_date.date()
+                if cutoff_date is not None
+                else date(2000, 1, 1)
             )
+            # If no cutoff, discover earliest position date cheaply via ordered limit
+            if cutoff_date is None:
+                try:
+                    earliest_q = client.supabase.table("portfolio_positions").select("date")
+                    if fund and fund.lower() != "all":
+                        earliest_q = earliest_q.eq("fund", fund)
+                    earliest = earliest_q.order("date").limit(1).execute()
+                    if earliest.data:
+                        range_start = pd.to_datetime(earliest.data[0]["date"]).date()
+                except Exception:
+                    pass
 
-            if not all_rows:
+            daily_totals = _fetch_position_daily_totals(range_start, range_end)
+            if daily_totals.empty:
                 return pd.DataFrame()
-
-            df = pd.DataFrame(all_rows)
-            df['date'] = pd.to_datetime(df['date']).dt.normalize() + pd.Timedelta(hours=12)
-            
-            # Check for pre-converted values
-            has_preconverted = False
-            if 'total_value_base' in df.columns:
-                preconverted_pct = df['total_value_base'].notna().mean()
-                has_preconverted = preconverted_pct > 0.8
-
-            if has_preconverted:
-                value_col = 'total_value_base'
-                cost_col = 'cost_basis_base'
-                pnl_col = 'pnl_base'
-            else:
-                # FALLBACK: Runtime conversion (simplified for Flask - could add rate fetching if needed)
-                # For now, warn and use raw values if mixed (this was the bug, but at least we try base cols first)
-                # Ideally we port the rate fetching logic here too, but base cols should exist.
-                value_col = 'total_value'
-                cost_col = 'cost_basis'
-                pnl_col = 'pnl'
-
-            # Aggregate
-            daily_totals = df.groupby(df['date'].dt.date).agg({
-                value_col: 'sum',
-                cost_col: 'sum',
-                pnl_col: 'sum'
-            }).reset_index()
-            
-            daily_totals.columns = ['date', 'value', 'cost_basis', 'pnl']
-            daily_totals['date'] = pd.to_datetime(daily_totals['date'])
-            daily_totals = daily_totals.sort_values('date').reset_index(drop=True)
+            daily_totals = daily_totals.sort_values("date").reset_index(drop=True)
         
         # Performance calculation
         daily_totals['performance_pct'] = np.where(

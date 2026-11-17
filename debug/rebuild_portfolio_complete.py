@@ -616,7 +616,17 @@ def rebuild_portfolio_complete(data_dir: str, fund_name: str = None) -> bool:
                 if cash_dividend_fund and is_dividend_reason(reason_str):
                     continue
 
-                if 'SELL' in reason_str:
+                # Trust the explicit action column. Only fall back to the reason text
+                # when action is missing: free-text reasons can contain "sell" in a BUY
+                # thesis (e.g. Chimera WEB.V: "...selling ready-to-build projects...").
+                action_raw = trade.get('Action')
+                action_str = '' if pd.isna(action_raw) else str(action_raw).strip().upper()
+                if action_str in ('BUY', 'SELL', 'DIVIDEND', 'DRIP'):
+                    is_sell = action_str == 'SELL'
+                else:
+                    is_sell = 'SELL' in reason_str
+
+                if is_sell:
                     # Calculate realized P&L using FIFO
                     remaining_to_sell = shares
                     total_cost_basis = Decimal('0')

@@ -1098,7 +1098,7 @@ function initGrid(): void {
         { field: 'name', headerName: 'Company', flex: 1.5, minWidth: 150, maxWidth: 300 },
         { field: 'sector', headerName: 'Sector', flex: 1, minWidth: 100, maxWidth: 200 },
         { field: 'opened', headerName: 'Opened', width: 100, minWidth: 80, maxWidth: 120 },
-        { field: 'shares', headerName: 'Shares', flex: 0.8, minWidth: 90, maxWidth: 130, type: 'numericColumn', valueFormatter: (params: any) => (params.value || 0).toFixed(2) },
+        { field: 'shares', headerName: 'Shares', flex: 0.8, minWidth: 90, maxWidth: 130, type: 'numericColumn', valueFormatter: (params: any) => (params.value || 0).toFixed(4) },
         { field: 'avg_price', headerName: 'Avg Price', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },
         { field: 'price', headerName: 'Current', flex: 0.9, minWidth: 90, maxWidth: 140, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },
         { field: 'value', headerName: 'Value', flex: 1, minWidth: 100, maxWidth: 160, type: 'numericColumn', valueFormatter: (params: any) => formatMoney(params.value) },

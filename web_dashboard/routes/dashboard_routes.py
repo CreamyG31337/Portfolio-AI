@@ -1535,7 +1535,8 @@ def get_holdings_data():
                 "ticker": ticker,
                 "name": company_name,
                 "sector": sector,
-                "shares": int(_json_safe_number(shares, 0)),
+                # Keep fractional share precision (TFSA/Wealthsimple); do not int()-truncate
+                "shares": round(_json_safe_number(shares, 0), 4),
                 "opened": opened_date,
                 "avg_price": _json_safe_number(avg_price * rate_safe),
                 "price": _json_safe_number((current_price or 0) * rate_safe),

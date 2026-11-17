@@ -21,7 +21,7 @@ if str(parent_dir) not in sys.path:
 import pandas as pd
 import plotly.graph_objs as go
 from typing import Optional, List, Dict, Tuple, Any
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import colorsys
 import logging
@@ -62,27 +62,63 @@ def _holiday_chart_label(full_name: str) -> str:
 def _add_holiday_shading(fig: go.Figure, start_date: datetime, end_date: datetime,
                          market: str = 'us',
                          holiday_color: Optional[str] = 'rgba(211, 211, 211, 0.3)') -> None:
-    """Add shading for market holidays using the centralized utility."""
-    holidays_in_range = MARKET_HOLIDAYS.get_holidays_for_range(start_date.date(), end_date.date(), market=market)
+    """Add shading for market holidays using the centralized utility.
 
+    Shapes/annotations are applied in one layout update — repeated add_vrect
+    calls are O(n^2) in Plotly and dominate long-range chart build time.
+    """
+    start_d = start_date.date() if isinstance(start_date, datetime) else start_date
+    end_d = end_date.date() if isinstance(end_date, datetime) else end_date
+    if hasattr(start_d, "date"):
+        start_d = start_d.date()
+    if hasattr(end_d, "date"):
+        end_d = end_d.date()
+
+    holidays_in_range = MARKET_HOLIDAYS.get_holidays_for_range(start_d, end_d, market=market)
+    if not holidays_in_range:
+        return
+
+    new_shapes = []
+    new_annotations = []
     for holiday_date in holidays_in_range:
         start_shade = datetime.combine(holiday_date, datetime.min.time())
         end_shade = start_shade + timedelta(days=1)
-
         holiday_name = MARKET_HOLIDAYS.get_holiday_name(holiday_date) or "Holiday"
-
-        fig.add_vrect(
-            x0=start_shade,
-            x1=end_shade,
-            fillcolor=holiday_color,
-            layer="below",
-            line_width=0,
-            annotation_text=_holiday_chart_label(holiday_name),
-            annotation_position="top",
-            annotation_textangle=-90,
-            annotation_font_size=9,
-            annotation_font_color="gray",
+        new_shapes.append(
+            dict(
+                type="rect",
+                xref="x",
+                yref="paper",
+                x0=start_shade,
+                x1=end_shade,
+                y0=0,
+                y1=1,
+                fillcolor=holiday_color,
+                layer="below",
+                line={"width": 0},
+            )
         )
+        new_annotations.append(
+            dict(
+                x=start_shade + (end_shade - start_shade) / 2,
+                y=1,
+                xref="x",
+                yref="paper",
+                text=_holiday_chart_label(holiday_name),
+                showarrow=False,
+                xanchor="center",
+                yanchor="top",
+                textangle=-90,
+                font={"size": 9, "color": "gray"},
+            )
+        )
+
+    existing_shapes = list(fig.layout.shapes) if fig.layout.shapes else []
+    existing_annotations = list(fig.layout.annotations) if fig.layout.annotations else []
+    fig.update_layout(
+        shapes=existing_shapes + new_shapes,
+        annotations=existing_annotations + new_annotations,
+    )
 
 
 # Theme-aware chart helpers
@@ -424,6 +460,9 @@ def _add_weekend_shading(fig: go.Figure, start_date: datetime, end_date: datetim
     
     This matches the console app's approach for consistent weekend visualization.
     Shades the entire weekend period when markets are closed.
+
+    Shapes are batched into one layout update — repeated fig.add_vrect calls are
+    O(n^2) in Plotly and were dominating TFSA (4y) chart build time (~13s).
     
     Args:
         fig: Plotly figure to add shading to
@@ -445,21 +484,29 @@ def _add_weekend_shading(fig: go.Figure, start_date: datetime, end_date: datetim
         start_date_only = start_date_only.date()
     if hasattr(end_date_only, 'date'):
         end_date_only = end_date_only.date()
+
+    new_shapes = []
+
+    def _weekend_rect(saturday: date, monday: date) -> dict:
+        return dict(
+            type="rect",
+            xref="x",
+            yref="paper",
+            x0=datetime.combine(saturday, datetime.min.time()),
+            x1=datetime.combine(monday, datetime.min.time()),
+            y0=0,
+            y1=1,
+            fillcolor=weekend_color,
+            layer="below",
+            line={"width": 0},
+        )
     
     # Handle case where chart starts on a Sunday - shade the weekend that includes it
     start_weekday = start_date_only.weekday()
     if start_weekday == 6:  # Sunday
-        # Shade from previous Saturday 00:00 to Monday 00:00 (entire weekend)
         previous_saturday = start_date_only - timedelta(days=1)
-        saturday_midnight = datetime.combine(previous_saturday, datetime.min.time())
-        monday_midnight = datetime.combine(start_date_only + timedelta(days=1), datetime.min.time())
-        
-        fig.add_vrect(
-            x0=saturday_midnight,
-            x1=monday_midnight,
-            fillcolor=weekend_color,
-            layer="below",
-            line_width=0,
+        new_shapes.append(
+            _weekend_rect(previous_saturday, start_date_only + timedelta(days=1))
         )
     
     # Iterate through all dates to find Saturdays (start of weekends)
@@ -468,21 +515,18 @@ def _add_weekend_shading(fig: go.Figure, start_date: datetime, end_date: datetim
         weekday = current_date.weekday()
         
         if weekday == 5:  # Saturday (start of weekend)
-            # Shade from Saturday 00:00 to Monday 00:00 (entire weekend)
-            saturday_midnight = datetime.combine(current_date, datetime.min.time())
-            monday_midnight = datetime.combine(current_date + timedelta(days=2), datetime.min.time())
-            
-            fig.add_vrect(
-                x0=saturday_midnight,
-                x1=monday_midnight,
-                fillcolor=weekend_color,
-                layer="below",
-                line_width=0,
+            new_shapes.append(
+                _weekend_rect(current_date, current_date + timedelta(days=2))
             )
-            # Skip to Monday (we've covered the weekend)
             current_date += timedelta(days=2)
         else:
             current_date += timedelta(days=1)
+
+    if not new_shapes:
+        return
+
+    existing = list(fig.layout.shapes) if fig.layout.shapes else []
+    fig.update_layout(shapes=existing + new_shapes)
 
 
 # Cache is a hit only if it covers both ends of the requested window.
