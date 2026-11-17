@@ -3,7 +3,7 @@
  * Handles chat interface, streaming responses, context management, and search
  */
 
-import { getCsrfHeaders } from './csrf.js';
+import { csrfFetch } from './csrf.js';
 import { initCollapsesIn } from './collapse.js';
 import { usablePromptTokenBudget } from './ollama_ctx_budget.js';
 
@@ -850,9 +850,9 @@ class AIAssistant {
 
             console.log('[AIAssistant] Fetching context for fund:', this.selectedFund);
 
-            const response = await fetch('/api/v2/ai/preview_context', {
+            const response = await csrfFetch('/api/v2/ai/preview_context', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     fund: this.selectedFund,
                     include_thesis: includeThesis,
@@ -1025,9 +1025,9 @@ class AIAssistant {
         const action = enabled ? 'add' : 'remove';
         const metadata = itemType === 'trades' ? { limit: 50 } : {};
 
-        fetch('/api/v2/ai/context', {
+        csrfFetch('/api/v2/ai/context', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 action: action,
                 item_type: itemType,
@@ -1045,9 +1045,9 @@ class AIAssistant {
     }
 
     clearContext(): void {
-        fetch('/api/v2/ai/context', {
+        csrfFetch('/api/v2/ai/context', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'clear' })
         })
             .then((res: Response) => res.json())
@@ -1410,9 +1410,9 @@ class AIAssistant {
         // Extract tickers from query (simple implementation)
         const tickers = this.extractTickers(query);
 
-        const response = await fetch('/api/v2/ai/search', {
+        const response = await csrfFetch('/api/v2/ai/search', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 query: query,
                 tickers: tickers,
@@ -1430,9 +1430,9 @@ class AIAssistant {
     }
 
     async performRepositorySearch(query: string): Promise<any[]> {
-        const response = await fetch('/api/v2/ai/repository', {
+        const response = await csrfFetch('/api/v2/ai/repository', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 query: query,
                 max_results: 3,
@@ -1460,9 +1460,9 @@ class AIAssistant {
     }
 
     sendWebAIMessage(requestData: ChatRequest, loadingId: string): void {
-        fetch('/api/v2/ai/chat', {
+        csrfFetch('/api/v2/ai/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
         })
             .then((res: Response) => {
@@ -1485,7 +1485,7 @@ class AIAssistant {
                     this.updateMessage(loadingId, 'assistant', `Error: ${data.error}`);
                     this.pendingPersistUser = null;
                 } else {
-                    this.updateMessage(loadingId, 'assistant', data.response || '');
+                    this.updateMessage(loadingId, 'assistant', data.response || '', false, true);
                     this.recordAssistantReply(data.response || '');
                 }
                 // Re-enable send button and input
@@ -1507,9 +1507,9 @@ class AIAssistant {
     }
 
     sendStreamingMessage(requestData: ChatRequest, loadingId: string): void {
-        fetch('/api/v2/ai/chat', {
+        csrfFetch('/api/v2/ai/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)
         })
             .then((res: Response) => {
@@ -1541,7 +1541,7 @@ class AIAssistant {
 
                     const finishStream = (text: string): void => {
                         this.stopLiveLoading();
-                        this.updateMessage(loadingId, 'assistant', text);
+                        this.updateMessage(loadingId, 'assistant', text, false, true);
                         this.recordAssistantReply(text);
                         this.updateRetryButton();
                         this.isSending = false;
@@ -1558,7 +1558,7 @@ class AIAssistant {
                             // Keep what already streamed — late proxy/network drops are common on long Ollama replies.
                             const kept =
                                 `${partial}\n\n---\n*(Stream interrupted: ${message}. Partial reply kept above.)*`;
-                            this.updateMessage(loadingId, 'assistant', kept);
+                            this.updateMessage(loadingId, 'assistant', kept, false, true);
                             this.recordAssistantReply(kept);
                         } else {
                             this.updateMessage(loadingId, 'assistant', `❌ Error: ${message}`);
@@ -1652,7 +1652,13 @@ class AIAssistant {
                             this.updateRetryButton();
                             this.pendingPersistUser = null;
                         } else {
-                            this.updateMessage(loadingId, 'assistant', data.response || data.chunk || '');
+                            this.updateMessage(
+                                loadingId,
+                                'assistant',
+                                data.response || data.chunk || '',
+                                false,
+                                true,
+                            );
                             this.recordAssistantReply(data.response || data.chunk || '');
                             this.updateRetryButton();
                         }
@@ -1687,7 +1693,7 @@ class AIAssistant {
         messageDiv.id = messageId;
 
         if (role === 'user') {
-            // User message: aligned right
+            // User message: aligned right (compact bubble)
             messageDiv.className = 'flex gap-3 justify-end mb-4';
 
             const bubbleContainer = document.createElement('div');
@@ -1708,35 +1714,39 @@ class AIAssistant {
             bubbleContainer.appendChild(bubble);
             messageDiv.appendChild(bubbleContainer);
         } else {
-            // Assistant message: aligned left with avatar placeholder
+            // Assistant: document-style full-width article (no cage-y bubble)
             messageDiv.className = 'flex gap-3 mb-4';
 
-            // Avatar placeholder
             const avatarDiv = document.createElement('div');
-            avatarDiv.className = 'flex-shrink-0';
+            avatarDiv.className = 'flex-shrink-0 pt-0.5';
             const avatar = document.createElement('div');
-            avatar.className = 'w-8 h-8 rounded-full bg-dashboard-surface-alt flex items-center justify-center text-text-secondary text-sm font-semibold';
+            avatar.className = 'w-8 h-8 rounded-full bg-dashboard-surface border border-border flex items-center justify-center text-text-secondary text-sm font-semibold';
             avatar.textContent = 'AI';
             avatarDiv.appendChild(avatar);
 
             const bubbleContainer = document.createElement('div');
-            bubbleContainer.className = 'flex-1';
+            bubbleContainer.className = 'flex-1 min-w-0';
 
             const bubble = document.createElement('div');
-            bubble.className = 'message-bubble bg-dashboard-surface-alt text-text-primary rounded-lg rounded-bl-sm px-4 py-3 shadow-xs';
+            bubble.className = 'message-bubble text-text-primary';
 
             const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content leading-relaxed [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0';
+            contentDiv.className =
+                'message-content leading-relaxed max-w-none [&>p]:my-2 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0 [&>ul]:my-2 [&>ol]:my-2 [&>h1]:text-lg [&>h1]:font-semibold [&>h1]:mt-3 [&>h2]:text-base [&>h2]:font-semibold [&>h2]:mt-3 [&>h3]:text-sm [&>h3]:font-semibold [&>h3]:mt-2';
             if (isLoading) {
                 contentDiv.innerHTML = content;
             } else {
-                contentDiv.innerHTML = this.renderMarkdown(content);
+                contentDiv.innerHTML = this.structureLongReply(this.renderMarkdown(content));
             }
 
             bubble.appendChild(contentDiv);
             bubbleContainer.appendChild(bubble);
             messageDiv.appendChild(avatarDiv);
             messageDiv.appendChild(bubbleContainer);
+
+            if (!isLoading) {
+                initCollapsesIn(messageDiv);
+            }
         }
 
         messagesDiv.appendChild(messageDiv);
@@ -1746,7 +1756,17 @@ class AIAssistant {
         return messageId;
     }
 
-    updateMessage(messageId: string, role: 'user' | 'assistant', content: string, isHtml: boolean = false): void {
+    /**
+     * @param structureReply When true (final assistant render), wrap long replies in
+     * heading collapses / Show-more. Leave false while streaming so toggles do not thrash.
+     */
+    updateMessage(
+        messageId: string,
+        role: 'user' | 'assistant',
+        content: string,
+        isHtml: boolean = false,
+        structureReply: boolean = false,
+    ): void {
         const messageDiv = document.getElementById(messageId);
         if (!messageDiv) return;
 
@@ -1757,7 +1777,8 @@ class AIAssistant {
             // Check if this is an error message
             if (content.includes('Error:') || content.includes('error:') || content.includes('❌')) {
                 // Update bubble styling for error
-                bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg px-4 py-3 shadow-xs';
+                bubble.className =
+                    'message-bubble bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg px-4 py-3 shadow-xs';
                 if (role === 'user') {
                     bubble.className += ' rounded-br-sm';
                 } else {
@@ -1768,6 +1789,9 @@ class AIAssistant {
 
             if (isHtml) {
                 contentDiv.innerHTML = content;
+            } else if (role === 'assistant' && structureReply) {
+                contentDiv.innerHTML = this.structureLongReply(this.renderMarkdown(content));
+                initCollapsesIn(messageDiv);
             } else {
                 contentDiv.innerHTML = this.renderMarkdown(content);
             }
@@ -1791,6 +1815,127 @@ class AIAssistant {
         }
         // Fallback: simple text rendering (escape HTML)
         return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    }
+
+    private collapseChevronSvg(): string {
+        return (
+            '<svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-text-secondary" ' +
+            'aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">' +
+            '<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5 5 1 1 5"/>' +
+            '</svg>'
+        );
+    }
+
+    private newCollapseId(prefix: string): string {
+        return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    }
+
+    /**
+     * Post-sanitize: wrap long assistant HTML in collapsible sections.
+     * Prefer ##/### heading sections; otherwise Show-more after the first few blocks.
+     * Collapse markup is injected after DOMPurify so the XSS allowlist stays unchanged.
+     */
+    structureLongReply(sanitizedHtml: string): string {
+        const root = document.createElement('div');
+        root.innerHTML = sanitizedHtml;
+        const kids = Array.from(root.children);
+        if (kids.length === 0) {
+            return sanitizedHtml;
+        }
+
+        const headingIndexes = kids
+            .map((el, i) => (el.tagName === 'H2' || el.tagName === 'H3' ? i : -1))
+            .filter((i) => i >= 0);
+
+        if (headingIndexes.length > 0) {
+            const out = document.createElement('div');
+            // Preamble before the first heading stays open
+            for (let i = 0; i < headingIndexes[0]; i++) {
+                out.appendChild(kids[i]);
+            }
+
+            for (let s = 0; s < headingIndexes.length; s++) {
+                const start = headingIndexes[s];
+                const end = s + 1 < headingIndexes.length ? headingIndexes[s + 1] : kids.length;
+                const sectionNodes = kids.slice(start, end);
+                const headingEl = sectionNodes[0] as HTMLElement;
+                const title = (headingEl.textContent || `Section ${s + 1}`).trim() || `Section ${s + 1}`;
+                const id = this.newCollapseId('reply-sec');
+
+                const wrap = document.createElement('div');
+                wrap.className = 'my-2 border border-border rounded-lg overflow-hidden bg-dashboard-surface-alt/40';
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className =
+                    'w-full text-left px-3 py-2 flex justify-between items-center gap-2 hover:bg-dashboard-surface transition-colors focus:ring-2 focus:ring-accent/20 focus:outline-hidden text-sm font-semibold text-text-primary';
+                btn.setAttribute('data-collapse-toggle', id);
+                btn.setAttribute('aria-expanded', 'false');
+                btn.setAttribute('aria-controls', id);
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'min-w-0';
+                titleSpan.textContent = title;
+                btn.appendChild(titleSpan);
+                btn.insertAdjacentHTML('beforeend', this.collapseChevronSvg());
+
+                const body = document.createElement('div');
+                body.id = id;
+                body.className =
+                    'hidden px-3 pb-3 border-t border-border [&>p]:my-2 [&>ul]:my-2 [&>ol]:my-2';
+                for (const node of sectionNodes.slice(1)) {
+                    body.appendChild(node);
+                }
+
+                wrap.appendChild(btn);
+                wrap.appendChild(body);
+                out.appendChild(wrap);
+            }
+
+            return out.innerHTML;
+        }
+
+        const textLen = (root.textContent || '').length;
+        if (kids.length > 4 || textLen > 1200) {
+            const keepCount = Math.min(3, kids.length);
+            const out = document.createElement('div');
+            for (let i = 0; i < keepCount; i++) {
+                out.appendChild(kids[i]);
+            }
+
+            if (keepCount < kids.length) {
+                const id = this.newCollapseId('reply-more');
+                const wrap = document.createElement('div');
+                wrap.className = 'mt-2';
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className =
+                    'w-full text-left px-3 py-2 flex justify-between items-center gap-2 border border-border rounded-lg hover:bg-dashboard-surface-alt transition-colors focus:ring-2 focus:ring-accent/20 focus:outline-hidden text-sm font-medium text-accent';
+                btn.setAttribute('data-collapse-toggle', id);
+                btn.setAttribute('aria-expanded', 'false');
+                btn.setAttribute('aria-controls', id);
+                const label = document.createElement('span');
+                label.textContent = 'Show more';
+                btn.appendChild(label);
+                btn.insertAdjacentHTML('beforeend', this.collapseChevronSvg());
+
+                const body = document.createElement('div');
+                body.id = id;
+                body.className =
+                    'hidden mt-2 [&>p]:my-2 [&>p:first-child]:mt-0 [&>ul]:my-2 [&>ol]:my-2';
+                for (let i = keepCount; i < kids.length; i++) {
+                    body.appendChild(kids[i]);
+                }
+
+                wrap.appendChild(btn);
+                wrap.appendChild(body);
+                out.appendChild(wrap);
+            }
+
+            return out.innerHTML;
+        }
+
+        return sanitizedHtml;
     }
 
     /** True when the chat viewport is already near the bottom (sticky-follow zone). */
@@ -1817,9 +1962,9 @@ class AIAssistant {
     clearChat(): void {
         const fund = this.selectedFund;
         if (fund) {
-            fetch('/api/v2/ai/chat/clear', {
+            csrfFetch('/api/v2/ai/chat/clear', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fund }),
                 keepalive: true,
             }).catch((err: Error) => console.warn('[AIAssistant] clear session failed:', err));
@@ -1846,7 +1991,6 @@ class AIAssistant {
         try {
             const res = await fetch(
                 `/api/v2/ai/chat/session?fund=${encodeURIComponent(fund)}`,
-                { headers: { ...getCsrfHeaders() } },
             );
             if (!res.ok) {
                 console.warn('[AIAssistant] session load HTTP', res.status);
@@ -1911,9 +2055,9 @@ class AIAssistant {
                 ts: new Date().toISOString(),
             })),
         };
-        fetch('/api/v2/ai/chat/append', {
+        csrfFetch('/api/v2/ai/chat/append', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
             keepalive,
         }).catch((err: Error) => console.warn('[AIAssistant] append session failed:', err));
@@ -2047,9 +2191,9 @@ class AIAssistant {
 
     saveModelPreference(): void {
         // Save model preference to user settings
-        fetch('/api/settings/ai_model', {
+        csrfFetch('/api/settings/ai_model', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ model: this.selectedModel })
         }).catch((err: Error) => console.error('Error saving model preference:', err));
     }
@@ -2140,9 +2284,9 @@ class AIAssistant {
         }
 
         try {
-            const response = await fetch('/api/v2/ai/portfolio-intelligence', {
+            const response = await csrfFetch('/api/v2/ai/portfolio-intelligence', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ fund: this.selectedFund })
             });
 
@@ -2186,9 +2330,10 @@ class AIAssistant {
         setTimeout(() => {
             const messageDiv = document.getElementById(errorId);
             if (messageDiv) {
-                const bubble = messageDiv.querySelector('.bg-dashboard-surface-alt, .bg-accent') as HTMLElement | null;
+                const bubble = messageDiv.querySelector('.message-bubble') as HTMLElement | null;
                 if (bubble) {
-                    bubble.className = 'bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg rounded-bl-sm px-4 py-3 shadow-xs';
+                    bubble.className =
+                        'message-bubble bg-theme-error-bg/20 text-theme-error-text border border-theme-error-text/30 rounded-lg rounded-bl-sm px-4 py-3 shadow-xs';
                 }
             }
         }, 10);
@@ -2369,9 +2514,9 @@ class AIAssistant {
      */
     async saveIncludeSearchPreference(includeSearch: boolean): Promise<void> {
         try {
-            const response = await fetch('/api/settings/ai_include_search', {
+            const response = await csrfFetch('/api/settings/ai_include_search', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ include_search: includeSearch })
             });
 
@@ -2395,9 +2540,9 @@ class AIAssistant {
      */
     async saveInsiderTradesPreference(includeInsiderTrades: boolean): Promise<void> {
         try {
-            const response = await fetch('/api/settings/ai_include_insider_trades', {
+            const response = await csrfFetch('/api/settings/ai_include_insider_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ include_insider_trades: includeInsiderTrades })
             });
 
@@ -2421,9 +2566,9 @@ class AIAssistant {
      */
     async saveCongressTradesPreference(includeCongressTrades: boolean): Promise<void> {
         try {
-            const response = await fetch('/api/settings/ai_include_congress_trades', {
+            const response = await csrfFetch('/api/settings/ai_include_congress_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ include_congress_trades: includeCongressTrades })
             });
 
@@ -2447,9 +2592,9 @@ class AIAssistant {
      */
     async saveEtfTradesPreference(includeEtfTrades: boolean): Promise<void> {
         try {
-            const response = await fetch('/api/settings/ai_include_etf_trades', {
+            const response = await csrfFetch('/api/settings/ai_include_etf_trades', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ include_etf_trades: includeEtfTrades })
             });
 
@@ -2470,9 +2615,9 @@ class AIAssistant {
 
     async saveIntelligencePulsePreference(includePulse: boolean): Promise<void> {
         try {
-            const response = await fetch('/api/settings/ai_include_intelligence_pulse', {
+            const response = await csrfFetch('/api/settings/ai_include_intelligence_pulse', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', ...getCsrfHeaders() },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ include_intelligence_pulse: includePulse })
             });
 

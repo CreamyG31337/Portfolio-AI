@@ -35,20 +35,29 @@
     <div class="flex gap-4 flex-1 min-h-0">
         <!-- Left Column: Chat Interface (70%) -->
         <div id="chat-column" class="flex-1 flex flex-col min-w-0 min-h-0 transition-all duration-300">
-            <!-- Context Preview Panel (always visible - shows data sent to LLM) -->
+            <!-- Context Preview Panel (collapsed by default — chat gets the viewport) -->
             <div id="context-preview-panel" class="mb-4 border border-border rounded-lg bg-dashboard-surface-alt">
-                <div class="p-3 border-b border-border flex items-center justify-between gap-2">
-                    <span class="font-semibold text-text-primary">🧩 Context Preview<span id="context-char-badge"
-                            class="ml-2 text-xs font-normal text-text-tertiary">(loading...)</span>
-                    </span>
+                <div class="p-3 flex items-center justify-between gap-2">
+                    <button type="button" id="context-preview-toggle" data-collapse-toggle="context-preview-body"
+                        aria-expanded="false" aria-controls="context-preview-body"
+                        class="flex-1 min-w-0 text-left flex items-center justify-between gap-2 font-semibold text-text-primary hover:text-accent transition-colors focus:ring-2 focus:ring-accent/20 focus:outline-hidden rounded-md">
+                        <span class="truncate">Context Preview<span id="context-char-badge"
+                                class="ml-2 text-xs font-normal text-text-tertiary">(loading...)</span>
+                        </span>
+                        <svg data-accordion-icon class="w-3 h-3 shrink-0 transition-transform text-text-secondary"
+                            aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 10 6">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 5 5 1 1 5" />
+                        </svg>
+                    </button>
                     <button id="context-copy-btn" type="button"
                         class="px-2 py-1 text-xs text-text-primary bg-transparent border border-border hover:bg-dashboard-surface rounded-md transition-colors focus:ring-2 focus:ring-text-secondary/30 focus:ring-offset-2"
                         title="Copy context preview" aria-label="Copy context preview to clipboard">
                         <i class="fas fa-copy mr-1"></i>Copy
                     </button>
                 </div>
-                <div class="p-3">
-                    <p class="text-xs text-text-secondary mb-2">This data is sent to the LLM with the first
+                <div id="context-preview-body" class="hidden p-3 pt-0 border-t border-border">
+                    <p class="text-xs text-text-secondary mb-2 mt-3">This data is sent to the LLM with the first
                         message of each conversation. Clear chat to reset context.</p>
                     <pre id="context-preview-content"
                         class="w-full p-3 border-2 border-accent rounded-lg text-xs font-mono overflow-x-auto whitespace-pre bg-slate-950 text-cyan-300 max-h-64 overflow-y-auto"><span class="inline-flex items-center gap-2"><i class="fas fa-spinner fa-spin"></i><span>Loading context</span></span></pre>
