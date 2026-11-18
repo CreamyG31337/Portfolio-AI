@@ -1743,7 +1743,9 @@ async function fetchPerformanceChart(): Promise<void> {
     const theme = getEffectiveTheme();
 
     // Match Streamlit: use_solid_lines parameter from checkbox
-    const url = `/api/dashboard/charts/performance?fund=${encodeURIComponent(state.currentFund)}&range=${state.timeRange}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}`;
+    // Send the plot width so the server only returns as many points as can be seen.
+    const chartWidth = Math.round(document.getElementById('performance-chart')?.clientWidth || window.innerWidth || 1200);
+    const url = `/api/dashboard/charts/performance?fund=${encodeURIComponent(state.currentFund)}&range=${state.timeRange}&use_solid=${state.useSolidLines}&theme=${encodeURIComponent(theme)}&width=${chartWidth}`;
     const startTime = performance.now();
 
     console.log('[Dashboard] Fetching performance chart...', { url, fund: state.currentFund, range: state.timeRange, use_solid: state.useSolidLines });

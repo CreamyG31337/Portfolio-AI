@@ -753,6 +753,12 @@ def get_performance_chart():
         fund = None
     time_range = request.args.get('range', 'ALL') # '1M', '3M', '6M', '1Y', 'ALL'
     use_solid = request.args.get('use_solid', 'false').lower() == 'true'
+    # Plot width in px: the chart downsamples long histories to what it can show.
+    try:
+        width_px = int(request.args.get('width', '') or 1200)
+    except ValueError:
+        width_px = 1200
+    width_px = max(200, min(width_px, 4000))
     display_currency = get_user_currency() or 'CAD'
     
     logger.info(f"[Dashboard API] /api/dashboard/charts/performance called - fund={fund}, range={time_range}, currency={display_currency}")
@@ -831,7 +837,8 @@ def get_performance_chart():
             show_benchmarks=all_benchmarks,  # All benchmarks (S&P 500 visible, others in legend)
             show_weekend_shading=True,
             use_solid_lines=use_solid,
-            display_currency=display_currency
+            display_currency=display_currency,
+            width_px=width_px,
         )
         
         # DEBUG: Log the actual y-values being sent to the chart

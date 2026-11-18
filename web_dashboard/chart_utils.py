@@ -18,6 +18,7 @@ parent_dir = Path(__file__).parent.parent
 if str(parent_dir) not in sys.path:
     sys.path.insert(0, str(parent_dir))
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 from typing import Optional, List, Dict, Tuple, Any
@@ -762,6 +763,72 @@ def _fetch_benchmarks_parallel(
     return fetched
 
 
+# Downsampling for long histories: aim for one point per ~2 px of plot width.
+CHART_PX_PER_POINT = 2
+CHART_MIN_POINTS = 120
+CHART_MAX_POINTS = 800
+# Markers only help when individual days are distinguishable.
+CHART_MARKER_MAX_POINTS = 120
+# Weekend/holiday bands are pointless (and costly) once a day is under ~2 px wide.
+CHART_SHADING_MIN_PX_PER_DAY = 2.0
+
+
+def chart_point_budget(width_px: Optional[int]) -> Optional[int]:
+    """Max points per trace for a chart that is ``width_px`` wide (None = no limit)."""
+    if not width_px or width_px <= 0:
+        return None
+    return int(min(CHART_MAX_POINTS, max(CHART_MIN_POINTS, width_px // CHART_PX_PER_POINT)))
+
+
+def lttb_indices(x: np.ndarray, y: np.ndarray, threshold: int) -> np.ndarray:
+    """Largest-Triangle-Three-Buckets: indices of the points to keep.
+
+    Keeps the first and last points and, per bucket, the point that forms the
+    largest triangle with its neighbours, which preserves peaks, troughs and the
+    visual shape. It returns a subset of the real points, so hover values stay exact.
+    """
+    n = len(x)
+    if threshold >= n or threshold < 3:
+        return np.arange(n)
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    finite = np.isfinite(y)
+    if not finite.all():
+        y = np.where(finite, y, y[finite].mean() if finite.any() else 0.0)
+
+    keep = np.empty(threshold, dtype=int)
+    keep[0] = 0
+    keep[-1] = n - 1
+    # Interior points 1..n-2 are split into threshold-2 buckets.
+    edges = np.linspace(1, n - 1, threshold - 1).astype(int)
+    a = 0
+    for i in range(threshold - 2):
+        start, end = edges[i], max(edges[i + 1], edges[i] + 1)
+        if i + 2 < len(edges):
+            nxt_start, nxt_end = edges[i + 1], max(edges[i + 2], edges[i + 1] + 1)
+            avg_x = x[nxt_start:nxt_end].mean()
+            avg_y = y[nxt_start:nxt_end].mean()
+        else:
+            avg_x, avg_y = x[n - 1], y[n - 1]
+        bx = x[start:end]
+        by = y[start:end]
+        area = np.abs((x[a] - avg_x) * (by - y[a]) - (x[a] - bx) * (avg_y - y[a]))
+        a = start + int(np.argmax(area))
+        keep[i + 1] = a
+    return np.unique(keep)
+
+
+def _downsample_frame(
+    df: pd.DataFrame, x_col: str, y_col: str, budget: Optional[int]
+) -> pd.DataFrame:
+    """Return ``df`` reduced to at most ``budget`` rows with LTTB (unchanged if small)."""
+    if budget is None or len(df) <= budget:
+        return df
+    x_num = pd.to_datetime(df[x_col]).astype("int64").to_numpy() / 1e9
+    idx = lttb_indices(x_num, df[y_col].to_numpy(dtype=float), budget)
+    return df.iloc[idx]
+
+
 @log_execution_time()
 def create_portfolio_value_chart(
     portfolio_df: pd.DataFrame,
@@ -772,6 +839,7 @@ def create_portfolio_value_chart(
     use_solid_lines: bool = False,
     display_currency: Optional[str] = None,
     market: str = CHART_TRADING_MARKET,
+    width_px: Optional[int] = None,
 ) -> go.Figure:
     """Create a line chart showing portfolio value/performance over time.
     
@@ -783,7 +851,11 @@ def create_portfolio_value_chart(
         show_weekend_shading: If True, adds gray shading for weekends
         display_currency: Optional display currency (defaults to user preference)
         market: Trading calendar for filtering/shading ('any' = US or Canadian session)
+        width_px: Rendered plot width. When given, long series are downsampled (LTTB)
+            to about one point per 2 px, and weekend/holiday shading is skipped once
+            a day is too narrow to see it. None keeps every point (old behaviour).
     """
+    point_budget = chart_point_budget(width_px)
     # Get display currency
     if display_currency is None:
         try:
@@ -861,10 +933,16 @@ def create_portfolio_value_chart(
         first_10_y = df[y_col].head(10).tolist()
         logger.info(f"[DEBUG] create_portfolio_value_chart - Plotting {y_col}, first 10 values: {first_10_y}, df shape: {df.shape}, columns: {list(df.columns)}")
     
+    plot_df = _downsample_frame(df, 'date', y_col, point_budget)
+    if len(plot_df) < len(df):
+        logger.info(
+            "create_portfolio_value_chart - downsampled portfolio %s -> %s points (width %spx)",
+            len(df), len(plot_df), width_px,
+        )
     fig.add_trace(go.Scatter(
-        x=df['date'],
-        y=df[y_col],
-        mode='lines+markers',
+        x=plot_df['date'],
+        y=plot_df[y_col],
+        mode='lines+markers' if len(plot_df) <= CHART_MARKER_MAX_POINTS else 'lines',
         name=f'{chart_name}{label_suffix}',
         line=dict(color='#1f77b4', width=3),
         marker=dict(size=4),
@@ -954,6 +1032,10 @@ def create_portfolio_value_chart(
                     
                     # S&P 500 visible by default, others hidden in legend
                     visibility = True if bench_key == 'sp500' else 'legendonly'
+
+                    bench_data = _downsample_frame(
+                        bench_data, 'Date', 'normalized', point_budget
+                    )
                     
                     fig.add_trace(go.Scatter(
                         x=bench_data['Date'],
@@ -969,8 +1051,14 @@ def create_portfolio_value_chart(
         benchmark_total_time = time.time() - benchmark_start
         logger.info(f"⏱️ create_portfolio_value_chart - All benchmarks: {benchmark_total_time:.2f}s")
     
-    # Add weekend and holiday shading
-    if show_weekend_shading and len(df) > 1:
+    # Add weekend and holiday shading (only when a day is wide enough to see)
+    span_days = (df['date'].max() - df['date'].min()).days if len(df) > 1 else 0
+    shading_visible = (
+        width_px is None
+        or span_days == 0
+        or width_px / span_days >= CHART_SHADING_MIN_PX_PER_DAY
+    )
+    if show_weekend_shading and len(df) > 1 and shading_visible:
         start_date = df['date'].min()
         end_date = df['date'].max()
 
