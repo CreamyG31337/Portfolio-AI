@@ -50,6 +50,7 @@ class _Query:
         self._table_name = table_name
         self._table_rows = table_rows
         self._filters: list[tuple[str, str, object]] = []
+        self._limit: int | None = None
 
     def select(self, *_args, **_kwargs):
         return self
@@ -72,6 +73,10 @@ class _Query:
     def range(self, *_args, **_kwargs):
         return self
 
+    def limit(self, count):
+        self._limit = count
+        return self
+
     def execute(self):
         rows = list(self._table_rows.get(self._table_name, []))
         for op, field, value in self._filters:
@@ -81,6 +86,8 @@ class _Query:
                 rows = [r for r in rows if str(r.get(field)) >= str(value)]
             elif op == "lt":
                 rows = [r for r in rows if str(r.get(field)) < str(value)]
+        if self._limit is not None:
+            rows = sorted(rows, key=lambda r: str(r.get("date")))[: self._limit]
         return type("Result", (), {"data": rows})()
 
 
@@ -310,3 +317,64 @@ def test_suspect_performance_metrics_replaced_from_positions():
         result.loc[pd.to_datetime(result["date"]).dt.date == bad_day, "value"].iloc[0]
     )
     assert bad_value == 200.0
+
+
+def test_single_new_metrics_row_does_not_hide_position_history():
+    """A fund whose metrics job only started today must still chart its full history.
+
+    TFSA had years of portfolio_positions but only today's performance_metrics row.
+    One row spans zero days, so the old sparseness check passed and the chart drew a
+    single point.
+    """
+    today = date.today()
+    history = [today - timedelta(days=n) for n in range(28, 0, -1)]
+    history = [d for d in history if d.weekday() < 5]
+
+    def position(d: date, value: float) -> dict:
+        return {
+            "date": f"{d.isoformat()}T20:05:00+00:00",
+            "total_value": value,
+            "cost_basis": 100.0,
+            "pnl": value - 100.0,
+            "fund": "TFSA",
+            "currency": "CAD",
+            "total_value_base": value,
+            "cost_basis_base": 100.0,
+            "pnl_base": value - 100.0,
+            "base_currency": "CAD",
+        }
+
+    table_rows = {
+        "performance_metrics": [
+            {
+                "date": today.isoformat(),
+                "total_value": 150.0,
+                "cost_basis": 100.0,
+                "unrealized_pnl": 50.0,
+                "fund": "TFSA",
+            },
+        ],
+        "portfolio_positions": [
+            position(d, 100.0 + i) for i, d in enumerate(history)
+        ],
+    }
+
+    with patch(
+        "flask_data_utils.get_supabase_client_flask",
+        return_value=_SupabaseFacade(table_rows),
+    ), patch(
+        "flask_data_utils.get_current_positions_flask",
+        return_value=pd.DataFrame(),
+    ), patch(
+        "cache_version.get_cache_version",
+        return_value="v-test-single-metrics-row",
+    ):
+        result = calculate_portfolio_value_over_time_flask(
+            fund="TFSA",
+            days=None,
+            _cache_version="v-test-single-metrics-row",
+        )
+
+    result_dates = {d.date() for d in pd.to_datetime(result["date"])}
+    assert history[0] in result_dates
+    assert len(result_dates) >= len(history)

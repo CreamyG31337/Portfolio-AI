@@ -837,6 +837,24 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                     suspect.append(d)
             return suspect
 
+        _earliest_cache: dict[str, Optional[date]] = {}
+
+        def earliest_position_date() -> Optional[date]:
+            """First portfolio_positions date for this fund (one ordered limit-1 read)."""
+            if "v" not in _earliest_cache:
+                found: Optional[date] = None
+                try:
+                    earliest_q = client.supabase.table("portfolio_positions").select("date")
+                    if fund and fund.lower() != "all":
+                        earliest_q = earliest_q.eq("fund", fund)
+                    earliest = earliest_q.order("date").limit(1).execute()
+                    if earliest.data:
+                        found = pd.to_datetime(earliest.data[0]["date"]).date()
+                except Exception as earliest_err:
+                    logger.warning("Could not read earliest position date: %s", earliest_err)
+                _earliest_cache["v"] = found
+            return _earliest_cache["v"]
+
         # OPTIMIZATION: Try fetching pre-aggregated metrics first
         # This reduces data transfer from ~50k rows (positions) to ~1k rows (daily summaries)
         try:
@@ -855,7 +873,18 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
             if metrics_result.data:
                 # Sanity check: verify metrics aren't too sparse
                 metrics_df = pd.DataFrame(metrics_result.data)
-                date_range_days = (pd.to_datetime(metrics_df['date']).max() - pd.to_datetime(metrics_df['date']).min()).days
+                metric_dates_ts = pd.to_datetime(metrics_df['date'])
+                # Measure coverage from where the fund's history actually starts, not from
+                # the first metrics row: a fund whose metrics job only began today has one
+                # row spanning zero days, which would otherwise pass as "fully covered".
+                coverage_start = metric_dates_ts.min().date()
+                earliest_position = earliest_position_date()
+                if earliest_position is not None:
+                    expected_start = earliest_position
+                    if cutoff_date is not None:
+                        expected_start = max(expected_start, cutoff_date.date())
+                    coverage_start = min(coverage_start, expected_start)
+                date_range_days = (metric_dates_ts.max().date() - coverage_start).days
                 expected_trading_days = date_range_days * 5 / 7  # rough estimate
                 actual_rows = len(metrics_df)
 
@@ -1078,17 +1107,8 @@ def calculate_portfolio_value_over_time_flask(fund: str, days: Optional[int] = N
                 if cutoff_date is not None
                 else date(2000, 1, 1)
             )
-            # If no cutoff, discover earliest position date cheaply via ordered limit
             if cutoff_date is None:
-                try:
-                    earliest_q = client.supabase.table("portfolio_positions").select("date")
-                    if fund and fund.lower() != "all":
-                        earliest_q = earliest_q.eq("fund", fund)
-                    earliest = earliest_q.order("date").limit(1).execute()
-                    if earliest.data:
-                        range_start = pd.to_datetime(earliest.data[0]["date"]).date()
-                except Exception:
-                    pass
+                range_start = earliest_position_date() or range_start
 
             daily_totals = _fetch_position_daily_totals(range_start, range_end)
             if daily_totals.empty:
