@@ -79,6 +79,7 @@ interface DividendData {
         total_us_tax: number;
         largest_dividend: number;
         largest_ticker: string;
+        reinvested_amount?: number;
         reinvested_shares: number;
         payout_events: number;
     };
@@ -93,6 +94,10 @@ interface DividendData {
         tax: number;
         shares: number;
         drip_price: number;
+        currency?: string;
+        rate?: number;
+        original_amount?: number;
+        original_gross?: number;
     }>;
     currency: string;
 }
@@ -2810,6 +2815,8 @@ async function fetchDividends(): Promise<void> {
             const el = document.getElementById(id);
             if (el) el.textContent = 'Error';
         });
+        const subEl = document.getElementById('div-reinvested-sub');
+        if (subEl) subEl.textContent = '';
     }
 }
 
@@ -2820,11 +2827,31 @@ function renderDividends(data: DividendData): void {
     updateMetricText('div-total', formatMoney(data.metrics.total_dividends, currency));
     updateMetricText('div-tax', formatMoney(data.metrics.total_us_tax, currency));
     updateMetricText('div-largest', formatMoney(data.metrics.largest_dividend, currency));
-    updateMetricText('div-reinvested', data.metrics.reinvested_shares.toFixed(4));
+
+    const reinvestedAmt = data.metrics.reinvested_amount !== undefined
+        ? data.metrics.reinvested_amount
+        : 0;
+    updateMetricText('div-reinvested', formatMoney(reinvestedAmt, currency));
     updateMetricText('div-events', data.metrics.payout_events.toString());
 
     const largestTickerEl = document.getElementById('div-largest-ticker');
     if (largestTickerEl) largestTickerEl.textContent = data.metrics.largest_ticker;
+
+    const reinvestedSubEl = document.getElementById('div-reinvested-sub');
+    if (reinvestedSubEl) {
+        if (data.metrics.total_dividends > 0) {
+            const pct = Math.round((reinvestedAmt / data.metrics.total_dividends) * 100);
+            reinvestedSubEl.textContent = `${pct}% DRIP`;
+        } else {
+            reinvestedSubEl.textContent = '';
+        }
+    }
+
+    const reinvestedEl = document.getElementById('div-reinvested');
+    if (reinvestedEl) {
+        const shs = data.metrics.reinvested_shares || 0;
+        reinvestedEl.title = `${shs.toFixed(4)} shares DRIP'd`;
+    }
 
     // Update Log Table
     const tbody = document.getElementById('dividend-log-body');
@@ -2879,12 +2906,19 @@ function renderDividends(data: DividendData): void {
                 const grossCell = document.createElement('td');
                 grossCell.className = 'px-4 py-2 text-right text-gray-700 dark:text-gray-300';
                 grossCell.textContent = formatMoney(row.gross || 0, currency);
+                if (row.currency && row.currency !== currency && row.original_gross !== undefined) {
+                    grossCell.title = `Original: ${row.currency} $${row.original_gross.toFixed(2)}`;
+                }
                 tr.appendChild(grossCell);
 
                 // Net ($)
                 const netCell = document.createElement('td');
                 netCell.className = 'px-4 py-2 text-right font-medium text-theme-success-text';
                 netCell.textContent = formatMoney(row.amount, currency);
+                if (row.currency && row.currency !== currency && row.original_amount !== undefined) {
+                    const fxInfo = row.rate ? ` (FX: ${row.rate.toFixed(4)})` : '';
+                    netCell.title = `Original: ${row.currency} $${row.original_amount.toFixed(2)}${fxInfo}`;
+                }
                 tr.appendChild(netCell);
 
                 // Reinvested Shares

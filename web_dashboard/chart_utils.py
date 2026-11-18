@@ -1196,6 +1196,12 @@ def create_pnl_chart(
         try:
             div_df = pd.DataFrame(dividend_data)
             if not div_df.empty and 'ticker' in div_df.columns and 'net_amount' in div_df.columns:
+                if 'currency' in div_df.columns and display_currency:
+                    from currency_display_utils import fetch_latest_rates_bulk
+                    all_currencies = div_df['currency'].dropna().unique().tolist()
+                    rate_map = fetch_latest_rates_bulk(all_currencies, display_currency)
+                    rates = div_df['currency'].fillna(display_currency).astype(str).str.upper().map(lambda c: rate_map.get(c, 1.0))
+                    div_df['net_amount'] = div_df['net_amount'] * rates
                 dividends_by_ticker = div_df.groupby('ticker')['net_amount'].sum().to_dict()
         except Exception as e:
             import logging

@@ -1740,6 +1740,14 @@ def get_dividend_data():
             except Exception as e:
                 logger.warning(f"Error fetching logo URLs: {e}")
 
+        # Fetch exchange rates to normalize all dividend amounts to display_currency
+        all_currencies = list(set(str(row.get('currency', 'USD') or 'USD').upper() for row in dividend_list))
+        rate_map = fetch_latest_rates_bulk(all_currencies, display_currency)
+        def get_rate(curr):
+            c = str(curr or 'USD').upper()
+            if c == display_currency.upper():
+                return 1.0
+            return rate_map.get(c, 1.0)
         
         # Prepare Log (for table) - already sorted by pay_date desc from query
         # Extract company_name from nested securities object (same as get_trade_log does)
@@ -1748,10 +1756,17 @@ def get_dividend_data():
         for row in dividend_list:
             pay_date = row.get('pay_date', '')
             ticker = row.get('ticker', '')
-            net_amt = float(row.get('net_amount', 0) or 0)
-            gross_amt = float(row.get('gross_amount', 0) or 0)
+            row_currency = str(row.get('currency', 'USD') or 'USD').upper()
+            rate = get_rate(row_currency)
+
+            raw_net = float(row.get('net_amount', 0) or 0)
+            raw_gross = float(row.get('gross_amount', 0) or 0)
             reinvested = float(row.get('reinvested_shares', 0) or 0)
-            drip_price = float(row.get('drip_price', 0) or 0)
+            raw_drip_price = float(row.get('drip_price', 0) or 0)
+
+            net_amt = raw_net * rate
+            gross_amt = raw_gross * rate
+            drip_price = raw_drip_price * rate
             
             # Extract company_name from nested securities object (same pattern as get_trade_log)
             company_name = None
@@ -1771,6 +1786,10 @@ def get_dividend_data():
                 "shares": reinvested,
                 "drip_price": drip_price,
                 "type": "DRIP" if reinvested > 0 else "CASH",
+                "currency": row_currency,
+                "rate": rate,
+                "original_amount": raw_net,
+                "original_gross": raw_gross,
                 "_logo_url": logo_url
             })
         
@@ -1780,7 +1799,8 @@ def get_dividend_data():
         logger.debug("[Dividend API] Calculating metrics")
         total_dividends = sum(item['amount'] for item in log_data)
         total_us_tax = sum(item['tax'] for item in log_data)
-        total_reinvested = sum(item['shares'] for item in log_data)
+        total_reinvested_amount = sum(item['amount'] for item in log_data if item['shares'] > 0)
+        total_reinvested_shares = sum(item['shares'] for item in log_data)
         payout_events = len(log_data)
         
         logger.debug(f"[Dividend API] Metrics calculated - total: {total_dividends}, tax: {total_us_tax}, events: {payout_events}")
@@ -1802,7 +1822,8 @@ def get_dividend_data():
                 "total_us_tax": total_us_tax,
                 "largest_dividend": largest_dividend,
                 "largest_ticker": largest_ticker,
-                "reinvested_shares": total_reinvested,
+                "reinvested_amount": total_reinvested_amount,
+                "reinvested_shares": total_reinvested_shares,
                 "payout_events": payout_events
             },
             "log": log_data,
