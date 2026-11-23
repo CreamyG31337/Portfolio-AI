@@ -327,6 +327,37 @@ let lastFullRefreshAt = Date.now();
 let refreshInFlight: Promise<void> | null = null;
 /** A user-started reload (fund switch) asked while another was running. */
 let refreshRerunQueued = false;
+/** Fund being switched to; the page stays dimmed until a reload for it completes. */
+let switchingToFund: string | null = null;
+let titleBeforeSwitch: string | null = null;
+
+/** Dim the dashboard and show a banner while a fund switch loads, or clear that state (null). */
+function setFundSwitching(fund: string | null): void {
+    switchingToFund = fund;
+    const content = document.getElementById('dashboard-content');
+    const banner = document.getElementById('fund-switch-banner');
+    const bannerText = document.getElementById('fund-switch-banner-text');
+    if (fund) {
+        if (content) {
+            content.style.opacity = '0.35';
+            content.setAttribute('aria-busy', 'true');
+        }
+        if (bannerText) bannerText.textContent = `Loading ${fund}…`;
+        banner?.classList.remove('hidden');
+        if (titleBeforeSwitch === null) titleBeforeSwitch = document.title;
+        document.title = `⏳ Loading ${fund} – ${titleBeforeSwitch}`;
+    } else {
+        if (content) {
+            content.style.opacity = '';
+            content.removeAttribute('aria-busy');
+        }
+        banner?.classList.add('hidden');
+        if (titleBeforeSwitch !== null) {
+            document.title = titleBeforeSwitch;
+            titleBeforeSwitch = null;
+        }
+    }
+}
 /** Background reloads update numbers in place without covering charts. */
 let suppressRefreshSpinners = false;
 
@@ -696,6 +727,7 @@ async function initFundSelector(): Promise<void> {
         state.currentFund = target.value;
         console.log('[Dashboard] Global fund changed to:', state.currentFund);
 
+        setFundSwitching(target.value || 'all funds');
         refreshDashboard();
     });
 }
@@ -1291,6 +1323,7 @@ async function refreshDashboard(options?: { background?: boolean }): Promise<voi
 }
 
 async function executeDashboardRefresh(background: boolean): Promise<void> {
+    const fundAtStart = state.currentFund;
     suppressRefreshSpinners = background;
     lastFullRefreshAt = Date.now();
     console.log('[Dashboard] Starting dashboard refresh...', {
@@ -1360,6 +1393,11 @@ async function executeDashboardRefresh(background: boolean): Promise<void> {
         }
     } finally {
         suppressRefreshSpinners = false;
+        // Only a reload for the fund now selected ends the switch; an older
+        // reload for the previous fund leaves the page dimmed.
+        if (switchingToFund !== null && fundAtStart === state.currentFund) {
+            setFundSwitching(null);
+        }
     }
 }
 

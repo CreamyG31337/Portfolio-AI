@@ -6,7 +6,12 @@
 
 {% block content %}
 <!-- PAGE: dashboard.html | ID: dashboard -->
-<div class="px-4 py-6">
+<!-- Shown while a fund switch reloads the page, so old-fund numbers are never mistaken for the new fund -->
+<div id="fund-switch-banner" class="hidden flex items-center gap-3 px-4 py-2 rounded-lg shadow-lg bg-dashboard-surface border border-accent text-text-primary text-sm" style="position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 60;" role="status" aria-live="polite">
+    <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-accent"></div>
+    <span id="fund-switch-banner-text">Loading…</span>
+</div>
+<div id="dashboard-content" class="px-4 py-6" style="transition: opacity 150ms ease;">
     <!-- Header with Controls -->
     <div class="mb-6 flex justify-between items-center flex-wrap gap-4">
         <div>
