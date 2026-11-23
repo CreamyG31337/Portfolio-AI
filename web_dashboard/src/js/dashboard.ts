@@ -325,6 +325,8 @@ let portfolioDataToken: string | null = null;
 /** When the dashboard last started a full reload. Starts at page load. */
 let lastFullRefreshAt = Date.now();
 let refreshInFlight: Promise<void> | null = null;
+/** A user-started reload (fund switch) asked while another was running. */
+let refreshRerunQueued = false;
 /** Background reloads update numbers in place without covering charts. */
 let suppressRefreshSpinners = false;
 
@@ -1270,11 +1272,20 @@ function initGrid(): void {
 
 async function refreshDashboard(options?: { background?: boolean }): Promise<void> {
     if (refreshInFlight) {
+        // The running reload read the fund when it started. A fund switch made
+        // meanwhile must reload again afterwards, or the page stays on the old fund.
+        if (!options?.background) {
+            refreshRerunQueued = true;
+        }
         return refreshInFlight;
     }
     const run = executeDashboardRefresh(options?.background === true);
     refreshInFlight = run.finally(() => {
         refreshInFlight = null;
+        if (refreshRerunQueued) {
+            refreshRerunQueued = false;
+            void refreshDashboard();
+        }
     });
     return refreshInFlight;
 }
