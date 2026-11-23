@@ -152,8 +152,8 @@ Shared memory across agents/sessions (not a code graph — use Graphify for that
 
 ## Graphify (code graph MCP)
 
-- **MCP reads from a fixed path outside OneDrive** — never point MCP at `graphify-out/` inside the synced repo (OneDrive conflicts + agents overwrite it).
-- Install path: `%USERPROFILE%\graphify\LLM-Micro-Cap-trading-bot\graph.json`
+- **MCP serves the repo's live graph**, `graphify-out/graph.json`, which the post-commit hook rebuilds. The server hot-reloads when the file changes. (Changed 2026-11-23: the repo is in `C:\Projects`, no longer OneDrive, so the old fixed copy at `%USERPROFILE%\graphify\...` is retired; it had gone four months stale.)
+- Configured per repo, not globally: `.mcp.json` (Claude, GLM, DeepSeek; gitignored) and `.cursor/mcp.json` (Cursor; in `.git/info/exclude`). Antigravity has only a global list, so it has one `graphify` server with no default graph; it serves `graphify-out/graph.json` from its working folder, or the tools take `project_path`.
 - Build locally: `graphify update .` (writes to repo `graphify-out/` only)
 - **Share between PCs:** `.\scripts\graphify_export.ps1` → transfer zip (USB/email) → `.\scripts\graphify_import.ps1 -ZipPath ...`
 - **Do NOT** run `graphify extract` on the receiving PC unless explicitly rebuilding the graph.
