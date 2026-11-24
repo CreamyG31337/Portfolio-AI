@@ -18,6 +18,7 @@ from earnings_calendar_service import earnings_for_fund
 from insider_clusters_service import build_insider_cluster_buys
 from congress_herd_service import build_congress_herd_buys
 from liquidity_service import build_liquidity_panel
+from utils.text_encoding import repair_mojibake
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,9 @@ def _serialize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     item[key] = float(val)
                 except (TypeError, ValueError):
                     pass
+        # Article / stance labels often carry cp1252 mojibake from scrapers.
+        if isinstance(item.get("label"), str):
+            item["label"] = repair_mojibake(item["label"])
         out.append(item)
     return out
 

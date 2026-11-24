@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from postgres_client import PostgresClient
+from utils.text_encoding import repair_mojibake
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,11 @@ class ResearchRepository:
         Returns:
             Article dictionary with normalized 'tickers' field
         """
+        if isinstance(article.get("title"), str):
+            article["title"] = repair_mojibake(article["title"])
+        if isinstance(article.get("summary"), str):
+            article["summary"] = repair_mojibake(article["summary"])
+
         # If we have tickers array, use it
         if 'tickers' in article and article['tickers'] is not None:
             # Already in array format
@@ -231,6 +237,10 @@ class ResearchRepository:
         if not title or not url:
             logger.error("Title and URL are required")
             return None
+
+        title = repair_mojibake(title)
+        if summary is not None:
+            summary = repair_mojibake(summary)
         
         try:
             # Prepare published_at timestamp

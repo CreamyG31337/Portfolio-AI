@@ -626,12 +626,12 @@ async function loadEvidenceTimeline(ticker: string, seq?: number): Promise<void>
         }
         list.innerHTML = events.slice(0, 20).map((ev) => {
             const at = String(ev.event_at || '').slice(0, 16);
-            const type = String(ev.event_type || '');
-            const label = String(ev.label || ev.stance || '');
-            const src = String(ev.source || '');
+            const type = escapeHtml(String(ev.event_type || ''));
+            const label = escapeHtml(String(ev.label || ev.stance || ''));
+            const src = escapeHtml(String(ev.source || ''));
             return `<div class="flex justify-between gap-2 border-b border-border py-1 last:border-0">
                 <span><span class="text-xs uppercase text-text-tertiary">${type}</span> ${label}</span>
-                <span class="text-xs whitespace-nowrap">${at} · ${src}</span>
+                <span class="text-xs whitespace-nowrap">${escapeHtml(at)} · ${src}</span>
             </div>`;
         }).join('');
         section.classList.remove('hidden');
