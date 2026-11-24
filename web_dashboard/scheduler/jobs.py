@@ -1859,6 +1859,38 @@ def register_default_jobs(scheduler) -> None:
         logger.info("Registered job: weekly_stance_retro (weekly)")
 
     if AVAILABLE_JOBS.get('market_daily_brief', {}).get('enabled_by_default', True):
+        # Refresh intraday every 2 hours once market is open and benchmark_refresh has fresh tape:
+        # 10:05 AM, 12:05 PM, 2:05 PM ET (7:05 AM, 9:05 AM, 11:05 AM Vancouver/PT),
+        # plus 4:15 PM ET (1:15 PM PT, right after close) and 5:45 PM ET (2:45 PM PT, final settled close).
+        # Avoids pre-market runs that would stamp yesterday's close onto today's brief_date.
+        scheduler.add_job(
+            market_daily_brief_job,
+            trigger=CronTrigger(
+                day_of_week='mon-fri',
+                hour='10,12,14',
+                minute=5,
+                timezone='America/New_York'
+            ),
+            id='market_daily_brief_intraday',
+            name=f"{get_job_icon('market_daily_brief')} Market Daily Brief (Intraday)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
+        scheduler.add_job(
+            market_daily_brief_job,
+            trigger=CronTrigger(
+                day_of_week='mon-fri',
+                hour=16,
+                minute=15,
+                timezone='America/New_York'
+            ),
+            id='market_daily_brief_close',
+            name=f"{get_job_icon('market_daily_brief')} Market Daily Brief (Close)",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True
+        )
         scheduler.add_job(
             market_daily_brief_job,
             trigger=CronTrigger(
@@ -1873,24 +1905,10 @@ def register_default_jobs(scheduler) -> None:
             max_instances=1,
             coalesce=True
         )
-        logger.info("Registered job: market_daily_brief (weekdays 5:45 PM ET, after benchmark window)")
-        # If 5:45 PM hits the global AI lock, jobs_dashboard_research schedules a one-shot retry (~60s).
-        # Morning job: safety net after rest or if retries were unavailable.
-        scheduler.add_job(
-            market_daily_brief_job,
-            trigger=CronTrigger(
-                day_of_week='mon-fri',
-                hour=8,
-                minute=15,
-                timezone='America/New_York'
-            ),
-            id='market_daily_brief_catchup',
-            name=f"{get_job_icon('market_daily_brief')} Market Daily Brief (Catch-up)",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True
+        logger.info(
+            "Registered jobs: market_daily_brief (weekdays 10:05/12:05/14:05/16:15/17:45 ET; "
+            "7:05 AM - 2:45 PM PT)"
         )
-        logger.info("Registered job: market_daily_brief_catchup (weekdays 8:15 AM ET)")
 
     if AVAILABLE_JOBS.get('action_queue_ai_review', {}).get('enabled_by_default', True):
         scheduler.add_job(
