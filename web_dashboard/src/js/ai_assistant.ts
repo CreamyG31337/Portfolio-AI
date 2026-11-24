@@ -127,6 +127,9 @@ class AIAssistant {
     private contextReady: boolean = false;  // True when context is loaded and ready
     private contextLoading: boolean = false; // True while loading (prevent duplicate requests)
     private isSending: boolean = false; // True while a message is being sent (prevent duplicate sends)
+    private activeChatAbortController: AbortController | null = null;
+    private activeStreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    private userStoppedGeneration: boolean = false;
     private contextReloadQueued: boolean = false; // True when a refresh is requested during loading
     private contextCache: Map<string, { context: string; charCount: number }> = new Map();
     /** User text awaiting a completed assistant reply (for persist / interrupt stub). */
@@ -180,6 +183,7 @@ class AIAssistant {
             this.loadPortfolioTickers();
             this.loadContextItems();
             await this.loadUserPreferences();
+            void this.loadAvailableModels();
             this.updateUI();
 
             // Load context after preferences so trade toggles are correct
@@ -347,12 +351,28 @@ class AIAssistant {
     }
 
     setupEventListeners(): void {
-        // Send button
+        // Send & Stop buttons
         const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+        const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement | null;
         const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+        const modelSelect = document.getElementById('chat-model-select') as HTMLSelectElement | null;
 
         if (sendBtn) {
             sendBtn.addEventListener('click', () => this.sendMessage());
+        }
+        if (stopBtn) {
+            stopBtn.addEventListener('click', () => this.stopGeneration());
+        }
+        if (modelSelect) {
+            modelSelect.addEventListener('change', (e: Event) => {
+                const target = e.target as HTMLSelectElement;
+                if (target.value) {
+                    this.selectedModel = target.value;
+                    this.updateModelDisplay();
+                    this.calculateContextUsage();
+                    console.log('[AIAssistant] Model switched to:', this.selectedModel);
+                }
+            });
         }
         if (chatInput) {
             chatInput.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -395,9 +415,10 @@ class AIAssistant {
                 const target = e.target as HTMLSelectElement;
                 this.selectedFund = target.value;
                 console.log('[AIAssistant] Fund changed to:', this.selectedFund);
+                this.stopGeneration();
                 this.contextReady = false;
                 this.pendingPersistUser = null;
-                this.isSending = false;
+                this.setSendingState(false);
                 this.resetPortfolioContextInjection();
                 this.loadPortfolioTickers();
                 this.loadContext();
@@ -1175,6 +1196,105 @@ class AIAssistant {
         if (currentModelElement) {
             currentModelElement.textContent = this.selectedModel || '-';
         }
+        const modelSelect = document.getElementById('chat-model-select') as HTMLSelectElement | null;
+        if (modelSelect && this.selectedModel) {
+            const hasOpt = Array.from(modelSelect.options).some(o => o.value === this.selectedModel);
+            if (hasOpt) {
+                modelSelect.value = this.selectedModel;
+            }
+        }
+    }
+
+    async loadAvailableModels(): Promise<void> {
+        const modelSelect = document.getElementById('chat-model-select') as HTMLSelectElement | null;
+        if (!modelSelect) return;
+
+        let models: Array<{ id: string; name: string }> = [];
+        try {
+            const res = await fetch('/api/v2/ai/models');
+            if (res.ok) {
+                const data: ModelsResponse = await res.json();
+                if (Array.isArray(data.models) && data.models.length > 0) {
+                    models = data.models;
+                }
+                if (data.default_model && !this.selectedModel) {
+                    this.selectedModel = data.default_model;
+                }
+            }
+        } catch (err) {
+            console.warn('[AIAssistant] Failed to fetch /api/v2/ai/models, using config fallback:', err);
+        }
+
+        if (models.length === 0) {
+            const fallbackIds = new Set<string>();
+            if (this.selectedModel) fallbackIds.add(this.selectedModel);
+            for (const m of this.config.ollamaModels || []) fallbackIds.add(m);
+            for (const m of this.config.webaiModels || []) fallbackIds.add(m);
+            models = Array.from(fallbackIds).map(id => ({ id, name: id }));
+        }
+
+        if (this.selectedModel && !models.some(m => m.id === this.selectedModel)) {
+            models.unshift({ id: this.selectedModel, name: this.selectedModel });
+        }
+
+        modelSelect.innerHTML = '';
+        for (const m of models) {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.textContent = m.name || m.id;
+            modelSelect.appendChild(opt);
+        }
+        if (this.selectedModel) {
+            modelSelect.value = this.selectedModel;
+        }
+        this.updateModelDisplay();
+        this.calculateContextUsage();
+    }
+
+    private setSendingState(sending: boolean): void {
+        this.isSending = sending;
+        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
+        const stopBtn = document.getElementById('stop-btn') as HTMLButtonElement | null;
+        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
+        const modelSelect = document.getElementById('chat-model-select') as HTMLSelectElement | null;
+
+        if (sendBtn) {
+            sendBtn.disabled = sending;
+            sendBtn.classList.toggle('hidden', sending);
+        }
+        if (stopBtn) {
+            stopBtn.classList.toggle('hidden', !sending);
+            stopBtn.classList.toggle('inline-flex', sending);
+        }
+        if (chatInput) {
+            chatInput.disabled = sending;
+            if (!sending) {
+                chatInput.focus();
+            }
+        }
+        if (modelSelect) {
+            modelSelect.disabled = sending;
+        }
+        if (!sending) {
+            this.activeChatAbortController = null;
+            this.activeStreamReader = null;
+        }
+    }
+
+    stopGeneration(): void {
+        if (!this.isSending) return;
+        console.log('[AIAssistant] User requested stopGeneration()');
+        this.userStoppedGeneration = true;
+        if (this.activeChatAbortController) {
+            try {
+                this.activeChatAbortController.abort();
+            } catch {
+                // ignore
+            }
+        }
+        if (this.activeStreamReader) {
+            void this.activeStreamReader.cancel().catch(() => {});
+        }
     }
 
     updateModelDescription(): void {
@@ -1215,13 +1335,10 @@ class AIAssistant {
             return;
         }
 
-        // Mark as sending
-        this.isSending = true;
-
-        // Disable send button and input during sending
-        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-        if (sendBtn) sendBtn.disabled = true;
-        if (chatInput) chatInput.disabled = true;
+        // Mark as sending and prepare AbortController for the Stop button
+        this.userStoppedGeneration = false;
+        this.activeChatAbortController = new AbortController();
+        this.setSendingState(true);
 
         // Clear input
         if (chatInput) chatInput.value = '';
@@ -1274,6 +1391,13 @@ class AIAssistant {
         }
 
         // Back to generating after any prefetch work
+        if (this.userStoppedGeneration) {
+            this.stopLiveLoading();
+            this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+            this.pendingPersistUser = null;
+            this.setSendingState(false);
+            return;
+        }
         this.setLiveLoadingPhase('Generating response…');
 
         // Wait for portfolio context when this turn will attach it.
@@ -1284,9 +1408,17 @@ class AIAssistant {
             this.setLiveLoadingPhase('Waiting for portfolio data…');
 
             let attempts = 0;
-            while (!this.contextReady && attempts < 100) {
+            while (!this.contextReady && attempts < 100 && !this.userStoppedGeneration) {
                 await new Promise(resolve => setTimeout(resolve, 100));
                 attempts++;
+            }
+
+            if (this.userStoppedGeneration) {
+                this.stopLiveLoading();
+                this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+                this.pendingPersistUser = null;
+                this.setSendingState(false);
+                return;
             }
 
             if (!this.contextReady) {
@@ -1463,7 +1595,8 @@ class AIAssistant {
         csrfFetch('/api/v2/ai/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: this.activeChatAbortController?.signal
         })
             .then((res: Response) => {
                 if (!res.ok) {
@@ -1477,9 +1610,6 @@ class AIAssistant {
                 return res.json();
             })
             .then((data: ChatResponse) => {
-                const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-
                 this.stopLiveLoading();
                 if (data.error) {
                     this.updateMessage(loadingId, 'assistant', `Error: ${data.error}`);
@@ -1488,21 +1618,18 @@ class AIAssistant {
                     this.updateMessage(loadingId, 'assistant', data.response || '', false, true);
                     this.recordAssistantReply(data.response || '');
                 }
-                // Re-enable send button and input
-                this.isSending = false;
-                if (sendBtn) sendBtn.disabled = false;
-                if (chatInput) chatInput.disabled = false;
+                this.setSendingState(false);
             })
             .catch((err: Error) => {
-                console.error('Chat error:', err);
                 this.stopLiveLoading();
-                this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
-                // Re-enable send button and input
-                this.isSending = false;
-                const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                if (sendBtn) sendBtn.disabled = false;
-                if (chatInput) chatInput.disabled = false;
+                if (this.userStoppedGeneration || err.name === 'AbortError') {
+                    this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+                    this.pendingPersistUser = null;
+                } else {
+                    console.error('Chat error:', err);
+                    this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
+                }
+                this.setSendingState(false);
             });
     }
 
@@ -1510,7 +1637,8 @@ class AIAssistant {
         csrfFetch('/api/v2/ai/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
+            body: JSON.stringify(requestData),
+            signal: this.activeChatAbortController?.signal
         })
             .then((res: Response) => {
                 if (!res.ok) {
@@ -1534,27 +1662,50 @@ class AIAssistant {
                     if (!reader) {
                         throw new Error('Response body is not readable');
                     }
+                    this.activeStreamReader = reader;
 
                     const decoder = new TextDecoder();
                     let buffer = '';
                     let fullResponse = '';
+                    let streamFinalized = false;
 
                     const finishStream = (text: string): void => {
+                        if (streamFinalized) return;
+                        streamFinalized = true;
                         this.stopLiveLoading();
-                        this.updateMessage(loadingId, 'assistant', text, false, true);
-                        this.recordAssistantReply(text);
+                        if (this.userStoppedGeneration) {
+                            const partial = text.trim();
+                            if (partial) {
+                                const kept = `${partial}\n\n---\n*(Generation stopped by user.)*`;
+                                this.updateMessage(loadingId, 'assistant', kept, false, true);
+                                this.recordAssistantReply(kept);
+                            } else {
+                                this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+                                this.pendingPersistUser = null;
+                            }
+                        } else {
+                            this.updateMessage(loadingId, 'assistant', text, false, true);
+                            this.recordAssistantReply(text);
+                        }
                         this.updateRetryButton();
-                        this.isSending = false;
-                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                        if (sendBtn) sendBtn.disabled = false;
-                        if (chatInput) chatInput.disabled = false;
+                        this.setSendingState(false);
                     };
 
-                    const failStream = (message: string): void => {
+                    const failStream = (message: string, isAbort: boolean = false): void => {
+                        if (streamFinalized) return;
+                        streamFinalized = true;
                         this.stopLiveLoading();
                         const partial = fullResponse.trim();
-                        if (partial) {
+                        if (isAbort || this.userStoppedGeneration) {
+                            if (partial) {
+                                const kept = `${partial}\n\n---\n*(Generation stopped by user.)*`;
+                                this.updateMessage(loadingId, 'assistant', kept, false, true);
+                                this.recordAssistantReply(kept);
+                            } else {
+                                this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+                                this.pendingPersistUser = null;
+                            }
+                        } else if (partial) {
                             // Keep what already streamed — late proxy/network drops are common on long Ollama replies.
                             const kept =
                                 `${partial}\n\n---\n*(Stream interrupted: ${message}. Partial reply kept above.)*`;
@@ -1565,11 +1716,7 @@ class AIAssistant {
                             this.pendingPersistUser = null;
                         }
                         this.updateRetryButton();
-                        this.isSending = false;
-                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                        if (sendBtn) sendBtn.disabled = false;
-                        if (chatInput) chatInput.disabled = false;
+                        this.setSendingState(false);
                     };
 
                     const readChunk = (): void => {
@@ -1635,7 +1782,7 @@ class AIAssistant {
 
                             readChunk();
                         }).catch((err: Error) => {
-                            failStream(err.message);
+                            failStream(err.message, err.name === 'AbortError');
                         });
                     };
 
@@ -1643,9 +1790,6 @@ class AIAssistant {
                 } else {
                     // Non-streaming JSON response (fallback)
                     return res.json().then((data: ChatResponse) => {
-                        const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                        const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-
                         this.stopLiveLoading();
                         if (data.error) {
                             this.updateMessage(loadingId, 'assistant', `❌ Error: ${data.error}`);
@@ -1662,23 +1806,20 @@ class AIAssistant {
                             this.recordAssistantReply(data.response || data.chunk || '');
                             this.updateRetryButton();
                         }
-                        // Re-enable send button and input
-                        this.isSending = false;
-                        if (sendBtn) sendBtn.disabled = false;
-                        if (chatInput) chatInput.disabled = false;
+                        this.setSendingState(false);
                     });
                 }
             })
             .catch((err: Error) => {
-                console.error('Chat error:', err);
                 this.stopLiveLoading();
-                this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
-                // Re-enable send button and input
-                this.isSending = false;
-                const sendBtn = document.getElementById('send-btn') as HTMLButtonElement | null;
-                const chatInput = document.getElementById('chat-input') as HTMLInputElement | null;
-                if (sendBtn) sendBtn.disabled = false;
-                if (chatInput) chatInput.disabled = false;
+                if (this.userStoppedGeneration || err.name === 'AbortError') {
+                    this.updateMessage(loadingId, 'assistant', '*(Generation stopped.)*', false, true);
+                    this.pendingPersistUser = null;
+                } else {
+                    console.error('Chat error:', err);
+                    this.updateMessage(loadingId, 'assistant', `Error: ${err.message}`);
+                }
+                this.setSendingState(false);
             });
     }
 

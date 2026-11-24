@@ -9,13 +9,24 @@
 
 {% block content %}
 <div id="ai-assistant-content" class="flex flex-col h-[calc(100vh-200px)]">
-    <!-- Header with Clear Chat button -->
-    <div class="flex justify-between items-center mb-4">
+    <!-- Header with Model Picker and Clear Chat button -->
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
         <h2 class="text-2xl font-bold text-text-primary">💬 Chat</h2>
-        <button id="clear-chat-btn"
-            class="px-4 py-2 text-text-primary bg-transparent border border-border hover:bg-dashboard-surface-alt rounded-lg text-sm font-medium transition-colors focus:ring-2 focus:ring-text-secondary/30 focus:ring-offset-2">
-            🧹 Clear Chat
-        </button>
+        <div class="flex items-center gap-2 flex-wrap">
+            <label for="chat-model-select" class="sr-only">AI Model</label>
+            <div class="flex items-center gap-1.5">
+                <i class="fas fa-microchip text-text-secondary text-sm" aria-hidden="true"></i>
+                <select id="chat-model-select" aria-label="Select AI model"
+                    title="Switch AI model for this chat (defaults to your Settings preference)"
+                    class="px-3 py-2 text-sm text-text-primary bg-dashboard-surface border border-border rounded-lg focus:outline-hidden focus:ring-2 focus:ring-accent focus:border-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed max-w-[240px]">
+                    <option value="">Loading models…</option>
+                </select>
+            </div>
+            <button id="clear-chat-btn"
+                class="px-4 py-2 text-text-primary bg-transparent border border-border hover:bg-dashboard-surface-alt rounded-lg text-sm font-medium transition-colors focus:ring-2 focus:ring-text-secondary/30 focus:ring-offset-2">
+                🧹 Clear Chat
+            </button>
+        </div>
     </div>
 
     <!-- Toggle button for AI drawer (visible on all screens) -->
@@ -123,6 +134,11 @@
                 <button id="send-btn"
                     class="px-6 py-3 text-accent bg-transparent border border-accent rounded-lg hover:bg-accent/10 font-medium focus:ring-2 focus:ring-accent/30 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     <i class="fas fa-paper-plane mr-2"></i>Send
+                </button>
+                <button id="stop-btn" type="button"
+                    class="hidden px-5 py-3 text-theme-error-text bg-transparent border border-theme-error-text rounded-lg hover:bg-theme-error-bg/10 font-medium focus:ring-2 focus:ring-theme-error-bg/30 focus:ring-offset-2 transition-colors items-center gap-2"
+                    title="Stop generating response" aria-label="Stop generating response">
+                    <i class="fas fa-stop mr-1"></i>Stop
                 </button>
             </div>
 
