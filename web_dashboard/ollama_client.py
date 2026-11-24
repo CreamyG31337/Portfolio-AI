@@ -616,6 +616,153 @@ class OllamaClient:
             if val is not None:
                 payload["think"] = bool(val)
 
+    def _is_openai_api_model(self, model: str) -> bool:
+        """Return True when ``model`` is served via OpenAI-compatible ``/v1/chat/completions`` (e.g. llama-server)."""
+        return str(self.get_model_settings(model).get("api") or "").strip().lower() == "openai"
+
+    def _build_openai_chat_payload(
+        self,
+        *,
+        model: str,
+        messages: List[Dict[str, Any]],
+        temperature: float,
+        max_tokens: int,
+        stream: bool,
+        json_mode: bool,
+        model_settings: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Build an OpenAI ``/v1/chat/completions`` request payload for llama-server / compatible hosts."""
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": stream,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+        if model_settings.get("think") is False:
+            payload["reasoning_effort"] = "none"
+        return payload
+
+    @staticmethod
+    def _extract_openai_chat_text(
+        data: Any, *, allow_thinking_fallback: bool = True
+    ) -> Tuple[str, str]:
+        """Return ``(content_text, thinking_text)`` from an OpenAI ``/v1/chat/completions`` JSON object."""
+        if not isinstance(data, dict):
+            return "", ""
+        choices = data.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            return "", ""
+        msg = choices[0].get("message") or {}
+        if not isinstance(msg, dict):
+            return "", ""
+        content = str(msg.get("content") or "")
+        thinking = str(msg.get("reasoning_content") or msg.get("reasoning") or "")
+        if not content.strip() and allow_thinking_fallback and thinking.strip():
+            return thinking, thinking
+        return content, thinking
+
+    def _stream_openai_chat_response(
+        self,
+        response: requests.Response,
+        *,
+        idle_timeout_seconds: float,
+        include_thinking: bool,
+        request_start_time: float,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        coalesce_thinking_fallback: bool = True,
+    ) -> Generator[str, None, None]:
+        """Stream OpenAI SSE ``/v1/chat/completions`` chunks with idle watchdog and slot release."""
+        last_chunk_at = time.monotonic()
+        timeout_triggered = threading.Event()
+        done_event = threading.Event()
+
+        def watchdog() -> None:
+            sleep_slice = min(5.0, max(1.0, idle_timeout_seconds / 10))
+            while not done_event.is_set():
+                time.sleep(sleep_slice)
+                if done_event.is_set():
+                    return
+                if time.monotonic() - last_chunk_at > idle_timeout_seconds:
+                    timeout_triggered.set()
+                    logger.error(
+                        "[ERROR] OpenAI/llama-server streaming idle timeout after %.1fs (no chunks)",
+                        idle_timeout_seconds,
+                    )
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    done_event.set()
+                    return
+
+        wd = threading.Thread(target=watchdog, daemon=True)
+        wd.start()
+        thinking_parts: list[str] = []
+        yielded_content_text = False
+        tokens_received = 0
+        try:
+            for raw_line in response.iter_lines():
+                if timeout_triggered.is_set():
+                    elapsed = time.time() - request_start_time
+                    yield f"\n\n[ERROR: Streaming timed out after {elapsed:.1f}s]"
+                    break
+                if not raw_line:
+                    continue
+                line = raw_line.decode("utf-8", errors="replace") if isinstance(raw_line, bytes) else str(raw_line)
+                line = line.strip()
+                if not line.startswith("data:"):
+                    continue
+                data_str = line[5:].strip()
+                if data_str == "[DONE]":
+                    break
+                last_chunk_at = time.monotonic()
+                try:
+                    chunk_data = json.loads(data_str)
+                except json.JSONDecodeError:
+                    continue
+                choices = chunk_data.get("choices") or []
+                if not choices or not isinstance(choices[0], dict):
+                    continue
+                delta = choices[0].get("delta") or {}
+                if not isinstance(delta, dict):
+                    continue
+                thinking = delta.get("reasoning_content") or delta.get("reasoning")
+                if thinking:
+                    thinking_parts.append(str(thinking))
+                    if include_thinking:
+                        yield f"<think>{thinking}</think>"
+                content = delta.get("content")
+                if content:
+                    piece = str(content)
+                    if piece.strip():
+                        yielded_content_text = True
+                    tokens_received += len(piece.split())
+                    if progress_callback:
+                        try:
+                            progress_callback(tokens_received, int(time.time() - request_start_time))
+                        except Exception:
+                            pass
+                    yield piece
+            if (
+                not yielded_content_text
+                and coalesce_thinking_fallback
+                and not include_thinking
+                and thinking_parts
+            ):
+                merged = "".join(thinking_parts)
+                if merged.strip():
+                    yield merged
+        finally:
+            done_event.set()
+            try:
+                response.close()
+            except Exception:
+                pass
+            _release_ollama_response_slot(response)
+
     def _post_ollama(
         self,
         model: str,
@@ -987,10 +1134,16 @@ class OllamaClient:
             return self.check_health()
         primary, _ = self._resolve_urls(model)
         try:
-            response = self.session.get(f"{primary}/api/tags", timeout=5)
+            use_openai = self._is_openai_api_model(str(model))
+            if use_openai:
+                response = self.session.get(f"{primary}/v1/models", timeout=5)
+            else:
+                response = self.session.get(f"{primary}/api/tags", timeout=5)
+                if response.status_code == 404:
+                    response = self.session.get(f"{primary}/v1/models", timeout=5)
             if response.status_code != 200:
                 logger.warning(
-                    "Ollama health check failed for model=%s url=%s: HTTP %s",
+                    "Ollama/llama-server health check failed for model=%s url=%s: HTTP %s",
                     model,
                     primary,
                     response.status_code,
@@ -998,22 +1151,25 @@ class OllamaClient:
                 return False
             data = response.json()
             if not isinstance(data, dict):
-                logger.warning("Ollama /api/tags for model=%s url=%s: unexpected JSON", model, primary)
+                logger.warning("Model list probe for model=%s url=%s: unexpected JSON", model, primary)
                 return False
-            names = [str(m.get("name", "")) for m in data.get("models", []) if m.get("name")]
+            names = [str(m.get("name", "")) for m in data.get("models", []) if isinstance(m, dict) and m.get("name")]
+            for m in data.get("data", []):
+                if isinstance(m, dict) and m.get("id"):
+                    mid = str(m["id"])
+                    if mid not in names:
+                        names.append(mid)
             if not ollama_tags_list_contains_model(names, str(model)):
                 logger.warning(
-                    "Ollama at %s does not list model %s. Install with: ollama pull %s. "
-                    "Sample of available: %s",
+                    "Inference host at %s does not list model %s. Sample of available: %s",
                     primary,
-                    model,
                     model,
                     names[:12],
                 )
                 return False
             return True
         except Exception as e:
-            logger.warning("Ollama health check failed for model=%s url=%s: %s", model, primary, e)
+            logger.warning("Health check failed for model=%s url=%s: %s", model, primary, e)
             return False
     
     def list_available_models(self) -> List[str]:
@@ -1043,15 +1199,22 @@ class OllamaClient:
             try:
                 logger.debug("Fetching available models from %s...", base)
                 response = self.session.get(f"{base}/api/tags", timeout=10)
+                if response.status_code == 404:
+                    response = self.session.get(f"{base}/v1/models", timeout=10)
                 response.raise_for_status()
                 data = response.json()
                 for model in data.get("models", []):
-                    name = (model.get("name") or "").strip()
+                    name = (model.get("name") or "").strip() if isinstance(model, dict) else ""
+                    if name and name not in seen:
+                        seen.add(name)
+                        models.append(name)
+                for model in data.get("data", []):
+                    name = (model.get("id") or "").strip() if isinstance(model, dict) else ""
                     if name and name not in seen:
                         seen.add(name)
                         models.append(name)
             except Exception as e:
-                logger.warning("Error listing Ollama models from %s: %s", base, e)
+                logger.warning("Error listing models from %s: %s", base, e)
 
         logger.info(
             "Found %d Ollama models across %d host(s): %s",
@@ -1225,36 +1388,69 @@ class OllamaClient:
             )
             logger.debug(f"Prompt length: {len(full_prompt)} chars")
             
-            response = self._post_ollama(model, "/api/generate", payload, stream=stream)
-            
-            connection_time = time.time() - request_start_time
-            logger.debug(f"Ollama connection established in {connection_time:.2f}s, streaming...")
-            
-            if stream:
-                yield from self._stream_generate_response(
-                    response,
-                    idle_timeout_seconds=effective_idle,
-                    include_thinking=include_thinking,
-                    request_start_time=request_start_time,
-                    model=model,
-                    requested_num_ctx=effective_ctx,
-                    coalesce_thinking_fallback=not json_mode,
+            if self._is_openai_api_model(str(model)):
+                oa_msgs: List[Dict[str, Any]] = []
+                if system_prompt:
+                    oa_msgs.append({"role": "system", "content": system_prompt})
+                oa_msgs.append({"role": "user", "content": full_prompt})
+                oa_payload = self._build_openai_chat_payload(
+                    model=str(model),
+                    messages=oa_msgs,
+                    temperature=float(effective_temp),
+                    max_tokens=int(effective_max_tokens),
+                    stream=stream,
+                    json_mode=json_mode,
+                    model_settings=model_settings,
                 )
+                response = self._post_ollama(model, "/v1/chat/completions", oa_payload, stream=stream)
+                if stream:
+                    yield from self._stream_openai_chat_response(
+                        response,
+                        idle_timeout_seconds=effective_idle,
+                        include_thinking=include_thinking,
+                        request_start_time=request_start_time,
+                        coalesce_thinking_fallback=not json_mode,
+                    )
+                else:
+                    data = response.json()
+                    elapsed = time.time() - request_start_time
+                    logger.info(f"[OK] OpenAI/llama-server request completed in {elapsed:.2f}s")
+                    text_out, _ = self._extract_openai_chat_text(
+                        data, allow_thinking_fallback=not json_mode
+                    )
+                    yield text_out
+                    _release_ollama_response_slot(response)
             else:
-                # Non-streaming response
-                data = response.json()
-                elapsed = time.time() - request_start_time
-                log_ollama_ctx_telemetry(
-                    model=model,
-                    requested_num_ctx=effective_ctx,
-                    response_data=data if isinstance(data, dict) else None,
-                )
-                logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
-                yield coalesce_ollama_generate_response_text(
-                    data,
-                    allow_thinking_fallback=not json_mode,
-                )
-                _release_ollama_response_slot(response)
+                response = self._post_ollama(model, "/api/generate", payload, stream=stream)
+                
+                connection_time = time.time() - request_start_time
+                logger.debug(f"Ollama connection established in {connection_time:.2f}s, streaming...")
+                
+                if stream:
+                    yield from self._stream_generate_response(
+                        response,
+                        idle_timeout_seconds=effective_idle,
+                        include_thinking=include_thinking,
+                        request_start_time=request_start_time,
+                        model=model,
+                        requested_num_ctx=effective_ctx,
+                        coalesce_thinking_fallback=not json_mode,
+                    )
+                else:
+                    # Non-streaming response
+                    data = response.json()
+                    elapsed = time.time() - request_start_time
+                    log_ollama_ctx_telemetry(
+                        model=model,
+                        requested_num_ctx=effective_ctx,
+                        response_data=data if isinstance(data, dict) else None,
+                    )
+                    logger.info(f"[OK] Ollama request completed in {elapsed:.2f}s")
+                    yield coalesce_ollama_generate_response_text(
+                        data,
+                        allow_thinking_fallback=not json_mode,
+                    )
+                    _release_ollama_response_slot(response)
                 
         except OllamaHostBusyError:
             raise
@@ -1734,21 +1930,41 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
         try:
             start_time = time.time()
             logger.info(f"Generating enhanced summary with model {model}")
-            response = self._post_ollama(model, "/api/generate", payload, stream=False)
-            
-            elapsed_time = time.time() - start_time
-            logger.info(f"✅ Summary generated in {elapsed_time:.2f}s")
-            
-            data = response.json()
-            log_ollama_ctx_telemetry(
-                model=model,
-                requested_num_ctx=effective_ctx,
-                response_data=data if isinstance(data, dict) else None,
-            )
-            raw_response = coalesce_ollama_generate_response_text(
-                data,
-                allow_thinking_fallback=False,
-            ).strip()
+            if self._is_openai_api_model(str(model)):
+                oa_payload = self._build_openai_chat_payload(
+                    model=str(model),
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": safe_prompt_text},
+                    ],
+                    temperature=float(effective_temp),
+                    max_tokens=int(effective_max_tokens),
+                    stream=False,
+                    json_mode=False,
+                    model_settings=model_settings,
+                )
+                response = self._post_ollama(model, "/v1/chat/completions", oa_payload, stream=False)
+                elapsed_time = time.time() - start_time
+                logger.info(f"✅ Summary generated in {elapsed_time:.2f}s")
+                data = response.json()
+                text_out, _ = self._extract_openai_chat_text(data, allow_thinking_fallback=False)
+                raw_response = text_out.strip()
+            else:
+                response = self._post_ollama(model, "/api/generate", payload, stream=False)
+                
+                elapsed_time = time.time() - start_time
+                logger.info(f"✅ Summary generated in {elapsed_time:.2f}s")
+                
+                data = response.json()
+                log_ollama_ctx_telemetry(
+                    model=model,
+                    requested_num_ctx=effective_ctx,
+                    response_data=data if isinstance(data, dict) else None,
+                )
+                raw_response = coalesce_ollama_generate_response_text(
+                    data,
+                    allow_thinking_fallback=False,
+                ).strip()
 
             if not raw_response:
                 logger.warning("Empty response from Ollama (no response text; thinking ignored for summaries)")
@@ -1896,8 +2112,6 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
             start_time = time.time()
             logger.info(f"Generating streaming summary with model {model}")
             
-            response = self._post_ollama(model, "/api/generate", payload, stream=True)
-            
             # Accumulate response while streaming (idle-based timeout inside helper)
             raw_response = ""
             tokens_received = 0
@@ -1907,17 +2121,42 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
                 raw_response += txt
                 tokens_received += len(txt.split())
 
-            for piece in self._stream_generate_response(
-                response,
-                idle_timeout_seconds=effective_idle,
-                include_thinking=False,
-                request_start_time=start_time,
-                progress_callback=progress_callback,
-                model=model,
-                requested_num_ctx=effective_ctx,
-                coalesce_thinking_fallback=False,
-            ):
-                _accumulate_chunk(piece)
+            if self._is_openai_api_model(str(model)):
+                oa_payload = self._build_openai_chat_payload(
+                    model=str(model),
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": text},
+                    ],
+                    temperature=float(effective_temp),
+                    max_tokens=int(effective_max_tokens),
+                    stream=True,
+                    json_mode=False,
+                    model_settings=model_settings,
+                )
+                response = self._post_ollama(model, "/v1/chat/completions", oa_payload, stream=True)
+                for piece in self._stream_openai_chat_response(
+                    response,
+                    idle_timeout_seconds=effective_idle,
+                    include_thinking=False,
+                    request_start_time=start_time,
+                    progress_callback=progress_callback,
+                    coalesce_thinking_fallback=False,
+                ):
+                    _accumulate_chunk(piece)
+            else:
+                response = self._post_ollama(model, "/api/generate", payload, stream=True)
+                for piece in self._stream_generate_response(
+                    response,
+                    idle_timeout_seconds=effective_idle,
+                    include_thinking=False,
+                    request_start_time=start_time,
+                    progress_callback=progress_callback,
+                    model=model,
+                    requested_num_ctx=effective_ctx,
+                    coalesce_thinking_fallback=False,
+                ):
+                    _accumulate_chunk(piece)
             
             elapsed_time = time.time() - start_time
             logger.info(f"✅ Streaming summary generated in {elapsed_time:.2f}s ({tokens_received} tokens)")
@@ -2102,6 +2341,36 @@ Return ONLY a raw JSON object with no markdown formatting or code blocks:
 
         request_start_time = time.time()
         try:
+            if self._is_openai_api_model(str(model)):
+                oa_payload = self._build_openai_chat_payload(
+                    model=str(model),
+                    messages=messages,
+                    temperature=float(effective_temp),
+                    max_tokens=int(effective_max_tokens),
+                    stream=stream,
+                    json_mode=False,
+                    model_settings=model_settings,
+                )
+                response = self._post_ollama(model, "/v1/chat/completions", oa_payload, stream=stream)
+                if stream:
+                    yield from self._stream_openai_chat_response(
+                        response,
+                        idle_timeout_seconds=effective_idle,
+                        include_thinking=include_thinking,
+                        request_start_time=request_start_time,
+                    )
+                else:
+                    data = response.json()
+                    content, thinking = self._extract_openai_chat_text(
+                        data, allow_thinking_fallback=not include_thinking
+                    )
+                    if thinking and include_thinking:
+                        yield f"<think>{thinking}</think>"
+                    if content and content.strip():
+                        yield content
+                    _release_ollama_response_slot(response)
+                return
+
             response = self._post_ollama(model, "/api/chat", payload, stream=stream)
             
             if stream:

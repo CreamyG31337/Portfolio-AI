@@ -172,7 +172,11 @@ def probe_backend_health(
     try:
         import requests
 
-        resp = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=timeout_sec)
+        base = base_url.rstrip("/")
+        resp = requests.get(f"{base}/api/tags", timeout=timeout_sec)
+        if resp.status_code == 404:
+            # llama-server exposes OpenAI-compatible /v1/models instead of Ollama /api/tags.
+            resp = requests.get(f"{base}/v1/models", timeout=timeout_sec)
         if resp.status_code >= 400:
             return False, f"{base_url} returned HTTP {resp.status_code}"
         return True, f"{base_url} ok"
@@ -254,7 +258,7 @@ def model_for_backend(backend: str) -> str:
 
             return get_ollama_queue_secondary_model()
         except ImportError:
-            return "qwen3.5:9b-q8_0"
+            return "qwen3.8-27b-mtp"
     try:
         from model_registry import get_ollama_queue_primary_model
 

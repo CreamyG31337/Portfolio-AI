@@ -71,6 +71,17 @@
             "think": false,
             "desc": "IBM Granite 4.1 8B (Q8) summarization/analysis workhorse on the AMD Ollama host. Replaces granite3.3:8b: self-benchmarked 88.0% vs 76.8% (GSM8K+MMLU, 2026-06) at ~38 tok/s. think:false (no reasoning tokens for summaries). Primary: OLLAMA_BASE_URL_AMD (else OLLAMA_BASE_URL). No failover host. ctx 24576 MEASURED 2026-08-31: 13.06 GB resident on the 16 GB RX 6800, leaving room for bge-m3. Was 39000, which measured 15.47 GB and starved bge-m3 down to 16% GPU (embeddings ran on CPU). The old 'hybrid-Mamba => low KV growth' note was wrong: KV+state costs ~157 KB/token here."
         },
+        "qwen3.8-27b-mtp": {
+            "num_ctx": 32768,
+            "num_predict": 8192,
+            "temperature": 0.2,
+            "base_url_env": "OLLAMA_BASE_URL_NVIDIA",
+            "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
+            "api": "openai",
+            "think": false,
+            "streaming_timeout": 600,
+            "desc": "Default NVIDIA-host model on the MSI laptop (RTX 3080 Laptop 16 GB) via llama.cpp b12680+ (PR #31669 GDN replay + MTP n=3). Measured 2026-11-24: 13.0 GiB VRAM at 32k ctx (q4_0 KV), 65.1 tok/s extraction / 37.5-38.3 tok/s analysis. OpenAI /v1/chat/completions API."
+        },
         "qwen3.5:9b-q8_0": {
             "num_ctx": 65536,
             "num_predict": 8192,
@@ -79,7 +90,8 @@
             "fallback_base_url_env": "OLLAMA_BASE_URL_AMD",
             "think": false,
             "streaming_timeout": 600,
-            "desc": "Default NVIDIA-host model on the MSI laptop (RTX 3080 Laptop 16 GB). Measured 2026-10-10: 10.3 GB, 100% GPU at num_ctx 65536, ~41 tok/s. Also the local fallback when Z.AI is down."
+            "hidden": true,
+            "desc": "Hidden; remapped to qwen3.8-27b-mtp in model_registry. Previous NVIDIA-host Ollama default on the MSI laptop (10.3 GB, ~42 tok/s)."
         },
         "qwen3.5:4b": {
             "num_ctx": 65536,

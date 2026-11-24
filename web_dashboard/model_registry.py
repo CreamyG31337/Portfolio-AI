@@ -30,8 +30,9 @@ SUPPORTED_GLM_MODELS: List[str] = [
 OLLAMA_QWEN38_STOCK = "qwen3.8:27b-mtp-q4_K_M"
 
 # Default model on the NVIDIA host (OLLAMA_BASE_URL_NVIDIA / _2): the MSI laptop's 16 GB
-# RTX 3080 Laptop since 2026-10-10. Also the local fallback when Z.AI is down (glm_transport).
-OLLAMA_NVIDIA_DEFAULT = "qwen3.5:9b-q8_0"
+# RTX 3080 Laptop running llama.cpp b12680+ (PR #31669 GDN replay + MTP n=3) since 2026-11-24.
+# Also the local fallback when Z.AI is down (glm_transport).
+OLLAMA_NVIDIA_DEFAULT = "qwen3.8-27b-mtp"
 
 # Retired / unsupported model ids, mapped on read (stored settings and env overrides included).
 DEPRECATED_MODEL_MAP: dict[str, str] = {
@@ -44,6 +45,7 @@ DEPRECATED_MODEL_MAP: dict[str, str] = {
     "qwen3.8:27b-heretic": OLLAMA_NVIDIA_DEFAULT,
     OLLAMA_QWEN38_STOCK: OLLAMA_NVIDIA_DEFAULT,
     "qwen3.5:4b": OLLAMA_NVIDIA_DEFAULT,
+    "qwen3.5:9b-q8_0": OLLAMA_NVIDIA_DEFAULT,
 }
 # Local Ollama roles (summarization primary + queue worker defaults).
 OLLAMA_SUMMARIZING_DEFAULT = OLLAMA_NVIDIA_DEFAULT
