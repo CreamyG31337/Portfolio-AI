@@ -72,6 +72,12 @@ class SearXNGClient:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
+
+        # Zero-retry session for health probes so page loads never stall 20s
+        self._probe_session = requests.Session()
+        probe_adapter = HTTPAdapter(max_retries=0)
+        self._probe_session.mount("http://", probe_adapter)
+        self._probe_session.mount("https://", probe_adapter)
     
     def check_health(self) -> bool:
         """Check if SearXNG API is available.
@@ -86,10 +92,10 @@ class SearXNGClient:
         try:
             logger.debug(f"Checking SearXNG health at {self.base_url}...")
             # Try a simple search query to verify the API is working
-            response = self.session.get(
+            response = self._probe_session.get(
                 f"{self.base_url}/search",
                 params={"q": "test", "format": "json"},
-                timeout=5
+                timeout=(2.0, 3.0)
             )
             if response.status_code == 200:
                 logger.info(f"✅ SearXNG health check successful: {self.base_url}")

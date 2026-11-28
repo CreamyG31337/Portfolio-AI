@@ -154,7 +154,12 @@ def _held_from_positions(positions_df: Any) -> set[str]:
     }
 
 
-def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
+def _fetch_candidates(
+    fund: str | None,
+    limit: int,
+    *,
+    positions_df: Any | None = None,
+) -> list[dict[str, Any]]:
     try:
         from action_queue_service import (
             attach_ai_reviews,
@@ -176,20 +181,30 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
 
         # Fetch a wider queue then rank via advise
         queue_limit = max(limit * 2, 20)
-        try:
-            positions_df = get_current_positions_flask(fund) if fund else None
-        except Exception:
-            positions_df = pd.DataFrame(columns=["ticker"])
+        if positions_df is None:
+            try:
+                positions_df = get_current_positions_flask(fund) if fund else None
+            except Exception:
+                positions_df = pd.DataFrame(columns=["ticker"])
         if positions_df is None:
             positions_df = pd.DataFrame(columns=["ticker"])
+
+        prefetched_signals: dict[str, dict[str, Any]] = {}
+        prefetched_watchlist: list[dict[str, Any]] = []
         actions = build_action_queue_items(
-            supabase, fund, queue_limit, positions_df=positions_df
+            supabase,
+            fund,
+            queue_limit,
+            positions_df=positions_df,
+            latest_signals_out=prefetched_signals,
+            watchlist_out=prefetched_watchlist,
         )
         pg = None
         try:
             pg = PostgresClient()
-            attach_research_context(pg, actions)
-            attach_ai_reviews(pg, fund or "", actions)
+            if actions:
+                attach_research_context(pg, actions)
+                attach_ai_reviews(pg, fund or "", actions)
         except Exception as exc:
             logger.warning("intelligence pulse: enrich skipped: %s", exc)
 
@@ -201,7 +216,12 @@ def _fetch_candidates(fund: str | None, limit: int) -> list[dict[str, Any]]:
         rows, source = rank_candidate_pack(
             action_queue=actions,
             signal_fallback=lambda: build_signal_fallback_candidates(
-                supabase, fund=fund, held_tickers=held, limit=limit
+                supabase,
+                fund=fund,
+                held_tickers=held,
+                limit=limit,
+                prefetched_watchlist=prefetched_watchlist or None,
+                prefetched_signals=prefetched_signals or None,
             ),
             limit=limit,
         )
@@ -239,10 +259,28 @@ def build_intelligence_pulse(
     fund: str | None,
     *,
     candidate_limit: int = _DEFAULT_CANDIDATE_LIMIT,
+    positions_df: Any | None = None,
 ) -> dict[str, Any]:
     """Return structured pulse dict (for tools/tests) — not a prompt string."""
-    market, market_reason = _fetch_market_pulse()
-    candidates = _fetch_candidates(fund, candidate_limit)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _run_candidates() -> list[dict[str, Any]]:
+        return _fetch_candidates(fund, candidate_limit, positions_df=positions_df)
+
+    try:
+        from flask import copy_current_request_context, has_request_context
+
+        if has_request_context():
+            _run_candidates = copy_current_request_context(_run_candidates)
+    except Exception:
+        pass
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        market_fut = pool.submit(_fetch_market_pulse)
+        cand_fut = pool.submit(_run_candidates)
+        market, market_reason = market_fut.result()
+        candidates = cand_fut.result()
+
     source = "action_queue"
     if candidates and any(c.get("source") == "signal_fallback" for c in candidates):
         source = "signal_fallback"
@@ -339,7 +377,12 @@ def build_and_format_intelligence_pulse(
     fund: str | None,
     *,
     candidate_limit: int = _DEFAULT_CANDIDATE_LIMIT,
+    positions_df: Any | None = None,
 ) -> str:
     return format_intelligence_pulse(
-        build_intelligence_pulse(fund, candidate_limit=candidate_limit)
+        build_intelligence_pulse(
+            fund,
+            candidate_limit=candidate_limit,
+            positions_df=positions_df,
+        )
     )

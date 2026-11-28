@@ -587,7 +587,7 @@ class TestSignalFallbackBuilder:
         def _table(name: str):
             table = MagicMock()
             if name == "signal_analysis":
-                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                table.select.return_value.in_.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(
                     data=list(signals.values())
                 )
             elif name == "securities":
@@ -633,7 +633,7 @@ class TestSignalFallbackBuilder:
         def _table(name: str):
             table = MagicMock()
             if name == "signal_analysis":
-                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                table.select.return_value.in_.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(
                     data=signals
                 )
             else:
@@ -683,7 +683,7 @@ class TestSignalFallbackBuilder:
         def _table(name: str):
             table = MagicMock()
             if name == "signal_analysis":
-                table.select.return_value.in_.return_value.order.return_value.execute.return_value = MagicMock(
+                table.select.return_value.in_.return_value.gte.return_value.order.return_value.execute.return_value = MagicMock(
                     data=signals
                 )
             else:

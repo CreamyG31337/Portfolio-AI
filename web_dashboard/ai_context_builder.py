@@ -8,12 +8,21 @@ Converts portfolio data, trades, metrics, etc. into structured context for AI an
 """
 
 import pandas as pd
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 import json
 import sys
 import textwrap
+import threading
+import time
 from pathlib import Path
+
+# In-process TTL cache for yfinance volume summaries (15 min market open, 4h closed).
+# Avoids re-fetching 30+ tickers from yfinance on every context rebuild or fund switch.
+_VOLUME_CACHE: Dict[str, Tuple[float, str, str]] = {}
+_VOLUME_CACHE_LOCK = threading.Lock()
+_VOLUME_CACHE_TTL_OPEN_SEC = 900.0
+_VOLUME_CACHE_TTL_CLOSED_SEC = 14400.0
 
 # Add project root to path for market data imports
 # ai_context_builder.py is in web_dashboard/, so parent is the project root
@@ -83,22 +92,33 @@ def format_holdings(
         return f"Fund: {fund}\nHoldings: No current positions."
     
     sections = []
-    
-    # Section 1: Price & Volume Table (optional)
-    if include_price_volume:
-        price_volume_table = format_price_volume_table(positions_df)
-        if price_volume_table:
-            sections.append(price_volume_table)
-    
-    # Section 2: Portfolio Snapshot Table (always included)
-    portfolio_snapshot = _format_portfolio_snapshot_table(positions_df, fund, trades_df)
+    price_volume_table = ""
+    fundamentals_table = ""
+
+    # Run network-bound Price & Volume and Fundamentals fetches concurrently when both are enabled
+    if include_price_volume and include_fundamentals:
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            pv_fut = pool.submit(format_price_volume_table, positions_df)
+            fund_fut = pool.submit(format_fundamentals_table, positions_df)
+            # Build snapshot table on current thread while network calls run
+            portfolio_snapshot = _format_portfolio_snapshot_table(positions_df, fund, trades_df)
+            price_volume_table = pv_fut.result()
+            fundamentals_table = fund_fut.result()
+    else:
+        if include_price_volume:
+            price_volume_table = format_price_volume_table(positions_df)
+        portfolio_snapshot = _format_portfolio_snapshot_table(positions_df, fund, trades_df)
+        if include_fundamentals:
+            fundamentals_table = format_fundamentals_table(positions_df)
+
+    # Preserve exact section order: Price & Volume -> Portfolio Snapshot -> Company Fundamentals
+    if price_volume_table:
+        sections.append(price_volume_table)
     sections.append(portfolio_snapshot)
-    
-    # Section 3: Company Fundamentals Table (optional)
-    if include_fundamentals:
-        fundamentals_table = format_fundamentals_table(positions_df)
-        if fundamentals_table:
-            sections.append(fundamentals_table)
+    if fundamentals_table:
+        sections.append(fundamentals_table)
     
     return "\n\n".join(sections)
 
@@ -327,9 +347,29 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
             'pct_change_str': pct_change_str
         }
     
-    # Parallel fetch volume data
+    # Parallel fetch volume data (with in-process TTL cache to avoid re-hitting yfinance)
     volume_data = {}  # ticker -> (volume_str, avg_vol_str)
     fetch_failures = []
+    now_mono = time.monotonic()
+    tickers_to_fetch = []
+    with _VOLUME_CACHE_LOCK:
+        for t in ticker_list:
+            cached = _VOLUME_CACHE.get(t)
+            if cached is not None and now_mono < cached[0]:
+                volume_data[t] = (cached[1], cached[2])
+            else:
+                tickers_to_fetch.append(t)
+
+    cache_ttl = _VOLUME_CACHE_TTL_OPEN_SEC
+    if market_hours is not None:
+        try:
+            cache_ttl = (
+                _VOLUME_CACHE_TTL_OPEN_SEC
+                if market_hours.is_market_open()
+                else _VOLUME_CACHE_TTL_CLOSED_SEC
+            )
+        except Exception:
+            cache_ttl = _VOLUME_CACHE_TTL_OPEN_SEC
     
     def fetch_volume(ticker: str) -> tuple:
         """Fetch volume data for a single ticker."""
@@ -354,19 +394,23 @@ def format_price_volume_table(positions_df: pd.DataFrame) -> str:
         except Exception as e:
             return (ticker, "N/A", "N/A", str(e)[:50])
     
-    if market_fetcher and market_hours and start_d and end_d:
-        # Use ThreadPoolExecutor for parallel fetching (max 8 workers to avoid rate limits)
-        with ThreadPoolExecutor(max_workers=8) as executor:
-            futures = {executor.submit(fetch_volume, t): t for t in ticker_list}
-            for future in as_completed(futures):
-                ticker, vol_str, avg_str, error = future.result()
-                volume_data[ticker] = (vol_str, avg_str)
-                if error:
-                    fetch_failures.append(f"{ticker}: {error}")
-    else:
-        # No fetcher available, use N/A for all
-        for ticker in ticker_list:
-            volume_data[ticker] = ("N/A", "N/A")
+    if tickers_to_fetch:
+        if market_fetcher and market_hours and start_d and end_d:
+            # Use ThreadPoolExecutor for parallel fetching (max 8 workers to avoid rate limits)
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {executor.submit(fetch_volume, t): t for t in tickers_to_fetch}
+                for future in as_completed(futures):
+                    ticker, vol_str, avg_str, error = future.result()
+                    volume_data[ticker] = (vol_str, avg_str)
+                    if error:
+                        fetch_failures.append(f"{ticker}: {error}")
+                    else:
+                        with _VOLUME_CACHE_LOCK:
+                            _VOLUME_CACHE[ticker] = (time.monotonic() + cache_ttl, vol_str, avg_str)
+        else:
+            # No fetcher available, use N/A for all
+            for ticker in tickers_to_fetch:
+                volume_data[ticker] = ("N/A", "N/A")
     
     # Build output lines in original order
     for ticker in ticker_list:
@@ -457,10 +501,18 @@ def format_fundamentals_table(positions_df: pd.DataFrame) -> str:
         else:
             is_stale = True
         
-        # Check if any fundamentals are missing
-        if pe_ratio is None or div_yield is None or high_52w is None or low_52w is None:
+        # Only treat missing fundamentals as stale when ALL core metrics are absent
+        # (never populated). Non-dividend stocks (div_yield=None) and unprofitable
+        # companies / ETFs (pe_ratio=None) are legitimately None and must respect
+        # the 24h last_updated freshness window instead of re-fetching on every load.
+        if (
+            pe_ratio is None
+            and div_yield is None
+            and high_52w is None
+            and low_52w is None
+        ):
             is_stale = True
-            logger.debug(f"[fundamentals] {ticker}: missing fields (P/E={pe_ratio}, Div={div_yield}, High={high_52w}, Low={low_52w})")
+            logger.debug(f"[fundamentals] {ticker}: all core fundamentals missing")
         
         # Store current data
         ticker_data_map[ticker] = {

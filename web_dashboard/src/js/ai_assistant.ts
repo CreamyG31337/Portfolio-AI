@@ -180,17 +180,21 @@ class AIAssistant {
 
             this.setupEventListeners();
             console.log('[AIAssistant] Event listeners attached');
-            this.loadPortfolioTickers();
+
+            // Kick off independent initial fetches in parallel instead of a waterfall
+            void this.loadPortfolioTickers();
             this.loadContextItems();
-            await this.loadUserPreferences();
             void this.loadAvailableModels();
-            this.updateUI();
+            const sessionPromise = this.loadSessionFromServer();
 
-            // Load context after preferences so trade toggles are correct
-            this.loadContext();
+            await this.loadUserPreferences();
+            this.updateContextUI();
 
-            // Restore server-side transcript for the current fund
-            await this.loadSessionFromServer();
+            // Load context right after preferences so trade toggles are accurate
+            void this.loadContext();
+
+            // Wait for transcript restoration to finish before finalizing display
+            await sessionPromise;
 
             // Initialize display
             this.updateModelDisplay();
@@ -914,6 +918,7 @@ class AIAssistant {
   - etf_context: ${df.etf_context ?? df.etf_trades ?? 'N/A'}ms
   → TOTAL DATA FETCH: ${df.total_data_fetch ?? 'N/A'}ms`);
                     console.log(`[AIAssistant] ⏱️ FORMATTING BREAKDOWN:
+  - format_intelligence_pulse: ${ft.format_intelligence_pulse ?? 'N/A'}ms
   - format_holdings: ${ft.format_holdings ?? 'N/A'}ms
   - format_metrics: ${ft.format_metrics ?? 'N/A'}ms
   - format_cash: ${ft.format_cash ?? 'N/A'}ms

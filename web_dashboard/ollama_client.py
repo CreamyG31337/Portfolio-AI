@@ -174,6 +174,24 @@ class OllamaHostBusyError(RuntimeError):
 _HOST_SLOTS: Dict[str, threading.Semaphore] = {}
 _HOST_SLOTS_GUARD = threading.Lock()
 
+# Fast-fail model discovery cache & unreachable-host cooldown (avoid 42s hangs
+# when an optional secondary GPU host like a sleeping laptop is unreachable).
+_MODEL_LIST_CACHE_TTL_SEC = 60.0
+_PROBE_SECONDARY_COOLDOWN_SEC = 120.0
+_PROBE_PRIMARY_COOLDOWN_SEC = 15.0
+_PROBE_CONNECT_TIMEOUT_SEC = 2.0
+_PROBE_READ_TIMEOUT_SEC = 4.0
+_MODEL_LIST_CACHE: Dict[Tuple[str, ...], Tuple[float, List[str]]] = {}
+_PROBE_UNREACHABLE_UNTIL: Dict[str, float] = {}
+_PROBE_CACHE_GUARD = threading.Lock()
+
+
+def _clear_model_list_cache() -> None:
+    """Clear in-process Ollama model list cache and unreachable-host cooldowns."""
+    with _PROBE_CACHE_GUARD:
+        _MODEL_LIST_CACHE.clear()
+        _PROBE_UNREACHABLE_UNTIL.clear()
+
 
 def _max_concurrent_per_host() -> int:
     raw = os.getenv("OLLAMA_MAX_CONCURRENT_PER_HOST", "1")
@@ -435,6 +453,14 @@ class OllamaClient:
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
+
+        # Dedicated zero-retry session for quick health/model discovery probes.
+        # Avoids 4x timeout amplification (e.g. 4 * 10s = 42s) when an optional
+        # secondary host (like a sleeping laptop) drops packets.
+        self.probe_session = requests.Session()
+        probe_adapter = HTTPAdapter(max_retries=0)
+        self.probe_session.mount("http://", probe_adapter)
+        self.probe_session.mount("https://", probe_adapter)
         
         # Load model configuration
         self.model_config = load_model_config()
@@ -1077,7 +1103,10 @@ class OllamaClient:
     def _warn_if_ollama_version_too_old(self, base_url: str) -> None:
         """Log if host Ollama reports a version below 0.32.12 (Qwen3.8 needs that floor)."""
         try:
-            response = self.session.get(f"{base_url.rstrip('/')}/api/version", timeout=5)
+            response = self.probe_session.get(
+                f"{base_url.rstrip('/')}/api/version",
+                timeout=(_PROBE_CONNECT_TIMEOUT_SEC, _PROBE_READ_TIMEOUT_SEC),
+            )
             if response.status_code != 200:
                 return
             raw = response.json() if response.content else {}
@@ -1112,9 +1141,9 @@ class OllamaClient:
             return False
         
         try:
-            response = self.session.get(
+            response = self.probe_session.get(
                 f"{self.base_url}/api/tags",
-                timeout=5
+                timeout=(_PROBE_CONNECT_TIMEOUT_SEC, _PROBE_READ_TIMEOUT_SEC),
             )
             if response.status_code == 200:
                 self._warn_if_ollama_version_too_old(self.base_url)
@@ -1172,12 +1201,56 @@ class OllamaClient:
             logger.warning("Health check failed for model=%s url=%s: %s", model, primary, e)
             return False
     
-    def list_available_models(self) -> List[str]:
+    def _probe_models_from_host(self, base: str, *, is_primary: bool) -> List[str]:
+        """Probe a single Ollama/OpenAI-compatible host for model names without retries."""
+        now = time.monotonic()
+        with _PROBE_CACHE_GUARD:
+            skip_until = _PROBE_UNREACHABLE_UNTIL.get(base, 0.0)
+        if now < skip_until:
+            logger.debug(
+                "Skipping unreachable model host %s (cooldown %.0fs remaining)",
+                base,
+                skip_until - now,
+            )
+            return []
+
+        timeout = (_PROBE_CONNECT_TIMEOUT_SEC, _PROBE_READ_TIMEOUT_SEC)
+        try:
+            logger.debug("Fetching available models from %s...", base)
+            response = self.probe_session.get(f"{base}/api/tags", timeout=timeout)
+            if response.status_code == 404:
+                response = self.probe_session.get(f"{base}/v1/models", timeout=timeout)
+            response.raise_for_status()
+            data = response.json()
+            found: List[str] = []
+            for model in data.get("models", []):
+                name = (model.get("name") or "").strip() if isinstance(model, dict) else ""
+                if name:
+                    found.append(name)
+            for model in data.get("data", []):
+                name = (model.get("id") or "").strip() if isinstance(model, dict) else ""
+                if name:
+                    found.append(name)
+            with _PROBE_CACHE_GUARD:
+                _PROBE_UNREACHABLE_UNTIL.pop(base, None)
+            return found
+        except Exception as e:
+            cooldown = _PROBE_PRIMARY_COOLDOWN_SEC if is_primary else _PROBE_SECONDARY_COOLDOWN_SEC
+            with _PROBE_CACHE_GUARD:
+                _PROBE_UNREACHABLE_UNTIL[base] = time.monotonic() + cooldown
+            logger.warning("Error listing models from %s (cooldown %.0fs): %s", base, cooldown, e)
+            return []
+
+    def list_available_models(self, *, force_refresh: bool = False) -> List[str]:
         """List available Ollama model names from the primary host and optional secondary.
 
         Secondary is ``OLLAMA_BASE_URL_2`` / NVIDIA when set, so desktop-only models
         (e.g. ``qwen3.5:9b-q8_0`` on the NVIDIA host) appear in the AI Assistant picker
         even when the default URL is the Ubuntu host.
+
+        Probes hosts in parallel with a short no-retry connect timeout and caches
+        results in-process (60s TTL) so an unreachable secondary host cannot block
+        page loads or API calls.
         """
         if not self.enabled:
             logger.debug("Model listing skipped: Ollama disabled")
@@ -1193,28 +1266,48 @@ class OllamaClient:
             if extra and extra not in urls:
                 urls.append(extra)
 
+        if not urls:
+            return []
+
+        cache_key = tuple(urls)
+        if not force_refresh:
+            now = time.monotonic()
+            with _PROBE_CACHE_GUARD:
+                cached = _MODEL_LIST_CACHE.get(cache_key)
+                if cached is not None and now < cached[0]:
+                    return list(cached[1])
+
+        per_host: Dict[str, List[str]] = {}
+        if len(urls) == 1:
+            per_host[urls[0]] = self._probe_models_from_host(urls[0], is_primary=True)
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=len(urls)) as pool:
+                future_map = {
+                    pool.submit(self._probe_models_from_host, base, is_primary=(idx == 0)): base
+                    for idx, base in enumerate(urls)
+                }
+                for fut, base in future_map.items():
+                    try:
+                        per_host[base] = fut.result()
+                    except Exception as e:
+                        logger.warning("Error listing models from %s: %s", base, e)
+                        per_host[base] = []
+
         seen: set[str] = set()
         models: List[str] = []
         for base in urls:
-            try:
-                logger.debug("Fetching available models from %s...", base)
-                response = self.session.get(f"{base}/api/tags", timeout=10)
-                if response.status_code == 404:
-                    response = self.session.get(f"{base}/v1/models", timeout=10)
-                response.raise_for_status()
-                data = response.json()
-                for model in data.get("models", []):
-                    name = (model.get("name") or "").strip() if isinstance(model, dict) else ""
-                    if name and name not in seen:
-                        seen.add(name)
-                        models.append(name)
-                for model in data.get("data", []):
-                    name = (model.get("id") or "").strip() if isinstance(model, dict) else ""
-                    if name and name not in seen:
-                        seen.add(name)
-                        models.append(name)
-            except Exception as e:
-                logger.warning("Error listing models from %s: %s", base, e)
+            for name in per_host.get(base, []):
+                if name not in seen:
+                    seen.add(name)
+                    models.append(name)
+
+        with _PROBE_CACHE_GUARD:
+            _MODEL_LIST_CACHE[cache_key] = (
+                time.monotonic() + _MODEL_LIST_CACHE_TTL_SEC,
+                list(models),
+            )
 
         logger.info(
             "Found %d Ollama models across %d host(s): %s",

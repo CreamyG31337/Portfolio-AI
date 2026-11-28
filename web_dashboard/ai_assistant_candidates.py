@@ -8,6 +8,7 @@ a lean ranking from latest watchlist ``signal_analysis`` rows.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
 
@@ -157,6 +158,9 @@ def build_signal_fallback_candidates(
     action_filter: str | None = None,
     held_only: bool = False,
     include_hold: bool = False,
+    signal_lookback_days: int = 14,
+    prefetched_watchlist: list[dict[str, Any]] | None = None,
+    prefetched_signals: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Lean candidates from latest watchlist signals (assistant fallback).
 
@@ -167,11 +171,14 @@ def build_signal_fallback_candidates(
         return []
 
     held = {t.upper() for t in (held_tickers or set()) if t}
-    try:
-        watchlist = get_active_watchlist_rows(supabase, fund=fund) or []
-    except Exception as exc:
-        logger.warning("signal fallback watchlist failed: %s", exc)
-        return []
+    if prefetched_watchlist is not None:
+        watchlist = prefetched_watchlist
+    else:
+        try:
+            watchlist = get_active_watchlist_rows(supabase, fund=fund) or []
+        except Exception as exc:
+            logger.warning("signal fallback watchlist failed: %s", exc)
+            return []
 
     tickers = [
         str(item.get("ticker") or "").upper().strip()
@@ -183,26 +190,36 @@ def build_signal_fallback_candidates(
         return []
 
     latest_by_ticker: dict[str, dict[str, Any]] = {}
-    try:
-        for i in range(0, len(tickers), 100):
-            batch = tickers[i : i + 100]
-            rows = (
-                supabase.supabase.table("signal_analysis")
-                .select(
-                    "ticker, analysis_date, overall_signal, confidence_score, "
-                    "fear_risk_signal, structure_signal"
+    if prefetched_signals:
+        for raw_t, row in prefetched_signals.items():
+            t = str(raw_t or "").upper().strip()
+            if t and isinstance(row, dict):
+                latest_by_ticker[t] = row
+    else:
+        cutoff_date = (
+            datetime.now(timezone.utc) - timedelta(days=max(1, signal_lookback_days))
+        ).date().isoformat()
+        try:
+            for i in range(0, len(tickers), 100):
+                batch = tickers[i : i + 100]
+                rows = (
+                    supabase.supabase.table("signal_analysis")
+                    .select(
+                        "ticker, analysis_date, overall_signal, confidence_score, "
+                        "fear_risk_signal, structure_signal"
+                    )
+                    .in_("ticker", batch)
+                    .gte("analysis_date", cutoff_date)
+                    .order("analysis_date", desc=True)
+                    .execute()
                 )
-                .in_("ticker", batch)
-                .order("analysis_date", desc=True)
-                .execute()
-            )
-            for row in rows.data or []:
-                t = str(row.get("ticker") or "").upper()
-                if t and t not in latest_by_ticker:
-                    latest_by_ticker[t] = row
-    except Exception as exc:
-        logger.warning("signal fallback fetch failed: %s", exc)
-        return []
+                for row in rows.data or []:
+                    t = str(row.get("ticker") or "").upper()
+                    if t and t not in latest_by_ticker:
+                        latest_by_ticker[t] = row
+        except Exception as exc:
+            logger.warning("signal fallback fetch failed: %s", exc)
+            return []
 
     action_filter_u = (action_filter or "").strip().upper()
     # MONITOR is advise-only; map to HOLD for signal fallback.

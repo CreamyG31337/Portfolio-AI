@@ -1,4 +1,15 @@
-from flask import Blueprint, render_template, request, session, jsonify, Response, stream_with_context
+from flask import (
+    Blueprint,
+    render_template,
+    request,
+    session,
+    jsonify,
+    Response,
+    stream_with_context,
+    copy_current_request_context,
+    has_request_context,
+)
+from concurrent.futures import ThreadPoolExecutor
 import logging
 from typing import Optional, Dict, List, Any
 import sys
@@ -113,10 +124,21 @@ def _get_reference_data_supabase_client():
         return get_supabase_client_flask()
 
 
-def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
+def _wrap_for_thread(fn, *args, **kwargs):
+    """Wrap a callable to preserve Flask's request/app context in a worker thread."""
+    if has_request_context():
+        wrapped = copy_current_request_context(fn)
+        return lambda: wrapped(*args, **kwargs)
+    return lambda: fn(*args, **kwargs)
+
+
+def _get_insider_trades_for_portfolio(
+    fund: str, days: int = 7, positions_df: Any = None
+) -> List[Dict]:
     """Get insider trades for portfolio tickers from last N days."""
     try:
-        positions_df = get_current_positions_flask(fund)
+        if positions_df is None:
+            positions_df = get_current_positions_flask(fund)
         portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
@@ -145,10 +167,13 @@ def _get_insider_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
         return []
 
 
-def _get_congress_trades_for_portfolio(fund: str, days: int = 30) -> List[Dict]:
+def _get_congress_trades_for_portfolio(
+    fund: str, days: int = 30, positions_df: Any = None
+) -> List[Dict]:
     """Get recent congress trades for portfolio tickers (default 30d — disclosure lag)."""
     try:
-        positions_df = get_current_positions_flask(fund)
+        if positions_df is None:
+            positions_df = get_current_positions_flask(fund)
         portfolio_tickers = _portfolio_ticker_list(positions_df)
         if not portfolio_tickers:
             return []
@@ -247,11 +272,14 @@ def _filter_etf_analysis_articles(
     return matched
 
 
-def _get_etf_context_for_portfolio(fund: str, days: int = 7) -> Dict[str, Any]:
+def _get_etf_context_for_portfolio(
+    fund: str, days: int = 7, positions_df: Any = None
+) -> Dict[str, Any]:
     """Fetch ETF activity summaries, notable trades, and nightly ETF Analysis articles."""
     empty = _empty_etf_context(days)
     try:
-        positions_df = get_current_positions_flask(fund)
+        if positions_df is None:
+            positions_df = get_current_positions_flask(fund)
         if positions_df.empty:
             return empty
 
@@ -344,81 +372,85 @@ def _get_etf_trades_for_portfolio(fund: str, days: int = 7) -> List[Dict]:
 
 @cache_data(ttl=300)
 def _get_context_data_packet(user_id: str, fund: str):
-    """Get context data packet with caching (300s TTL)"""
+    """Get context data packet with caching (300s TTL) and parallel fetching."""
     logger.info(f"Refreshing context data for {user_id}/{fund}")
-    
-    timings = {}
+
+    timings: Dict[str, Any] = {}
     total_start = time.time()
-    
-    # Fetch all components
+
+    # Fetch positions first so insider/congress/etf lookups reuse the same DataFrame
     t0 = time.time()
     positions_df = get_current_positions_flask(fund)
     timings['positions'] = round((time.time() - t0) * 1000, 1)
-    
-    t0 = time.time()
-    trades_df = get_trade_log_flask(limit=100, fund=fund)
-    timings['trades'] = round((time.time() - t0) * 1000, 1)
-    
-    try:
-        t0 = time.time()
-        metrics = calculate_performance_metrics_flask(fund)
-        portfolio_df = calculate_portfolio_value_over_time_flask(fund, days=365)
-        timings['metrics+portfolio'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading metrics: {e}")
-        metrics = None
-        portfolio_df = None
+
+    def _timed(key: str, default: Any, fn, *args, **kwargs):
+        s = time.time()
+        try:
+            val = fn(*args, **kwargs)
+            timings[key] = round((time.time() - s) * 1000, 1)
+            return val
+        except Exception as e:
+            logger.warning(f"Error loading {key}: {e}")
+            timings[key] = 'error'
+            return default
+
+    import pandas as pd
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        f_trades = pool.submit(
+            _wrap_for_thread(_timed, 'trades', pd.DataFrame(), get_trade_log_flask, limit=100, fund=fund)
+        )
+        f_metrics = pool.submit(
+            _wrap_for_thread(_timed, 'metrics', None, calculate_performance_metrics_flask, fund)
+        )
+        f_portfolio = pool.submit(
+            _wrap_for_thread(_timed, 'portfolio', None, calculate_portfolio_value_over_time_flask, fund, days=365)
+        )
+        f_cash = pool.submit(
+            _wrap_for_thread(_timed, 'cash', None, get_cash_balances_flask, fund)
+        )
+        f_thesis = pool.submit(
+            _wrap_for_thread(_timed, 'thesis', None, get_fund_thesis_data_flask, fund)
+        )
+        f_insider = pool.submit(
+            _wrap_for_thread(
+                _timed, 'insider_trades', [], _get_insider_trades_for_portfolio,
+                fund, days=7, positions_df=positions_df,
+            )
+        )
+        f_congress = pool.submit(
+            _wrap_for_thread(
+                _timed, 'congress_trades', [], _get_congress_trades_for_portfolio,
+                fund, days=30, positions_df=positions_df,
+            )
+        )
+        f_etf = pool.submit(
+            _wrap_for_thread(
+                _timed, 'etf_context', _empty_etf_context(7), _get_etf_context_for_portfolio,
+                fund, days=7, positions_df=positions_df,
+            )
+        )
+
+        trades_df = f_trades.result()
+        metrics = f_metrics.result()
+        portfolio_df = f_portfolio.result()
+        cash = f_cash.result()
+        thesis_data = f_thesis.result()
+        insider_trades = f_insider.result()
+        congress_trades = f_congress.result()
+        etf_context = f_etf.result()
+
+    # Preserve metrics+portfolio combined key for frontend perf console logging
+    m_t = timings.get('metrics')
+    p_t = timings.get('portfolio')
+    if isinstance(m_t, (int, float)) and isinstance(p_t, (int, float)):
+        timings['metrics+portfolio'] = round(max(m_t, p_t), 1)
+    else:
         timings['metrics+portfolio'] = 'error'
-        
-    try:
-        t0 = time.time()
-        cash = get_cash_balances_flask(fund)
-        timings['cash'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading cash: {e}")
-        cash = None
-        timings['cash'] = 'error'
-        
-    try:
-        t0 = time.time()
-        thesis_data = get_fund_thesis_data_flask(fund)
-        timings['thesis'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading thesis: {e}")
-        thesis_data = None
-        timings['thesis'] = 'error'
-    
-    # Fetch trade data (last 7 days)
-    try:
-        t0 = time.time()
-        insider_trades = _get_insider_trades_for_portfolio(fund, days=7)
-        timings['insider_trades'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading insider trades: {e}")
-        insider_trades = []
-        timings['insider_trades'] = 'error'
-    
-    try:
-        t0 = time.time()
-        congress_trades = _get_congress_trades_for_portfolio(fund, days=30)
-        timings['congress_trades'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading congress trades: {e}")
-        congress_trades = []
-        timings['congress_trades'] = 'error'
-    
-    try:
-        t0 = time.time()
-        etf_context = _get_etf_context_for_portfolio(fund, days=7)
-        timings['etf_context'] = round((time.time() - t0) * 1000, 1)
-    except Exception as e:
-        logger.warning(f"Error loading ETF context: {e}")
-        etf_context = _empty_etf_context(7)
-        timings['etf_context'] = 'error'
-    
+
     timings['total_data_fetch'] = round((time.time() - total_start) * 1000, 1)
     logger.info(f"[PERF] Context data fetch timings (ms): {timings}")
-        
+
     return {
         'positions_df': positions_df,
         'trades_df': trades_df,
@@ -458,12 +490,6 @@ def _build_context_from_packet(
     # Guard against None from cache/data layer to avoid AttributeError/TypeError (e.g. len(None))
     positions_df = data_packet.get('positions_df')
     trades_df = data_packet.get('trades_df')
-    # #region agent log
-    try:
-        _debug_log_preview("ai_routes:_build_context_from_packet:entry", "data_packet df types", {"positions_type": type(positions_df).__name__ if positions_df is not None else "None", "trades_type": type(trades_df).__name__ if trades_df is not None else "None", "hypothesisId": "B"})
-    except Exception:
-        pass
-    # #endregion
     if positions_df is None:
         positions_df = pd.DataFrame()
     if trades_df is None:
@@ -478,28 +504,46 @@ def _build_context_from_packet(
 
     context_parts = []
 
-    if include_intelligence_pulse:
-        t0 = time.time()
+    def _run_pulse() -> tuple:
+        t_start = time.time()
+        text = None
         try:
             from ai_intelligence_pulse import build_and_format_intelligence_pulse
 
-            pulse_text = build_and_format_intelligence_pulse(fund)
-            if pulse_text:
-                context_parts.append(pulse_text)
+            text = build_and_format_intelligence_pulse(fund, positions_df=positions_df)
         except Exception as e:
             logger.warning(f"Error building intelligence pulse: {e}")
-        format_timings['format_intelligence_pulse'] = round((time.time() - t0) * 1000, 1)
+        return text, round((time.time() - t_start) * 1000, 1)
 
-    if not positions_df.empty:
-        t0 = time.time()
-        holdings_text = format_holdings(
+    def _run_holdings() -> tuple:
+        t_start = time.time()
+        text = format_holdings(
             positions_df,
             fund,
             trades_df=trades_df,
             include_price_volume=include_price_volume,
-            include_fundamentals=include_fundamentals
+            include_fundamentals=include_fundamentals,
         )
-        format_timings['format_holdings'] = round((time.time() - t0) * 1000, 1)
+        return text, round((time.time() - t_start) * 1000, 1)
+
+    pulse_text = None
+    holdings_text = None
+    if include_intelligence_pulse and not positions_df.empty:
+        # Both steps do independent network I/O (Supabase/Research DB vs yfinance); run concurrently
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            f_pulse = pool.submit(_wrap_for_thread(_run_pulse))
+            f_holdings = pool.submit(_wrap_for_thread(_run_holdings))
+            pulse_text, format_timings['format_intelligence_pulse'] = f_pulse.result()
+            holdings_text, format_timings['format_holdings'] = f_holdings.result()
+    else:
+        if include_intelligence_pulse:
+            pulse_text, format_timings['format_intelligence_pulse'] = _run_pulse()
+        if not positions_df.empty:
+            holdings_text, format_timings['format_holdings'] = _run_holdings()
+
+    if pulse_text:
+        context_parts.append(pulse_text)
+    if holdings_text:
         context_parts.append(holdings_text)
 
     if metrics:
@@ -635,31 +679,31 @@ def _get_preview_context_string(
 
     return result
 
-@cache_data(ttl=30)
+@cache_data(ttl=120)
 def _get_cached_ollama_health():
-    """Check Ollama health with 30s cache"""
+    """Check Ollama health with 120s cache"""
     return check_ollama_health()
 
-@cache_data(ttl=30)
+@cache_data(ttl=120)
 def _get_cached_searxng_health():
-    """Check SearXNG health with 30s cache"""
+    """Check SearXNG health with 120s cache"""
     return check_searxng_health()
 
-@cache_data(ttl=30)
+@cache_data(ttl=120)
 def _get_cached_ollama_models():
-    """Get available Ollama models with 30s cache"""
+    """Get available Ollama models with 120s cache"""
     return list_available_models()
 
-@cache_data(ttl=30)
+@cache_data(ttl=120)
 def _get_formatted_ai_models():
-    """Get formatted AI models list with 30s cache"""
+    """Get formatted AI models list with 120s cache (reuses cached model list)."""
     try:
         from ai_service_keys import get_model_display_name
     except ImportError:
         def get_model_display_name(m): return m
 
     try:
-        all_models = list_available_models()
+        all_models = _get_cached_ollama_models()
     except Exception as e:
         logger.error("list_available_models failed for model picker: %s", e, exc_info=True)
         all_models = []
@@ -716,19 +760,28 @@ def ai_assistant_page():
     """AI Assistant chat interface page (Flask v2)"""
     try:
         user_email = get_user_email_flask()
+
+        # Run independent probes concurrently (all cached with 120s TTL and fast no-retry timeouts)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            f_models = pool.submit(_wrap_for_thread(_get_cached_ollama_models))
+            f_ollama_ok = pool.submit(_wrap_for_thread(_get_cached_ollama_health))
+            f_searxng_ok = pool.submit(_wrap_for_thread(_get_cached_searxng_health))
+            f_nav = pool.submit(
+                _wrap_for_thread(
+                    lambda: __import__('app').get_navigation_context(current_page='ai_assistant')
+                )
+            )
+            ollama_models = f_models.result()
+            ollama_available = f_ollama_ok.result()
+            searxng_available = f_searxng_ok.result()
+            nav_context = f_nav.result()
+
+        # Resolve default model AFTER ollama_models is warm in OllamaClient's in-process cache
         default_model = get_user_ai_model()
-        
-        # Get available funds (cached)
-        available_funds = get_available_funds_flask()
-        
-        # Get available models (cached)
-        ollama_models = _get_cached_ollama_models()
-        ollama_available = _get_cached_ollama_health()
-        searxng_available = _get_cached_searxng_health()
-        
+
         # Get model configuration for context limits
         model_config = load_model_config()
-        
+
         # Check for WebAI models
         try:
             from webai_wrapper import get_webai_models
@@ -737,19 +790,12 @@ def ai_assistant_page():
         except (ImportError, FileNotFoundError):
             webai_models = []
             has_webai = False
-        
-        # Get navigation context
-        from app import get_navigation_context  # Import here to avoid circular import
-        nav_context = get_navigation_context(current_page='ai_assistant')
 
-        # Prewarm default context data for fast initial load
-        try:
-            if available_funds:
-                default_fund = available_funds[0]
-                _get_context_data_packet(get_user_id_flask(), default_fund)
-        except Exception as e:
-            logger.debug(f"Context prewarm skipped: {e}")
-        
+        # Note: Do NOT synchronously prewarm _get_context_data_packet here.
+        # Warming available_funds[0] blocked HTML rendering for 4-6s and often warmed
+        # the wrong fund (e.g. Project Chimera while viewing Webull). The page JS
+        # fetches /api/v2/ai/preview_context asynchronously for the actual selected fund.
+
         return render_template('ai_assistant.html',
                              user_email=user_email,
                              default_model=default_model,
@@ -805,17 +851,6 @@ def api_ai_search():
         logger.error(f"Error performing search: {e}")
         return jsonify({"error": str(e)}), 500
 
-# #region agent log
-def _debug_log_preview(location: str, message: str, data: dict) -> None:
-    import json
-    _path = r"c:\Users\cream\OneDrive\Documents\LLM-Micro-Cap-trading-bot\.cursor\debug.log"
-    try:
-        with open(_path, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"location": location, "message": message, "data": data, "timestamp": __import__("time").time(), "sessionId": "debug-session"}) + "\n")
-    except Exception:
-        pass
-# #endregion
-
 @ai_bp.route('/api/v2/ai/preview_context', methods=['POST'])
 @require_auth
 def api_ai_preview_context():
@@ -828,9 +863,6 @@ def api_ai_preview_context():
             return jsonify({"error": "No fund specified"}), 400
 
         user_id = get_user_id_flask()
-        # #region agent log
-        _debug_log_preview("ai_routes:api_ai_preview_context:entry", "preview_context request", {"fund": fund, "user_id": str(user_id)[:8] if user_id else None, "hypothesisId": "A"})
-        # #endregion
 
         include_pv = data.get('include_price_volume', True)
         include_fund = data.get('include_fundamentals', True)
@@ -855,9 +887,6 @@ def api_ai_preview_context():
             include_etf_trades=include_etf_trades,
             include_intelligence_pulse=include_intelligence_pulse,
         )
-        # #region agent log
-        _debug_log_preview("ai_routes:api_ai_preview_context:after_build", "context_string result", {"type": type(context_string).__name__ if context_string is not None else "NoneType", "len": len(context_string) if context_string is not None else None, "hypothesisId": "A"})
-        # #endregion
         # Normalize to str and safe char_count to avoid "object of type 'NoneType' has no len()"
         if context_string is None:
             context_string = ""

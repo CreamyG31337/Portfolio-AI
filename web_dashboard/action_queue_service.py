@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from postgres_client import PostgresClient
@@ -94,11 +94,18 @@ def build_action_queue_items(
     fund: str | None,
     limit: int,
     positions_df: Any | None = None,
+    *,
+    signal_lookback_days: int = 14,
+    latest_signals_out: dict[str, dict[str, Any]] | None = None,
+    watchlist_out: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Rules-based queue (same semantics as dashboard get_action_queue).
 
     If ``positions_df`` is provided (e.g. outbound digest service-role path), it is used
     instead of loading via Flask-scoped ``get_current_positions``.
+
+    Optional ``latest_signals_out`` / ``watchlist_out`` dicts/lists are populated in-place
+    so callers that fall back when the queue is empty can avoid re-querying Supabase.
     """
     if positions_df is None:
         positions_df = get_current_positions(fund)
@@ -109,12 +116,15 @@ def build_action_queue_items(
         )
 
     watchlist = get_active_watchlist_rows(supabase_client, fund=fund)
+    if watchlist_out is not None and watchlist:
+        watchlist_out.extend(watchlist)
     if not watchlist:
         return []
 
     tickers = list({item.get("ticker") for item in watchlist if item.get("ticker")})
 
     latest_by_ticker: dict[str, dict[str, Any]] = {}
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=max(1, signal_lookback_days))).date().isoformat()
     try:
         batch_size = 100
         for i in range(0, len(tickers), batch_size):
@@ -126,6 +136,7 @@ def build_action_queue_items(
                     "fear_risk_signal, overall_signal, confidence_score, explanation"
                 )
                 .in_("ticker", batch)
+                .gte("analysis_date", cutoff_date)
                 .order("analysis_date", desc=True)
                 .execute()
             )
@@ -136,6 +147,9 @@ def build_action_queue_items(
                         latest_by_ticker[row_ticker] = row
     except Exception as e:
         logger.warning("[action_queue] Error fetching signal_analysis: %s", e)
+
+    if latest_signals_out is not None and latest_by_ticker:
+        latest_signals_out.update(latest_by_ticker)
 
     company_names_map: dict[str, str] = {}
     try:
